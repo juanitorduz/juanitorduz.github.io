@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>Circle Radius Fit for a Cloud of Points - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Circle Radius Fit for a Cloud of Points - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="/css/fonts.css" media="all">
+<link rel="stylesheet" href="/css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="/" class="nav-logo">
+    <img src="/images/foto.jpeg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href=""></a></li>
+    
+    <li><a href="/about/">About</a></li>
+    
+    <li><a href="/cv/">CV</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">3 min read</span>
+    
+
+    <h1 class="article-title">Circle Radius Fit for a Cloud of Points</h1>
+
+    
+    <span class="article-date">2018/09/09</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post I explore how to render a <code>.Rmd</code> file directly with <a href="https://bookdown.org/yihui/blogdown/">blogdown</a>. To play around with it, I wrote a simple R notebook which fits a circle to a cloud of points.</p>
+<div id="prepare-the-notebook" class="section level1">
+<h1>Prepare the Notebook</h1>
+<pre class="r"><code>library(tidyverse)</code></pre>
+</div>
+<div id="generate-circle-data" class="section level1">
+<h1>Generate Circle Data</h1>
+<pre class="r"><code># Dimension of the space.
+d &lt;- 2
+
+# Number of sample points. 
+N &lt;- 1000
+
+# Radius. 
+R &lt;- 4
+
+# Generate random sample of points (x - axis).
+points.0 &lt;- 1:N %&gt;% map(.f = ~ runif(n = d - 1, min =  - R, max = R))
+
+# Generate the corresponding y - coordinates. 
+all.points &lt;- points.0 %&gt;% map(.f = ~ c(., sign(runif(n = 1, min = - 1, max = 1))*sqrt(R^2 - norm(., type = &#39;2&#39;)^2))) 
+
+# Store data in a tibble.
+all.points.df &lt;- all.points %&gt;% reduce(.f = ~ rbind(.x, .y)) %&gt;% 
+                                as.tibble %&gt;% 
+                                rename(x = V1, y = V2)
+
+# Plot the data. 
+all.points.df %&gt;% 
+  ggplot() + 
+  theme_light() + 
+  geom_point(mapping = aes(x = x, y = y)) </code></pre>
+<p><img src="/post/r_circle_fit_files/figure-html/unnamed-chunk-2-1.png" width="576" style="display: block; margin: auto;" /></p>
+</div>
+<div id="add-noise" class="section level1">
+<h1>Add Noise</h1>
+<p>We add noise from a normal disttribution with mean zero and standard deviation <code>sd</code>.</p>
+<pre class="r"><code># Set standard deviation.
+sd &lt;- 0.5
+
+# Add noise.
+all.samples &lt;- all.points %&gt;% map(.f =  ~ . + rnorm(n = d, mean = 0, sd = sd))
+
+# Store data in a tibble.
+all.samples.df &lt;- all.samples %&gt;% reduce(.f = ~ rbind(.x, .y)) %&gt;%
+                                  as.tibble %&gt;% 
+                                  rename(x = V1, y = V2)
+
+# Plot the data.
+all.samples.df %&gt;% 
+  ggplot() + 
+  theme_light() +
+  geom_point(mapping = aes(x = x, y = y)) </code></pre>
+<p><img src="/post/r_circle_fit_files/figure-html/unnamed-chunk-3-1.png" width="576" style="display: block; margin: auto;" /></p>
+</div>
+<div id="define-optimization-function" class="section level1">
+<h1>Define Optimization Function</h1>
+<p>In order to find the best fitting circle, we need to define what “best” means. We aim to minimize the RMSE.</p>
+<pre class="r"><code># Define function to optimize. 
+ComputeRMSE &lt;- function(all.samples, r, N) {
+  
+  all.samples %&gt;% map_dbl(.f = ~ (r - norm(., type = &#39;2&#39;))^2) %&gt;% mean
+  
+}</code></pre>
+<p>Let us visualize the shape of the cost function.</p>
+<pre class="r"><code>rmse.df &lt;- seq(from = 0.5, to = 10, by = 0.1) %&gt;% 
+              map(.f = ~ c(., ComputeRMSE(all.samples = all.samples, r = ., N = N ))) %&gt;% 
+              reduce(.f = ~ rbind(.x, .y)) %&gt;% 
+              as.tibble %&gt;% 
+              rename(r = V1, RMSE = V2)
+
+rmse.df %&gt;% 
+  ggplot() + 
+  theme_light() + 
+  geom_line(mapping = aes(x = r, y = RMSE))</code></pre>
+<p><img src="/post/r_circle_fit_files/figure-html/unnamed-chunk-5-1.png" width="576" style="display: block; margin: auto;" /></p>
+<p>We aim to find the minimum.</p>
+</div>
+<div id="run-optimization" class="section level1">
+<h1>Run Optimization</h1>
+<pre class="r"><code>opt.obj &lt;- optimize(f = function(r) ComputeRMSE(all.samples = all.samples, r = r, N = N), 
+                    interval = 1:10)
+
+r.hat &lt;- opt.obj$minimum
+
+r.hat</code></pre>
+<pre><code>## [1] 4.049705</code></pre>
+</div>
+<div id="visualize-results" class="section level1">
+<h1>Visualize Results</h1>
+<p>We project each sample point onto the best circle fit.</p>
+<pre class="r"><code>all.samples %&gt;% map(.f = function(x) r.hat*x /norm(x, type = &#39;2&#39;)) %&gt;% 
+                reduce(.f = function(x, y) rbind(x, y)) %&gt;% 
+                as.tibble %&gt;% 
+                rename(x1 = V1, y1 =V2) %&gt;% 
+                cbind(all.samples.df) %&gt;% 
+                ggplot() + 
+                theme_light() + 
+                geom_point(mapping = aes(x = x, y = y)) +
+                geom_point(mapping = aes(x = x1, y = y1), color = &#39;red&#39;) </code></pre>
+<p><img src="/post/r_circle_fit_files/figure-html/unnamed-chunk-7-1.png" width="576" style="display: block; margin: auto;" /></p>
+</div>
+<div id="analytical-solution" class="section level1">
+<h1>Analytical Solution</h1>
+<p>By taking the derivative of the cost function with respect to <code>r</code> we can easily get the value of <code>r.hat</code>.</p>
+<pre class="r"><code>r.hat &lt;- all.samples %&gt;% map_dbl(.f = ~ norm(., type = &#39;2&#39;)) %&gt;% mean
+
+r.hat</code></pre>
+<pre><code>## [1] 4.049705</code></pre>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="/index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="/images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="/js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

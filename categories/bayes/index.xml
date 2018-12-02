@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Bayes on Dr. Juan Camilo Orduz</title>
+    <link>/categories/bayes/</link>
+    <description>Recent content in Bayes on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 13 Aug 2017 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="/categories/bayes/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Introduction to Bayesian Modeling with PyMC3</title>
+      <link>/2017/08/13/intro_pymc3/</link>
+      <pubDate>Sun, 13 Aug 2017 00:00:00 +0000</pubDate>
+      
+      <guid>/2017/08/13/intro_pymc3/</guid>
+      <description>This post is devoted to give an introduction to Bayesian modeling using PyMC3, an open source probabilistic programming framework written in Python. Part of this material was presented in the Python Users Berlin (PUB) meet up.
+   
+Why PyMC3? As described in the documentation:
+ PyMC3’s user-facing features are written in pure Python, it leverages Theano to transparently transcode models to C and compile them to machine code, thereby boosting performance.</description>
+    </item>
+    
+  </channel>
+</rss>

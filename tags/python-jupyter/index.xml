@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Python Jupyter on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-jupyter/</link>
+    <description>Recent content in Python Jupyter on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 09 Jul 2017 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="/tags/python-jupyter/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Web scraping with Beautiful Soup: Plebiscito Colombia (October 2nd)</title>
+      <link>/2017/07/09/plebiscito/</link>
+      <pubDate>Sun, 09 Jul 2017 00:00:00 +0000</pubDate>
+      
+      <guid>/2017/07/09/plebiscito/</guid>
+      <description>Web scraping: Getting referendum data using Beautiful Soup In this post I am going to describe how to get the data of the peace referendum (which happened in October the 2nd in Colombia) from the official government website using Beautiful Soup in python (this a task was suggested by Sebastian Martinez). The data is not directly available but is represened as follows:
+ 
+The aim is to get the percentages of votes for each town in Colombia by scraping the website.</description>
+    </item>
+    
+  </channel>
+</rss>
