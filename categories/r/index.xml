@@ -2,21 +2,21 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>R on Dr. Juan Camilo Orduz</title>
-    <link>https://juanitorduz.github.io/categories/r/</link>
+    <link>/categories/r/</link>
     <description>Recent content in R on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Fri, 12 Oct 2018 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="https://juanitorduz.github.io/categories/r/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="/categories/r/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Introduction to R Plumber : Expose a Caret model to a web API</title>
-      <link>https://juanitorduz.github.io/intro_plumber/</link>
+      <link>/intro_plumber/</link>
       <pubDate>Fri, 12 Oct 2018 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/intro_plumber/</guid>
+      <guid>/intro_plumber/</guid>
       <description>In this post we explore the basics of the Plumber package. Our aim is to ilustrate how to fit a \(L^2\)-regularized linear model and expose it to a web API so that we can request predictions.
 Prepare Notebook Let us load the necessary libraries.
 library(caret) library(httr) library(magrittr) library(plumber) library(tidyverse)  Load Data As a toy example we consider the mtcars data set.
@@ -25,10 +25,10 @@ df &amp;lt;- mtcars %&amp;gt;% as_tibble() df %&amp;gt;% head  ## # A tibble: 6 
     
     <item>
       <title>Circle Radius Fit for a Cloud of Points</title>
-      <link>https://juanitorduz.github.io/circle-radius-fit-for-a-cloud-of-points/</link>
+      <link>/circle-radius-fit-for-a-cloud-of-points/</link>
       <pubDate>Sun, 09 Sep 2018 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/circle-radius-fit-for-a-cloud-of-points/</guid>
+      <guid>/circle-radius-fit-for-a-cloud-of-points/</guid>
       <description>In this post I explore how to render a .Rmd file directly with blogdown. To play around with it, I wrote a simple R notebook which fits a circle to a cloud of points.
 Prepare the Notebook library(tidyverse)  Generate Circle Data # Dimension of the space. d &amp;lt;- 2 # Number of sample points. N &amp;lt;- 1000 # Radius. R &amp;lt;- 4 # Generate random sample of points (x - axis).</description>
     </item>
