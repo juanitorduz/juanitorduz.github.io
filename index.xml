@@ -2,21 +2,21 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Dr. Juan Camilo Orduz</title>
-    <link>/</link>
+    <link>https://juanitorduz.github.io/</link>
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Sun, 02 Dec 2018 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="https://juanitorduz.github.io/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>From Pelican to Blogdown</title>
-      <link>/pelican_to_blogdown/</link>
+      <link>https://juanitorduz.github.io/pelican_to_blogdown/</link>
       <pubDate>Sun, 02 Dec 2018 00:00:00 +0000</pubDate>
       
-      <guid>/pelican_to_blogdown/</guid>
+      <guid>https://juanitorduz.github.io/pelican_to_blogdown/</guid>
       <description>Here I want to discuss my transition from pelican to blogdown and present some personal learnings. In June 2017 I decided to build a personal website/portafolio. I chose pelican, because:
  It is written in Python, which was the programing language I was mainly working on.
  I wanted to include some jupyter notebook I had already written.
@@ -25,40 +25,41 @@
     
     <item>
       <title>About</title>
-      <link>/about/</link>
+      <link>https://juanitorduz.github.io/about/</link>
       <pubDate>Sat, 01 Dec 2018 00:00:00 +0000</pubDate>
       
-      <guid>/about/</guid>
+      <guid>https://juanitorduz.github.io/about/</guid>
       <description>Dr. Juan Camilo Orduz Mathematician &amp;amp; Data Scientist  
 In October 2017 I received my PhD degree in Mathematics from Humboldt Universität zu Berlin under the supervision of Prof. Jochen Brüning. I obtained a Master degree (Mathematics) from this same university in 2014. My graduate studies were supported by the Berlin Mathematical School. Here I share my experience. Before comming to Berlin I did two bachelor degrees: Mathematics and Physics at Universidad de los Andes.</description>
     </item>
     
     <item>
       <title>CV</title>
-      <link>/cv/</link>
+      <link>https://juanitorduz.github.io/cv/</link>
       <pubDate>Sat, 01 Dec 2018 00:00:00 +0000</pubDate>
       
-      <guid>/cv/</guid>
-      <description>Work Experience  01/04/2018-Present Data Scientist, TD Reply GmbH, Berlin, Germany.
+      <guid>https://juanitorduz.github.io/cv/</guid>
+      <description>hola2
+Work Experience  01/04/2018-Present Data Scientist, TD Reply GmbH, Berlin, Germany.
  Integrate and unify data from various sources. Apply skills in data mining, quantitative analysis and visualization. Develop algorithms for a variety of business problems (e.g. sales predictions, media mix allocation, future behavior, market drivers, trends and growth potential) by applying knowledge in feature engineering, variable selection, statistical modeling and machine learning.
  Text mining: text data pre-processing and vectorization, n-gram analysis, topic modeling, text network analysis.</description>
     </item>
     
     <item>
       <title>\(S^1\)-Equivariant Dirac operators on the Hopf Fibration</title>
-      <link>/hopf_fibration/</link>
+      <link>https://juanitorduz.github.io/hopf_fibration/</link>
       <pubDate>Sun, 11 Nov 2018 00:00:00 +0000</pubDate>
       
-      <guid>/hopf_fibration/</guid>
+      <guid>https://juanitorduz.github.io/hopf_fibration/</guid>
       <description>In this post I want to present some notes around the fundamentals of the Hopf fibration \(\pi: S^3 \longrightarrow S^2\) which I started writing during my PhD period at Humboldt Universität zu Berlin. First, I describe its definition and I show that it is a non-trivial map by computing its first Chern class. Then I give a detailed treatment of the construction of two important Dirac-type operators: the Hodge-de Rham and the spin-Dirac.</description>
     </item>
     
     <item>
       <title>Introduction to R Plumber : Expose a Caret model to a web API</title>
-      <link>/intro_plumber/</link>
+      <link>https://juanitorduz.github.io/intro_plumber/</link>
       <pubDate>Fri, 12 Oct 2018 00:00:00 +0000</pubDate>
       
-      <guid>/intro_plumber/</guid>
+      <guid>https://juanitorduz.github.io/intro_plumber/</guid>
       <description>In this post we explore the basics of the Plumber package. Our aim is to ilustrate how to fit a \(L^2\)-regularized linear model and expose it to a web API so that we can request predictions.
 Prepare Notebook Let us load the necessary libraries.
 library(caret) library(httr) library(magrittr) library(plumber) library(tidyverse)  Load Data As a toy example we consider the mtcars data set.
@@ -67,20 +68,20 @@ df &amp;lt;- mtcars %&amp;gt;% as_tibble() df %&amp;gt;% head  ## # A tibble: 6 
     
     <item>
       <title>Circle Radius Fit for a Cloud of Points</title>
-      <link>/circle-radius-fit-for-a-cloud-of-points/</link>
+      <link>https://juanitorduz.github.io/circle-radius-fit-for-a-cloud-of-points/</link>
       <pubDate>Sun, 09 Sep 2018 00:00:00 +0000</pubDate>
       
-      <guid>/circle-radius-fit-for-a-cloud-of-points/</guid>
+      <guid>https://juanitorduz.github.io/circle-radius-fit-for-a-cloud-of-points/</guid>
       <description>In this post I explore how to render a .Rmd file directly with blogdown. To play around with it, I wrote a simple R notebook which fits a circle to a cloud of points.
 Prepare the Notebook library(tidyverse)  Generate Circle Data # Dimension of the space. d &amp;lt;- 2 # Number of sample points. N &amp;lt;- 1000 # Radius. R &amp;lt;- 4 # Generate random sample of points (x - axis).</description>
     </item>
     
     <item>
       <title>From Bachelor to PhD: Geometric and Topological Methods for Quantum Field Theory</title>
-      <link>/vdl_experience/</link>
+      <link>https://juanitorduz.github.io/vdl_experience/</link>
       <pubDate>Thu, 02 Aug 2018 00:00:00 +0000</pubDate>
       
-      <guid>/vdl_experience/</guid>
+      <guid>https://juanitorduz.github.io/vdl_experience/</guid>
       <description>In this post I want to write about my experience as a participant (in various occasions) of the Summer School on Geometric, Algebraic and Topological Methods in Quantum field Theory in Villa de Leyva, Colombia.
 The idea of writing this post came to me in my last visit to Villa de Leyva in May 2018.
    This picture was taken in front of Villa de Leyva&amp;rsquo;s main church.</description>
@@ -88,28 +89,28 @@ The idea of writing this post came to me in my last visit to Villa de Leyva in M
     
     <item>
       <title>PyData Berlin 2018: On Laplacian Eigenmaps for Dimensionality Reduction</title>
-      <link>/laplacian_eigenmaps_dim_red/</link>
+      <link>https://juanitorduz.github.io/laplacian_eigenmaps_dim_red/</link>
       <pubDate>Sun, 08 Jul 2018 00:00:00 +0000</pubDate>
       
-      <guid>/laplacian_eigenmaps_dim_red/</guid>
+      <guid>https://juanitorduz.github.io/laplacian_eigenmaps_dim_red/</guid>
       <description>This summer I had the great oportunity to attend an give a talk at Pydata Berlin 2018. The topic of my talk was On Laplacian Eigenmaps for Dimensionality Reduction. During the Unsupervised Learning &amp;amp; Visualization session Dr. Stefan Kühn presented a very interesting and visual talk on Manifold Learning and Dimensionality Reduction for Data Visualization and Feature Engineering and Dr. Evelyn Trautmann gave a nice application of spectral clustering (here are some nice notes around this subject) in the context of Extracting relevant Metrics.</description>
     </item>
     
     <item>
       <title>Probability that a given observation is part of a bootstrap sample?</title>
-      <link>/bootstrap/</link>
+      <link>https://juanitorduz.github.io/bootstrap/</link>
       <pubDate>Wed, 29 Nov 2017 00:00:00 +0000</pubDate>
       
-      <guid>/bootstrap/</guid>
+      <guid>https://juanitorduz.github.io/bootstrap/</guid>
       <description>&amp;ldquo;The bootstrap is a widely applicable and extremely powerful statistical tool that can be used to quantify the uncertainty associated with a given estimator or statistical learning method.&amp;rdquo; This is how Section 5.2 of the book An Introduction to Statistical Learning, writen by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani, begins. Bootstrap can be used to estimate the standard errors of the coefficients from a linear regression and is the conceptual bais for some tree ensemble algorithms.</description>
     </item>
     
     <item>
       <title>Induced Dirac-Schrödinger operators on semi-free circle quotients</title>
-      <link>/phd/</link>
+      <link>https://juanitorduz.github.io/phd/</link>
       <pubDate>Sat, 11 Nov 2017 00:00:00 +0000</pubDate>
       
-      <guid>/phd/</guid>
+      <guid>https://juanitorduz.github.io/phd/</guid>
       <description>In this post I present the results of my Mathematics PhD thesis which I wrote under the supervision of Prof. Dr. Jochen Brüning at Humbolt Universität zu Berlin. I gratefully acknowledge the financial support of the Berlin Mathematical School and the research project SFB 647: Space - Time - Matter
 Abstract:
 John Lott has computed an integer-valued signature for the orbit space of a compact orientable \((4k+1)\) manifold with a semi-free \(S^1\)-action, which is a homotopy invariant of that space, but he did not construct a Dirac type operator which has this signature as its index.</description>
@@ -117,10 +118,10 @@ John Lott has computed an integer-valued signature for the orbit space of a comp
     
     <item>
       <title>Introduction to Bayesian Modeling with PyMC3</title>
-      <link>/intro_pymc3/</link>
+      <link>https://juanitorduz.github.io/intro_pymc3/</link>
       <pubDate>Sun, 13 Aug 2017 00:00:00 +0000</pubDate>
       
-      <guid>/intro_pymc3/</guid>
+      <guid>https://juanitorduz.github.io/intro_pymc3/</guid>
       <description>This post is devoted to give an introduction to Bayesian modeling using PyMC3, an open source probabilistic programming framework written in Python. Part of this material was presented in the Python Users Berlin (PUB) meet up.
    
 Why PyMC3? As described in the documentation:
@@ -129,10 +130,10 @@ Why PyMC3? As described in the documentation:
     
     <item>
       <title>Web scraping with Beautiful Soup: Plebiscito Colombia (October 2nd)</title>
-      <link>/plebiscito/</link>
+      <link>https://juanitorduz.github.io/plebiscito/</link>
       <pubDate>Sun, 09 Jul 2017 00:00:00 +0000</pubDate>
       
-      <guid>/plebiscito/</guid>
+      <guid>https://juanitorduz.github.io/plebiscito/</guid>
       <description>Web scraping: Getting referendum data using Beautiful Soup In this post I am going to describe how to get the data of the peace referendum (which happened in October the 2nd in Colombia) from the official government website using Beautiful Soup in python (this a task was suggested by Sebastian Martinez). The data is not directly available but is represened as follows:
  
 The aim is to get the percentages of votes for each town in Colombia by scraping the website.</description>
@@ -140,19 +141,19 @@ The aim is to get the percentages of votes for each town in Colombia by scraping
     
     <item>
       <title>The Dirac operator on the 2-sphere</title>
-      <link>/the-dirac-operator-on-the-2-sphere/</link>
+      <link>https://juanitorduz.github.io/the-dirac-operator-on-the-2-sphere/</link>
       <pubDate>Thu, 29 Jun 2017 00:00:00 +0000</pubDate>
       
-      <guid>/the-dirac-operator-on-the-2-sphere/</guid>
+      <guid>https://juanitorduz.github.io/the-dirac-operator-on-the-2-sphere/</guid>
       <description>The objective of this post is to explore MathJax, a JavaScript display engine for LaTeX. Being my first post writen with this tool, I want to present a short but fun example: I will give a description of the explicit computation of the spin-Dirac operator (of the unique complex spinor bundle!) on the 2-sphere \(S^2\) equipped with the standar round metric. A more detailed treatment can be found in my expository paper.</description>
     </item>
     
     <item>
       <title>Python Exercise: Distance to Rectangle</title>
-      <link>/rectangle/</link>
+      <link>https://juanitorduz.github.io/rectangle/</link>
       <pubDate>Wed, 28 Jun 2017 00:00:00 +0000</pubDate>
       
-      <guid>/rectangle/</guid>
+      <guid>https://juanitorduz.github.io/rectangle/</guid>
       <description>In this first post I wanted to explore the basics of blogging blogdown. I treat an example of a little python challenge which I encountered in first my job hunt process. I particularly like it because it is a geometric problem.
 Problem Write a function that tests if a point falls within a specified distance &amp;ldquo;dist&amp;rdquo; of any part of a solid, 2D rectangle. The rectangle is specified by the bottom left corner, a width, and a height.</description>
     </item>
