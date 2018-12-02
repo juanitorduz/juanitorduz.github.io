@@ -13,10 +13,10 @@
     
     <item>
       <title>Circle Radius Fit for a Cloud of Points</title>
-      <link>/2018/09/09/circle-radius-fit-for-a-cloud-of-points/</link>
+      <link>/circle-radius-fit-for-a-cloud-of-points/</link>
       <pubDate>Sun, 09 Sep 2018 00:00:00 +0000</pubDate>
       
-      <guid>/2018/09/09/circle-radius-fit-for-a-cloud-of-points/</guid>
+      <guid>/circle-radius-fit-for-a-cloud-of-points/</guid>
       <description>In this post I explore how to render a .Rmd file directly with blogdown. To play around with it, I wrote a simple R notebook which fits a circle to a cloud of points.
 Prepare the Notebook library(tidyverse)  Generate Circle Data # Dimension of the space. d &amp;lt;- 2 # Number of sample points. N &amp;lt;- 1000 # Radius. R &amp;lt;- 4 # Generate random sample of points (x - axis).</description>
     </item>
