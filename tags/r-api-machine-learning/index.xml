@@ -2,21 +2,21 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>R Api Machine Learning on Dr. Juan Camilo Orduz</title>
-    <link>https://juanitorduz.github.io/tags/r-api-machine-learning/</link>
+    <link>/tags/r-api-machine-learning/</link>
     <description>Recent content in R Api Machine Learning on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Fri, 12 Oct 2018 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="https://juanitorduz.github.io/tags/r-api-machine-learning/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="/tags/r-api-machine-learning/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Introduction to R Plumber : Expose a Caret model to a web API</title>
-      <link>https://juanitorduz.github.io/intro_plumber/</link>
+      <link>/intro_plumber/</link>
       <pubDate>Fri, 12 Oct 2018 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/intro_plumber/</guid>
+      <guid>/intro_plumber/</guid>
       <description>In this post we explore the basics of the Plumber package. Our aim is to ilustrate how to fit a \(L^2\)-regularized linear model and expose it to a web API so that we can request predictions.
 Prepare Notebook Let us load the necessary libraries.
 library(caret) library(httr) library(magrittr) library(plumber) library(tidyverse)  Load Data As a toy example we consider the mtcars data set.
