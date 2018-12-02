@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title> - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content=" - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="/css/fonts.css" media="all">
+<link rel="stylesheet" href="/css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="/" class="nav-logo">
+    <img src="/images/foto.jpeg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="/about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+
+    <h1 class="article-title"></h1>
+
+    
+
+    <div class="article-content">
+      
+
+<h1 id="laplacian-eigenmaps-for-dimensionality-reduction">Laplacian Eigenmaps for Dimensionality Reduction</h1>
+
+<h3 id="dr-juan-orduz">Dr. Juan Orduz</h3>
+
+<p>In this notebook we present some simple examples which ilustrate the concepts discussed in the talk on <a href="https://pydata.org/berlin2018/schedule/presentation/33/">Laplacian Eigenmaps for Dimensionality Reduction</a> at <a href="https://pydata.org/berlin2018/">PyData Berlin 2018</a>.</p>
+
+<p>The sample data, visualization code and object descriptions can be found in the documentation.</p>
+
+<p><strong>References:</strong></p>
+
+<ul>
+<li><p><a href="http://scikit-learn.org/stable/modules/generated/sklearn.manifold.spectral_embedding.html">http://scikit-learn.org/stable/modules/generated/sklearn.manifold.spectral_embedding.html</a></p></li>
+
+<li><p><a href="http://scikit-learn.org/stable/modules/manifold.html#spectral-embedding">http://scikit-learn.org/stable/modules/manifold.html#spectral-embedding</a></p></li>
+</ul>
+
+<h2 id="1-notebook-setup">1. Notebook Setup</h2>
+
+<pre><code class="language-python">import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
+from sklearn import manifold, datasets
+from sklearn.utils import check_random_state
+from sklearn.decomposition import PCA
+</code></pre>
+
+<h2 id="2-back-to-our-toy-example">2. Back to Our Toy Example</h2>
+
+<p><img src="images/toy_graph.png" alt="html" style="width: 400px;"/></p>
+
+<p>Let us compute the graph Laplacian from the adjacency matrix.</p>
+
+<pre><code class="language-python"># Construct the adjacency matrix from the graph for n_neighbors = 1. 
+W = np.array([[0, 1, 1, 1],
+              [1, 0, 0, 0], 
+              [1, 0, 0, 0], 
+              [1, 0, 0, 0]])
+
+# Construct the degree matrix D from W.
+D = np.diag(np.apply_along_axis(arr=W,
+                                func1d=np.sum,
+                                axis=0))
+# Compute the graph Laplacian.
+L = D - W
+
+print(L)
+</code></pre>
+
+<pre><code>[[ 3 -1 -1 -1]
+ [-1  1  0  0]
+ [-1  0  1  0]
+ [-1  0  0  1]]
+</code></pre>
+
+<p>Let us use <code>manifold.spectral_embedding</code> to compute the projection onto \(\mathbb{R}\).</p>
+
+<pre><code class="language-python">y = manifold.spectral_embedding(adjacency=W, 
+                                n_components=1, 
+                                norm_laplacian=False, 
+                                drop_first=True,
+                                eigen_solver='lobpcg')
+
+print(y)
+</code></pre>
+
+<pre><code>[[ 0.        ]
+ [-0.57735027]
+ [ 0.78867513]
+ [-0.21132487]]
+</code></pre>
+
+<p>Let us verify the result. Recall that the first non zero eigenvalue of is \(\lambda_1 = 1\).</p>
+
+<pre><code class="language-python">lambda_1 = 1
+
+# Check if the previous output coincides with the analytical requirement. 
+np.array_equal(a1=np.dot(L, y), 
+               a2=lambda_1*np.dot(D, y))
+</code></pre>
+
+<pre><code>True
+</code></pre>
+
+<p>Thus, \(y\) is a solution of \(Lf = \lambda_1 Df\) with \(\lambda_1 =1\).</p>
+
+<h2 id="3-higher-dimensional-examples">3 Higher Dimensional Examples</h2>
+
+<h3 id="3-1-s-curve">3.1 S Curve</h3>
+
+<p><strong>Reference:</strong> <a href="http://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_s_curve.html">http://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_s_curve.html</a></p>
+
+<pre><code class="language-python"># Define the number of points to consider. 
+n_points = 3000
+
+# Get the data and color map. 
+S_curve, S_colors = datasets.samples_generator.make_s_curve(n_points, random_state=0)
+
+Axes3D
+
+fig = plt.figure(figsize=(12, 12))
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(S_curve[:, 0], S_curve[:, 1], S_curve[:, 2],
+           c=S_colors, 
+           cmap=plt.cm.Spectral)
+ax.view_init(4, -72);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_12_0.png" alt="png" /></p>
+
+<h4 id="3-1-1-pca">3.1.1 PCA</h4>
+
+<p>Let us see the result of PCA with <code>n_components=2</code>.</p>
+
+<pre><code class="language-python"># Fit PCA object.
+S_curve_pca = PCA(n_components=2).fit_transform(S_curve)
+
+# Visualize the result.
+fig = plt.figure(figsize=(12, 6))
+ax = fig.add_subplot(111)
+ax.scatter(S_curve_pca[:, 0], S_curve_pca[:, 1],
+           c=S_colors, 
+           cmap=plt.cm.Spectral);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_14_0.png" alt="png" /></p>
+
+<p>The result is coincides with ouur intuition, it is basically projecting to an axis so that the variance is maximized.</p>
+
+<h4 id="3-1-2-spectral-embedding">3.1.2 Spectral Embedding</h4>
+
+<p>Now let us use the method <code>SpectralEmbedding</code> from <code>sklearn</code>.</p>
+
+<pre><code class="language-python"># Set the number of n_neighbors;
+n_neighbors = 6 
+
+# Set the dimension of the target space. 
+n_components = 2
+
+# Construct the SpectralEmbedding object. 
+se = manifold.SpectralEmbedding(n_components=n_components,
+                                affinity= 'nearest_neighbors',
+                                n_neighbors=n_neighbors)
+
+# Fit the SpectralEmbedding object. 
+S_curve_red = se.fit_transform(X=S_curve)
+
+# Visualize the result.
+fig = plt.figure(figsize=(12, 6))
+ax = fig.add_subplot(111)
+ax.scatter(S_curve_red[:, 0], S_curve_red[:, 1],
+           c=S_colors, 
+           cmap=plt.cm.Spectral);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_17_0.png" alt="png" /></p>
+
+<p>We see that <code>SpectralEmbedding</code> <em>unroll</em> the S-curve so that the locallity is preserved on average.</p>
+
+<p>Now let us consider <code>n_neighbors</code> &gt;&gt; 1.</p>
+
+<pre><code class="language-python"># Set the number of n_neighbors;
+n_neighbors = 1500 
+
+# Set the dimension of the target space. 
+n_components = 2
+
+# Construct the SpectralEmbedding object. 
+se = manifold.SpectralEmbedding(n_components=n_components,
+                                affinity= 'nearest_neighbors',
+                                n_neighbors=n_neighbors)
+
+# Fit the SpectralEmbedding object. 
+S_curve_red = se.fit_transform(X=S_curve)
+
+# Visualize the result.
+fig = plt.figure(figsize=(12, 6))
+ax = fig.add_subplot(111)
+ax.scatter(S_curve_red[:, 0], S_curve_red[:, 1],
+           c=S_colors, 
+           cmap=plt.cm.Spectral);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_20_0.png" alt="png" /></p>
+
+<p>The result is that the problem becomes more <em>global</em>. Thus, we get a similar result as PCA.</p>
+
+<h3 id="3-2-two-dimensional-sphere-s-2">3.2 Two Dimensional Sphere \(S^2\)</h3>
+
+<p><strong>Reference:</strong> <a href="http://scikit-learn.org/stable/auto_examples/manifold/plot_manifold_sphere.html">http://scikit-learn.org/stable/auto_examples/manifold/plot_manifold_sphere.html</a></p>
+
+<p>First we generate the data.</p>
+
+<pre><code class="language-python"># Create our sphere.
+n_samples = 5000
+
+angle_parameter = 0.5 # Try 0.01
+pole_hole_parameter = 8 # Try 50
+
+random_state = check_random_state(0)
+p = random_state.rand(n_samples) * (2 * np.pi - angle_parameter)
+t = random_state.rand(n_samples) * np.pi
+
+# Sever the poles from the sphere.
+indices = ((t &lt; (np.pi - (np.pi / pole_hole_parameter))) &amp; 
+           (t &gt; ((np.pi / pole_hole_parameter))))
+colors = p[indices]
+x, y, z = np.sin(t[indices]) * np.cos(p[indices]), \
+          np.sin(t[indices]) * np.sin(p[indices]), \
+          np.cos(t[indices])
+        
+sphere_data = np.array([x, y, z]).T
+</code></pre>
+
+<p>Let us visualize the data.</p>
+
+<pre><code class="language-python">fig = plt.figure(figsize=(12, 12))
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(x, y, z,
+           c=colors, 
+           cmap=plt.cm.Spectral);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_25_0.png" alt="png" /></p>
+
+<h4 id="3-2-1-pca">3.2.1 PCA</h4>
+
+<p>Again, let us begin using PCA.</p>
+
+<pre><code class="language-python">sphere_pca = PCA(n_components=2).fit_transform(sphere_data)
+
+fig = plt.figure(figsize=(10, 10))
+ax = fig.add_subplot(111)
+ax.scatter(sphere_pca[:, 0], sphere_pca[:, 1],
+           c=colors, 
+           cmap=plt.cm.Spectral);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_27_0.png" alt="png" /></p>
+
+<h4 id="3-3-2-spectral-embedding">3.3.2 Spectral Embedding</h4>
+
+<pre><code class="language-python">n_neighbors = 8
+n_components = 2
+
+# Fit the object.
+se = manifold.SpectralEmbedding(n_components=n_components,
+                                affinity='nearest_neighbors',
+                                n_neighbors=n_neighbors)
+
+sphere_data_red = se.fit_transform(X=sphere_data)
+</code></pre>
+
+<p>Let us visualize the results.</p>
+
+<pre><code class="language-python">fig = plt.figure(figsize=(10, 10))
+ax = fig.add_subplot(111)
+ax.scatter(sphere_data_red[:, 0], sphere_data_red[:, 1],
+           c=colors, 
+           cmap=plt.cm.Spectral);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_31_0.png" alt="png" /></p>
+
+<p>We see how <code>SpectralEmbedding</code> unrolls the sphere.</p>
+
+<p>Finally, let us take again <code>n_neighbors</code> &gt;&gt; 1.</p>
+
+<pre><code class="language-python">n_neighbors = 1000
+
+# Fit the object.
+se = manifold.SpectralEmbedding(n_components=n_components,
+                                affinity='nearest_neighbors',
+                                n_neighbors=n_neighbors)
+
+sphere_data_red = se.fit_transform(X=sphere_data)
+
+fig = plt.figure(figsize=(10, 10))
+ax = fig.add_subplot(111)
+ax.scatter(sphere_data_red[:, 0], sphere_data_red[:, 1],
+           c=colors, 
+           cmap=plt.cm.Spectral);
+</code></pre>
+
+<p><img src="spectral_embedding_v2_files/spectral_embedding_v2_34_0.png" alt="png" /></p>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="/index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="/images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="/js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+  </body>
+</html>
+

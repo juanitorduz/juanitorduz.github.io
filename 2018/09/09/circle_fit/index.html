@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>Circle Fit - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Circle Fit - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="/css/fonts.css" media="all">
+<link rel="stylesheet" href="/css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="/" class="nav-logo">
+    <img src="/images/foto.jpeg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="/about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">3 min read</span>
+    
+
+    <h1 class="article-title">Circle Fit</h1>
+
+    
+    <span class="article-date">2018/09/09</span>
+    
+
+    <div class="article-content">
+      
+
+<p>In view of the <a href="https://juanitorduz.github.io/rkernel.html">R Kernel Jupyter Notebook</a> post, I wanted to explore how to include an <a href="https://bookdown.org/yihui/rmarkdown/notebook.html">R Notebook</a> directly into <a href="https://blog.getpelican.com">Pelican</a>. Fortunately, I found a great <a href="http://michaeltoth.me/how-to-write-pelican-blog-posts-using-rmarkdown-knitr-20.html">post</a> where an R function is provided in order to render R Notebooks into Pelican format. Works great!</p>
+
+<p>To play around with it, I wrote a simple R notebook which fits a circle to a cloud of points.</p>
+
+<h1 id="prepare-the-notebook">Prepare the Notebook</h1>
+
+<pre><code class="language-r">library(tidyverse)
+</code></pre>
+
+<h1 id="generate-circle-data">Generate Circle Data</h1>
+
+<pre><code class="language-r"># Dimension of the space.
+d &lt;- 2
+
+# Number of sample points. 
+N &lt;- 1000
+
+# Radius. 
+R &lt;- 4
+
+# Generate random sample of points (x - axis).
+points.0 &lt;- 1:N %&gt;% map(.f = function(x) runif(n = d - 1, min =  - R, max = R))
+
+# Generate the corresponding y - coordinates. 
+all.points &lt;- points.0 %&gt;% map(.f = function(x) c(x, sign(runif(n = 1, min = - 1, max = 1))*sqrt(R^2 - norm(x, type = '2')^2))) 
+
+# Store data in a tibble.
+all.points.df &lt;- all.points %&gt;% reduce(.f = function(x, y) rbind(x, y)) %&gt;% 
+                                as.tibble %&gt;% 
+                                rename(x = V1, y = V2)
+
+# Plot the data. 
+all.points.df %&gt;% ggplot() + theme_light() + geom_point(mapping = aes(x = x, y = y)) 
+</code></pre>
+
+<p><img src="/images/r_circle_fit/unnamed-chunk-2-1.png" alt="center" /></p>
+
+<h1 id="add-noise">Add Noise</h1>
+
+<p>We add noise from a normal disttribution with mean zero and standard deviation <code>sd</code>.</p>
+
+<pre><code class="language-r"># Set standard deviation.
+sd &lt;- 0.5
+
+# Add noise.
+all.samples &lt;- all.points %&gt;% map(.f = function(x) x + rnorm(n = d, mean = 0, sd = sd))
+
+# Store data in a tibble.
+all.samples.df &lt;- all.samples %&gt;% reduce(.f = function(x, y) rbind(x, y)) %&gt;%
+                                  as.tibble %&gt;% 
+                                  rename(x = V1, y = V2)
+
+# Plot the data.
+all.samples.df %&gt;% ggplot() + theme_light() + geom_point(mapping = aes(x = x, y = y)) 
+</code></pre>
+
+<p><img src="/images/r_circle_fit/unnamed-chunk-3-1.png" alt="center" /></p>
+
+<h1 id="define-optimization-function">Define Optimization Function</h1>
+
+<p>In order to find the best fitting circle, we need to define what &ldquo;best&rdquo; means. We aim to minimize the RMSE.</p>
+
+<pre><code class="language-r"># Define function to optimize. 
+ComputeRMSE &lt;- function(all.samples, r, N) {
+  
+  all.samples %&gt;% map_dbl(.f = function(x) (r - norm(x, type = '2'))^2) %&gt;% mean
+  
+}
+</code></pre>
+
+<p>Let us visualize the shape of the cost function.</p>
+
+<pre><code class="language-r">rmse.df &lt;- seq(from = 0.5, to = 10, by = 0.1) %&gt;% 
+              map(.f = function(r) c(r, ComputeRMSE(all.samples = all.samples, r = r, N = N ))) %&gt;% 
+              reduce(.f = function(x, y) rbind(x, y)) %&gt;% 
+              as.tibble %&gt;% 
+              rename(r = V1, RMSE = V2)
+
+rmse.df %&gt;% ggplot() + theme_light() + geom_line(mapping = aes(x = r, y = RMSE))
+</code></pre>
+
+<p><img src="/images/r_circle_fit/unnamed-chunk-5-1.png" alt="center" /></p>
+
+<p>We aim to find the minimum.</p>
+
+<h1 id="run-optimization">Run Optimization</h1>
+
+<pre><code class="language-r">opt.obj &lt;- optimize(f =function(r) ComputeRMSE(all.samples = all.samples, r = r, N = N), interval = 1:10)
+
+r.hat &lt;- opt.obj$minimum
+
+r.hat
+</code></pre>
+
+<pre><code>## [1] 4.05987
+</code></pre>
+
+<h1 id="visualize-results">Visualize Results</h1>
+
+<p>We project each sample point onto the best circle fit.</p>
+
+<pre><code class="language-r">all.samples %&gt;% map(.f = function(x) r.hat*x /norm(x, type = '2')) %&gt;% 
+                reduce(.f = function(x, y) rbind(x, y)) %&gt;% 
+                as.tibble %&gt;% 
+                rename(x1 = V1, y1 =V2) %&gt;% 
+                cbind(all.samples.df) %&gt;% 
+                ggplot() + 
+                theme_light() + 
+                geom_point(mapping = aes(x = x, y = y)) +
+                geom_point(mapping = aes(x = x1, y = y1), color = 'red') 
+</code></pre>
+
+<p><img src="/images/r_circle_fit/unnamed-chunk-7-1.png" alt="center" /></p>
+
+<h1 id="analytical-solution">Analytical Solution</h1>
+
+<p>By taking the derivative of the cost function with respect to <code>r</code> we can easily get the value of <code>r.hat</code>.</p>
+
+<pre><code class="language-r">r.hat &lt;- all.samples %&gt;% map_dbl(.f = function(x) norm(x, type = '2')) %&gt;% mean
+
+r.hat
+</code></pre>
+
+<pre><code>## [1] 4.05987
+</code></pre>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="/index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="/images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="/js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+  </body>
+</html>
+
