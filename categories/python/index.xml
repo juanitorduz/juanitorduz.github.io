@@ -2,7 +2,7 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Python on Dr. Juan Camilo Orduz</title>
-    <link>https://juanitorduz.github.io/categories/python.html</link>
+    <link>https://juanitorduz.github.io/categories/python/</link>
     <description>Recent content in Python on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
@@ -13,10 +13,10 @@
     
     <item>
       <title>From Pelican to Blogdown</title>
-      <link>https://juanitorduz.github.io/pelican_to_blogdown.html</link>
+      <link>https://juanitorduz.github.io/pelican_to_blogdown/</link>
       <pubDate>Sun, 02 Dec 2018 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/pelican_to_blogdown.html</guid>
+      <guid>https://juanitorduz.github.io/pelican_to_blogdown/</guid>
       <description>Here I want to discuss my transition from pelican to blogdown and present some personal learnings. In June 2017 I decided to build a personal website/portafolio. I chose pelican, because:
  It is written in Python, which was the programing language I was mainly working on.
  I wanted to include some jupyter notebook I had already written.
@@ -25,10 +25,10 @@
     
     <item>
       <title>Web scraping with Beautiful Soup: Plebiscito Colombia (October 2nd)</title>
-      <link>https://juanitorduz.github.io/plebiscito.html</link>
+      <link>https://juanitorduz.github.io/plebiscito/</link>
       <pubDate>Sun, 09 Jul 2017 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/plebiscito.html</guid>
+      <guid>https://juanitorduz.github.io/plebiscito/</guid>
       <description>Web scraping: Getting referendum data using Beautiful Soup In this post I am going to describe how to get the data of the peace referendum (which happened in October the 2nd in Colombia) from the official government website using Beautiful Soup in python (this a task was suggested by Sebastian Martinez). The data is not directly available but is represened as follows:
  
 The aim is to get the percentages of votes for each town in Colombia by scraping the website.</description>
@@ -36,10 +36,10 @@ The aim is to get the percentages of votes for each town in Colombia by scraping
     
     <item>
       <title>Python Exercise: Distance to Rectangle</title>
-      <link>https://juanitorduz.github.io/rectangle.html</link>
+      <link>https://juanitorduz.github.io/rectangle/</link>
       <pubDate>Wed, 28 Jun 2017 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/rectangle.html</guid>
+      <guid>https://juanitorduz.github.io/rectangle/</guid>
       <description>In this first post I wanted to explore the basics of blogging blogdown. I treat an example of a little python challenge which I encountered in first my job hunt process. I particularly like it because it is a geometric problem.
 Problem Write a function that tests if a point falls within a specified distance &amp;ldquo;dist&amp;rdquo; of any part of a solid, 2D rectangle. The rectangle is specified by the bottom left corner, a width, and a height.</description>
     </item>
