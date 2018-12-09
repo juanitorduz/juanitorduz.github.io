@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Machine_learning on Dr. Juan Camilo Orduz</title>
+    <link>https://juanitorduz.github.io/tags/machine_learning/</link>
+    <description>Recent content in Machine_learning on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 09 Dec 2018 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="https://juanitorduz.github.io/tags/machine_learning/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Exploring the Curse of Dimensionality</title>
+      <link>https://juanitorduz.github.io/exploring-the-curse-of-dimensionality/</link>
+      <pubDate>Sun, 09 Dec 2018 00:00:00 +0000</pubDate>
+      
+      <guid>https://juanitorduz.github.io/exploring-the-curse-of-dimensionality/</guid>
+      <description>In this post I want to present the notion of curse of dimensionality following a suggested excercise (Chapter 4 - Ex. 4) of the book An Introduction to Statistical Learning, writen by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani.
+When the number of features \(p\) is large, there tends to be a deterioration in the performance of KNN and other local approaches that perform prediction using only observations that are near the test observation for which a prediction must be made.</description>
+    </item>
+    
+  </channel>
+</rss>
