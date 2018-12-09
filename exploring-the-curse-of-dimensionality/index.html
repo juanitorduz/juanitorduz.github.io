@@ -279,7 +279,7 @@ sim.2 &lt;- RunSimulationP(lambda = lambda,
 mean.sim.2 &lt;- mean(sim.2)
 
 mean.sim.2 </code></pre>
-<pre><code>## [1] 0.010079</code></pre>
+<pre><code>## [1] 0.009814</code></pre>
 <p>Again, since the samples are uniformly distributed on <span class="math inline">\([0,1]\times [0,1]\)</span>, this fraction is going to be, on average, equal to the are of a square of length <span class="math inline">\(\lambda\)</span>, which in this case is just <span class="math inline">\(0.1^2 = 0.01\)</span>.</p>
 <p>Let us plot the distribution.</p>
 <pre class="r"><code>sim.2%&gt;% 
@@ -297,7 +297,7 @@ mean.sim.2 </code></pre>
 <ol start="3" style="list-style-type: lower-alpha">
 <li><em>Now suppose that we have a set of observations on <span class="math inline">\(p = 100\)</span> features. Again the observations are uniformly distributed on each feature, and again each feature ranges in value from <span class="math inline">\(0\)</span> to <span class="math inline">\(1\)</span>. We wish to predict a test observation’s response using observations within the <span class="math inline">\(10\)</span>% of each feature’s range that is closest to that test observation. What fraction of the available observations will we use to make the prediction?</em></li>
 </ol>
-<p>We will run the simulation run for first for <span class="math inline">\(p=5\)</span>.</p>
+<p>We run the simulation first for <span class="math inline">\(p=5\)</span>.</p>
 <pre class="r"><code>p &lt;- 5
 
 sim.p &lt;- RunSimulationP(lambda = lambda, 
@@ -362,7 +362,7 @@ mean.sim.p &lt;- mean(sim.p)</code></pre>
   geom_hline(yintercept = 1, color = &#39;red&#39;)</code></pre>
 <p><img src="../post/curse_dim_files/figure-html/unnamed-chunk-23-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>That is, the side of the hypercube should grow almost to 1! This means that the “locality” is lost.</p>
-<p><strong>Remark:</strong> It is interesting to see that, even if the volume of the <span class="math inline">\(\lambda\)</span>-hypercube tends to zero when <span class="math inline">\(p\)</span> is large, the length of its diagonal (defined as the distance between two oposite corners) grows to <span class="math inline">\(+\infty\)</span>. Indeed, it is easy to verify that the diagonal length is <span class="math inline">\(\lambda \sqrt{p}\)</span> (it is straightforward to prove this using induction).</p>
+<p><strong>Remark:</strong> It is interesting to see that, even if the volume of the <span class="math inline">\(\lambda\)</span>-hypercube tends to zero when <span class="math inline">\(p\)</span> is large, the length of its diagonal (defined as the distance between two oposite corners) grows to <span class="math inline">\(+\infty\)</span>. Indeed, it is easy to verify that the diagonal length is <span class="math inline">\(\lambda \sqrt{p}\)</span> (e.g. using induction).</p>
 <pre class="r"><code>tibble(Dimension = 1:1000) %&gt;% 
   mutate(Diagonal = sqrt(Dimension)*lambda) %&gt;% 
   ggplot() +
