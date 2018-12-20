@@ -2,21 +2,21 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>R_notebook R Geometry on Dr. Juan Camilo Orduz</title>
-    <link>https://juanitorduz.github.io/tags/r_notebook-r-geometry/</link>
+    <link>/tags/r_notebook-r-geometry/</link>
     <description>Recent content in R_notebook R Geometry on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Sun, 09 Sep 2018 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="https://juanitorduz.github.io/tags/r_notebook-r-geometry/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="/tags/r_notebook-r-geometry/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Circle Radius Fit for a Cloud of Points</title>
-      <link>https://juanitorduz.github.io/circle-radius-fit-for-a-cloud-of-points/</link>
+      <link>/circle-radius-fit-for-a-cloud-of-points/</link>
       <pubDate>Sun, 09 Sep 2018 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/circle-radius-fit-for-a-cloud-of-points/</guid>
+      <guid>/circle-radius-fit-for-a-cloud-of-points/</guid>
       <description>In this post I explore how to render a .Rmd file directly with blogdown. To play around with it, I wrote a simple R notebook which fits a circle to a cloud of points.
 Prepare the Notebook library(tidyverse)  Generate Circle Data # Dimension of the space. d &amp;lt;- 2 # Number of sample points. N &amp;lt;- 1000 # Radius. R &amp;lt;- 4 # Generate random sample of points (x - axis).</description>
     </item>
