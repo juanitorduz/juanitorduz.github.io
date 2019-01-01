@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>Exploring the Curse of Dimensionality - Part II. - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Exploring the Curse of Dimensionality - Part II. - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/foto.jpeg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="../cv/">CV</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">6 min read</span>
+    
+
+    <h1 class="article-title">Exploring the Curse of Dimensionality - Part II.</h1>
+
+    
+    <span class="article-date">2019/01/01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>I continue exploring the <strong>curse of dimensionality</strong>. Following the analysis form <a href="https://juanitorduz.github.io/exploring-the-curse-of-dimensionality/">Part I.</a>, I want to discuss another consequence of sparse sampling in high dimensions: sample points are close to an edge of the sample. This post is based on <a href="https://web.stanford.edu/~hastie/ElemStatLearn/">The Elements of Statistical Learning, Section 2.5</a>, which I encourage to read!</p>
+<div id="uniform-sampling" class="section level1">
+<h1>Uniform Sampling</h1>
+<p><em>Consider <span class="math inline">\(N\)</span> data points uniformly distributed in a <span class="math inline">\(p\)</span>-dimensional unit ball centered at the origin. Suppose we consider a nearest-neighbor estimate at the origin. The median distance from the origin to the closest data point is given by the expression</em> <span class="math display">\[
+d(p,N)  = \left(1-\frac{1}{2}^{1/N}\right)^{1/p}.
+\]</span></p>
+<p><em>Proof (Exercise 2.3):</em></p>
+<p>Let <span class="math inline">\(X\)</span> be the random variable <span class="math display">\[
+X = \min_{i \in \{1, 2, \cdots, N\}}||z_i||_{2}
+\]</span> where the <span class="math inline">\(z_i\)</span> are uniformly distributed in a <span class="math inline">\(p\)</span>-dimensional unit ball centered at the origin. Here <span class="math inline">\(||\cdot||_{2}\)</span> denotes the Euclidean norm.</p>
+<p>We want to find <span class="math inline">\(\alpha\in[0,1]\)</span> such that (this is the definition of the median) <span class="math display">\[
+P(X\geq \alpha) = \frac{1}{2}.
+\]</span> First, as the samples are independent we have <span class="math display">\[
+P(X \geq \alpha) = \prod_{i=1}^N P(z_i \geq \alpha).
+\]</span> As the points are uniformly distrributed over the <span class="math inline">\(p\)</span>-ball, the key observation is that <span class="math display">\[
+P(z_i &lt; \alpha) = \frac{vol (B^p_\alpha(0))}{vol (B^p_1(0))},
+\]</span> where <span class="math inline">\(vol (B^p_\alpha(0)) \propto \alpha^p\)</span> denotes the <a href="https://en.wikipedia.org/wiki/Volume_of_an_n-ball">volume</a> of the <span class="math inline">\(p\)</span>-dimensional ball with radius <span class="math inline">\(\alpha\)</span> centered at the origin. Therefore, <span class="math display">\[
+P(z_i \geq \alpha) = 1- \alpha^p. 
+\]</span> All together, <span class="math display">\[
+P(X\geq \alpha) = (1 - \alpha^p)^N. 
+\]</span> Finally, we solve for <span class="math inline">\(\alpha\)</span> in the equation <span class="math display">\[
+(1 - \alpha^p)^N = \frac{1}{2},
+\]</span> to get the desired result.</p>
+<div id="simulation" class="section level2">
+<h2>Simulation</h2>
+<p>Now we code a simulation to ilustrate this result.</p>
+<p>We prepare the notebook:</p>
+<pre class="r"><code>library(glue)
+library(magrittr)
+library(tidyverse)
+# Allow paraller computations.
+library(foreach)
+library(doMC)
+registerDoMC(cores=8)</code></pre>
+<p>First, lets us write the function for the median derived above.</p>
+<pre class="r"><code>d &lt;- function(N, p) {
+  (1 - (1/2)^(1/N))^(1/p)
+}</code></pre>
+<p>We want to define a somulation function. To begin, we first need to generate uniform random samples over a <span class="math inline">\(p\)</span>-dimensional ball.</p>
+<pre class="r"><code>SampleUniformBall &lt;- function(N, p) {
+  #&#39; Generate uniform samples over a p-ball.
+  #&#39;
+  #&#39;@param N number of points.
+  #&#39;@param p dimension.  
+  #&#39;@return vector of samples.
+  
+  # Generate direction (angle).
+  a &lt;- runif(n = p, min = -1, max = 1)
+  # Generate radius. 
+  r &lt;- runif(n = 1, min = 0, max = 1)^(1/p)
+  # Compute the product. 
+  s &lt;- (a/norm(x = a, type = &#39;2&#39;))*r
+  
+  return(s)
+}</code></pre>
+<p>Let us visualize and example for <span class="math inline">\(p = 2\)</span>.</p>
+<pre class="r"><code>N &lt;- 500
+
+1:N %&gt;% 
+  map(.f = ~ SampleUniformBall(N = 100, p = 2)) %&gt;%
+  do.call(what = rbind) %&gt;% 
+  as_tibble %&gt;% 
+  ggplot() +
+  theme_light() +
+  geom_point(mapping = aes(x = V1, y = V2), 
+             color = &#39;black&#39;, 
+             alpha = 0.8) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  xlim(c(-1, 1)) +
+  ylim(c(-1, 1)) +
+  xlab(label = &#39;p1&#39;) + 
+  ylab(label = &#39;p2&#39;) + 
+  ggtitle(label = &#39;Uniform Random Sample Over a 2-Ball&#39;, 
+          subtitle = glue(&#39;N Samples = {N}&#39;))</code></pre>
+<p><img src="../post/curse_dim2_files/figure-html/unnamed-chunk-4-1.png" width="480" style="display: block; margin: auto;" /></p>
+<p>Next we write the simulation function.</p>
+<pre class="r"><code>RunSimulation &lt;- function(N, p, n0, n1) {
+  #&#39; Generate median samples.
+  #&#39;
+  #&#39;@param N number of points.
+  #&#39;@param p dimension.  
+  #&#39;@param n0 number of times to sample the N points.
+  #&#39;@param n1 number of times to run the simulation. 
+  #&#39;@return vector median samples. 
+  
+  median.samples &lt;- foreach(combination = 1:n1, .combine = rbind) %dopar% {
+    
+    distances.to.origin &lt;- foreach(combination = 1:n0, .combine = rbind) %dopar% {
+    # Sample N points.                  
+    samples &lt;- 1:N %&gt;% map(.f = ~ SampleUniformBall(N = N, p = p)) 
+    # Compute distance to the origin.                                        
+    distance.to.origin &lt;- samples %&gt;% 
+                            map_dbl(.f = ~ norm(.x, type = &#39;2&#39;)) %&gt;% 
+                            min
+    }
+    # Compute the median.
+    distances.to.origin %&gt;% median 
+  }
+  median.samples %&lt;&gt;% as.vector
+  
+  return(median.samples)
+}</code></pre>
+<p>Now we run the simulation for various values pf <span class="math inline">\(p\)</span>.</p>
+<ul>
+<li><span class="math inline">\(p=2\)</span></li>
+</ul>
+<pre class="r"><code>N &lt;- 500
+p &lt;- 2
+
+median.samples &lt;- RunSimulation(N = N, 
+                                p = p, 
+                                n0 = 50, 
+                                n1 = 100)
+
+analytical.median &lt;- d(N = N, p = p) %&gt;% round(digits = 4)
+
+median.samples %&gt;% 
+  as_tibble() %&gt;% 
+  ggplot() +
+  theme_light() +
+  geom_histogram(mapping = aes(x = value), 
+                 fill = &#39;blue&#39;, 
+                 alpha = 0.7, 
+                 bins = 20) +
+  geom_vline(xintercept = analytical.median) +
+  xlab(label = &#39;Median&#39;) +
+  ggtitle(label = &#39;Median Simulation Distribution&#39;, 
+          subtitle = glue(&#39;N = {N}, p = {p}, Median = {analytical.median}&#39;)) </code></pre>
+<p><img src="../post/curse_dim2_files/figure-html/unnamed-chunk-6-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li><span class="math inline">\(p=10\)</span></li>
+</ul>
+<pre class="r"><code>N &lt;- 500
+p &lt;- 10
+
+median.samples &lt;- RunSimulation(N = N, 
+                                p = p, 
+                                n0 = 50, 
+                                n1 = 100)
+
+analytical.median &lt;- d(N = N, p = p) %&gt;% round(digits = 4)
+
+median.samples %&gt;% 
+  as_tibble() %&gt;% 
+  ggplot() +
+  theme_light() +
+  geom_histogram(mapping = aes(x = value), 
+                 fill = &#39;blue&#39;, 
+                 alpha = 0.7, 
+                 bins = 20) +
+  geom_vline(xintercept = analytical.median) +
+  xlab(label = &#39;Median&#39;) +
+  ggtitle(label = &#39;Median Simulation Distribution&#39;, 
+          subtitle = glue(&#39;N = {N}, p = {p}, Median = {analytical.median}&#39;)) </code></pre>
+<p><img src="../post/curse_dim2_files/figure-html/unnamed-chunk-7-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><em>For <span class="math inline">\(N = 500\)</span>, <span class="math inline">\(p = 10\)</span> , <span class="math inline">\(d(p,N) ≈ 0.52\)</span>, more than halfway to the boundary. Hence most data points are closer to the boundary of the sample space than to any other data point. The reason that this presents a problem is that prediction is much more difficult near the edges of the training sample. One must extrapolate from neighboring sample points rather than interpolate between them.</em> (<a href="https://web.stanford.edu/~hastie/ElemStatLearn/">The Elements of Statistical Learning, Section 2.5</a>).</p>
+<p>Finally, let us plot the median vs dimension.</p>
+<pre class="r"><code>2:100 %&gt;% 
+  map_dbl(.f = ~ d(N = 500, p = .x)) %&gt;% 
+  as_tibble %&gt;% 
+  rename(median = value) %&gt;% 
+  mutate(p = 2:100) %&gt;% 
+  ggplot() +
+  theme_light() +
+  geom_point(mapping = aes(x = p, y = median)) +
+  geom_hline(yintercept = 1, color = &#39;red&#39;)</code></pre>
+<p><img src="../post/curse_dim2_files/figure-html/unnamed-chunk-8-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="spherical-multinormal-sampling-exercise-2.4" class="section level1">
+<h1>Spherical Multinormal Sampling (Exercise 2.4):</h1>
+<p><em>The edge effect problem discussed above is not peculiar to uniform sampling from bounded domains. Consider inputs drawn from a spherical multinormal distribution <span class="math inline">\(X ∼ N(0,I_p)\)</span>. The squared distance from any sample point to the origin has a <span class="math inline">\(χ^2_p\)</span> distribution with mean <span class="math inline">\(p\)</span>. Consider a prediction point <span class="math inline">\(x_0\)</span> drawn from this distribution, and let <span class="math inline">\(a = x_0/||x_0||\)</span> be an associated unit vector. Let <span class="math inline">\(z_i = a^T x_i\)</span> be the projection of each of the training points on this direction.</em></p>
+<p><em>Show that the <span class="math inline">\(z_i\)</span> are distributed <span class="math inline">\(N(0,1)\)</span> with expected squared distance from the origin <span class="math inline">\(1\)</span>, while the target point has expected squared distance <span class="math inline">\(p\)</span> from the origin.</em></p>
+<p><em>Proof:</em></p>
+<p>The <span class="math inline">\(z_i\)</span> are normal being a linear combination of normal random variables. The expected value of <span class="math inline">\(z_i\)</span> is <span class="math display">\[
+E(z_i) = E(a^T x_i) = a^T E(x_i) = 0.
+\]</span> The variance is <span class="math display">\[
+Var(z_i) = Var(a^T x_i) = Var\left(\sum_{k=1}^N a_k x_{ik}\right) = \sum_{k=1}^N a^2_k Var(x_{ik}) = ||a||_{2} = 1.
+\]</span> The expected squared distance from the origin of each <span class="math inline">\(z_i\)</span> is <span class="math inline">\(E(z_i^2) = 1\)</span> because <span class="math inline">\(z_i^2 ∼ \chi_1^2\)</span>.</p>
+<p><em>Hence for <span class="math inline">\(p = 10\)</span>, a randomly drawn test point is about 3.1 standard deviations from the origin, while all the training points are on average one standard deviation along direction a. So most prediction points see themselves as lying on the edge of the training set.</em></p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
