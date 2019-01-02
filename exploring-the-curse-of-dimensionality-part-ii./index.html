@@ -114,7 +114,7 @@ registerDoMC(cores=8)</code></pre>
 <pre class="r"><code>d &lt;- function(N, p) {
   (1 - (1/2)^(1/N))^(1/p)
 }</code></pre>
-<p>We want to define a somulation function. To begin, we first need to generate uniform random samples over a <span class="math inline">\(p\)</span>-dimensional ball.</p>
+<p>We want to define a simulation function. To begin, we first need to generate <a href="http://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf">uniform random samples over a <span class="math inline">\(p\)</span>-dimensional ball</a>.</p>
 <pre class="r"><code>SampleUniformBall &lt;- function(N, p) {
   #&#39; Generate uniform samples over a p-ball.
   #&#39;
@@ -123,7 +123,7 @@ registerDoMC(cores=8)</code></pre>
   #&#39;@return vector of samples.
   
   # Generate direction (angle).
-  a &lt;- runif(n = p, min = -1, max = 1)
+  a &lt;- rnorm(n = p, mean = 0, sd = 1)
   # Generate radius. 
   r &lt;- runif(n = 1, min = 0, max = 1)^(1/p)
   # Compute the product. 
