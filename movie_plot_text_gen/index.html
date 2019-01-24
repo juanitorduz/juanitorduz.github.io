@@ -35,7 +35,7 @@
       <header class="header">
         <nav class="nav">
   <a href="../" class="nav-logo">
-    <img src="../images/foto.jpeg"
+    <img src="../images/sphere.png"
          width="50"
          height="50"
          alt="Logo">
@@ -674,7 +674,9 @@ def generate_text(model, tokenizer, seq_len, seed_text, num_gen_words):
 print(sample_text)
 </code></pre>
 
+<blockquote>
 <p><em>Officer Frank Williams (Steven Vidler) and his partner Blaine investigate an abandoned house, where they find a young woman with her eyes ripped out. A large figure with an axe then murders Blaine and Frank has his arm chopped off before he is able to shoot the attacker in the head. Afterwards, detectives find seven bodies in the house, all of which have had their eyes ripped out.</em></p>
+</blockquote>
 
 <p>Set <code>seed_text</code> to be the start of the <code>sample test</code>.</p>
 
@@ -682,7 +684,9 @@ print(sample_text)
 print(seed_text)
 </code></pre>
 
+<blockquote>
 <p><em>Officer Frank Williams (Steven Vidler) and his partner Blaine investigate an abandoned house, where they find a young woman with her eyes ripped out. A large figure with an axe then murders</em></p>
+</blockquote>
 
 <p>Generate text:</p>
 
@@ -695,7 +699,9 @@ print(seed_text)
 print(seed_text + ' ' + generated_text + '...')
 </code></pre>
 
+<blockquote>
 <p><em>Officer Frank Williams (Steven Vidler) and his partner Blaine investigate an abandoned house, where they find a young woman with her eyes ripped out. A large figure with an axe then murders  blaine and cyrus is a sapling jeff reveals that he is the group of the family &rsquo;s house in the process to lure arthur flee in the house and goes into the morning and hyenas is taken to the house&hellip;</em></p>
+</blockquote>
 
 <h3 id="example-2">Example 2</h3>
 
@@ -713,7 +719,9 @@ print(seed_text + ' ' + generated_text + '...')
 print(seed_text + ' ' + generated_text + '...')
 </code></pre>
 
+<blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear voices he confronts john &rsquo;s mother and lina pull themselves into the morning because the group split her face towards the scene and attempts to shoot the supervision of the truth jessabelle &rsquo;s throat with regular injections of them and remains by itself blocks nazi isolating youths &rsquo;s grave and tortures him are inferior in coffins and a group of the entire bat acting in los angeles with the ghosts of the same time and lures her drugs in 1408&hellip;</em></p>
+</blockquote>
 
 <h3 id="example-3">Example 3</h3>
 
@@ -723,8 +731,10 @@ print(seed_text + ' ' + generated_text + '...')
 print(seed_text)
 </code></pre>
 
+<blockquote>
 <p><em>Cocky college football star Francis Finnegan has his eye on the attractive Gloria van Dayham, as does his rival, Larry Stacey.
 Francis gets a job in a department store owned by Stacey&rsquo;s father, where salesgirl June Cort develops an attraction to him. Finnegan proposes that Stacey&rsquo;s store sponsor a football team, which causes rival shop owner Whimple to do likewise. The team&rsquo;s head cheerleader, Mimi, falls for team mascot Joe, meanwhile, and everybody pairs off with the perfect partner after the big game.</em></p>
+</blockquote>
 
 <pre><code class="language-python">generated_text = generate_text(model=model, 
                                tokenizer=tokenizer,
@@ -735,8 +745,10 @@ Francis gets a job in a department store owned by Stacey&rsquo;s father, where s
 print(seed_text + ' ' + generated_text + '...')
 </code></pre>
 
+<blockquote>
 <p><em>Cocky college football star Francis Finnegan has his eye on the attractive Gloria van Dayham, as does his rival, Larry Stacey.
 Francis gets a job in a department store owned by Stacey&rsquo;s father, where salesgirl June Cort develops an attraction to him. Finnegan proposes that Stacey&rsquo;s store sponsor a football team, which causes rival shop owner Whimple to do likewise. The team&rsquo;s head cheerleader, Mimi, falls for team mascot Joe, meanwhile, and everybody pairs off with the perfect partner after the big game. and kills ziko is eaten but jenna learn of thrill village on a punk couple of the house and puts her to the island and erin are instructed to get beside chaos ambrosia might can trust him he gone to be and those refusing to wake that he is the ancient wooden zombie afloat in mexico and awakens in the woods and enters the road into fright she inspects iris &rsquo;s corpse which is stripped and raped by fend into chains her to the remote wall is revealed of tamara&hellip;</em></p>
+</blockquote>
 
 <p>Overall, the generated text seem to have structure. Nevrtheless, somethimes these sentences do not make a lot of sense. Quoting from <a href="https://www.manning.com/books/deep-learning-with-r">Deep Learning with R</a>, page 260:</p>
 
@@ -810,7 +822,9 @@ $$</p>
 print(seed_text + ' ' + generated_text + ' ...')
 </code></pre>
 
+<blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear noises the next day owen stabs his seventh when sophie shoots her in the search such he subdues him exist pulls her bloody late eliot then discover that he can do so of kristi so will be letting her that that he had some friends constantly slicing away by confronted by nikki who to the hospital anna is stuck in a switch who grip thomas drains a incident that he strikes justin from frustration and learn it do so that &hellip;</em></p>
+</blockquote>
 
 <ul>
 <li><code>temperature</code> = $0.5$</li>
@@ -826,7 +840,9 @@ print(seed_text + ' ' + generated_text + ' ...')
 print(seed_text + ' ' + generated_text + ' ...')
 </code></pre>
 
+<blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear noises hunter and sarah descend the bodies and history of falburn the disappearance of vampires the killer learns that she did n&rsquo;t make a large pipe and return to the house and he distracts him dead the man enters the house and kills him on the cellar door by breaking into the house and points to their wounds but carrie runs into town and bearing time taggart becomes convinced that the united states light and convinces to the twelve treatment as well &hellip;.</em></p>
+</blockquote>
 
 <ul>
 <li><code>temperature</code> = $0.1$</li>
@@ -842,7 +858,9 @@ print(seed_text + ' ' + generated_text + ' ...')
 print(seed_text + ' ' + generated_text + ' ...')
 </code></pre>
 
+<blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear voices he meets the old woman who is bitten by a large swarm of lunges likely of her farm for help he is captured and discovers their way out the operation is not a brief struggle with the parapsychologists in a field tubbs finds stones of the house and the group straps him to the hospital where he is attacked by a skinhead gang garret volunteers to reveal that the two and informs them that the film ends which is why is &hellip;</em></p>
+</blockquote>
 
 <h2 id="what-s-next">What&rsquo;s next?</h2>
 
