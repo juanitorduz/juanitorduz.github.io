@@ -45,8 +45,6 @@
     
     <li><a href="../about/">About</a></li>
     
-    <li><a href="../cv/">CV</a></li>
-    
     <li><a href="https://github.com/juanitorduz">GitHub</a></li>
     
     <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
@@ -279,7 +277,7 @@ sim.2 &lt;- RunSimulationP(lambda = lambda,
 mean.sim.2 &lt;- mean(sim.2)
 
 mean.sim.2 </code></pre>
-<pre><code>## [1] 0.010071</code></pre>
+<pre><code>## [1] 0.009875</code></pre>
 <p>Again, since the samples are uniformly distributed on <span class="math inline">\([0,1]\times [0,1]\)</span>, this fraction is going to be, on average, equal to the are of a square of length <span class="math inline">\(\lambda\)</span>, which in this case is just <span class="math inline">\(0.1^2 = 0.01\)</span>.</p>
 <p>Let us plot the distribution.</p>
 <pre class="r"><code>sim.2%&gt;% 
