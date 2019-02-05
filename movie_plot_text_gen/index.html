@@ -61,7 +61,7 @@
 
   <article class="article">
     
-    <span class="article-duration">14 min read</span>
+    <span class="article-duration">15 min read</span>
     
 
     <h1 class="article-title">Movie Plots Text Generation with Keras</h1>
@@ -129,12 +129,19 @@ movies_raw_df.head()
         vertical-align: middle;
     }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
+     .dataframe thead th {
+        text-align: left;
+        font-size: 14px;
     }
 
-    .dataframe thead th {
-        text-align: right;
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 14px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 14px;
     }
 </style>
 <table border="1" class="dataframe">
@@ -760,7 +767,7 @@ Francis gets a job in a department store owned by Stacey&rsquo;s father, where s
 f_{T}(x) = C \exp(\log(x)/T),
 $$</p>
 
-<p>where $C&gt;0$ is just a normalization constant. Note that for $T=1$ we just get the identity transformation. Observe that we can simplify $f_T$ using the relaton.</p>
+<p>where \(C&gt;0\) is just a normalization constant. Note that for \(T=1\) we just get the identity transformation. Observe that we can simplify \(f_T\) using the relaton.</p>
 
 <p>$$
 \exp(\log(x)/T) = (\exp(\log(x)))^{1/T} = x^{1/T}
@@ -807,7 +814,7 @@ $$</p>
 </code></pre>
 
 <ul>
-<li><code>temperature</code> = $0.9$</li>
+<li><code>temperature</code> = \(0.9\)</li>
 </ul>
 
 <pre><code class="language-python">generated_text = generate_text2(model=model, 
@@ -825,7 +832,7 @@ print(seed_text + ' ' + generated_text + ' ...')
 </blockquote>
 
 <ul>
-<li><code>temperature</code> = $0.5$</li>
+<li><code>temperature</code> = \(0.5\)</li>
 </ul>
 
 <pre><code class="language-python">generated_text = generate_text2(model=model, 
@@ -843,7 +850,7 @@ print(seed_text + ' ' + generated_text + ' ...')
 </blockquote>
 
 <ul>
-<li><code>temperature</code> = $0.1$</li>
+<li><code>temperature</code> = \(0.1\)</li>
 </ul>
 
 <pre><code class="language-python">generated_text = generate_text2(model=model, 
