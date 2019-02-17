@@ -258,7 +258,7 @@ model.list &lt;- readRDS(file = 'model_list.rds')
 #* @param wt
 #* @param qsec
 #* @param am
-#* @get /predict
+#* @post /predict
 CalculatePrediction &lt;- function(wt, qsec, am){
   
   wt %&lt;&gt;% as.numeric
@@ -286,9 +286,9 @@ r &lt;- plumb(file = 'plumber.R')
 r$run(port = 8000)
 </code></pre>
 
-<p>We can use a <code>GET</code> request to obtain predictions.</p>
+<p>We can use a <code>POST</code> request to obtain predictions.</p>
 
-<pre><code class="language-r">GET(url = 'http://localhost:8000/predict?am=1&amp;qsec=16.46&amp;wt=2.62') %&gt;% content
+<pre><code class="language-r">POST(url = 'http://localhost:8000/predict?am=1&amp;qsec=16.46&amp;wt=2.62') %&gt;% content()
 </code></pre>
 
 <pre><code>## [1] 22.4974
