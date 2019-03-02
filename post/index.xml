@@ -6,10 +6,22 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 02 Feb 2019 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 02 Mar 2019 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Dockerize a ShinyApp</title>
+      <link>/dockerize-a-shinyapp/</link>
+      <pubDate>Sat, 02 Mar 2019 00:00:00 +0000</pubDate>
+      
+      <guid>/dockerize-a-shinyapp/</guid>
+      <description>In this post I want to describe how to dockerize a simple Shiny App. Docker is a great way of sharing and deploying projects. You can download it here.
+I highly recommend the R Docker tutorial.
+Assume you have a project folder structure as follows:
+. +-- project.Rproj +-- app.R +-- R | +-- script_1.R | +-- script_2.R +-- data | +-- data_df.rds | +-- raw_data.csv  The script app.</description>
+    </item>
     
     <item>
       <title>The Spectral Theorem for Matrices</title>

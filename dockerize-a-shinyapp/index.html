@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>Dockerize a ShinyApp - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Dockerize a ShinyApp - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere.png"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">2 min read</span>
+    
+
+    <h1 class="article-title">Dockerize a ShinyApp</h1>
+
+    
+    <span class="article-date">2019/03/02</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post I want to describe how to dockerize a simple <a href="https://shiny.rstudio.com">Shiny App</a>. <a href="https://www.docker.com/">Docker</a> is a great way of sharing and deploying projects. You can download it <a href="https://www.docker.com/get-started">here</a>.</p>
+<p>I highly recommend the <a href="https://ropenscilabs.github.io/r-docker-tutorial/">R Docker tutorial</a>.</p>
+<p>Assume you have a project folder structure as follows:</p>
+<pre><code>.
++-- project.Rproj
++-- app.R
++-- R
+|   +-- script_1.R
+|   +-- script_2.R
++-- data
+|   +-- data_df.rds
+|   +-- raw_data.csv</code></pre>
+<ul>
+<li>The script <code>app.R</code> contains the code of the Shiny application.</li>
+<li>The folder <code>R</code> contains auxiliary scripts.</li>
+<li>The folder <code>data</code> contains a csv and an rds file which might be nessesary for the application (cleaned data set, for example).</li>
+</ul>
+<p>To create a docker image you need to create a <a href="https://docs.docker.com/engine/reference/builder/">Dockerfile</a>, which is a simple text file located in the same directory as <code>app.R</code>. The name of the file must be <code>Dockerfile</code>. A common structure of this file is the following:</p>
+<pre><code># get shiny serves plus tidyverse packages image
+FROM rocker/shiny-verse:latest
+
+# system libraries of general use
+RUN apt-get update &amp;&amp; apt-get install -y \
+    sudo \
+    pandoc \
+    pandoc-citeproc \
+    libcurl4-gnutls-dev \
+    libcairo2-dev \
+    libxt-dev \
+    libssl-dev \
+    libssh2-1-dev 
+  
+
+# install R packages required 
+# (change it dependeing on the packages you need)
+RUN R -e &quot;install.packages(&#39;shiny&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
+RUN R -e &quot;install.packages(&#39;shinydashboard&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
+RUN R -e &quot;devtools::install_github(&#39;andrewsali/shinycssloaders&#39;)&quot;
+RUN R -e &quot;install.packages(&#39;lubridate&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
+RUN R -e &quot;install.packages(&#39;magrittr&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
+RUN R -e &quot;install.packages(&#39;glue&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
+RUN R -e &quot;install.packages(&#39;DT&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
+RUN R -e &quot;install.packages(&#39;plotly&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
+
+
+# copy the app to the image
+COPY project.Rproj /srv/shiny-server/
+COPY app.R /srv/shiny-server/
+COPY R /srv/shiny-server/R
+COPY data /srv/shiny-server/data
+
+# select port
+EXPOSE 3838
+
+# allow permission
+RUN sudo chown -R shiny:shiny /srv/shiny-server
+
+# run app
+CMD [&quot;/usr/bin/shiny-server.sh&quot;]</code></pre>
+<p>To build the docker image you can run on the console (where the <code>Dockerfile</code> is located):</p>
+<pre><code>docker build -t my-shiny-app .</code></pre>
+<p>To create a container just run:</p>
+<pre><code>docker run --rm -p 3838:3838 my-shiny-app</code></pre>
+<p>You can share your image on <a href="https://hub.docker.com/">Docker Hub</a> or as a .tar file.</p>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
