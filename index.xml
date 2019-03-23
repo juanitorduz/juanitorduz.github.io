@@ -6,10 +6,21 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 02 Mar 2019 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 23 Mar 2019 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Sampling from a Multivariate Normal Distribution</title>
+      <link>/multivariate_normal/</link>
+      <pubDate>Sat, 23 Mar 2019 00:00:00 +0000</pubDate>
+      
+      <guid>/multivariate_normal/</guid>
+      <description>In this post I want to describe how to sample from a multivariate normal distribution following section A.2 Gaussian Identities of the book Gaussian Processes for Machine Learning. This is a first step towards exploring and understanding Gaussian Processes methods in machine learning.
+Multivariate Normal Distribution Recall that a random vector \(X = (X_1, \cdots, X_d)\) has a multivariate normal (or Gaussian) distribution if every linear combination
+$$ \sum_{i=1}^{d} a_iX_i, \quad a_i\in\mathbb{R} $$ is normally distributed.</description>
+    </item>
     
     <item>
       <title>Dockerize a ShinyApp</title>

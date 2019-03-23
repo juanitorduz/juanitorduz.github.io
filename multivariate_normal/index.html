@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>Sampling from a Multivariate Normal Distribution - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Sampling from a Multivariate Normal Distribution - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere.png"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">3 min read</span>
+    
+
+    <h1 class="article-title">Sampling from a Multivariate Normal Distribution</h1>
+
+    
+    <span class="article-date">2019/03/23</span>
+    
+
+    <div class="article-content">
+      
+
+<p>In this post I want to describe how to sample from a multivariate normal distribution following section <a href="http://www.gaussianprocess.org/gpml/chapters/RWA.pdf">
+A.2 Gaussian Identities</a> of the book <a href="http://www.gaussianprocess.org/gpml/chapters/">Gaussian Processes for Machine Learning</a>. This is a first step towards exploring and understanding Gaussian Processes methods in machine learning.</p>
+
+<h2 id="multivariate-normal-distribution">Multivariate Normal Distribution</h2>
+
+<p><a href="https://en.wikipedia.org/wiki/Multivariate_normal_distribution">Recall</a> that a random vector \(X = (X_1, \cdots, X_d)\) has a <em>multivariate normal (or Gaussian) distribution</em> if every linear combination</p>
+
+<p>$$
+\sum_{i=1}^{d} a_iX_i, \quad a_i\in\mathbb{R}
+$$
+is normally distributed.</p>
+
+<p><strong>Warning</strong>: The sum of two normally distributed random variables does not need to be normally distributed (see below).</p>
+
+<p>The multivariate normal distribution has a joint probability density given by</p>
+
+<p>$$
+p(x|m,\Sigma) =(2\pi)^{−d/2}|K_0|^{−1/2}\exp􏰀\left(-\frac{1}{2}(x−m)^T {K_0}^{-1}(x−m)\right),
+$$</p>
+
+<p>where \(m \in \mathbb{R}^d\) is the <em>mean vector</em> and  \(K_0 \in M_d(\mathbb{R}) \) is the (symmetric, positive definite) <em>covariance matrix</em>.</p>
+
+<h2 id="prepare-notebook">Prepare Notebook</h2>
+
+<pre><code class="language-python">import numpy as np 
+import matplotlib.pyplot as plt
+import seaborn as sns; sns.set()
+</code></pre>
+
+<h1 id="set-parameters">Set Parameters</h1>
+
+<pre><code class="language-python"># Define dimension. 
+d = 2
+
+# Set mean vector. 
+m = np.array([1, 2]).reshape(2, 1)
+
+# Set covariance function. 
+K_0 = np.array([[2, 1],
+                [1, 2]])
+</code></pre>
+
+<p>Let us compute the eigenvalues of \(K_0\).</p>
+
+<pre><code class="language-python"># Eigenvalues covariance function.
+np.linalg.eigvals(K_0)
+</code></pre>
+
+<pre><code>array([3., 1.])
+</code></pre>
+
+<p>We see that \(K_0\) is indeed positive definite (see <a href="https://juanitorduz.github.io/the-spectral-theorem-for-matrices/">The Spectral Theorem for Matrices</a>).</p>
+
+<h2 id="sampling-process">Sampling Process</h2>
+
+<h3 id="step-1-compute-the-cholesky-decomposition">Step 1: Compute the Cholesky Decomposition</h3>
+
+<p>We want to compute the Cholesky decomposition of the covariance matrix \(K_0\). That is, we want to find a lower triangular matrix \(L\in M_d(\mathbb{R})\) such that \(K_0 = LL^T\).</p>
+
+<p><em>&ldquo;In practice it may be necessary to add a small multiple of the identity matrix \(\varepsilon I\) to the covariance matrix for numerical reasons. This is because the eigenvalues of the matrix \(K_0\) can decay very rapidly and without this stabilization the Cholesky decomposition fails. The effect on the generated samples is to add additional independent noise of variance \(\varepsilon \). From the context \(\varepsilon \) can usually be chosen to have inconsequential effects on the samples, while ensuring numerical stability.&rdquo;</em> (<a href="http://www.gaussianprocess.org/gpml/chapters/RWA.pdf">A.2 Gaussian Identities</a>)</p>
+
+<pre><code class="language-python"># Define epsilon.
+epsilon = 0.0001
+
+# Add small pertturbation. 
+K = K_0 + epsilon*np.identity(d)
+</code></pre>
+
+<pre><code class="language-python">#  Cholesky decomposition.
+L = np.linalg.cholesky(K)
+L
+</code></pre>
+
+<pre><code>array([[1.41424892, 0.        ],
+       [0.7070891 , 1.2247959 ]])
+</code></pre>
+
+<p>Let us verify the desired property:</p>
+
+<pre><code class="language-python">np.dot(L, np.transpose(L))
+</code></pre>
+
+<pre><code>array([[2.0001, 1.    ],
+       [1.    , 2.0001]])
+</code></pre>
+
+<h3 id="step-2-generate-independent-samples-u-n-0-i">Step 2: Generate  Independent Samples \(u ∼ N(0,I)\)</h3>
+
+<pre><code class="language-python"># Number of samples. 
+n = 10000
+
+u = np.random.normal(loc=0, scale=1, size=d*n).reshape(d, n)
+</code></pre>
+
+<h3 id="step-3-compute-x-m-lu">Step 3: Compute \( x = m + Lu \)</h3>
+
+<p>The variable \( x = m + Lu \) has a multivariate normal distribution since is a linear combination of <em>independent</em> normally distributed variables. Moreover,</p>
+
+<p>$$
+E[x] = E[m + Lu] = m + LE[u] = m
+$$</p>
+
+<p>and</p>
+
+<p>$$
+E[xx^T] = E[mm^T] + E[mu^TL^T] + E[Lum^T] + E[Luu^TL^T] = ||m^2|| + LE[uu^T]L^T = \lVert m \rVert^2 + K
+$$</p>
+
+<p>hence, \(E[(x-m)(x^T-m^T)] = K\).</p>
+
+<pre><code class="language-python">x = m + np.dot(L, u)
+</code></pre>
+
+<h2 id="plot-distribution">Plot Distribution</h2>
+
+<p>Let us plot the density function.</p>
+
+<pre><code class="language-python">sns.jointplot(x=x[0],
+              y=x[1], 
+              kind=&quot;kde&quot;, 
+              space=0);
+</code></pre>
+
+<p><center>
+<img src="../images/multivariate_normal_files/multivariate_normal_25_0.png" alt="png" />
+</center></p>
+
+<h2 id="sampling-using-scikit-learn">Sampling Using Scikit-Learn</h2>
+
+<p><a href="https://scikit-learn.org/stable/">Scikit-Learn</a> has a build in sampling function:</p>
+
+<pre><code class="language-python">z = np.random.multivariate_normal(mean=m.reshape(d,), cov=K, size=n)
+</code></pre>
+
+<pre><code class="language-python">y = np.transpose(z)
+</code></pre>
+
+<pre><code class="language-python"># Plot density function.
+sns.jointplot(x=y[0],
+              y=y[1], 
+              kind=&quot;kde&quot;, 
+              space=0);
+</code></pre>
+
+<p><center>
+<img src="../images/multivariate_normal_files/multivariate_normal_30_0.png" alt="png" />
+</center></p>
+
+<hr />
+
+<h2 id="sums-of-normal-random-variables-need-not-be-normal">Sums of Normal Random Variables need not be Normal</h2>
+
+<p>As an important remark, note that sums of normal random variables need not be normal. Let us see a concrete example studied in detail <a href="https://planetmath.org/sumsofnormalrandomvariablesneednotbenormal">here</a>. Let \(Z_1 \sim N(0,1)\) and define \(Z_2 := \text{sign}(Z_1)Z_1\). Then, \(Z_1 + Z_2\) is not normally distributed.</p>
+
+<pre><code class="language-python">z_1 = np.random.normal(loc=0, scale=1, size=n)
+z = np.random.normal(loc=0, scale=1, size=n)
+</code></pre>
+
+<pre><code class="language-python">z_2 = np.sign(z)*z_1
+</code></pre>
+
+<pre><code class="language-python">sns.jointplot(x=z_1,
+              y=z_2, 
+              kind=&quot;kde&quot;, 
+              space=0);
+</code></pre>
+
+<p><center>
+<img src="../images/multivariate_normal_files/multivariate_normal_36_0.png" alt="png" />
+</center></p>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
