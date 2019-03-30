@@ -200,9 +200,9 @@ $$</p>
 <img src="../images/multivariate_normal_files/multivariate_normal_25_0.png" alt="png" />
 </center></p>
 
-<h2 id="sampling-using-scikit-learn">Sampling Using Scikit-Learn</h2>
+<h2 id="using-numpy-sampler">Using Numpy Sampler</h2>
 
-<p><a href="https://scikit-learn.org/stable/">Scikit-Learn</a> has a build in sampling function:</p>
+<p><a href="https://docs.scipy.org/doc/numpy/reference/routines.random.html?highlight=random#module-numpy.random">Numpy</a> has a build in  multivariate normal sampling function:</p>
 
 <pre><code class="language-python">z = np.random.multivariate_normal(mean=m.reshape(d,), cov=K, size=n)
 </code></pre>
