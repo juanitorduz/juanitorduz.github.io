@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>An Introduction to Gaussian Process Regression - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="An Introduction to Gaussian Process Regression - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere.png"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">13 min read</span>
+    
+
+    <h1 class="article-title">An Introduction to Gaussian Process Regression</h1>
+
+    
+    <span class="article-date">2019/04/08</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>After a sequence of preliminary posts (<a href="https://juanitorduz.github.io/multivariate_normal/">Sampling from a Multivariate Normal Distribution</a> and <a href="https://juanitorduz.github.io/reg_bayesian_regression/">Regularized Bayesian Regression as a Gaussian Process</a>), I want to expole a concrete example of a <strong>gaussian process regression</strong>. We continue following <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2</a>, by C. E. Rasmussen and C. K. I. Williams. Another recomended reference is the work on <a href="http://www.robots.ox.ac.uk/~sjrob/Pubs/philTransA_2012.pdf">Gaussian Processes for Timeseries Modeling</a> by S. Roberts, M. Osborne, M. Ebden, S. Reece, N. Gibson &amp; S. Aigrain.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+
+import pymc3 as pm
+
+import seaborn as sns; sns.set()
+
+import matplotlib.pyplot as plt
+%matplotlib inline</code></pre>
+</div>
+<div id="generate-data-samples" class="section level2">
+<h2>Generate Data Samples</h2>
+<p>We consider de model <span class="math inline">\(y = f(x) + \varepsilon\)</span>, where <span class="math inline">\(\varepsilon \sim N(0, \sigma_n)\)</span>. Here <span class="math inline">\(f\)</span> does not need to be a linear function of <span class="math inline">\(x\)</span>. As a concrete example, let us consider (1-dim problem)</p>
+<p><span class="math display">\[
+f(x) = \sin(2\pi x) + \sin(4\pi x)
+\]</span></p>
+<pre class="python"><code># Define dimension.
+d = 1
+# Number of samples (training set). 
+n = 250
+
+x = np.linspace(start=0, stop=1, num=n)
+
+def f(x):
+    
+    f = np.sin((2*np.pi)*x) + np.sin((4*np.pi)*x)
+    
+    return(f)
+
+f_x = f(x)
+
+fig, ax = plt.subplots(figsize=(10, 7))
+
+# Plot function f. 
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+# Plot function components.
+sns.lineplot(x=x, y=np.sin((2*np.pi)*x), color=&quot;orange&quot;, label=&quot;sin(2 pi x)&quot;, alpha = 0.3);
+sns.lineplot(x=x, y=np.sin((4*np.pi)*x), color=&quot;purple&quot;, label=&quot;sin(4 pi x)&quot;, alpha = 0.3);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(r&quot;Graph of $f(x) = \sin(2\pi x) + \sin(4\pi x)$&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_6_0.png" alt="png" />
+</center>
+<p>Next, we generate some training sample observsations:</p>
+<pre class="python"><code># Error standar deviation. 
+sigma_n = 0.4
+
+# Errors.
+epsilon = np.random.normal(loc=0, scale=sigma_n, size=n)
+
+# Observed target variable. 
+y = f_x + epsilon</code></pre>
+<p>Let us see the error distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(7,5))
+# Plot errors. 
+sns.distplot(epsilon)
+
+ax.set_title(&quot;Error Distribution&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_10_1.png" alt="png" />
+</center>
+<p>We now visualize the sample data:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
+# Plot training data.
+sns.scatterplot(x=x, y=y, label=&quot;training data&quot;);
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Sample Data&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_12_0.png" alt="png" />
+</center>
+<p>We now consider test data points on which we want to generate predictions.</p>
+<pre class="python"><code>n_star = 50
+
+x_star = np.linspace(start=0, stop=1, num=n_star)</code></pre>
+</div>
+<div id="kernel-function" class="section level2">
+<h2>Kernel Function</h2>
+<p>Recall that a gaussian process is completely specified by its mean function and covariance (we usually take the mean equal to zero, although it is not necessary). A common choise is the <em>squared exponential</em>,</p>
+<p><span class="math display">\[
+\text{cov}(f(x_p), f(x_q)) = k_{\sigma_f, \ell}(x_p, x_q) = \sigma_f \exp\left(-\frac{1}{2\ell^2} ||x_p - x_q||^2\right)
+\]</span></p>
+<p>where <span class="math inline">\(\sigma_f , \ell &gt;0\)</span> are hyperparameters. Observe that the covariance between two samples are modeled as a function of the inputs.</p>
+<p><strong>Remark:</strong> <em>“It can be shown that the squared exponential covariance function corresponds to a Bayesian linear regression model with an infinite basis functions number of basis function.”</em> (<a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2.2</a>)</p>
+<pre class="python"><code>def kernel_function(x, y, sigma_f=1, l=1):
+    &quot;&quot;&quot;Define squared exponential kernel function.&quot;&quot;&quot;
+    kernel = sigma_f * np.exp(- (np.linalg.norm(x - y)**2) / (2 * l**2))
+    return kernel</code></pre>
+<p>Let us select the parameters:</p>
+<pre class="python"><code>l = 0.1
+sigma_f = 2</code></pre>
+</div>
+<div id="compute-covariance-matrices" class="section level2">
+<h2>Compute Covariance Matrices</h2>
+<p>A key observation, as ilustrated in <a href="https://juanitorduz.github.io/reg_bayesian_regression/">Regularized Bayesian Regression as a Gaussian Process</a>, is that <em>the specification of the covariance function implies a distribution over functions</em>.</p>
+<p>Let us denote by <span class="math inline">\(K(X, X) \in M_{n}(\mathbb{R})\)</span>, <span class="math inline">\(K(X_*, X) \in M_{n_* \times n}(\mathbb{R})\)</span> and <span class="math inline">\(K(X_*, X_*) \in M_{n_*}(\mathbb{R})\)</span> the covariance matrices applies to <span class="math inline">\(x\)</span> and <span class="math inline">\(x_*\)</span>.</p>
+<pre class="python"><code>import itertools
+
+def compute_cov_matrices(x, x_star, sigma_f = 1, l =1):
+    &quot;&quot;&quot;
+    Compute components of the covariance matrix of the join distribution.
+    
+    We follow the notation:
+    
+        - K = K(X, X) 
+        - K_star = K(X_*, X)
+        - K_star2 = K(X_*, X_*)
+    &quot;&quot;&quot;
+    n = x.shape[0]
+    n_star = x_star.shape[0]
+
+    K = [kernel_function(i, j, sigma_f=sigma_f, l=l) for (i, j) in itertools.product(x, x)]
+
+    K = np.array(K).reshape(n, n)
+    
+    K_star2 = [kernel_function(i, j, sigma_f=sigma_f, l=l) for (i, j) in itertools.product(x_star, x_star)]
+
+    K_star2 = np.array(K_star2).reshape(n_star, n_star)
+    
+    K_star = [kernel_function(i, j, sigma_f=sigma_f, l=l) for (i, j) in itertools.product(x_star, x)]
+
+    K_star = np.array(K_star).reshape(n_star, n)
+    
+    return (K, K_star2, K_star)</code></pre>
+<p>We compute the covariance matrices using the function above:</p>
+<pre class="python"><code>K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f=sigma_f, l=l)</code></pre>
+<p>We now visualize each component:</p>
+<ul>
+<li><span class="math inline">\(K(X, X)\)</span></li>
+</ul>
+<pre class="python"><code>K.shape</code></pre>
+<pre><code>(250, 250)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=K, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Kernel Matrix K&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_28_0.png" alt="png" />
+</center>
+<ul>
+<li><span class="math inline">\(K(X_*, X_*)\)</span></li>
+</ul>
+<pre class="python"><code>K_star2.shape</code></pre>
+<pre><code>(50, 50)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=K_star2, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Kernel Matrix K_star2&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_31_0.png" alt="png" />
+</center>
+<ul>
+<li><span class="math inline">\(K(X_*, X)\)</span></li>
+</ul>
+<pre class="python"><code>K_star.shape</code></pre>
+<pre><code>(50, 250)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=K_star, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Kernel Matrix K_star&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_34_0.png" alt="png" />
+</center>
+<p>Note how the highest values of the support of all these matrices is localizated around the diagonal.</p>
+</div>
+<div id="join-distribution" class="section level2">
+<h2>Join Distribution</h2>
+<p>The join distribution of \(y\) and \(f_*\) is given by</p>
+<p><span class="math display">\[
+\left(
+\begin{array}{c}
+y \\
+f_*
+\end{array}
+\right)
+\sim
+N(0, C)
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+C = 
+\left(
+\begin{array}{cc}
+K(X, X) + \sigma^2_n I &amp; K(X, X_*) \\
+K(X_*, X) &amp; K(X_*, X_*)
+\end{array}
+\right)
+\]</span></p>
+<p>Observe that we need to add the term \(^2_n I \) to the upper left component to account for noise (assuming additive independent identically distributed Gaussian noise). We now compute the matrix \(C\).</p>
+<pre class="python"><code>a = np.concatenate((K + (sigma_n**2)*np.eye(n), K_star), axis=0)
+a.shape</code></pre>
+<pre><code>(300, 250)</code></pre>
+<pre class="python"><code>b = np.concatenate((K_star.T, K_star2), axis=0)
+b.shape</code></pre>
+<pre><code>(300, 50)</code></pre>
+<pre class="python"><code>C = np.concatenate((a, b), axis=1)
+C.shape</code></pre>
+<pre><code>(300, 300)</code></pre>
+<pre class="python"><code># Indeed, 
+C.shape == (n + n_star, n + n_star)</code></pre>
+<pre><code>True</code></pre>
+<p>Let us verify that \(C\) is symmetric.</p>
+<pre class="python"><code>np.all(C.T == C)</code></pre>
+<pre><code>True</code></pre>
+<p>We can also see this visually:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=C, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Covariance Matrix C&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_45_0.png" alt="png" />
+</center>
+</div>
+<div id="prior-distribution" class="section level2">
+<h2>Prior Distribution</h2>
+<p>From the * consistency requirement* og gaussian processes we know that the prior distribution for <span class="math inline">\(f_*\)</span> is <span class="math inline">\(N(0, K(X_*, X_*))\)</span>. Let us visualize some sample functions from this prior:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
+
+for i in range(0, 100):
+    # Sample from prior distribution. 
+    z_star = np.random.multivariate_normal(mean=np.zeros(n_star), cov=K_star2)
+    # Plot function.
+    sns.lineplot(x=x_star, y=z_star, color=&quot;blue&quot;, alpha=0.2);
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+
+ax.legend(loc=&quot;lower right&quot;)
+ax.set_title(&quot;Samples of Prior Distribution&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_48_0.png" alt="png" />
+</center>
+</div>
+<div id="conditional-distribution" class="section level2">
+<h2>Conditional Distribution</h2>
+<p>As described in our main reference, <em>to get the posterior distribution over functions we need to restrict this joint prior distribution to contain only those functions which agree with the observed data points</em>, that is, we are interested in computing <span class="math inline">\(f_*|X, y, X_*\)</span>. Using the results of <a href="http://www.gaussianprocess.org/gpml/chapters/RWA.pdf">Gaussian Processes for Machine Learning, Appendinx A.2</a>, one can show that</p>
+<p><span class="math display">\[
+f_*|X, y, X_* 
+\sim
+N(\bar{f}_*, \text{cov}(f_*))
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+\bar{f}_* = K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} y \in \mathbb{R}^{n_*}
+\]</span></p>
+<p>and</p>
+<p><span class="math display">\[
+\text{cov}(f_*) = K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} K(X, X_*) \in M_{n_*}(\mathbb{R})
+\]</span></p>
+<p>We now calculate the parameters of the posterior distribution:</p>
+<pre class="python"><code>def compute_gpr_parameters(K, K_star2, K_star, sigma_n):
+    &quot;&quot;&quot;Compute gaussian regression parameters.&quot;&quot;&quot;
+    n = K.shape[0]
+    
+    f_bar_star = np.dot(K_star, np.dot(np.linalg.inv(K + (sigma_n**2)*np.eye(n)), y.reshape([n, d])))
+    
+    cov_f_star = K_star2 - np.dot(K_star, np.dot(np.linalg.inv(K + (sigma_n**2)*np.eye(n)), K_star.T))
+    
+    return (f_bar_star, cov_f_star)</code></pre>
+<pre class="python"><code># Compute posterior mean and covariance. 
+f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)</code></pre>
+<p>Let us visualize the covariance components.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=cov_f_star, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Covariance Matrix cov_f_star&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_55_0.png" alt="png" />
+</center>
+<p>Let us now sample from the posterior distribution:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
+
+for i in range(0, 100):
+    # Sample from posterior distribution. 
+    z_star = np.random.multivariate_normal(mean=f_bar_star.squeeze(), cov=cov_f_star)
+    # Plot function.
+    sns.lineplot(x=x_star, y=z_star, color=&quot;blue&quot;, alpha=0.2);
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Samples of Posterior Distribution, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_57_0.png" alt="png" />
+</center>
+</div>
+<div id="hyperparameters" class="section level2">
+<h2>Hyperparameters</h2>
+<p>We now study the effect of the hyperparameters <span class="math inline">\(\sigma_f\)</span> and <span class="math inline">\(\ell\)</span> of the kernel function defined above.</p>
+<ul>
+<li><p>The hyperparameter <span class="math inline">\(\sigma_f\)</span> describes the amplitude of the function.</p></li>
+<li><p>The hyperparameter <span class="math inline">\(\ell\)</span> is a locality parameter, i.e. how far the points interact.</p></li>
+</ul>
+<p>Let us see some concrete examples:</p>
+<ul>
+<li><span class="math inline">\(\sigma_f=2\)</span> and <span class="math inline">\(\ell=1\)</span></li>
+</ul>
+<pre class="python"><code>l = 1
+sigma_f = 2
+
+# Compute covariance matrices. 
+K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f = sigma_f, l = l)
+# Compute gaussian process parameters. 
+f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)
+
+# Plot posterior covariance matrix components. 
+fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=cov_f_star, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Covariance Matrix cov_f_star, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_62_0.png" alt="png" />
+</center>
+<p>In this case the values of the posterior covariance matrix are not that localized. This means that we expect points far away can still have some interation, i.e. the fit becomes more global. Let us plot the resulting fit:</p>
+<pre class="python"><code>K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f = 2, l = 1)
+
+f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)
+
+fig, ax = plt.subplots(figsize=(10, 7))
+
+for i in range(0, 100):
+    # Sample from posterior distribution. 
+    z_star = np.random.multivariate_normal(mean=f_bar_star.squeeze(), cov=cov_f_star)
+    # Plot function.
+    sns.lineplot(x=x_star, y=z_star, color=&quot;blue&quot;, alpha=0.2);
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Samples of Posterior Distribution, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_64_0.png" alt="png" />
+</center>
+<ul>
+<li><span class="math inline">\(\sigma_f=2\)</span> and <span class="math inline">\(\ell=0.001\)</span></li>
+</ul>
+<pre class="python"><code>l = 0.001
+sigma_f = 2
+
+# Compute covariance matrices. 
+K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f = sigma_f, l = l)
+# Compute gaussian process parameters. 
+f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)
+
+# Plot posterior covariance matrix components. 
+fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=cov_f_star, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Covariance Matrix cov_f_star, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_66_0.png" alt="png" />
+</center>
+<p>In contrast, we see that for these set of hyper parameters the higher values of the posterior covariance matrix are concentrated along the diagonal. This means that we expect points far away to have no effect on each other, i.e. the fit becomes more local. Let us plot the resulting fit:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
+
+for i in range(0, 100):
+    # Sample from posterior distribution. 
+    z_star = np.random.multivariate_normal(mean=f_bar_star.squeeze(), cov=cov_f_star)
+    # Plot function.
+    sns.lineplot(x=x_star, y=z_star, color=&quot;blue&quot;, alpha=0.2);
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Samples of Posterior Distribution, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_68_0.png" alt="png" />
+</center>
+<p>Hence, we see that the hyperparameter \(\) somehow enoces the “complexity” and “locality” of the model.</p>
+<ul>
+<li><span class="math inline">\(\sigma_f=50\)</span> and <span class="math inline">\(\ell=0.01\)</span></li>
+</ul>
+<pre class="python"><code>l = 0.01
+sigma_f = 50
+
+# Compute covariance matrices. 
+K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f = sigma_f, l = l)
+# Compute gaussian process parameters. 
+f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)
+
+# Plot posterior covariance matrix components. 
+fig, ax = plt.subplots(figsize=(9,7))
+
+sns.heatmap(data=cov_f_star, cmap=&quot;Blues&quot;, ax=ax)
+
+ax.set_title(&quot;Components of the Covariance Matrix cov_f_star, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_71_0.png" alt="png" />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
+
+for i in range(0, 100):
+    # Sample from posterior distribution. 
+    z_star = np.random.multivariate_normal(mean=f_bar_star.squeeze(), cov=cov_f_star)
+    # Plot function.
+    sns.lineplot(x=x_star, y=z_star, color=&quot;blue&quot;, alpha=0.2);
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Samples of Posterior Distribution, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_72_0.png" alt="png" />
+</center>
+<p>The hyperparameter \(_f\) enoces the amplitude of the fit.</p>
+</div>
+<div id="gaussianprocessregressor-from-scikit-learn" class="section level2">
+<h2>GaussianProcessRegressor from Scikit-Learn</h2>
+<p>Note that in the examples above he had to compute the inverse of <span class="math inline">\(K(X,X) + \sigma_n^2 I\)</span>, which can be computationally expensive for larger data sets. A better approach is to use the Cholesky decomposition of <span class="math inline">\(K(X,X) + \sigma_n^2 I\)</span> as describet in <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2 Algorithm 2.1</a>. This is actually the implementation used by <a href="https://scikit-learn.org/stable/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html#sklearn.gaussian_process.GaussianProcessRegressor">Scikit-Learn</a>. We now describe how to fit a GaussianProcessRegressor model using Scikit-Learn and compare it with the results obtained above. Please refer to the <a href="https://scikit-learn.org/stable/auto_examples/gaussian_process/plot_gpr_noisy_targets.html">docomentation example</a> to get more detailed information.</p>
+<div id="kernel-object" class="section level3">
+<h3>Kernel Object</h3>
+<p>There are my <a href="https://scikit-learn.org/stable/modules/classes.html#module-sklearn.gaussian_process">kernel functions</a> implemented in Scikit-Learn. Let us see how define the squared exponential:</p>
+<pre class="python"><code>from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+
+# Define kernel parameters. 
+l = 0.1
+sigma_f = 2
+
+# Define kernel object. 
+kernel = C(sigma_f, (1e-3, 1e3)) * RBF(l, (1e-3, 1e3))</code></pre>
+<p>The tuples on each kernel component represent the lower and upper bound of the hyperparameters. The gaussian process fit automatically selects the best hyperparameters which maximize the log-marginal likelihood. The marginal likelihood is the integral of the likelihood times the prior (to be discussed in detail in a future post).</p>
+</div>
+<div id="gaussianprocessregressor" class="section level3">
+<h3>GaussianProcessRegressor</h3>
+<p>Now we define de <a href="https://scikit-learn.org/stable/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html"><code>GaussianProcessRegressor</code></a> object.</p>
+<pre class="python"><code>from sklearn.gaussian_process import GaussianProcessRegressor
+# Define GaussianProcessRegressor object. 
+gp = GaussianProcessRegressor(kernel=kernel, alpha=sigma_n, n_restarts_optimizer=10)</code></pre>
+<p>We reshape the variables into matrix form.</p>
+<pre class="python"><code>X = x.reshape(n, d)
+X_star = x_star.reshape(n_star, d)</code></pre>
+<pre class="python"><code># Fit to data using Maximum Likelihood Estimation of the parameters.
+gp.fit(X, y)</code></pre>
+<pre><code>GaussianProcessRegressor(alpha=0.4, copy_X_train=True,
+             kernel=1.41**2 * RBF(length_scale=0.1),
+             n_restarts_optimizer=10, normalize_y=False,
+             optimizer=&#39;fmin_l_bfgs_b&#39;, random_state=None)</code></pre>
+</div>
+<div id="predictions" class="section level3">
+<h3>Predictions</h3>
+<pre class="python"><code># Make the prediction on test set.
+y_pred = gp.predict(X_star)</code></pre>
+<p>Let us plot the prediction.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+# Plot prediction. 
+sns.lineplot(x=x_star, y=y_pred, color=&quot;green&quot;, label = &quot;pred&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Prediction GaussianProcessRegressor, sigma_f = {} and l = {}&quot;.format(sigma_f, l));
+ax.set_title(&quot;Components of the Covariance Matrix cov_f_star, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_88_0.png" alt="png" />
+</center>
+<p>Next, we plot this prediction against many samples from the posterior distribution obtained above.</p>
+<pre class="python"><code>K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f = sigma_f, l = l)
+
+f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)
+
+fig, ax = plt.subplots(figsize=(10, 7))
+
+for i in range(0, 100):
+    # Sample from posterior distribution. 
+    z_star = np.random.multivariate_normal(mean=f_bar_star.squeeze(), cov=cov_f_star)
+    # Plot function.
+    sns.lineplot(x=x_star, y=z_star, color=&quot;blue&quot;, alpha=0.05);
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+# Plot prediction. 
+sns.lineplot(x=x_star, y=y_pred, color=&quot;green&quot;, label = &quot;pred&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Prediction GaussianProcessRegressor, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_90_0.png" alt="png" />
+</center>
+</div>
+<div id="confidence-interval" class="section level3">
+<h3>Confidence Interval</h3>
+<p>Let us compute the confidence intervals:</p>
+<pre class="python"><code># Generate samples from posterior distribution. 
+y_hat_samples = np.random.multivariate_normal(mean=f_bar_star.squeeze(), cov=cov_f_star, size=100)
+# Compute the mean of the sample. 
+y_hat = np.apply_over_axes(func=np.mean, a=y_hat_samples, axes=0).squeeze()
+# Compute the standard deviation of the sample. 
+y_hat_sd = np.apply_over_axes(func=np.std, a=y_hat_samples, axes=0).squeeze()</code></pre>
+<p>We now plot the confidence interval corrsponding to a corridor coresponding to two standard deviations.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
+
+# Plot training data.
+sns.scatterplot(x=x, y=y, label=&quot;training data&quot;);
+
+# Plot corridor. 
+plt.fill_between(x=x_star, 
+                 y1=(y_hat - 2*y_hat_sd), 
+                 y2=(y_hat + 2*y_hat_sd), 
+                 color = &quot;green&quot;, alpha = 0.3, 
+                 label = &quot;Confidence Interval&quot;)
+
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x, y=f_x, color=&quot;red&quot;, label = &quot;f(x)&quot;);
+# Plot prediction. 
+sns.lineplot(x=x_star, y=y_pred, color=&quot;green&quot;, label = &quot;pred&quot;);
+
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(&quot;Prediction &amp; Confidence Interval, sigma_f = {} and l = {}&quot;.format(sigma_f, l));</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_95_0.png" alt="png" />
+</center>
+</div>
+</div>
+<div id="summary-final-example" class="section level2">
+<h2>Summary &amp; Final Example</h2>
+<p>In this post we have studied and experimented the fundamentals of gaussian process regression with the intention to gain some intuition about it. Let us finalize with a self-contain example where we only use the tools from Scikit-Learn.</p>
+<div id="construct-training-set" class="section level3">
+<h3>Construct Training Set</h3>
+<pre class="python"><code># Set dimension. 
+d = 1
+# Number of training points.
+n = 500
+# Length of the training set. 
+L = 2
+# Generate training features.
+x = np.linspace(start=0, stop=L, num=n)
+X = x.reshape(n, d)
+# Error standar deviation. 
+sigma_n = 0.4
+# Errors.
+epsilon = np.random.normal(loc=0, scale=sigma_n, size=n)
+
+# Generate function range.
+def f(x):
+    
+    f = np.sin((2*np.pi)*x) + np.sin((4*np.pi)*x) 
+    
+    return(f)
+
+f_x = f(x)
+
+# Observed target variable. 
+y = f_x + epsilon</code></pre>
+</div>
+<div id="construct-test-set" class="section level3">
+<h3>Construct Test Set</h3>
+<pre class="python"><code>n_star = n + 125
+x_star = np.linspace(start=0, stop=(L + 0.5), num=n_star)
+
+X_star = x_star.reshape(n_star, d)</code></pre>
+</div>
+<div id="define-kernel-and-model" class="section level3">
+<h3>Define Kernel and Model</h3>
+<pre class="python"><code># Define kernel parameters. 
+l = 0.1
+sigma_f = 2
+
+# Define kernel object. 
+kernel = C(sigma_f, (1e-3, 1e3)) * RBF(l, (1e-3, 1e3))
+# Define GaussianProcessRegressor object. 
+gp = GaussianProcessRegressor(kernel=kernel, alpha=sigma_n, n_restarts_optimizer=10)</code></pre>
+</div>
+<div id="model-fit-predictions" class="section level3">
+<h3>Model Fit + Predictions</h3>
+<pre class="python"><code># Fit to data using Maximum Likelihood Estimation of the parameters.
+gp.fit(X, y)
+# Make the prediction on test set.
+y_pred = gp.predict(X_star)</code></pre>
+<pre class="python"><code># Generate samples from posterior distribution. 
+y_hat_samples = gp.sample_y(X_star, n_samples=n_star)
+# Compute the mean of the sample. 
+y_hat = np.apply_over_axes(func=np.mean, a=y_hat_samples, axes=1).squeeze()
+# Compute the standard deviation of the sample. 
+y_hat_sd = np.apply_over_axes(func=np.std, a=y_hat_samples, axes=1).squeeze()</code></pre>
+</div>
+<div id="visualize-results" class="section level3">
+<h3>Visualize Results</h3>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 10))
+
+# Plot training data.
+sns.scatterplot(x=x, y=y, label=&quot;training data&quot;);
+
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x_star, 
+             y=f(x_star), 
+             color=&quot;red&quot;, 
+             label = &quot;f(x)&quot;);
+
+# Plot corridor. 
+plt.fill_between(x=x_star, 
+                 y1=(y_hat - 2*y_hat_sd), 
+                 y2=(y_hat + 2*y_hat_sd), 
+                 color = &quot;green&quot;, alpha = 0.3, 
+                 label = &quot;Confidence Interval&quot;)
+
+# Plot prediction. 
+sns.lineplot(x=x_star, y=y_pred, color=&quot;green&quot;, label = &quot;pred&quot;);
+
+ax.legend(loc=&quot;lower left&quot;)
+ax.set_title(&quot;Prediction &amp; Confidence Interval&quot;);</code></pre>
+<center>
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_107_0.png" alt="png" />
+</center>
+<hr />
+<p>This is just the begining. There are many questions which are still open:</p>
+<ul>
+<li>How does the hyperparameter selction works?</li>
+<li>Which other kernels are possible? For example see <a href="https://scikit-learn.org/stable/modules/gaussian_process.html#basic-kernels">here</a>.</li>
+<li>How to generate new kernels? Can we combine kernels to get new ones?</li>
+<li>How to apply these techniques to classification problems?</li>
+</ul>
+<p>I hope to keep exploring these and more questions in future posts.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
