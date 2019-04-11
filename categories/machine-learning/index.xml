@@ -6,10 +6,21 @@
     <description>Recent content in Machine Learning on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 29 Nov 2017 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Thu, 11 Apr 2019 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="/categories/machine-learning/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Seasonal Bump Functions</title>
+      <link>/bump_func/</link>
+      <pubDate>Thu, 11 Apr 2019 00:00:00 +0000</pubDate>
+      
+      <guid>/bump_func/</guid>
+      <description>Motivated by the nice talk on Winning with Simple, even Linear, Models by Vincent D. Warmerdam, I briefly describe how to construct certain class of bump functions to encode seasonal variables in R.
+Prepare Notebook library(glue) library(lubridate) library(magrittr) library(tidyverse)  Generate Data Let us generate a time sequence variable stored in a tibble.
+# Define time sequence. t &amp;lt;- seq.Date(from = as.Date(&amp;quot;2017-07-01&amp;quot;), to = as.Date(&amp;quot;2019-04-01&amp;quot;), by = &amp;quot;day&amp;quot;) # Store it in a tibble.</description>
+    </item>
     
     <item>
       <title>Probability that a given observation is part of a bootstrap sample?</title>

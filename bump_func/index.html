@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>Seasonal Bump Functions - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Seasonal Bump Functions - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">4 min read</span>
+    
+
+    <h1 class="article-title">Seasonal Bump Functions</h1>
+
+    
+    <span class="article-date">2019/04/11</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>Motivated by the nice talk on <a href="https://www.youtube.com/watch?v=68ABAU_V8qI">Winning with Simple, even Linear, Models</a> by Vincent D. Warmerdam, I briefly describe how to construct certain class of <a href="https://en.wikipedia.org/wiki/Bump_function">bump functions</a> to encode seasonal variables in <a href="https://www.r-project.org/">R</a>.</p>
+<div id="prepare-notebook" class="section level1">
+<h1>Prepare Notebook</h1>
+<pre class="r"><code>library(glue)
+library(lubridate)
+library(magrittr)
+library(tidyverse)</code></pre>
+</div>
+<div id="generate-data" class="section level1">
+<h1>Generate Data</h1>
+<p>Let us generate a time sequence variable stored in a tibble.</p>
+<pre class="r"><code># Define time sequence. 
+t &lt;- seq.Date(from = as.Date(&quot;2017-07-01&quot;), to = as.Date(&quot;2019-04-01&quot;), by = &quot;day&quot;)
+# Store it in a tibble. 
+df &lt;- tibble(t = t)</code></pre>
+</div>
+<div id="symmetric-bump-function" class="section level1">
+<h1>Symmetric Bump Function</h1>
+<p>We want to generate a gaussian-like curve around a specific date. The width of the bump function is parametrized by a non-negative number <span class="math inline">\(\varepsilon \geq 0\)</span>. For <span class="math inline">\(\varepsilon = 0\)</span> we generate a dummy variable. Namely, for <span class="math inline">\(\varepsilon \neq 0\)</span>,</p>
+<p><span class="math display">\[
+f_{x_0, \varepsilon}(x) = \exp\left(- \left(\frac{x - x_0}{\varepsilon}\right)^2 \right)
+\]</span></p>
+<p>In R,</p>
+<pre class="r"><code>bump_func &lt;- function(x, x_0 = 0, epsilon = 1) {
+  # If `epsilon` = 0, we encode it as a dummy variable.
+  if (epsilon == 0) {
+    as.numeric(x == x_0)
+  } else {
+    delta &lt;-  as.numeric(x - x_0)
+    exp(- (delta / epsilon)^2)
+  }
+}</code></pre>
+<div id="examples" class="section level2">
+<h2>Examples</h2>
+<p>Let us asumme we want to model the effect of Christmas <code>2018-12-24</code>.</p>
+<ul>
+<li><span class="math inline">\(\varepsilon = 0\)</span> will generate a dummy variable.</li>
+</ul>
+<pre class="r"><code>epsilon &lt;- 0
+
+df %&gt;% 
+  mutate(y = bump_func(x = t, 
+                       x_0 = as.Date(&quot;2018-12-24&quot;), 
+                       epsilon = epsilon)) %&gt;% 
+  ggplot() +
+  geom_line(mapping = aes(x = t, y = y)) +
+  xlab(&quot;Date&quot;) +
+  ylab(&quot;&quot;) +
+  ggtitle(label = glue(&quot;Bump Seasonal Variable - epsilon = {epsilon}&quot;))</code></pre>
+<p><img src="../post/bump_func_files/figure-html/unnamed-chunk-5-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li><span class="math inline">\(\varepsilon = 8\)</span> will generate a bump function around <code>2018-12-24</code>.</li>
+</ul>
+<pre class="r"><code>epsilon &lt;- 8
+
+df %&gt;% 
+  mutate(y = bump_func(x = t, 
+                       x_0 = as.Date(&quot;2018-12-24&quot;),
+                       epsilon = 8)) %&gt;% 
+  ggplot() +
+  geom_line(mapping = aes(x = t, y = y)) +
+  xlab(&quot;Date&quot;) +
+  ylab(&quot;&quot;) +
+  ggtitle(label = glue(&quot;Bump Seasonal Variable - epsilon = {epsilon}&quot;))</code></pre>
+<p><img src="../post/bump_func_files/figure-html/unnamed-chunk-6-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Let us see how to do it for repeated dates and events:</p>
+<pre class="r"><code>epsilon &lt;- 8
+
+christmas_dates &lt;- c(as.Date(&quot;2017-12-24&quot;), as.Date(&quot;2018-12-24&quot;))
+halloween_dates &lt;- c(as.Date(&quot;2017-10-31&quot;), as.Date(&quot;2018-10-31&quot;))
+
+df %&gt;% 
+  mutate(
+    y_christmas = map(
+      .x = christmas_dates, 
+      .f = ~ bump_func(x = t, x_0 = .x, epsilon = epsilon)) %&gt;% 
+      reduce(.f = ~ .x + .y),
+    
+    y_halloween = map(
+      .x = halloween_dates, 
+      .f = ~ bump_func(x = t, x_0 = .x, epsilon = epsilon)) %&gt;% 
+      reduce(.f = ~ .x + .y)) %&gt;% 
+  gather(key = Event, value = value, ... = y_christmas, y_halloween) %&gt;% 
+  # Plot variables.
+  ggplot() +
+  geom_line(mapping = aes(x = t, y = value, color = Event)) +
+  xlab(&quot;Date&quot;) +
+  ylab(&quot;&quot;) +
+  ggtitle(label = glue(&quot;Bump Seasonal Variable - epsilon = {epsilon}&quot;))</code></pre>
+<p><img src="../post/bump_func_files/figure-html/unnamed-chunk-7-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="asymmetric-bump-function" class="section level1">
+<h1>Asymmetric Bump Function</h1>
+<p>Sometimes the effect before and after the seasonal variable is note the same. To model this we can tweak the bump function defined above so that:</p>
+<ul>
+<li>It is not symmetric.</li>
+<li>It can have a drop after the seasonal variable (an potentially have different effect sizes).</li>
+</ul>
+<p>A natural candidate to fulfill these requirements is</p>
+<p><span class="math display">\[
+a_{-} f_{x_0, \varepsilon_{-}}(x) \pm a_{+} f_{x_0, \varepsilon_{+}}(x)
+\]</span>
+where:</p>
+<ul>
+<li><p><span class="math inline">\(f_{x_0, \varepsilon_{\pm}}\)</span> denotes the bump function defined above.</p></li>
+<li><p><span class="math inline">\(\varepsilon_{-}, \varepsilon_{+} &gt;0\)</span> denote the width (variance) before and after <span class="math inline">\(x_0\)</span> respectively.</p></li>
+<li><p><span class="math inline">\(a_{-}, a_{+} &gt;0\)</span> denote the amplitudes before and after <span class="math inline">\(x_0\)</span> respectively.</p></li>
+</ul>
+<p>We now write this function in R.</p>
+<pre class="r"><code>asymmestric_bump_func &lt;- function(
+  # Input vector.
+  x,
+  # Maximum of bump function.
+  x_0, 
+  # Width of bump function before `x_0`.
+  epsilon_minus = 1, 
+  # Width of bump function after `x_0`.
+  epsilon_plus = 1, 
+  # Amplitude of bump function before `x_0`.
+  a_minus = 1, 
+  # Amplitude of bump function after `x_0`.
+  a_plus = 1, 
+  # Wether to have a drom after `x_0`.
+  drop = FALSE
+  ) {
+  
+  delta &lt;- as.numeric(x - x_0)
+  # Define indicator functions.
+  indicator_minus &lt;- as.numeric(delta &lt; 0)
+  indicator_plus &lt;- as.numeric(delta &gt;= 0)
+  
+  # Calculate bump function components. 
+  y_minus &lt;- a_minus * indicator_minus * bump_func(x = x, x_0 = x_0, epsilon = epsilon_minus) 
+  y_plus &lt;- a_plus*indicator_plus * bump_func(x = x, x_0 = x_0, epsilon = epsilon_plus)
+  # Calculate sign depending on the drop choice. 
+  drop_sign &lt;- 2*as.numeric(drop) - 1
+  
+  y &lt;- y_minus  - drop_sign*y_plus
+  
+  return(y)
+}</code></pre>
+<div id="examples-1" class="section level2">
+<h2>Examples</h2>
+<p>Let us ilustrate the results for Christmas <code>2017-12-24</code>.</p>
+<div id="without-drop" class="section level3">
+<h3>Without Drop</h3>
+<pre class="r"><code>df  %&gt;% 
+  mutate(y =  asymmestric_bump_func(x = t,
+                                    x_0 = as.Date(&quot;2017-12-24&quot;),
+                                    epsilon_minus = 20,
+                                    epsilon_plus = 4, 
+                                    drop = FALSE)) %&gt;% 
+  # Filter for visualization (zoom in). 
+  filter(t &lt; &quot;2018-02-01&quot;) %&gt;% 
+  ggplot() +
+  geom_line(mapping = aes(x = t, y = y)) +
+  xlab(&quot;Date&quot;) +
+  ylab(&quot;&quot;) +
+  ggtitle(label = glue(&quot;Asymmetric Bump Function&quot;))</code></pre>
+<p><img src="../post/bump_func_files/figure-html/unnamed-chunk-9-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="with-drop" class="section level3">
+<h3>With Drop</h3>
+<pre class="r"><code>df  %&gt;% 
+  mutate(y =  asymmestric_bump_func(x = t,
+                                    x_0 = as.Date(&quot;2017-12-24&quot;),
+                                    epsilon_minus = 15,
+                                    epsilon_plus = 4, 
+                                    a_minus = 1, 
+                                    a_plus = 0.3,
+                                    drop = TRUE)) %&gt;% 
+  # Filter for visualization (zoom in). 
+  filter(t &lt; &quot;2018-02-01&quot;) %&gt;% 
+  ggplot() +
+  geom_line(mapping = aes(x = t, y = y)) +
+  xlab(&quot;Date&quot;) +
+  ylab(&quot;&quot;) +
+  ggtitle(label = glue(&quot;Asymmetric Bumb Function with Drop&quot;))</code></pre>
+<p><img src="../post/bump_func_files/figure-html/unnamed-chunk-10-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

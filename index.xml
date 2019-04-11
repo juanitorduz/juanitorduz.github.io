@@ -6,10 +6,21 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 08 Apr 2019 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Thu, 11 Apr 2019 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Seasonal Bump Functions</title>
+      <link>/bump_func/</link>
+      <pubDate>Thu, 11 Apr 2019 00:00:00 +0000</pubDate>
+      
+      <guid>/bump_func/</guid>
+      <description>Motivated by the nice talk on Winning with Simple, even Linear, Models by Vincent D. Warmerdam, I briefly describe how to construct certain class of bump functions to encode seasonal variables in R.
+Prepare Notebook library(glue) library(lubridate) library(magrittr) library(tidyverse)  Generate Data Let us generate a time sequence variable stored in a tibble.
+# Define time sequence. t &amp;lt;- seq.Date(from = as.Date(&amp;quot;2017-07-01&amp;quot;), to = as.Date(&amp;quot;2019-04-01&amp;quot;), by = &amp;quot;day&amp;quot;) # Store it in a tibble.</description>
+    </item>
     
     <item>
       <title>An Introduction to Gaussian Process Regression</title>
@@ -120,7 +131,7 @@ When the number of features \(p\) is large, there tends to be a deterioration in
       <pubDate>Sat, 01 Dec 2018 00:00:00 +0000</pubDate>
       
       <guid>/about/</guid>
-      <description>Dr. Juan Camilo Orduz Mathematician &amp;amp; Data Scientist    
+      <description>Dr. Juan Camilo Orduz Mathematician &amp;amp; Data Scientist    --  
 I have a PhD and Master degree in Mathematics from Humboldt Universität zu Berlin under the supervision of Prof. Jochen Brüning. My graduate studies were supported by the Berlin Mathematical School. Here I share my experience. Before coming to Berlin I did two bachelor degrees: Mathematics and Physics at Universidad de los Andes.
 My research interests are differential geometry, topology and geometric analysis, in particular variants of the Atiyah-Singer Index Theorem for singular spaces.</description>
     </item>
