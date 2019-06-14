@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.52" />
+
+
+<title>satRday Berlin 2019: Remedies for Severe Class Imbalance - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="satRday Berlin 2019: Remedies for Severe Class Imbalance - Dr. Juan Camilo Orduz">
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">Linkedin</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">40 min read</span>
+    
+
+    <h1 class="article-title">satRday Berlin 2019: Remedies for Severe Class Imbalance</h1>
+
+    
+    <span class="article-date">2019/06/15</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post I present a concrete case study illustrating some techniques to improve model performance in class-imbalanced classification problems. The methodologies described here are based on <em>Chapter 16: Remedies for Severe Class Imbalance</em> of the (great!) book <a href="http://appliedpredictivemodeling.com/">Applied Predictive Modeling</a> by Max Kuhn and Kjell Johnson. I absolutely recommend this reference to anyone interested in predictive modeling.</p>
+<p>This notebook should serve as an extension of my talk given at <a href="https://berlin2019.satrdays.org/">satRday Berlin 2019: A conference for R users in Berlin</a>. Here are the slides:</p>
+<iframe src="../html/orduz_satRday19.html" width="672" height="400px">
+</iframe>
+<div id="the-data-set" class="section level1">
+<h1>The Data Set</h1>
+<p>The data set we are going to work with is the one suggested in Exercise 16.1 of the reference mentioned above:</p>
+<p><em>The <a href="https://archive.ics.uci.edu/ml/datasets/Adult">“adult” data set</a> at the <a href="https://archive.ics.uci.edu/ml/index.php">UCI Machine Learning Repository</a> is derived from census records. In these data, the goal is to predict whether a person’s income was large (defined in 1994 as more than $50K) or small. The predictors include educational level, type of job (e.g., never worked, and local government), capital gains/losses, work hours per week, native country, and so on.</em></p>
+<p>The data are contained in the <a href="https://cran.r-project.org/web/packages/arules/index.html">arules</a> package.</p>
+<p><strong>Remark</strong> The objective of this post is <strong>not</strong> to find the “best” predictive model, but rather explore the techniques to handle class imbalance. There is a large amount of literature around this concrete data set, e.g. see <a href="https://rpubs.com/H_Zhu/235617">this post</a> or the <a href="https://www.kaggle.com/uciml/adult-census-income">Kaggle kernels</a>.</p>
+</div>
+<div id="prepare-notebook" class="section level1">
+<h1>Prepare Notebook</h1>
+<pre class="r"><code># Load Libraries
+library(caret)
+library(gbm)
+library(magrittr)
+library(pROC)
+library(tidyverse)
+
+# Allow parallel computation.
+library(parallel)
+library(doParallel)
+
+# Load Data
+data(AdultUCI, package = &quot;arules&quot;)
+raw_data &lt;- AdultUCI</code></pre>
+</div>
+<div id="data-audit" class="section level1">
+<h1>Data Audit</h1>
+<p>Let us start with first exploration of the data set:</p>
+<pre class="r"><code># See Data Structure. 
+glimpse(raw_data)</code></pre>
+<pre><code>## Observations: 48,842
+## Variables: 15
+## $ age              &lt;int&gt; 39, 50, 38, 53, 28, 37, 49, 52, 31, 42, 37, 30,…
+## $ workclass        &lt;fct&gt; State-gov, Self-emp-not-inc, Private, Private, …
+## $ fnlwgt           &lt;int&gt; 77516, 83311, 215646, 234721, 338409, 284582, 1…
+## $ education        &lt;ord&gt; Bachelors, Bachelors, HS-grad, 11th, Bachelors,…
+## $ `education-num`  &lt;int&gt; 13, 13, 9, 7, 13, 14, 5, 9, 14, 13, 10, 13, 13,…
+## $ `marital-status` &lt;fct&gt; Never-married, Married-civ-spouse, Divorced, Ma…
+## $ occupation       &lt;fct&gt; Adm-clerical, Exec-managerial, Handlers-cleaner…
+## $ relationship     &lt;fct&gt; Not-in-family, Husband, Not-in-family, Husband,…
+## $ race             &lt;fct&gt; White, White, White, Black, Black, White, Black…
+## $ sex              &lt;fct&gt; Male, Male, Male, Male, Female, Female, Female,…
+## $ `capital-gain`   &lt;int&gt; 2174, 0, 0, 0, 0, 0, 0, 0, 14084, 5178, 0, 0, 0…
+## $ `capital-loss`   &lt;int&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,…
+## $ `hours-per-week` &lt;int&gt; 40, 13, 40, 40, 40, 40, 16, 45, 50, 40, 80, 40,…
+## $ `native-country` &lt;fct&gt; United-States, United-States, United-States, Un…
+## $ income           &lt;ord&gt; small, small, small, small, small, small, small…</code></pre>
+<p>The variable we are interested to predict is <code>income</code>. Let us see its distribution.</p>
+<pre class="r"><code>raw_data %&gt;% 
+  count(income) %&gt;% 
+  mutate(share = n / sum(n))</code></pre>
+<pre><code>## # A tibble: 3 x 3
+##   income     n share
+##   &lt;ord&gt;  &lt;int&gt; &lt;dbl&gt;
+## 1 small  24720 0.506
+## 2 large   7841 0.161
+## 3 &lt;NA&gt;   16281 0.333</code></pre>
+<p>The first thing we see is that 1/3 of the data has no <code>income</code> label.</p>
+<p>In addition, as described in the <a href="https://cran.r-project.org/web/packages/arules/index.html">arules</a> package’s documentation, the <code>fnlwgt</code> (final weight) and <code>education</code> can be removed from the data. The last one being another representation of the attribute <code>education-num</code>. To see this</p>
+<pre class="r"><code>raw_data %&gt;% 
+  select(education, `education-num`) %&gt;% 
+  table()</code></pre>
+<pre><code>##               education-num
+## education          1     2     3     4     5     6     7     8     9    10
+##   Preschool       83     0     0     0     0     0     0     0     0     0
+##   1st-4th          0   247     0     0     0     0     0     0     0     0
+##   5th-6th          0     0   509     0     0     0     0     0     0     0
+##   7th-8th          0     0     0   955     0     0     0     0     0     0
+##   9th              0     0     0     0   756     0     0     0     0     0
+##   10th             0     0     0     0     0  1389     0     0     0     0
+##   11th             0     0     0     0     0     0  1812     0     0     0
+##   12th             0     0     0     0     0     0     0   657     0     0
+##   HS-grad          0     0     0     0     0     0     0     0 15784     0
+##   Prof-school      0     0     0     0     0     0     0     0     0     0
+##   Assoc-acdm       0     0     0     0     0     0     0     0     0     0
+##   Assoc-voc        0     0     0     0     0     0     0     0     0     0
+##   Some-college     0     0     0     0     0     0     0     0     0 10878
+##   Bachelors        0     0     0     0     0     0     0     0     0     0
+##   Masters          0     0     0     0     0     0     0     0     0     0
+##   Doctorate        0     0     0     0     0     0     0     0     0     0
+##               education-num
+## education         11    12    13    14    15    16
+##   Preschool        0     0     0     0     0     0
+##   1st-4th          0     0     0     0     0     0
+##   5th-6th          0     0     0     0     0     0
+##   7th-8th          0     0     0     0     0     0
+##   9th              0     0     0     0     0     0
+##   10th             0     0     0     0     0     0
+##   11th             0     0     0     0     0     0
+##   12th             0     0     0     0     0     0
+##   HS-grad          0     0     0     0     0     0
+##   Prof-school      0     0     0     0   834     0
+##   Assoc-acdm       0  1601     0     0     0     0
+##   Assoc-voc     2061     0     0     0     0     0
+##   Some-college     0     0     0     0     0     0
+##   Bachelors        0     0  8025     0     0     0
+##   Masters          0     0     0  2657     0     0
+##   Doctorate        0     0     0     0     0   594</code></pre>
+<p>In addition, let us see the distribution (share) of the variable <code>country</code>:</p>
+<pre class="r"><code>raw_data %&gt;% 
+  count(`native-country`) %&gt;%
+  mutate(n = n / sum(n)) %&gt;% 
+  mutate(`native-country` = reorder(`native-country` , n)) %&gt;% 
+  ggplot(mapping = aes(x = `native-country`, y = n)) +
+    geom_bar(stat = &quot;identity&quot;, color = &quot;black&quot;) + 
+    coord_flip() +
+    labs(title = &quot;Country Distribution&quot;, x = &quot;&quot;, y = &quot;&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-6-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Most of the samples come from the United States. In a first iteration, we are going to omit this variable as well.</p>
+<p>We therefore consider the filtered data set:</p>
+<pre class="r"><code>format_raw_data &lt;- function(df) {
+  
+  output_df_df &lt;- df %&gt;% 
+   filter(!is.na(income)) %&gt;% 
+   select(- fnlwgt, - education, - `native-country`)
+  
+  return(output_df_df)
+}
+
+data_df &lt;- format_raw_data(df = raw_data)</code></pre>
+<p><strong>Remark:</strong> We could have done a deeper analysis on the <code>NA</code> values for the variable <code>income</code>, but we just drop them for simplicity.</p>
+<p>We are going to store function, models and other parameters in a list (to be able to user later).</p>
+<pre class="r"><code># Define storing list. 
+model_list &lt;- vector(mode = &quot;list&quot;)
+
+model_list[[&quot;functions&quot;]] &lt;- list(format_raw_data = format_raw_data)</code></pre>
+</div>
+<div id="exploratory-data-analysis" class="section level1">
+<h1>Exploratory Data Analysis</h1>
+<div id="dependent-variable" class="section level2">
+<h2>Dependent Variable</h2>
+<p>Let us see the distribution of the <code>income</code> variable.</p>
+<pre class="r"><code>data_df %&gt;% 
+  count(income) %&gt;% 
+  mutate(n = n / sum(n))</code></pre>
+<pre><code>## # A tibble: 2 x 2
+##   income     n
+##   &lt;ord&gt;  &lt;dbl&gt;
+## 1 small  0.759
+## 2 large  0.241</code></pre>
+<pre class="r"><code>data_df %&gt;% 
+  count(income) %&gt;% 
+  ggplot(mapping = aes(x = income, y = n, fill = income)) +
+  geom_bar(stat = &quot;identity&quot;, color = &quot;black&quot;) +
+  labs(title = &quot;Income Distribution&quot;, y = &quot;&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-10-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>That is, the <code>income</code> variable is not balanced.</p>
+</div>
+<div id="independent-variables" class="section level2">
+<h2>Independent Variables</h2>
+<p>Next we explore each predictor variable.</p>
+<ul>
+<li>Age</li>
+</ul>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = age, y = ..density.., fill = income)) +
+  geom_density(alpha = 0.8) +
+  labs(title = &quot;Age Distribution&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-11-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = income, y = age, fill = income)) +
+  geom_boxplot() +
+  labs(title = &quot;Age Distribution&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-12-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>It seems that the <code>age</code> attribute could potentially be a good predictor for <code>income</code>.</p>
+<ul>
+<li>Workclass</li>
+</ul>
+<p>Many of the features are categorical variables, therefore we write generic functions to generate the plots.</p>
+<pre class="r"><code>get_bar_plot &lt;- function (df, var_name, sort_cols = TRUE) {
+  
+  var_name_sym &lt;- rlang::sym(var_name)
+  
+  count_df &lt;- df %&gt;% count(!!var_name_sym ) 
+  
+  if (sort_cols) {
+    count_df %&lt;&gt;% mutate(!!var_name_sym  := reorder(!!var_name_sym , n))
+  }
+     
+  count_df %&gt;% 
+    ggplot(mapping = aes(x = !!var_name_sym , y = n)) +
+    geom_bar(stat = &quot;identity&quot;, fill = &quot;purple4&quot;) + 
+    coord_flip() +
+    labs(title = var_name) + scale_fill_brewer(palette = &quot;Set1&quot;)
+    
+}
+
+get_bar_plot(df = data_df, var_name = &quot;workclass&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-13-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_split_bar_plot &lt;- function(df, var_name, group_var_name, sort_cols = TRUE) {
+  
+  var_name_sym &lt;- rlang::sym(var_name)
+  group_var_name_sym &lt;- rlang::sym(group_var_name)
+  
+  count_df &lt;- df %&gt;% count(!!var_name_sym, !!group_var_name_sym) 
+  
+  if (sort_cols) {
+    count_df %&lt;&gt;% mutate(!!var_name_sym  := reorder(!!var_name_sym , n))
+  }
+  
+  count_df %&gt;% 
+    ggplot(mapping = aes(x = !!var_name_sym, y = n, fill = !!group_var_name_sym)) +
+    geom_bar(stat = &quot;identity&quot;, color = &quot;black&quot;) + 
+    coord_flip() +
+    labs(title = var_name) +
+    facet_grid(cols = vars(!!group_var_name_sym)) +
+    scale_fill_brewer(palette = &quot;Set1&quot;)
+}
+
+get_split_bar_plot(df = data_df, var_name = &quot;workclass&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-14-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_stacked_bar_plot &lt;- function(df, var_name, group_var_name, sort_cols = TRUE) {
+  
+  var_name_sym &lt;- rlang::sym(var_name)
+  group_var_name_sym &lt;- rlang::sym(group_var_name)
+  
+  count_df &lt;- df %&gt;% count(!!var_name_sym, !!group_var_name_sym) 
+  
+  if (sort_cols) {
+    count_df %&lt;&gt;% mutate(!!var_name_sym  := reorder(!!var_name_sym , n))
+  }
+  
+  count_df %&gt;% 
+    ggplot(mapping = aes(x = !!var_name_sym, y = n, fill = !!group_var_name_sym)) +
+    geom_bar(stat = &quot;identity&quot;, color = &quot;black&quot;, position = &quot;fill&quot;) + 
+    coord_flip() +
+    labs(title = glue::glue(&quot;{var_name} - Share&quot;)) +
+    scale_fill_brewer(palette = &quot;Set1&quot;)
+}
+
+get_stacked_bar_plot(df = data_df, var_name = &quot;workclass&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-15-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>Education</li>
+</ul>
+<p>For the <code>education-num</code> plots we keep the ranking on the axis.</p>
+<pre class="r"><code>get_bar_plot(df = data_df, var_name = &quot;education-num&quot;, sort_cols = FALSE)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-16-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_split_bar_plot(df = data_df, var_name = &quot;education-num&quot;, group_var_name = &quot;income&quot;, sort_cols = FALSE)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-17-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_stacked_bar_plot(df = data_df, var_name = &quot;education-num&quot;, group_var_name = &quot;income&quot;, sort_cols = FALSE)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-18-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>This plot shows that <code>education-num</code> might be a good predictor.</p>
+<ul>
+<li>Marital Status</li>
+</ul>
+<pre class="r"><code>get_bar_plot(df = data_df, var_name = &quot;marital-status&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-19-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_split_bar_plot(df = data_df, var_name = &quot;marital-status&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-20-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_stacked_bar_plot(df = data_df, var_name = &quot;marital-status&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-21-1.png" width="672" /></p>
+<ul>
+<li>Occupation</li>
+</ul>
+<pre class="r"><code>get_bar_plot(df = data_df, var_name = &quot;occupation&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-22-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_split_bar_plot(df = data_df, var_name = &quot;occupation&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-23-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_stacked_bar_plot(df = data_df, var_name = &quot;occupation&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-24-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>Relationship</li>
+</ul>
+<pre class="r"><code>get_bar_plot(df = data_df, var_name = &quot;relationship&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-25-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_split_bar_plot(df = data_df, var_name = &quot;relationship&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-26-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_stacked_bar_plot(df = data_df, var_name = &quot;relationship&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-27-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>Race</li>
+</ul>
+<pre class="r"><code>get_bar_plot(df = data_df, var_name = &quot;race&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-28-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_split_bar_plot(df = data_df, var_name = &quot;race&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-29-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_stacked_bar_plot(df = data_df, var_name = &quot;race&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-30-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>Sex</li>
+</ul>
+<pre class="r"><code>get_bar_plot(df = data_df, var_name = &quot;sex&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-31-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_split_bar_plot(df = data_df, var_name = &quot;sex&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-32-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>get_stacked_bar_plot(df = data_df, var_name = &quot;sex&quot;, group_var_name = &quot;income&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-33-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>The variable <code>sex</code> might also be a good predictor.</p>
+<ul>
+<li>Capital Gain</li>
+</ul>
+<p>We transform the <code>capital-gain</code> and <code>capital-loss</code> via <span class="math inline">\(x\mapsto \log(x + 1)\)</span> to overcome the skewness of their distribution.</p>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = log(`capital-gain` + 1), y = ..density.., fill = income)) +
+  geom_density(alpha = 0.8) +
+  labs(title = &quot;Log Capital Gain&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-34-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = log(`capital-gain` + 1), y = age, fill = income)) +
+  geom_boxplot() +
+  labs(title = &quot;Log Capital Gain&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-35-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>Capital Loss</li>
+</ul>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = log(`capital-loss` + 1), y = ..density.., fill = income)) +
+  geom_density(alpha = 0.8) +
+  labs(title = &quot;Capital Loss&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-36-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = log(`capital-loss` + 1), y = age, fill = income)) +
+  geom_boxplot() +
+  labs(title = &quot;Log Capital Loss&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-37-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>Hours per Week</li>
+</ul>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = `hours-per-week`, y = ..density.., fill = income)) +
+  geom_density(alpha = 0.5) +
+  labs(title = &quot;Hours per Week&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-38-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>data_df %&gt;% 
+  ggplot(mapping = aes(x = `hours-per-week`, y = age, fill = income)) +
+  geom_boxplot() +
+  labs(title = &quot;Hours per Week&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-39-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="feature-engineering" class="section level1">
+<h1>Feature Engineering</h1>
+<p>We save the transformations into a function (to be applied to new data).</p>
+<pre class="r"><code>transform_data &lt;- function (df) {
+  
+  output_df &lt;- df %&gt;% 
+    mutate(capital_gain_log = log(`capital-gain` + 1), 
+           capital_loss_log = log(`capital-loss` + 1)) %&gt;% 
+    select(- `capital-gain`, - `capital-loss`) %&gt;% 
+    drop_na()
+  
+  return(output_df)
+}
+
+df &lt;- transform_data(df = data_df)</code></pre>
+<p>Next, we format the data so that it is usable for machine learning models.</p>
+<pre class="r"><code>format_data &lt;- function (df) {
+  
+  # Define observation matrix and target vector. 
+  X &lt;- df %&gt;% select(- income)
+  y &lt;- df %&gt;% pull(income) %&gt;% fct_rev()
+  
+  # Add dummy variables. 
+  dummy_obj &lt;- dummyVars(&quot;~ .&quot;, data = X, sep = &quot;_&quot;)
+  
+  X &lt;- predict(object = dummy_obj, newdata = X) %&gt;% as_tibble()
+  
+  # Remove predictors with near zero variance. 
+  cols_to_rm &lt;- colnames(X)[nearZeroVar(x = X, freqCut = 5000)]
+  
+  X %&lt;&gt;% select(- cols_to_rm) 
+  
+  return(list(X = X, y = y))
+}
+
+format_data_list &lt;- format_data(df = df)
+
+X &lt;- format_data_list$X
+y &lt;- format_data_list$y</code></pre>
+<pre class="r"><code># Add function to model list. 
+model_list$functions$transform_data &lt;- transform_data
+model_list$functions$format_data &lt;- format_data</code></pre>
+</div>
+<div id="data-split" class="section level1">
+<h1>Data Split</h1>
+<p>Let us now split the data. We are interested in generating three partitions:</p>
+<ul>
+<li>Training Set: Data to fit the model.</li>
+<li>Evaluation Set: Data used post-processing techniques.</li>
+<li>Test Set: Data used to evaluate model performance.</li>
+</ul>
+<pre class="r"><code># Set seed to make results reproducible. 
+seed &lt;- 1 
+set.seed(seed = seed)
+model_list$seed &lt;- seed
+
+split_data &lt;- function (X, y) {
+  
+  # Split train - other
+  split_index_1 &lt;- createDataPartition(y = y, p = 0.7)$Resample1
+  
+  X_train &lt;- X[split_index_1, ]
+  y_train &lt;- y[split_index_1]
+  
+  X_other &lt;- X[- split_index_1, ]
+  y_other &lt;- y[- split_index_1]
+  
+  split_index_2 &lt;- createDataPartition(y = y_other, p = 1/3)$Resample1
+  
+  # Split evaluation - test
+  X_eval &lt;- X_other[split_index_2, ]
+  y_eval &lt;- y_other[split_index_2]
+  
+  X_test &lt;- X_other[- split_index_2, ]
+  y_test &lt;- y_other[- split_index_2]
+  
+  output_list &lt;- list(
+    
+    X_train = X_train,
+    y_train = y_train, 
+    X_eval = X_eval,
+    y_eval = y_eval, 
+    X_test = X_test,
+    y_test = y_test
+    
+  )
+  
+  return(output_list)
+}
+
+split_data_list &lt;- split_data(X = X, y = y)
+
+X_train &lt;- split_data_list$X_train
+y_train &lt;- split_data_list$y_train
+
+X_eval &lt;- split_data_list$X_eval
+y_eval &lt;- split_data_list$y_eval
+
+X_test &lt;- split_data_list$X_test
+y_test &lt;- split_data_list$y_test</code></pre>
+<pre class="r"><code># Add function to model list. 
+model_list$functions$split_data &lt;- split_data</code></pre>
+</div>
+<div id="performance-metrics" class="section level1">
+<h1>Performance Metrics</h1>
+<p>Before the model fit process, let us briefly recall some common performance metrics for classification problems.</p>
+<ul>
+<li><p><a href="https://en.wikipedia.org/wiki/Confusion_matrix">Confision Matrix</a></p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">C</th>
+<th>ondition Positive C</th>
+<th align="left">ondition Negative</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">Prediction Positive</td>
+<td>TP</td>
+<td align="left">FP</td>
+</tr>
+<tr class="even">
+<td align="right">Prediction Negative</td>
+<td>FN</td>
+<td align="left">TN</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>TP = True Positive</li>
+<li>TN = True Negative</li>
+<li>FP = False Positive</li>
+<li>FN = False Negative</li>
+<li>N = TP + TN + FP + FN</li>
+</ul></li>
+<li><p>Accuracy</p></li>
+</ul>
+<p><span class="math display">\[
+\text{acc} = \frac{TP + TN}{N}
+\]</span></p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Cohen%27s_kappa">Kappa</a></li>
+</ul>
+<p><span class="math display">\[
+\kappa = \frac{p_o - p_e}{1 - p_e}
+\]</span>
+where</p>
+<ul>
+<li><span class="math inline">\(p_e\)</span> = Expected Accuracy (random chance).</li>
+<li><span class="math inline">\(p_o\)</span> = Observed Accuracy.</li>
+</ul>
+<p>The kappa metric can be thought as a modification of the accuracy metric based on the class proportions.</p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Sensitivity_and_specificity">Sensitivity</a> (= Recall)</li>
+</ul>
+<p><span class="math display">\[
+\text{sens} = \frac{TP}{TP + FN}
+\]</span></p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Sensitivity_and_specificity">Specitivity</a></li>
+</ul>
+<p><span class="math display">\[
+\text{spec} = \frac{TN}{TN + FP}
+\]</span></p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/Precision_and_recall">Precision</a></li>
+</ul>
+<p><span class="math display">\[
+\text{prec} = \frac{TP}{TP + FP}
+\]</span></p>
+<ul>
+<li><a href="https://en.wikipedia.org/wiki/F1_score"><span class="math inline">\(F_\beta\)</span></a></li>
+</ul>
+<p><span class="math display">\[
+F_\beta = (1 + \beta^2)\frac{\text{prec}\times \text{recall}}{\beta^2\text{prec} + \text{recall}}
+\]</span></p>
+<ul>
+<li>AUC</li>
+</ul>
+<p>This metric refers to the area under the curve of the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic">ROC</a> curve, which is created by plotting the true positive rate (= sensitivity) against the false positive rate (1 − specificity) at various propability threshold. The AUC does not depend on the cutoff probability threshold for the predicted classes.</p>
+</div>
+<div id="prediction-models" class="section level1">
+<h1>Prediction Models</h1>
+<p>Next, we are going to train various machine learning models to compare performance and explore some techniques to overcome the class imbalance problem. We will start with very simple models in order to benchmark the performance metrics discussed above.</p>
+<div id="trivial-model" class="section level2">
+<h2>Trivial Model</h2>
+<p>Let us consider the model which always predicts <code>income</code> = <code>small</code>.</p>
+<pre class="r"><code>y_pred_trivial &lt;- map_chr(.x = y_test, .f = ~ &quot;small&quot;) %&gt;% 
+  as_factor(ordered = TRUE, levels = c(&quot;small&quot;, &quot;large&quot;))
+
+# Confusion Matrix. 
+conf_matrix_trivial &lt;-  confusionMatrix(data = y_pred_trivial, reference =  y_test)
+conf_matrix_trivial</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large     0     0
+##      small  1530  4613
+##                                           
+##                Accuracy : 0.7509          
+##                  95% CI : (0.7399, 0.7617)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : 0.5069          
+##                                           
+##                   Kappa : 0               
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt;2e-16          
+##                                           
+##             Sensitivity : 0.0000          
+##             Specificity : 1.0000          
+##          Pos Pred Value :    NaN          
+##          Neg Pred Value : 0.7509          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.0000          
+##    Detection Prevalence : 0.0000          
+##       Balanced Accuracy : 0.5000          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>Note that the accuracy is 0.75. Nevertheless, both kappa and the senitivity metrics vanish. Let us see the ROC curve:</p>
+<pre class="r"><code>roc_curve_trivial &lt;- roc(response = y_test, predictor = rep(0, length(y_pred_trivial)))
+
+auc_trivial &lt;- roc_curve_trivial %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_trivial)
+title(main = str_c(&quot;Trivial Model - ROC AUC (Test Set) = &quot;, auc_trivial), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-47-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="random-model" class="section level2">
+<h2>Random Model</h2>
+<p>Next, Let us now generate random predictions based on the proportion of the target variable.</p>
+<pre class="r"><code>prop &lt;- sum(y_train == &quot;large&quot;) / length(y_train)
+
+y_pred_random_num &lt;- rbernoulli(n = length(y_test), p = prop) %&gt;% as.numeric()
+
+y_pred_random &lt;- y_pred_random_num %&gt;% 
+  map_chr(.f = ~ ifelse(test = (.x == 0), yes = &quot;small&quot;, no = &quot;large&quot;)) %&gt;% 
+  as_factor(ordered = TRUE, levels = c(&quot;small&quot;, &quot;large&quot;))
+
+# Confusion Matrix. 
+conf_matrix_random &lt;-  confusionMatrix(data = y_pred_random, reference =  y_test)
+conf_matrix_random</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large   376  1140
+##      small  1154  3473
+##                                           
+##                Accuracy : 0.6266          
+##                  95% CI : (0.6143, 0.6387)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : 1.0000          
+##                                           
+##                   Kappa : -0.0014         
+##                                           
+##  Mcnemar&#39;s Test P-Value : 0.7861          
+##                                           
+##             Sensitivity : 0.24575         
+##             Specificity : 0.75287         
+##          Pos Pred Value : 0.24802         
+##          Neg Pred Value : 0.75059         
+##              Prevalence : 0.24906         
+##          Detection Rate : 0.06121         
+##    Detection Prevalence : 0.24678         
+##       Balanced Accuracy : 0.49931         
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>Note that the accuracy in this case is 0.63 (still above 0.5). Also, we see how this random model has a non-vanishing sensitivity. Moreover, note that the sentitivity and specificity concide (approximately) with the parameter <code>prop</code> and 1 - <code>prop</code> respectively.</p>
+<pre class="r"><code>roc_curve_random &lt;- roc(response = y_test, predictor = y_pred_random_num)
+
+auc_random &lt;- roc_curve_random %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_random)
+title(main = str_c(&quot;Random Model - ROC AUC (Train) = &quot;, auc_random), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-49-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="set-sampling-method" class="section level2">
+<h2>Set Sampling Method</h2>
+<p>Now we want to train models with non-trivial prediction power. In order to avoid overfitting, we are going to define a cross-validation schema.</p>
+<pre class="r"><code># We use the same wrapper functions for the summara functions as Section 16.9 (Computing)
+
+ five_stats &lt;- function (...) {
+  
+  c(twoClassSummary(...), defaultSummary(...))
+  
+}
+
+four_stats &lt;- function (data, lev = levels(data$obs), model = NULL) {
+  
+  acc_kapp &lt;- postResample(pred = data[, &quot;pred&quot;], obs = data[, &quot;obs&quot;])
+  
+  out &lt;- c(
+    acc_kapp, 
+    sensitivity(pred = data[, &quot;pred&quot;], obs = data[, &quot;obs&quot;], reference = lev[1]), 
+    specificity(pred = data[, &quot;pred&quot;], obs = data[, &quot;obs&quot;], reference = lev[2])
+  )
+  
+  names(out)[3:4] &lt;- c(&quot;Sens&quot;, &quot;Spec&quot;)
+  
+  return(out)
+}
+
+# Define cross validation.
+cv_num &lt;- 7
+
+train_control &lt;- trainControl(method = &quot;cv&quot;,
+                              number = cv_num,
+                              classProbs = TRUE, 
+                              summaryFunction = five_stats,
+                              allowParallel = TRUE, 
+                              verboseIter = FALSE)
+
+# Change summaryFunction and set classProbs = False. 
+train_control_no_prob &lt;- train_control
+train_control_no_prob$summaryFunction &lt;- four_stats
+train_control_no_prob$classProbs &lt;- FALSE</code></pre>
+</div>
+<div id="pls-logistic-regression" class="section level2">
+<h2>PLS + Logistic Regression</h2>
+<p>The first model we are going to train is a <a href="https://en.wikipedia.org/wiki/Logistic_regression">logistic regression</a>. As we might have multicollinearity, we run <a href="https://en.wikipedia.org/wiki/Partial_least_squares_regression">partial least squares</a> to reduce the dimension of the predictor space (we also scale and center). The <em>number of components</em> to select is an hyperparameter which we tune via cross-validation. Let us select <code>Accuracy</code> as the metric to evaluate model performance.</p>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+pls_model_1 &lt;- train(x = X_train,
+                     y = y_train,
+                     method = &quot;pls&quot;,
+                     family = binomial(link = &quot;logit&quot;), 
+                     tuneLength = 10,
+                     preProcess = c(&quot;scale&quot;, &quot;center&quot;), 
+                     trControl = train_control,
+                     metric = &quot;Accuracy&quot;)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models &lt;- list(pls_model_1 = pls_model_1)
+pls_model_1</code></pre>
+<pre><code>## Partial Least Squares 
+## 
+## 21503 samples
+##    46 predictor
+##     2 classes: &#39;large&#39;, &#39;small&#39; 
+## 
+## Pre-processing: scaled (46), centered (46) 
+## Resampling: Cross-Validated (7 fold) 
+## Summary of sample sizes: 18432, 18431, 18431, 18431, 18431, 18431, ... 
+## Resampling results across tuning parameters:
+## 
+##   ncomp  ROC        Sens       Spec       Accuracy   Kappa    
+##    1     0.8715987  0.5107376  0.9254398  0.8221649  0.4783562
+##    2     0.8916595  0.5563025  0.9318183  0.8383022  0.5302204
+##    3     0.8917140  0.5587302  0.9311372  0.8383951  0.5312680
+##    4     0.8921241  0.5507003  0.9337382  0.8383488  0.5283604
+##    5     0.8921858  0.5493931  0.9343574  0.8384883  0.5282131
+##    6     0.8923291  0.5495798  0.9341717  0.8383953  0.5280845
+##    7     0.8923789  0.5495798  0.9342955  0.8384883  0.5282878
+##    8     0.8923168  0.5499533  0.9341098  0.8384418  0.5283179
+##    9     0.8923396  0.5495798  0.9341717  0.8383953  0.5280920
+##   10     0.8922221  0.5497666  0.9343575  0.8385813  0.5285589
+## 
+## Accuracy was used to select the optimal model using the largest value.
+## The final value used for the model was ncomp = 10.</code></pre>
+<p>Let us plot the cross-valitation results:</p>
+<pre class="r"><code>plot(pls_model_1)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-53-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># Number of components. 
+pls_model_1$finalModel$ncomp</code></pre>
+<pre><code>## [1] 10</code></pre>
+<p>Let us generate predictions on the test set.</p>
+<pre class="r"><code>get_pred_df &lt;- function(model_obj, X_test, y_test, threshold = 0.5) {
+  
+  y_pred_num &lt;- predict(object = model_obj, newdata = X_test, type = &quot;prob&quot;) %&gt;% pull(large)
+  
+  y_pred &lt;- y_pred_num %&gt;% 
+    map_chr(.f = ~ ifelse(test = .x &gt; threshold, yes = &quot;large&quot;, no = &quot;small&quot;)) %&gt;% 
+    as_factor()
+
+  pred_df &lt;- tibble(
+    y_test = y_test,  
+    y_test_num = map_dbl(.x = y_test, 
+                         .f =  ~ ifelse(test = (.x == &quot;small&quot;), yes = 0, no = 1)), 
+    y_pred = y_pred, 
+    y_pred_num
+  )
+  
+  return(pred_df)
+}</code></pre>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = pls_model_1, X_test = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large   844   312
+##      small   686  4301
+##                                           
+##                Accuracy : 0.8375          
+##                  95% CI : (0.8281, 0.8467)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.5271          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.5516          
+##             Specificity : 0.9324          
+##          Pos Pred Value : 0.7301          
+##          Neg Pred Value : 0.8624          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.1374          
+##    Detection Prevalence : 0.1882          
+##       Balanced Accuracy : 0.7420          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>Note that the sensitivity is around 0.56. This shows that this model does is very conservative when trying to predict a <code>large</code> label. Let us see this through the predicted distributions.</p>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - PLS Model 1 (Max Accuracy)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-57-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>roc_curve_test &lt;- roc(response = y_test, 
+                      pred_df$y_pred_num, 
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_pls &lt;- roc_curve_test %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_test)
+title(main = str_c(&quot;PLS Model 1 - ROC AUC (Test) = &quot;, auc_pls), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-58-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="generalized-boosted-regression-model-gbm" class="section level2">
+<h2>Generalized Boosted Regression Model (GBM)</h2>
+<p>Now we consider a boosted tree model (stochastic gradient boosting), see <a href="https://cran.r-project.org/web/packages/gbm/index.html">gbm</a>. There are some hyperparameters to tune:</p>
+<ul>
+<li><code>n.trees</code></li>
+<li><code>interaction.depth</code></li>
+<li><code>shrinkage</code> (kept constant)</li>
+<li><code>n.minobsinnode</code>(kept constant)</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+gbm_model_1 &lt;- train(x = X_train,
+                     y = y_train,
+                     method = &quot;gbm&quot;,
+                     tuneLength = 7,
+                     trControl = train_control,
+                     metric = &quot;Accuracy&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$gbm_model_1 &lt;- gbm_model_1
+gbm_model_1</code></pre>
+<pre><code>## Stochastic Gradient Boosting 
+## 
+## 21503 samples
+##    46 predictor
+##     2 classes: &#39;large&#39;, &#39;small&#39; 
+## 
+## No pre-processing
+## Resampling: Cross-Validated (7 fold) 
+## Summary of sample sizes: 18431, 18431, 18432, 18431, 18431, 18431, ... 
+## Resampling results across tuning parameters:
+## 
+##   interaction.depth  n.trees  ROC        Sens       Spec       Accuracy 
+##   1                   50      0.8928287  0.4623716  0.9651344  0.8399291
+##   1                  100      0.9020806  0.5262372  0.9559694  0.8489510
+##   1                  150      0.9058479  0.5437908  0.9516343  0.8500670
+##   1                  200      0.9085090  0.5579832  0.9498385  0.8522528
+##   1                  250      0.9103367  0.5706816  0.9474852  0.8536479
+##   1                  300      0.9114115  0.5788982  0.9458133  0.8544385
+##   1                  350      0.9123269  0.5887955  0.9438317  0.8554152
+##   2                   50      0.9023472  0.5348273  0.9541737  0.8497417
+##   2                  100      0.9092874  0.5643324  0.9500244  0.8539735
+##   2                  150      0.9132127  0.5845005  0.9463707  0.8562523
+##   2                  200      0.9153963  0.5992530  0.9427170  0.8571823
+##   2                  250      0.9170762  0.6078431  0.9416641  0.8585309
+##   2                  300      0.9180450  0.6134454  0.9407353  0.8592285
+##   2                  350      0.9189936  0.6203548  0.9406734  0.8609027
+##   3                   50      0.9065395  0.5462185  0.9528110  0.8515552
+##   3                  100      0.9140924  0.5867414  0.9457514  0.8563453
+##   3                  150      0.9174196  0.6070962  0.9427789  0.8591821
+##   3                  200      0.9190822  0.6181139  0.9411068  0.8606702
+##   3                  250      0.9202552  0.6242764  0.9393109  0.8608561
+##   3                  300      0.9209524  0.6276377  0.9388776  0.8613678
+##   3                  350      0.9216507  0.6332400  0.9383822  0.8623909
+##   4                   50      0.9099694  0.5665733  0.9502721  0.8547175
+##   4                  100      0.9168304  0.6035481  0.9437079  0.8589961
+##   4                  150      0.9195390  0.6220355  0.9416024  0.8620189
+##   4                  200      0.9209090  0.6304388  0.9398684  0.8628094
+##   4                  250      0.9219047  0.6362278  0.9393112  0.8638326
+##   4                  300      0.9223488  0.6405229  0.9385680  0.8643442
+##   4                  350      0.9229375  0.6455649  0.9393731  0.8662044
+##   5                   50      0.9122942  0.5725490  0.9481046  0.8545781
+##   5                  100      0.9186557  0.6149393  0.9426552  0.8610422
+##   5                  150      0.9209015  0.6287582  0.9405496  0.8629024
+##   5                  200      0.9220614  0.6377218  0.9393731  0.8642511
+##   5                  250      0.9224993  0.6464986  0.9401164  0.8669951
+##   5                  300      0.9226629  0.6463119  0.9394972  0.8664835
+##   5                  350      0.9228012  0.6485528  0.9388779  0.8665766
+##   6                   50      0.9138177  0.5886088  0.9466185  0.8574614
+##   6                  100      0.9194991  0.6227824  0.9404258  0.8613213
+##   6                  150      0.9214319  0.6367880  0.9394350  0.8640651
+##   6                  200      0.9228085  0.6451914  0.9386920  0.8655999
+##   6                  250      0.9228065  0.6479925  0.9381346  0.8658789
+##   6                  300      0.9229573  0.6491130  0.9368959  0.8652279
+##   6                  350      0.9231076  0.6524743  0.9367103  0.8659255
+##   7                   50      0.9151054  0.5979458  0.9447607  0.8583915
+##   7                  100      0.9210021  0.6315593  0.9399303  0.8631349
+##   7                  150      0.9227249  0.6399627  0.9381966  0.8639257
+##   7                  200      0.9230369  0.6461251  0.9384442  0.8656464
+##   7                  250      0.9233549  0.6504202  0.9367102  0.8654138
+##   7                  300      0.9232540  0.6515406  0.9357814  0.8649954
+##   7                  350      0.9229876  0.6535948  0.9342952  0.8643909
+##   Kappa    
+##   0.4995521
+##   0.5441721
+##   0.5527143
+##   0.5624267
+##   0.5696923
+##   0.5740783
+##   0.5793498
+##   0.5489243
+##   0.5684390
+##   0.5800005
+##   0.5865894
+##   0.5922634
+##   0.5954897
+##   0.6013071
+##   0.5569838
+##   0.5808921
+##   0.5934703
+##   0.6001158
+##   0.6023542
+##   0.6044653
+##   0.6083782
+##   0.5708563
+##   0.5920418
+##   0.6043377
+##   0.6085388
+##   0.6124479
+##   0.6148621
+##   0.6204834
+##   0.5724564
+##   0.6000462
+##   0.6083179
+##   0.6138885
+##   0.6225199
+##   0.6212895
+##   0.6221080
+##   0.5840397
+##   0.6029512
+##   0.6131621
+##   0.6190100
+##   0.6203975
+##   0.6192112
+##   0.6216878
+##   0.5889798
+##   0.6096210
+##   0.6137509
+##   0.6193474
+##   0.6199663
+##   0.6193113
+##   0.6184656
+## 
+## Tuning parameter &#39;shrinkage&#39; was held constant at a value of 0.1
+## 
+## Tuning parameter &#39;n.minobsinnode&#39; was held constant at a value of 10
+## Accuracy was used to select the optimal model using the largest value.
+## The final values used for the model were n.trees = 250,
+##  interaction.depth = 5, shrinkage = 0.1 and n.minobsinnode = 10.</code></pre>
+<p>Let us generate predictions on the test set.</p>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = gbm_model_1, X_test = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1002   279
+##      small   528  4334
+##                                          
+##                Accuracy : 0.8686         
+##                  95% CI : (0.8599, 0.877)
+##     No Information Rate : 0.7509         
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16      
+##                                          
+##                   Kappa : 0.6286         
+##                                          
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16      
+##                                          
+##             Sensitivity : 0.6549         
+##             Specificity : 0.9395         
+##          Pos Pred Value : 0.7822         
+##          Neg Pred Value : 0.8914         
+##              Prevalence : 0.2491         
+##          Detection Rate : 0.1631         
+##    Detection Prevalence : 0.2085         
+##       Balanced Accuracy : 0.7972         
+##                                          
+##        &#39;Positive&#39; Class : large          
+## </code></pre>
+<p>The accuracy, the sesitivity and specificity are higher that the pls model above. Let us see the predicted distribution on the test set.</p>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;, show.legend = TRUE) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - GBM Model 1 (Max Accuracy)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-62-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>roc_curve_test &lt;- roc(response = y_test, 
+                      pred_df$y_pred_num, 
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_gbm &lt;- roc_curve_test %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_test)
+title(main = str_c(&quot;GBM Model 1 - ROC AUC (Test) = &quot;, auc_gbm), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-63-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Let us compute the variable importance ranking for this model.</p>
+<pre class="r"><code>gbm_model_1$finalModel %&gt;% 
+  varImp() %&gt;% 
+  rownames_to_column(var = &quot;Variable&quot;) %&gt;% 
+  mutate(Overall = Overall / sum(Overall)) %&gt;% 
+  mutate(Variable = reorder(Variable, Overall)) %&gt;% 
+  arrange(- Overall) %&gt;% 
+  head(15) %&gt;% 
+  ggplot(mapping = aes(x = Variable, y = Overall)) +
+  geom_bar(stat = &quot;identity&quot;, fill = &quot;dark green&quot;) + 
+  ggtitle(label = &#39;GBM Model 1 -Variable Importance - Top 15&#39;) +
+  coord_flip()</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-64-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Overall, we see that the gbm model has better metrics than the pls model.</p>
+</div>
+</div>
+<div id="remedies-for-class-imbalance" class="section level1">
+<h1>Remedies for Class Imbalance</h1>
+<p>“The simplest approach to counteracting the negative effects of class imbalance is to tune the model to maximize the accuracy of the minority class” <a href="http://appliedpredictivemodeling.com/">Applied Predictive Modeling, Section 16.3</a>. To do this we set <code>metric</code> = “Sens” in the <a href="https://www.rdocumentation.org/packages/caret/versions/4.47/topics/train">tain</a> function.</p>
+<div id="model-fit---maximize-sensitivity" class="section level2">
+<h2>Model Fit - Maximize Sensitivity</h2>
+<ul>
+<li>PLS Model</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+pls_model_2 &lt;- train(x = X_train,
+                     y = y_train,
+                     method = &quot;pls&quot;,
+                     family = binomial(link = &quot;logit&quot;), 
+                     tuneLength = 10,
+                     preProcess = c(&quot;scale&quot;, &quot;center&quot;), 
+                     trControl = train_control,
+                     metric = &quot;Sens&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$pls_model_2 = pls_model_2
+pls_model_2</code></pre>
+<pre><code>## Partial Least Squares 
+## 
+## 21503 samples
+##    46 predictor
+##     2 classes: &#39;large&#39;, &#39;small&#39; 
+## 
+## Pre-processing: scaled (46), centered (46) 
+## Resampling: Cross-Validated (7 fold) 
+## Summary of sample sizes: 18431, 18431, 18431, 18431, 18431, 18431, ... 
+## Resampling results across tuning parameters:
+## 
+##   ncomp  ROC        Sens       Spec       Accuracy   Kappa    
+##    1     0.8717359  0.5126050  0.9251297  0.8223970  0.4796289
+##    2     0.8916039  0.5563025  0.9315703  0.8381157  0.5298420
+##    3     0.8915513  0.5589169  0.9310749  0.8383947  0.5313856
+##    4     0.8918662  0.5490196  0.9333661  0.8376506  0.5263448
+##    5     0.8919885  0.5486461  0.9334900  0.8376506  0.5262041
+##    6     0.8921355  0.5484594  0.9336758  0.8377436  0.5263377
+##    7     0.8921707  0.5486461  0.9335519  0.8376971  0.5262966
+##    8     0.8921095  0.5486461  0.9335519  0.8376971  0.5263026
+##    9     0.8921261  0.5477124  0.9339234  0.8377436  0.5260668
+##   10     0.8920127  0.5484594  0.9338615  0.8378831  0.5266422
+## 
+## Sens was used to select the optimal model using the largest value.
+## The final value used for the model was ncomp = 3.</code></pre>
+<p>Let us see the performance metrics on the test set.</p>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = pls_model_2, X_test = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large   859   313
+##      small   671  4300
+##                                           
+##                Accuracy : 0.8398          
+##                  95% CI : (0.8304, 0.8489)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.5355          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.5614          
+##             Specificity : 0.9321          
+##          Pos Pred Value : 0.7329          
+##          Neg Pred Value : 0.8650          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.1398          
+##    Detection Prevalence : 0.1908          
+##       Balanced Accuracy : 0.7468          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>We do not see a significant increase in sensitivity.</p>
+<p>Let us plot the predicted probability distributions on the test set.</p>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;, show.legend = TRUE) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - PLS Model 2 (Max Sens)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-68-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>GBM Model</li>
+</ul>
+<p>We proceed in a similar way for the gbm model.</p>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+gbm_model_2 &lt;- train(x = X_train,
+                     y = y_train,
+                     method = &quot;gbm&quot;,
+                     tuneLength = 7,
+                     trControl = train_control,
+                     metric = &quot;Sens&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$gbm_model_2 &lt;- gbm_model_2</code></pre>
+<p>Let us see the sensitivity as a function of the <code>n.trees</code> and <code>interaction.depth</code>.</p>
+<pre class="r"><code>gbm_model_2$results %&gt;% 
+  ggplot(mapping = aes(x = n.trees, y = Sens, color  = interaction.depth)) +
+  geom_point() +
+  labs(title = &quot;Model Sensitivity&quot;) </code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-71-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>We see a positive trends which stabilizes.</p>
+<p>Let us see the metrics on the test set.</p>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = gbm_model_2, X_test = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1024   294
+##      small   506  4319
+##                                           
+##                Accuracy : 0.8698          
+##                  95% CI : (0.8611, 0.8781)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.6349          
+##                                           
+##  Mcnemar&#39;s Test P-Value : 8.654e-14       
+##                                           
+##             Sensitivity : 0.6693          
+##             Specificity : 0.9363          
+##          Pos Pred Value : 0.7769          
+##          Neg Pred Value : 0.8951          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.1667          
+##    Detection Prevalence : 0.2146          
+##       Balanced Accuracy : 0.8028          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>We do not see a significant increase in sensitivity.</p>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - GBM Model 2 (Max Sens)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-73-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+<div id="model-fit---alternate-cutoffs" class="section level2">
+<h2>Model Fit - Alternate Cutoffs</h2>
+<p>We can use the ROC curve to select an alternative cutoff to label the predicted classes <a href="http://appliedpredictivemodeling.com/">Applied Predictive Modeling, Section 16.4</a>. It is important to do this cutoff selection on the evaluation set.</p>
+<ul>
+<li>PLS Model</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+pls_model_3 &lt;- train(x = X_train,
+                     y = y_train,
+                     method = &quot;pls&quot;,
+                     family = binomial(link = &quot;logit&quot;), 
+                     tuneLength = 10,
+                     preProcess = c(&quot;scale&quot;, &quot;center&quot;), 
+                     trControl = train_control,
+                     metric = &quot;ROC&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$pls_model_3 = pls_model_3</code></pre>
+<p>Let us see the metrics and ROC curve of the evaluation set:</p>
+<pre class="r"><code>y_pred_eval &lt;- predict(object = pls_model_3, newdata = X_eval, type = &quot;prob&quot;) %&gt;% 
+  pull(large) %&gt;% 
+  # If the probability is larger than 0.5 we predict large. 
+  map_chr(.f = ~ ifelse(test = .x &gt; 0.5, yes = &quot;large&quot;, no = &quot;small&quot;)) %&gt;% 
+  as_factor()
+
+# Confusion Matrix. 
+conf_matrix_eval &lt;- confusionMatrix(data = y_pred_eval, reference =  y_eval)
+conf_matrix_eval</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large   430   147
+##      small   335  2160
+##                                           
+##                Accuracy : 0.8431          
+##                  95% CI : (0.8297, 0.8558)
+##     No Information Rate : 0.751           
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.543           
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.5621          
+##             Specificity : 0.9363          
+##          Pos Pred Value : 0.7452          
+##          Neg Pred Value : 0.8657          
+##              Prevalence : 0.2490          
+##          Detection Rate : 0.1400          
+##    Detection Prevalence : 0.1878          
+##       Balanced Accuracy : 0.7492          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<pre class="r"><code>y_pred_eval_num &lt;- predict(object = pls_model_3, newdata = X_eval, type = &quot;prob&quot;) %&gt;% pull(large)
+  
+roc_curve_eval &lt;- roc(response = y_eval, 
+                      predictor = y_pred_eval_num,
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_pls &lt;- roc_curve_eval %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_eval)
+title(main = str_c(&quot;PLS Model 3 - ROC AUC (Eval) = &quot;, auc_pls), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-77-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>We can use the ROC curve to select the most appropiate prediction cutoff. Depending on the specific prediction problem, one could try to find a balance between sensitivity and specificity. One possibility is to choose the closest point of the ROC curve to the to the upper left corner.</p>
+<pre class="r"><code>best_point_eval &lt;- coords(
+  roc = roc_curve_eval, x = &quot;best&quot;, 
+   best.method = &quot;closest.topleft&quot;
+)
+
+model_list$best_point &lt;- list(pls_model_3 = best_point_eval)
+
+best_point_eval</code></pre>
+<pre><code>##   threshold specificity sensitivity 
+##   0.4141877   0.8131773   0.8274510</code></pre>
+<pre class="r"><code># Get points to plot the ROC curve. 
+all_roc_coords &lt;- coords(roc = roc_curve_eval, x = &quot;all&quot;, as.list = FALSE)
+
+all_roc_cords_df &lt;- all_roc_coords %&gt;% 
+  t() %&gt;%  
+  as_tibble()
+
+all_roc_cords_df %&gt;% 
+  ggplot() +
+  geom_line(mapping = aes(x = 1 - specificity, y = sensitivity)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2) +
+  geom_point(mapping = aes(x = (1- best_point_eval[[&quot;specificity&quot;]]), 
+                           y =  best_point_eval[[&quot;sensitivity&quot;]], 
+                           color = &quot;optimal point&quot;), 
+             
+             size = 4) +
+  geom_point(mapping = aes(x = (1 - conf_matrix_eval$byClass[[&quot;Specificity&quot;]]), 
+                           y = conf_matrix_eval$byClass[[&quot;Sensitivity&quot;]], 
+                           color = &quot;initial cutoff&quot;),
+             size = 4) +
+  labs(title = &quot;PLS Model 3 - ROC Curve (Eval)&quot;) </code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-79-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Let us now evaluate the model predictions with this new cutoff point on the test set:</p>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = pls_model_3, 
+                       X = X_test, 
+                       y_test = y_test, 
+                       threshold = best_point_eval[&quot;threshold&quot;])
+
+pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5,
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;) +
+  geom_abline(slope = 0, 
+              intercept = best_point_eval[&quot;threshold&quot;], 
+              linetype = 2, 
+              color = &quot;dark green&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - PLS Model 3 (New Cutoff)&quot;, 
+       subtitle = str_c(&quot;Prediction Cut = &quot;, round(best_point_eval[&quot;threshold&quot;], 3)), 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-80-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1254   953
+##      small   276  3660
+##                                           
+##                Accuracy : 0.7999          
+##                  95% CI : (0.7897, 0.8099)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.5341          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.8196          
+##             Specificity : 0.7934          
+##          Pos Pred Value : 0.5682          
+##          Neg Pred Value : 0.9299          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.2041          
+##    Detection Prevalence : 0.3593          
+##       Balanced Accuracy : 0.8065          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>We indeed see that the sensitivity increases to around 0.8 on the test set. The trade-off is a decrease in specificity.</p>
+<ul>
+<li>GBM Model</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+gbm_model_3 &lt;- train(x = X_train,
+                     y = y_train,
+                     method = &quot;gbm&quot;,
+                     tuneLength = 7,
+                     trControl = train_control,
+                     metric = &quot;ROC&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$gbm_model_3 = gbm_model_3</code></pre>
+<p>Let us see the metrics and ROC curve of the evaluation set:</p>
+<pre class="r"><code>y_pred_eval &lt;- predict(object = gbm_model_3, newdata = X_eval, type = &quot;prob&quot;) %&gt;% 
+  pull(large) %&gt;% 
+  # If the probability is larger than 0.5 we predict large. 
+  map_chr(.f = ~ ifelse(test = .x &gt; 0.5, yes = &quot;large&quot;, no = &quot;small&quot;)) %&gt;% 
+  as_factor()
+
+# Confusion Matrix. 
+conf_matrix_eval &lt;- confusionMatrix(data = y_pred_eval, reference =  y_eval)
+conf_matrix_eval</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large   506   145
+##      small   259  2162
+##                                          
+##                Accuracy : 0.8685         
+##                  95% CI : (0.856, 0.8802)
+##     No Information Rate : 0.751          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16      
+##                                          
+##                   Kappa : 0.63           
+##                                          
+##  Mcnemar&#39;s Test P-Value : 1.888e-08      
+##                                          
+##             Sensitivity : 0.6614         
+##             Specificity : 0.9371         
+##          Pos Pred Value : 0.7773         
+##          Neg Pred Value : 0.8930         
+##              Prevalence : 0.2490         
+##          Detection Rate : 0.1647         
+##    Detection Prevalence : 0.2119         
+##       Balanced Accuracy : 0.7993         
+##                                          
+##        &#39;Positive&#39; Class : large          
+## </code></pre>
+<pre class="r"><code>y_pred_eval_num &lt;- predict(object = gbm_model_3, newdata = X_eval, type = &quot;prob&quot;) %&gt;% pull(large)
+  
+roc_curve_eval &lt;- roc(response = y_eval, 
+                      predictor = y_pred_eval_num,
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_gbm &lt;- roc_curve_eval %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_eval)
+title(main = str_c(&quot;GBM Model 3 - ROC AUC (Eval) = &quot;, auc_gbm), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-85-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>best_point_eval &lt;- coords(
+  roc = roc_curve_eval, x = &quot;best&quot;, 
+   best.method = &quot;closest.topleft&quot;
+)
+
+model_list$best_point$gbm_model_3 &lt;- best_point_eval
+
+best_point_eval</code></pre>
+<pre><code>##   threshold specificity sensitivity 
+##   0.2354104   0.8257477   0.8692810</code></pre>
+<pre class="r"><code># Get points to plot the ROC curve. 
+all_roc_coords &lt;- coords(roc = roc_curve_eval, x = &quot;all&quot;, as.list = FALSE)
+
+all_roc_cords_df &lt;- all_roc_coords %&gt;% 
+  t() %&gt;%  
+  as_tibble()
+
+all_roc_cords_df %&gt;% 
+  ggplot() +
+  geom_line(mapping = aes(x = 1- specificity, y = sensitivity)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2) +
+  geom_point(mapping = aes(x = (1- best_point_eval[[&quot;specificity&quot;]]), 
+                           y = best_point_eval[[&quot;sensitivity&quot;]], 
+                           color = &quot;optimal point&quot;), 
+             
+             size = 4) +
+  geom_point(mapping = aes(x = (1 - conf_matrix_eval$byClass[[&quot;Specificity&quot;]]), 
+                           y = conf_matrix_eval$byClass[[&quot;Sensitivity&quot;]], 
+                           color = &quot;initial cutoff&quot;),
+             size = 4) +
+  labs(title = &quot;GBM Model 3 - ROC Curve (Eval)&quot;) </code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-87-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Let us now evaluate the model predictions with this new cutoff point on the test set:</p>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = gbm_model_3, 
+                       X = X_test, 
+                       y_test = y_test, 
+                       threshold = best_point_eval[&quot;threshold&quot;])
+
+pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5,
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;) +
+  geom_abline(slope = 0, 
+              intercept = best_point_eval[&quot;threshold&quot;], 
+              linetype = 2, 
+              color = &quot;dark green&quot;) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - GBM Model 3 (New Cutoff)&quot;, 
+       subtitle = str_c(&quot;Prediction Cut = &quot;, round(best_point_eval[&quot;threshold&quot;], 3)), 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-88-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred , reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1319   796
+##      small   211  3817
+##                                           
+##                Accuracy : 0.8361          
+##                  95% CI : (0.8266, 0.8453)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.6114          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.8621          
+##             Specificity : 0.8274          
+##          Pos Pred Value : 0.6236          
+##          Neg Pred Value : 0.9476          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.2147          
+##    Detection Prevalence : 0.3443          
+##       Balanced Accuracy : 0.8448          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>In this case, the sensitivity increases to around 0.86. This model is appropiated if sensitivity is the most relevant metric for the application.</p>
+</div>
+</div>
+<div id="sampling-methods" class="section level1">
+<h1>Sampling Methods</h1>
+<p>Next, we explore sampling methods. The aim is to balance the class frequency in the training set itself
+<a href="http://appliedpredictivemodeling.com/">Applied Predictive Modeling, Section 16.7</a>.</p>
+<ul>
+<li><strong>Up-sampling</strong> is any technique that simulates or imputes additional data points to improve balance across classes.</li>
+<li><strong>Down-sampling</strong> is any technique that reduces the number of samples to improve the balance across classes.</li>
+</ul>
+<p>We explore the effect of up-sampling.</p>
+<div id="up-sampling" class="section level2">
+<h2>Up Sampling</h2>
+<pre class="r"><code># Generate new training set. 
+df_upSample_train &lt;- upSample(x = X_train, 
+                             y = y_train, 
+                             yname = &quot;income&quot;)
+
+X_upSample_train &lt;- df_upSample_train %&gt;% select(- income) 
+y_upSample_train &lt;- df_upSample_train %&gt;% pull(income) 
+
+# Get new training data dimension. 
+dim(df_upSample_train)</code></pre>
+<pre><code>## [1] 32296    47</code></pre>
+<p>Let us see the class count:</p>
+<pre class="r"><code>table(df_upSample_train$income)</code></pre>
+<pre><code>## 
+## large small 
+## 16148 16148</code></pre>
+<p>Now we train the models on this new training data.</p>
+<ul>
+<li>PLS Model</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+pls_model_4 &lt;- train(x = X_upSample_train,
+                     y = y_upSample_train,
+                     method = &quot;pls&quot;,
+                     family = binomial(link = &quot;logit&quot;), 
+                     tuneLength = 10,
+                     preProcess = c(&quot;scale&quot;, &quot;center&quot;), 
+                     trControl = train_control,
+                     metric = &quot;ROC&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$pls_model_4 = pls_model_4</code></pre>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = pls_model_4, X = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1307  1062
+##      small   223  3551
+##                                           
+##                Accuracy : 0.7908          
+##                  95% CI : (0.7804, 0.8009)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : 9.847e-14       
+##                                           
+##                   Kappa : 0.5274          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.8542          
+##             Specificity : 0.7698          
+##          Pos Pred Value : 0.5517          
+##          Neg Pred Value : 0.9409          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.2128          
+##    Detection Prevalence : 0.3856          
+##       Balanced Accuracy : 0.8120          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<p>For this model, the sensitivity is higher than the one obtained after optimizing the probability cutoff.</p>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;, show.legend = TRUE) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - PLS Model 4 (Up Sampling)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-95-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>roc_curve_test &lt;- roc(response = y_test, 
+                      pred_df$y_pred_num, 
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_pls &lt;- roc_curve_test %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_test)
+title(main = str_c(&quot;PLS Model 4 - ROC AUC (Test) = &quot;, auc_pls), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-96-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>GBM Model</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+gbm_model_4 &lt;- train(x = X_upSample_train,
+                     y = y_upSample_train,
+                     method = &quot;gbm&quot;,
+                     tuneLength = 7,
+                     trControl = train_control,
+                     metric = &quot;ROC&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$gbm_model_4 = gbm_model_4 </code></pre>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = gbm_model_4 , X = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1306   750
+##      small   224  3863
+##                                           
+##                Accuracy : 0.8414          
+##                  95% CI : (0.8321, 0.8505)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.6198          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.8536          
+##             Specificity : 0.8374          
+##          Pos Pred Value : 0.6352          
+##          Neg Pred Value : 0.9452          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.2126          
+##    Detection Prevalence : 0.3347          
+##       Balanced Accuracy : 0.8455          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;, show.legend = TRUE) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - GBM Model 4 (Up Sampling)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-100-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>roc_curve_test &lt;- roc(response = y_test, 
+                      pred_df$y_pred_num, 
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_gbm &lt;- roc_curve_test %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_test)
+title(main = str_c(&quot;GBM Model 4 - ROC AUC (Test) = &quot;, auc_gbm), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-101-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p><strong>Warning:</strong> “When using modified versions of the training set, resampled estimates of model performance can become biased. For example, if the data are up-sampled, resampling procedures are likely to have the same sample in the cases that are used to build the model as well as the holdout set, leading to optimistic results. Despite this, resampling methods can still be effective at tuning the models”.</p>
+</div>
+<div id="smote" class="section level2">
+<h2>SMOTE</h2>
+<p>“The synthetic minority over-sampling technique (SMOTE) is a data sampling procedure that uses both up-sampling and down-sampling, depending on the class, and has three operational paameters: the amount of up-sampling, the amount of down-sampling, and the number of neighbors that are used to impute new cases. To up-sample for the minority class, SMOTE synthesizes new cases. To do this, a data point is randomly selected from the minority class and its K-nearest neighbors are determined”. <a href="http://appliedpredictivemodeling.com/">Applied Predictive Modeling, Section 16.7</a></p>
+<pre class="r"><code># Get new training set.
+df_smote_train &lt;-  DMwR::SMOTE(
+  form = income ~ .,
+  perc.over = 200, 
+  perc.under = 150, 
+  data = as.data.frame(bind_cols(income = y_train, X_train))
+)
+
+X_smote_train &lt;- df_smote_train  %&gt;% select(- income) 
+y_smote_train &lt;- df_smote_train  %&gt;% pull(income) 
+
+# Get new training data dimension. 
+dim(df_smote_train)</code></pre>
+<pre><code>## [1] 32130    47</code></pre>
+<pre class="r"><code>table(df_smote_train$income)</code></pre>
+<pre><code>## 
+## large small 
+## 16065 16065</code></pre>
+<ul>
+<li>PLS Model</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+pls_model_5 &lt;- train(x = X_smote_train,
+                     y = y_smote_train,
+                     method = &quot;pls&quot;,
+                     family = binomial(link = &quot;logit&quot;), 
+                     tuneLength = 10,
+                     preProcess = c(&quot;scale&quot;, &quot;center&quot;), 
+                     trControl = train_control,
+                     metric = &quot;ROC&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$pls_model_5 = pls_model_5</code></pre>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = pls_model_5 , X = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1184   889
+##      small   346  3724
+##                                           
+##                Accuracy : 0.799           
+##                  95% CI : (0.7887, 0.8089)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.5195          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+##                                           
+##             Sensitivity : 0.7739          
+##             Specificity : 0.8073          
+##          Pos Pred Value : 0.5712          
+##          Neg Pred Value : 0.9150          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.1927          
+##    Detection Prevalence : 0.3375          
+##       Balanced Accuracy : 0.7906          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;, show.legend = TRUE) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - PLS Model 5 (SMOTE)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-107-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>roc_curve_test &lt;- roc(response = y_test, 
+                      pred_df$y_pred_num, 
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_pls &lt;- roc_curve_test %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_test)
+title(main = str_c(&quot;PLS Model 5 - ROC AUC (Test) = &quot;, auc_pls), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-108-1.png" width="672" style="display: block; margin: auto;" /></p>
+<ul>
+<li>GBM Model</li>
+</ul>
+<pre class="r"><code># Parallel Computation.
+cl &lt;- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Train model.
+gbm_model_5 &lt;- train(x = X_smote_train,
+                     y = y_smote_train,
+                     method = &quot;gbm&quot;,
+                     tuneLength = 7,
+                     trControl = train_control,
+                     metric = &quot;ROC&quot;, 
+                     verbose = FALSE)
+
+stopCluster(cl)</code></pre>
+<pre class="r"><code>model_list$models$gbm_model_5 = gbm_model_5</code></pre>
+<pre class="r"><code>pred_df &lt;- get_pred_df(model_obj = gbm_model_5 , X = X_test, y_test = y_test)
+# Confusion Matrix. 
+conf_matrix_test &lt;- confusionMatrix(data = pred_df$y_pred, reference =  y_test)
+conf_matrix_test</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction large small
+##      large  1038   345
+##      small   492  4268
+##                                           
+##                Accuracy : 0.8637          
+##                  95% CI : (0.8549, 0.8722)
+##     No Information Rate : 0.7509          
+##     P-Value [Acc &gt; NIR] : &lt; 2e-16         
+##                                           
+##                   Kappa : 0.6237          
+##                                           
+##  Mcnemar&#39;s Test P-Value : 4.5e-07         
+##                                           
+##             Sensitivity : 0.6784          
+##             Specificity : 0.9252          
+##          Pos Pred Value : 0.7505          
+##          Neg Pred Value : 0.8966          
+##              Prevalence : 0.2491          
+##          Detection Rate : 0.1690          
+##    Detection Prevalence : 0.2251          
+##       Balanced Accuracy : 0.8018          
+##                                           
+##        &#39;Positive&#39; Class : large           
+## </code></pre>
+<pre class="r"><code>pred_df %&gt;% 
+  ggplot(mapping = aes(x = y_test, y = y_pred_num, fill = y_test)) +
+  geom_boxplot() + 
+  geom_abline(slope = 0, 
+              intercept = 0.5, 
+              alpha = 0.8, 
+              linetype = 2, 
+              color = &quot;purple4&quot;, show.legend = TRUE) +
+  scale_fill_brewer(palette = &quot;Set1&quot;, direction = -1) +
+  labs(title = &quot;Preditcted Distributions - GBM Model 5 (SMOTE)&quot;, 
+       subtitle = &quot;Prediction Cut = 0.5&quot;, 
+       x = &quot;test label&quot;, 
+       y = &quot;predicted probability&quot;) +
+  scale_x_discrete(limits = rev(levels(y_test)))</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-112-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>roc_curve_test &lt;- roc(response = y_test, 
+                      pred_df$y_pred_num, 
+                      levels = c(&quot;small&quot;, &quot;large&quot;))
+
+auc_gbm &lt;- roc_curve_test %&gt;% 
+  auc() %&gt;% 
+  round(digits = 3)
+
+plot(roc_curve_test)
+title(main = str_c(&quot;GBM Model 5 - ROC AUC (Test) = &quot;, auc_gbm), line = 2.5)</code></pre>
+<p><img src="../post/class_imbalance_files/figure-html/unnamed-chunk-113-1.png" width="672" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="model-summary" class="section level1">
+<h1>Model Summary</h1>
+<p>Let us parse the model results.</p>
+<pre class="r"><code>generate_model_summary &lt;- function (model_lis) {
+  
+  models_summary &lt;- names(model_list$models) %&gt;% 
+    
+    map_df(.f = function(m_name) {
+      
+      m &lt;- model_list$models[[m_name]]
+      
+      m_threshold &lt;- 0.5
+      
+      if (m_name %in% names(model_list$best_point)) {
+        
+        m_threshold &lt;- model_list$best_point[[m_name]][[&quot;threshold&quot;]]
+        
+      }
+      
+      y_pred &lt;- predict(object = m , newdata = X_test, type = &quot;prob&quot;) %&gt;% 
+        pull(large) %&gt;% 
+        # If the probability is larger than 0.5 we predict large. 
+        map_chr(.f = ~ ifelse(test = .x &gt; m_threshold, yes = &quot;large&quot;, no = &quot;small&quot;)) %&gt;% 
+        as_factor()
+    
+      # Confusion Matrix. 
+      conf_matrix_test &lt;- confusionMatrix(data = y_pred, reference =  y_test)
+      
+      conf_matrix_test$byClass %&gt;% 
+        t() %&gt;% 
+        as_tibble() %&gt;% 
+        select(Sensitivity, Specificity, Precision, Recall, F1) 
+    }
+  )
+
+  models_summary %&lt;&gt;% 
+    add_column(Model = names(model_list$models), .before = &quot;Sensitivity&quot;) %&gt;% 
+    separate(col = Model, into = c(&quot;Method&quot;, &quot;Model&quot;, &quot;Tag&quot;), sep = &quot;_&quot;) %&gt;% 
+    select(- Model) %&gt;% 
+    mutate(
+      Tag = case_when(
+        Tag == 1 ~ &quot;Accuracy&quot;, 
+        Tag == 2 ~ &quot;Sens&quot;, 
+        Tag == 3 ~ &quot;Alt Cutoff&quot;, 
+        Tag == 4 ~ &quot;Up Sampling&quot;, 
+        Tag == 5 ~ &quot;SMOTE&quot;, 
+      )
+    ) 
+
+  models_summary %&lt;&gt;% mutate_if(.predicate = is.numeric, .funs = ~ round(x = .x, digits = 3))
+  
+  return(models_summary)
+}</code></pre>
+<pre class="r"><code>models_summary &lt;- generate_model_summary(model_lis = model_list)
+
+models_summary %&gt;% knitr::kable(align = rep(&quot;c&quot;, 7)) </code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="center">Method</th>
+<th align="center">Tag</th>
+<th align="center">Sensitivity</th>
+<th align="center">Specificity</th>
+<th align="center">Precision</th>
+<th align="center">Recall</th>
+<th align="center">F1</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="center">pls</td>
+<td align="center">Accuracy</td>
+<td align="center">0.552</td>
+<td align="center">0.932</td>
+<td align="center">0.730</td>
+<td align="center">0.552</td>
+<td align="center">0.628</td>
+</tr>
+<tr class="even">
+<td align="center">gbm</td>
+<td align="center">Accuracy</td>
+<td align="center">0.655</td>
+<td align="center">0.940</td>
+<td align="center">0.782</td>
+<td align="center">0.655</td>
+<td align="center">0.713</td>
+</tr>
+<tr class="odd">
+<td align="center">pls</td>
+<td align="center">Sens</td>
+<td align="center">0.561</td>
+<td align="center">0.932</td>
+<td align="center">0.733</td>
+<td align="center">0.561</td>
+<td align="center">0.636</td>
+</tr>
+<tr class="even">
+<td align="center">gbm</td>
+<td align="center">Sens</td>
+<td align="center">0.669</td>
+<td align="center">0.936</td>
+<td align="center">0.777</td>
+<td align="center">0.669</td>
+<td align="center">0.719</td>
+</tr>
+<tr class="odd">
+<td align="center">pls</td>
+<td align="center">Alt Cutoff</td>
+<td align="center">0.820</td>
+<td align="center">0.793</td>
+<td align="center">0.568</td>
+<td align="center">0.820</td>
+<td align="center">0.671</td>
+</tr>
+<tr class="even">
+<td align="center">gbm</td>
+<td align="center">Alt Cutoff</td>
+<td align="center">0.862</td>
+<td align="center">0.827</td>
+<td align="center">0.624</td>
+<td align="center">0.862</td>
+<td align="center">0.724</td>
+</tr>
+<tr class="odd">
+<td align="center">pls</td>
+<td align="center">Up Sampling</td>
+<td align="center">0.854</td>
+<td align="center">0.770</td>
+<td align="center">0.552</td>
+<td align="center">0.854</td>
+<td align="center">0.670</td>
+</tr>
+<tr class="even">
+<td align="center">gbm</td>
+<td align="center">Up Sampling</td>
+<td align="center">0.854</td>
+<td align="center">0.837</td>
+<td align="center">0.635</td>
+<td align="center">0.854</td>
+<td align="center">0.728</td>
+</tr>
+<tr class="odd">
+<td align="center">pls</td>
+<td align="center">SMOTE</td>
+<td align="center">0.774</td>
+<td align="center">0.807</td>
+<td align="center">0.571</td>
+<td align="center">0.774</td>
+<td align="center">0.657</td>
+</tr>
+<tr class="even">
+<td align="center">gbm</td>
+<td align="center">SMOTE</td>
+<td align="center">0.678</td>
+<td align="center">0.925</td>
+<td align="center">0.751</td>
+<td align="center">0.678</td>
+<td align="center">0.713</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code># Save Model List. 
+saveRDS(object = model_list, file = &quot;model_list.rds&quot;)</code></pre>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
