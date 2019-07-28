@@ -121,7 +121,7 @@ ax.set_title(r&quot;Graph of $f(x) = \sin(2\pi x) + \sin(4\pi x)$&quot;);</code>
 <center>
 <img src="../images/gaussian_process_regression_files/gaussian_process_regression_6_0.png" alt="png" />
 </center>
-<p>Next, we generate some training sample observsations:</p>
+<p>Next, we generate some training sample observations:</p>
 <pre class="python"><code># Error standar deviation. 
 sigma_n = 0.4
 
@@ -163,7 +163,9 @@ x_star = np.linspace(start=0, stop=1, num=n_star)</code></pre>
 \text{cov}(f(x_p), f(x_q)) = k_{\sigma_f, \ell}(x_p, x_q) = \sigma_f \exp\left(-\frac{1}{2\ell^2} ||x_p - x_q||^2\right)
 \]</span></p>
 <p>where <span class="math inline">\(\sigma_f , \ell &gt;0\)</span> are hyperparameters. Observe that the covariance between two samples are modeled as a function of the inputs.</p>
-<p><strong>Remark:</strong> <em>“It can be shown that the squared exponential covariance function corresponds to a Bayesian linear regression model with an infinite basis functions number of basis function.”</em> (<a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2.2</a>)</p>
+<p><strong>Remark:</strong> <em>“It can be shown that the squared exponential covariance
+function corresponds to a Bayesian linear regression model with an infinite
+basis functions number of basis function.”</em> (<a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2.2</a>)</p>
 <pre class="python"><code>def kernel_function(x, y, sigma_f=1, l=1):
     &quot;&quot;&quot;Define squared exponential kernel function.&quot;&quot;&quot;
     kernel = sigma_f * np.exp(- (np.linalg.norm(x - y)**2) / (2 * l**2))
@@ -174,7 +176,7 @@ sigma_f = 2</code></pre>
 </div>
 <div id="compute-covariance-matrices" class="section level2">
 <h2>Compute Covariance Matrices</h2>
-<p>A key observation, as ilustrated in <a href="https://juanitorduz.github.io/reg_bayesian_regression/">Regularized Bayesian Regression as a Gaussian Process</a>, is that <em>the specification of the covariance function implies a distribution over functions</em>.</p>
+<p>A key observation, as illustrated in <a href="https://juanitorduz.github.io/reg_bayesian_regression/">Regularized Bayesian Regression as a Gaussian Process</a>, is that <em>the specification of the covariance function implies a distribution over functions</em>.</p>
 <p>Let us denote by <span class="math inline">\(K(X, X) \in M_{n}(\mathbb{R})\)</span>, <span class="math inline">\(K(X_*, X) \in M_{n_* \times n}(\mathbb{R})\)</span> and <span class="math inline">\(K(X_*, X_*) \in M_{n_*}(\mathbb{R})\)</span> the covariance matrices applies to <span class="math inline">\(x\)</span> and <span class="math inline">\(x_*\)</span>.</p>
 <pre class="python"><code>import itertools
 
@@ -246,7 +248,7 @@ ax.set_title(&quot;Components of the Kernel Matrix K_star&quot;);</code></pre>
 <center>
 <img src="../images/gaussian_process_regression_files/gaussian_process_regression_34_0.png" alt="png" />
 </center>
-<p>Note how the highest values of the support of all these matrices is localizated around the diagonal.</p>
+<p>Note how the highest values of the support of all these matrices is localized around the diagonal.</p>
 </div>
 <div id="join-distribution" class="section level2">
 <h2>Join Distribution</h2>
@@ -319,7 +321,9 @@ ax.set_title(&quot;Samples of Prior Distribution&quot;);</code></pre>
 </div>
 <div id="conditional-distribution" class="section level2">
 <h2>Conditional Distribution</h2>
-<p>As described in our main reference, <em>to get the posterior distribution over functions we need to restrict this joint prior distribution to contain only those functions which agree with the observed data points</em>, that is, we are interested in computing <span class="math inline">\(f_*|X, y, X_*\)</span>. Using the results of <a href="http://www.gaussianprocess.org/gpml/chapters/RWA.pdf">Gaussian Processes for Machine Learning, Appendinx A.2</a>, one can show that</p>
+<p>As described in our main reference, <em>to get the posterior distribution over functions we need to restrict this joint
+prior distribution to contain only those functions which agree with the observed
+data points</em>, that is, we are interested in computing <span class="math inline">\(f_*|X, y, X_*\)</span>. Using the results of <a href="http://www.gaussianprocess.org/gpml/chapters/RWA.pdf">Gaussian Processes for Machine Learning, Appendinx A.2</a>, one can show that</p>
 <p><span class="math display">\[
 f_*|X, y, X_* 
 \sim
@@ -400,7 +404,7 @@ ax.set_title(&quot;Components of the Covariance Matrix cov_f_star, sigma_f = {} 
 <center>
 <img src="../images/gaussian_process_regression_files/gaussian_process_regression_62_0.png" alt="png" />
 </center>
-<p>In this case the values of the posterior covariance matrix are not that localized. This means that we expect points far away can still have some interation, i.e. the fit becomes more global. Let us plot the resulting fit:</p>
+<p>In this case the values of the posterior covariance matrix are not that localized. This means that we expect points far away can still have some interaction, i.e. the fit becomes more global. Let us plot the resulting fit:</p>
 <pre class="python"><code>K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f = 2, l = 1)
 
 f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)
@@ -458,7 +462,7 @@ ax.set_title(&quot;Samples of Posterior Distribution, sigma_f = {} and l = {}&qu
 <center>
 <img src="../images/gaussian_process_regression_files/gaussian_process_regression_68_0.png" alt="png" />
 </center>
-<p>Hence, we see that the hyperparameter \(\) somehow enoces the “complexity” and “locality” of the model.</p>
+<p>Hence, we see that the hyperparameter \(\) somehow encodes the “complexity” and “locality” of the model.</p>
 <ul>
 <li><span class="math inline">\(\sigma_f=50\)</span> and <span class="math inline">\(\ell=0.01\)</span></li>
 </ul>
@@ -499,7 +503,7 @@ ax.set_title(&quot;Samples of Posterior Distribution, sigma_f = {} and l = {}&qu
 </div>
 <div id="gaussianprocessregressor-from-scikit-learn" class="section level2">
 <h2>GaussianProcessRegressor from Scikit-Learn</h2>
-<p>Note that in the examples above he had to compute the inverse of <span class="math inline">\(K(X,X) + \sigma_n^2 I\)</span>, which can be computationally expensive for larger data sets. A better approach is to use the Cholesky decomposition of <span class="math inline">\(K(X,X) + \sigma_n^2 I\)</span> as describet in <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2 Algorithm 2.1</a>. This is actually the implementation used by <a href="https://scikit-learn.org/stable/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html#sklearn.gaussian_process.GaussianProcessRegressor">Scikit-Learn</a>. We now describe how to fit a GaussianProcessRegressor model using Scikit-Learn and compare it with the results obtained above. Please refer to the <a href="https://scikit-learn.org/stable/auto_examples/gaussian_process/plot_gpr_noisy_targets.html">docomentation example</a> to get more detailed information.</p>
+<p>Note that in the examples above he had to compute the inverse of <span class="math inline">\(K(X,X) + \sigma_n^2 I\)</span>, which can be computationally expensive for larger data sets. A better approach is to use the Cholesky decomposition of <span class="math inline">\(K(X,X) + \sigma_n^2 I\)</span> as described in <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2 Algorithm 2.1</a>. This is actually the implementation used by <a href="https://scikit-learn.org/stable/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html#sklearn.gaussian_process.GaussianProcessRegressor">Scikit-Learn</a>. We now describe how to fit a GaussianProcessRegressor model using Scikit-Learn and compare it with the results obtained above. Please refer to the <a href="https://scikit-learn.org/stable/auto_examples/gaussian_process/plot_gpr_noisy_targets.html">docomentation example</a> to get more detailed information.</p>
 <div id="kernel-object" class="section level3">
 <h3>Kernel Object</h3>
 <p>There are my <a href="https://scikit-learn.org/stable/modules/classes.html#module-sklearn.gaussian_process">kernel functions</a> implemented in Scikit-Learn. Let us see how define the squared exponential:</p>
@@ -581,7 +585,7 @@ y_hat_samples = np.random.multivariate_normal(mean=f_bar_star.squeeze(), cov=cov
 y_hat = np.apply_over_axes(func=np.mean, a=y_hat_samples, axes=0).squeeze()
 # Compute the standard deviation of the sample. 
 y_hat_sd = np.apply_over_axes(func=np.std, a=y_hat_samples, axes=0).squeeze()</code></pre>
-<p>We now plot the confidence interval corrsponding to a corridor coresponding to two standard deviations.</p>
+<p>We now plot the confidence interval corresponding to a corridor associated with two standard deviations.</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 7))
 
 # Plot training data.
