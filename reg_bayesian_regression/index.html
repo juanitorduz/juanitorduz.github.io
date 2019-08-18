@@ -61,7 +61,7 @@
 
   <article class="article">
     
-    <span class="article-duration">8 min read</span>
+    <span class="article-duration">11 min read</span>
     
 
     <h1 class="article-title">Regularized Bayesian Regression as a Gaussian Process</h1>
@@ -73,44 +73,35 @@
     <div class="article-content">
       
 
-<p>In this post we study the Regularized Bayesian Regression model to explore the weight-space view of Gaussian Process Regression described in the book <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2</a>. We follow this reference very closely (an encourage to read it!). Our main objective is to ilustrate the concepts and results through a concrete example. We use <a href="https://docs.pymc.io">PyMC3</a> to run bayesian sampling.</p>
 
+<p>In this post we study the Regularized Bayesian Regression model to explore and compare the weight and function space and views of Gaussian Process Regression as described in the book <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2</a>. We follow this reference very closely (and encourage to read it!). Our main objective is to illustrate the concepts and results through a concrete example. We use <a href="https://docs.pymc.io">PyMC3</a> to run bayesian sampling.</p>
 <p><strong>References:</strong></p>
-
 <ul>
 <li><a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning</a>, Carl Edward Rasmussen and Christopher K. I. Williams, MIT Press, 2006.</li>
 <li>See <a href="https://juanitorduz.github.io/intro_pymc3/">this</a> post for an introduction to bayesian methods and PyMC3.</li>
 <li><a href="https://docs.pymc.io/notebooks/GLM-linear.html">Documentation</a> of linear regression in PyMC3.</li>
-<li><a href="https://docs.pymc.io/api/distributions/multivariate.html#pymc3.distributions.multivariate.MvNormal">Documentation</a> multivariate normal distribution in PyMC3.</li>
+<li><a href="https://docs.pymc.io/api/distributions/multivariate.html#pymc3.distributions.multivariate.MvNormal">Documentation</a> for the multivariate normal distribution in PyMC3.</li>
 <li><a href="https://stackoverflow.com/questions/52509602/cant-compile-c-program-on-a-mac-after-upgrade-to-mojave">Here</a> is an Stackoverflow post which can help Mac OS users which might have problems with Theano after upgrading to Mojave.</li>
 </ul>
-
 <p>Let us consider the model:</p>
-
-<p>$$
+<p><span class="math display">\[
 f(x) = x^T b \quad \text{and} \quad y = f(x) + \varepsilon, \quad \text{with} \quad \varepsilon \sim N(0, \sigma_n^2)
-$$</p>
-
-<p>where \(x \in \mathbb{R}^d\) is a vector of data and \(b \in \mathbb{R}^d\) is the vector of weights (parameters). We assume a bias weight is included in \(b\).</p>
-
-<h2 id="prepare-notebook">Prepare Notebook</h2>
-
-<pre><code class="language-python">import numpy as np
-import pandas as pd
-
+\]</span></p>
+<p>where <span class="math inline">\(x \in \mathbb{R}^d\)</span> is a vector of data and <span class="math inline">\(b \in \mathbb{R}^d\)</span> is the vector of weights (parameters). We assume a bias weight (i.e. intercept) is included in <span class="math inline">\(b\)</span>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
 import pymc3 as pm
 
 import seaborn as sns; sns.set()
 
 import matplotlib.pyplot as plt
-%matplotlib inline
-</code></pre>
-
-<h2 id="generate-sample-data">Generate Sample Data</h2>
-
+%matplotlib inline</code></pre>
+</div>
+<div id="generate-sample-data" class="section level2">
+<h2>Generate Sample Data</h2>
 <p>Let us begin by generating sample data.</p>
-
-<pre><code class="language-python"># Define dimension.
+<pre class="python"><code># Define dimension.
 d = 2
 
 # Number of samples. 
@@ -119,13 +110,10 @@ n = 100
 # Independent variable. 
 x = np.linspace(start=0, stop=1, num=n).reshape([1, n])
 
-# Design matrix. We add a column of ones to account for the biad term. 
-X = np.append(np.ones(n).reshape([1, n]), x, axis=0)
-</code></pre>
-
+# Design matrix. We add a column of ones to account for the bias term. 
+X = np.append(np.ones(n).reshape([1, n]), x, axis=0)</code></pre>
 <p>Now we generate the response variable.</p>
-
-<pre><code class="language-python"># True parameters. 
+<pre class="python"><code># True parameters. 
 b = np.zeros(d)
 ## Intercept. 
 b[0] = 1
@@ -134,7 +122,7 @@ b[1] = 3
 
 b = b.reshape(d, 1)
 
-# Error standar deviation. 
+# Error standard deviation. 
 sigma_n = 0.5
 
 # Errors.
@@ -142,513 +130,575 @@ epsilon = np.random.normal(loc=0, scale=sigma_n, size=n).reshape([n, 1])
 
 f = np.dot(X.T, b)
 
-# Observer target variable. 
-y = f + epsilon
-</code></pre>
-
+# Observed target variable. 
+y = f + epsilon</code></pre>
 <p>We visualize the data set.</p>
+<pre class="python"><code>plt.rcParams[&#39;figure.figsize&#39;] = (10,7)
 
-<pre><code class="language-python">sns.distplot(epsilon).set_title(&quot;Error Distribution&quot;);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_10_1.png" alt="png" />
-</center></p>
-
-<pre><code class="language-python">fig, ax = plt.subplots(figsize=(8,6))
+fig, ax = plt.subplots()
+sns.distplot(epsilon, ax=ax)
+ax.set_title(&#39;Error Distribution&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_10_0.png" alt="png" />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
 # Plot raw data.
-sns.scatterplot(x=x.T.reshape(n,), y=y.reshape(n,));
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
 # Plot &quot;true&quot; linear fit.
-sns.lineplot(x=x.T.reshape(n,), y=f.reshape(n,), color=&quot;red&quot;, label = &quot;true&quot;);
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
 
-ax.set_ylim((0,5));
-ax.legend(loc=&quot;lower right&quot;)
-ax.set_title(&quot;Raw Data&quot;);
-</code></pre>
-
-<p><center>
+ax.set(title=&#39;Raw Data&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
 <img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_11_0.png" alt="png" />
-</center></p>
-
-<h2 id="likelihood">Likelihood</h2>
-
-<p>A straightforward calculation shows that the likehood function is given by</p>
-
-<p>$$
-p(y|X, b) =
-\frac{1}{(2\pi \sigma_n^2)^{n/2}} \exp\left(-\frac{1}{2\sigma_n^2}||y - X^T b||^2\right) =
+</center>
+</div>
+<div id="likelihood" class="section level2">
+<h2>Likelihood</h2>
+<p>A straightforward calculation shows that the likelihood function is given by</p>
+<p><span class="math display">\[
+p(y|X, b) = 
+\prod_{i=1}^{n} p(y_i|x_i, b)
+=
+\frac{1}{(2\pi \sigma_n^2)^{n/2}} \exp\left(-\frac{1}{2\sigma_n^2}||y - X^T b||^2\right) = 
 N(X^T b, \sigma_n^2 I)
-$$</p>
-
-<h2 id="prior-distribution">Prior Distribution</h2>
-
-<p>We set a multivariate normal distribution with mean zero for the prior of the vector of weights \(b \sim N(0, \Sigma_p)\). Here \(\Sigma_p \in M_{d}(\mathbb{R})\) denotes the covariance matrix.</p>
-
-<pre><code class="language-python"># Mean vector.
+\]</span></p>
+<p>where <span class="math inline">\(X\in M_{d\times n}(\mathbb{R})\)</span> is the design matrix which has the observations as rows.</p>
+</div>
+<div id="prior-distribution" class="section level2">
+<h2>Prior Distribution</h2>
+<p>We set a multivariate normal distribution with mean zero for the prior of the vector of weights \(b N(0, _p)\). Here \(<em>p M</em>{d}()\) denotes the covariance matrix.</p>
+<pre class="python"><code># Mean vector.
 mu_0 = np.zeros(d)
 # Covariance matrix. 
 # Add small perturbation for numerical stability. 
 sigma_p = np.array([[2, 1], [1, 2]]) + 1e-12*np.eye(d)
-</code></pre>
 
-<p>Let us sample from the prior distribution to see the level curves (see <a href="https://juanitorduz.github.io/multivariate_normal/">here</a>).</p>
-
-<pre><code class="language-python"># Set number of samples. 
+sigma_p</code></pre>
+<pre><code>array([[2., 1.],
+       [1., 2.]])</code></pre>
+<p>Let us sample from the prior distribution to see the level curves (see <a href="https://juanitorduz.github.io/multivariate_normal/">this</a> post).</p>
+<pre class="python"><code># Set number of samples. 
 m = 10000
-
+# Generate samples. 
 z = np.random.multivariate_normal(mean=mu_0, cov=sigma_p, size=m)
-
 z = z.T
+# PLot. 
+sns.jointplot(x=z[0], y=z[1], kind=&quot;kde&quot;, space=0, color=&#39;purple&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_18_0.png" alt="png" />
+</center>
+<p>Note that the ellipse-like level curves are rotated (with respect the natural axis) due the fact that <span class="math inline">\(\Sigma_p\)</span> is not diagonal.</p>
+<p>Let us begin by sampling lines from the prior distribution.</p>
+<pre class="python"><code># Number of samples to select. 
+m = 200
+# Sample from prior distribution of the weight vector.
+z_prior = np.random.multivariate_normal(mean=mu_0, cov=sigma_p, size=m)
+# Compute prior lines. 
+lines_prior = np.dot(z_prior, X)</code></pre>
+<p>We visualize the sample lines.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
 
-sns.jointplot(x=z[0],
-              y=z[1], 
-              kind=&quot;kde&quot;, 
-              space=0);
-</code></pre>
+# Loop over the line samples from the prior distribution.
+for i in range(0, m):
 
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_17_0.png" alt="png" />
-</center></p>
+    sns.lineplot(
+        x=x.T.flatten(), 
+        y=lines_prior[i], 
+        color=&#39;purple&#39;, 
+        alpha=0.2
+    )
 
-<p>Note that the ellipse-like level curves are rotated (with respect the natural axis) due the fact that \(\Sigma_p\) is not diagonal.</p>
+# Plot raw data.
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
 
-<h2 id="posterior-distribution">Posterior Distribution</h2>
-
-<p>Now we want to use the data to find the posterior destribution of the vector of weights. Recall that the posterior is obtained (from Bayes rule) by computing</p>
-
-<p>$$
+ax.set(title=&#39;Curves drawn from the prior distribution of the weight vector&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_23_0.png" alt="png" />
+</center>
+</div>
+<div id="posterior-distribution" class="section level2">
+<h2>Posterior Distribution</h2>
+<p>Now we want to use the data to find the posterior distribution of the vector of weights. Recall that the posterior is obtained (from Bayes rule) by computing</p>
+<p><span class="math display">\[
 \text{posterior} =
 \frac{\text{likelihood × prior}}{\text{marginal likelihood}}
-$$</p>
-
+\]</span></p>
 <p>Concretely,</p>
-
-<p>$$
-p(b|y, X) =
+<p><span class="math display">\[
+p(b|y, X) = 
 \frac{p(y|X, b)p(b)}{p(y|X)}
-$$</p>
-
-<p>The marginal likehood \(p(y|X)\), which is independent of \(b\), is calculated as</p>
-
-<p>$$
+\]</span></p>
+<p>The marginal likelihood <span class="math inline">\(p(y|X)\)</span>, which is independent of <span class="math inline">\(b\)</span>, is calculated as</p>
+<p><span class="math display">\[
 p(y|X) = \int p(y|X, b)p(b) db
-$$</p>
-
-<h3 id="mcmc-sampling-with-pymc3">MCMC Sampling with PyMC3</h3>
-
+\]</span></p>
+<div id="mcmc-sampling-with-pymc3" class="section level3">
+<h3>MCMC Sampling with PyMC3</h3>
 <p>Recall that we do not need to compute \(p(y|X)\) directly since we can sample from the posterior distribution using <a href="https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo">MCMC</a> sampling. Again, see <a href="https://juanitorduz.github.io/intro_pymc3/">this</a> post for more details.</p>
-
-<pre><code class="language-python">import theano.tensor as tt
+<pre class="python"><code>import theano.tensor as tt
 
 model = pm.Model()
 
 with model:
-    
     # Define prior.
-    beta = pm.MvNormal(&quot;beta&quot;, mu=mu_0, cov=sigma_p, shape=d)
-    
+    beta = pm.MvNormal(&#39;beta&#39;, mu=mu_0, cov=sigma_p, shape=d)
     # Define likelihood.
-    likelihood = pm.Normal('y', mu=tt.dot(X.T, beta), sd=sigma_n, observed=y.squeeze())
-    
+    likelihood = pm.Normal(&#39;y&#39;, mu=tt.dot(X.T, beta), sd=sigma_n, observed=y.squeeze())
     # Consider 6000 draws and 3 chains.
-    trace = pm.sample(draws=6000, njobs=3)
-</code></pre>
-
+    trace = pm.sample(draws=7500, cores=3)</code></pre>
 <pre><code>Auto-assigning NUTS sampler...
 Initializing NUTS using jitter+adapt_diag...
 Multiprocess sampling (3 chains in 3 jobs)
 NUTS: [beta]
-Sampling 3 chains: 100%|██████████| 19500/19500 [00:10&lt;00:00, 1871.61draws/s]
-</code></pre>
-
+Sampling 3 chains: 100%|██████████| 24000/24000 [00:11&lt;00:00, 2127.41draws/s]</code></pre>
 <p>Let us visualize the posterior distributions.</p>
-
-<pre><code class="language-python">pm.traceplot(trace);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_28_0.png" alt="png" />
-</center></p>
-
-<pre><code class="language-python">pm.plot_posterior(trace);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_29_0.png" alt="png" />
-</center></p>
-
-<pre><code class="language-python">pm.summary(trace)
-</code></pre>
-
-<p><center>
+<pre class="python"><code>pm.traceplot(trace, figsize=(12, 5));</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_33_0.png" alt="png" />
+</center>
+<pre class="python"><code>pm.plot_posterior(trace, figsize=(12, 5));</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_34_0.png" alt="png" />
+</center>
+<pre class="python"><code>pm.summary(trace)</code></pre>
 <div>
+<center>
 <style scoped>
     .dataframe tbody tr th:only-of-type {
         vertical-align: middle;
-    }</p>
+    }
 
-<pre><code>.dataframe tbody tr th {
-    vertical-align: top;
-}
+    .dataframe tbody tr th {
+        vertical-align: top
+        font-size: 14px;
+    }
 
-.dataframe thead th {
-    text-align: right;
-}
-</code></pre>
-
-<p></style>
+    .dataframe thead th {
+        text-align: center;
+    }
+</style>
 <table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>mean</th>
-      <th>sd</th>
-      <th>mc_error</th>
-      <th>hpd_2.5</th>
-      <th>hpd_97.5</th>
-      <th>n_eff</th>
-      <th>Rhat</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>beta<strong>0</th>
-      <td>0.992376</td>
-      <td>0.097103</td>
-      <td>0.001526</td>
-      <td>0.809894</td>
-      <td>1.190785</td>
-      <td>4730.078131</td>
-      <td>1.000237</td>
-    </tr>
-    <tr>
-      <th>beta</strong>1</th>
-      <td>2.975763</td>
-      <td>0.167005</td>
-      <td>0.002615</td>
-      <td>2.649422</td>
-      <td>3.296159</td>
-      <td>4701.183674</td>
-      <td>1.000545</td>
-    </tr>
-  </tbody>
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+mc_error
+</th>
+<th>
+hpd_2.5
+</th>
+<th>
+hpd_97.5
+</th>
+<th>
+n_eff
+</th>
+<th>
+Rhat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+beta__0
+</th>
+<td>
+0.944719
+</td>
+<td>
+0.098275
+</td>
+<td>
+0.001246
+</td>
+<td>
+0.756161
+</td>
+<td>
+1.137474
+</td>
+<td>
+6275.837716
+</td>
+<td>
+1.000179
+</td>
+</tr>
+<tr>
+<th>
+beta__1
+</th>
+<td>
+3.082444
+</td>
+<td>
+0.170306
+</td>
+<td>
+0.002171
+</td>
+<td>
+2.748780
+</td>
+<td>
+3.412982
+</td>
+<td>
+6351.843878
+</td>
+<td>
+1.000169
+</td>
+</tr>
+</tbody>
 </table>
+</center>
 </div>
-</center></p>
+<p>Let us see the join posterior distribution.</p>
+<pre class="python"><code>sns.jointplot(x=trace[&#39;beta&#39;].T[0],y=trace[&#39;beta&#39;].T[1], kind=&#39;kde&#39;, color=&#39;green&#39;, space=0);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_37_0.png" alt="png" />
+</center>
+<p>Now let us sample from the posterior distribution.</p>
+<pre class="python"><code># Get a sub-sample of indices of length m. 
+sample_posterior_indices = np.random.choice(trace[&quot;beta&quot;].shape[0], m, replace=False)
+# Select samples from the trace of the posterior. 
+z_posterior = trace[&quot;beta&quot;][sample_posterior_indices, ]
+# Compute posterior lines. 
+lines_posterior = np.dot(z_posterior, X)</code></pre>
+<p>Similarly, let us plot the posterior samples.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
 
-<p>In addition, let us see the join posterior distribution.</p>
+# Loop over the line samples from the posterior distribution.
+for i in range(0, m):
 
-<pre><code class="language-python">sns.jointplot(x=trace[&quot;beta&quot;].T[0],
-              y=trace[&quot;beta&quot;].T[1], 
-              kind=&quot;kde&quot;, 
-              space=0);
-</code></pre>
+    sns.lineplot(
+        x=x.T.flatten(), 
+        y=lines_posterior[i], 
+        color=&#39;green&#39;, 
+        alpha=0.2
+    )
+    
+# Plot raw data.
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
 
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_32_1.png" alt="png" />
-</center></p>
+ax.set(title=&#39;Curves drawn from the posterior distribution of the weight vector&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_41_0.png" alt="png" />
+</center>
+<p>We see how the data makes the posterior distribution much more localized around the mean.</p>
+</div>
+</div>
+<div id="predictions" class="section level2">
+<h2>Predictions</h2>
+<p>Next, we use the posterior distribution of the weights vector to generate predictions.</p>
+<div id="parameter-mean" class="section level3">
+<h3>Parameter Mean</h3>
+<p>Let us begin by using the mean of the posterior distribution of each parameter to find the linear fit.</p>
+<pre class="python"><code># Compute mean of the posterior distribution. 
+beta_hat = np.apply_over_axes(func=np.mean, a=trace[&#39;beta&#39;], axes=0).reshape(d,1)
+# Compute linear fit. 
+y_hat = np.dot(X.T, beta_hat)</code></pre>
+<p>Let us plot the result.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+# Plot raw data.
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
+# Plot line corresponding to the posterior mean of the weight vector. 
+sns.lineplot(x=x.T.flatten(), y=y_hat.flatten(), color=&#39;green&#39;, label=&#39;posterior mean&#39;)
 
-<h3 id="analytical-solution">Analytical Solution</h3>
+ax.set(title=&#39;Linear fit for parameter posterior mean&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_47_0.png" alt="png" />
+</center>
+</div>
+<div id="confidence-interval" class="section level3">
+<h3>Confidence Interval</h3>
+<p>Next, let us compute the confidence interval for the fit.</p>
+<pre class="python"><code># We sample from the posterior. 
+y_hat_samples = np.dot(X.T, trace[&#39;beta&#39;].T)</code></pre>
+<pre class="python"><code># Compute the standard deviation. 
+y_hat_sd = np.apply_over_axes(func=np.std, a=y_hat_samples, axes=1).squeeze()</code></pre>
+<p>Let us plot the confidence interval corresponding to a corridor corresponding to two standard deviations.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
 
-<p>We can find the analytical solution of the posterior distribution.</p>
+# Plot confidence interval.
+plt.fill_between(
+    x=x.T.reshape(n,), 
+    y1=(y_hat.reshape(n,) - 2*y_hat_sd), 
+    y2=(y_hat.reshape(n,) + 2*y_hat_sd), 
+    color = &#39;green&#39;, 
+    alpha = 0.3, 
+    label=&#39;confidence interval: mean $\pm 2 \sigma$&#39;
+)
 
-<p>$$
-p(b|y, X) \propto
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
+# Plot raw data.
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
+# Plot line corresponding to the posterior mean of the weight vector. 
+sns.lineplot(x=x.T.flatten(), y=y_hat.flatten(), color=&#39;green&#39;, label=&#39;posterior mean&#39;)
+
+ax.set(title=&#39;Linear fit for parameter posterior mean&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_52_0.png" alt="png" />
+</center>
+</div>
+<div id="test-set" class="section level3">
+<h3>Test Set</h3>
+<p>Now, we write a function to generate predictions for a new data point.</p>
+<pre class="python"><code>def generate_prediction(x_star, trace):
+    &quot;&quot;&quot;
+    Generate prediction for a new value given the 
+    posterior distribution()
+    &quot;&quot;&quot;
+    # Compute prediction distribution. 
+    prob = np.dot(x_star.T, trace[&#39;beta&#39;].T)
+    # Sample from it. 
+    y_hat = np.random.choice(a=prob.squeeze())
+    
+    return y_hat</code></pre>
+<p>Let us generate a prediction for the value <span class="math inline">\(z_* = 0.85\)</span></p>
+<pre class="python"><code>z_star = np.array([[1], [0.85]])
+
+y_hat_star = generate_prediction(z_star, trace)
+
+y_hat_star</code></pre>
+<p>3.5449253914610828</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+# Plot confidence interval.
+plt.fill_between(
+    x=x.T.reshape(n,), 
+    y1=(y_hat.reshape(n,) - 2*y_hat_sd), 
+    y2=(y_hat.reshape(n,) + 2*y_hat_sd), 
+    color = &#39;green&#39;, 
+    alpha = 0.3, 
+    label=&#39;confidence interval: mean $\pm 2 \sigma$&#39;
+)
+
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
+# Plot raw data.
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
+# Plot line corresponding to the posterior mean of the weight vector. 
+sns.lineplot(x=x.T.flatten(), y=y_hat.flatten(), color=&#39;green&#39;, label=&#39;posterior mean&#39;)
+# Point prediction
+sns.scatterplot(x=z_star[1], y=y_hat_star, color=&#39;black&#39;, label=&#39;point prediction $z_*$&#39;)
+
+ax.set(title=&#39;Linear fit for parameter posterior mean &amp; point prediction&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
+<img src="\images/reg_bayesian_regression_files/reg_bayesian_regression_57_0.png" alt="png" />
+</center>
+</div>
+</div>
+<div id="analytical-solution" class="section level2">
+<h2>Analytical Solution</h2>
+<p>For this concrete example, we can find the analytical solution of the posterior distribution. Recall that this one is proportional to the product:</p>
+<p><span class="math display">\[
+p(b|y, X) \propto 
 \exp\left(
 -\frac{1}{2\sigma_n^2}||y - X^T b||^2
 \right)
 \exp\left(
 -\frac{1}{2} b^T \Sigma_p b
 \right)
-$$</p>
-
-<p>We can &ldquo;complete the square&rdquo; to do it. Specifically, let us define:</p>
-
-<p>$$
-A= \sigma_n^{-2}XX^T + \Sigma_p^{-1} \in M_{d}(\mathbb{R})
+\]</span></p>
+<p>The main idea to find the functional form of the posterior distribution is to “complete the square” of the exponents in the right hand side of the equation above. Specifically, let us define:</p>
+<p><span class="math display">\[
+A:= \sigma_n^{-2}XX^T + \Sigma_p^{-1} \in M_{d}(\mathbb{R})
 \quad
 \text{and}
 \quad
-\bar{b}= \sigma_n^{-2}A^{-1}Xy
-$$</p>
-
+\bar{b}:= \sigma_n^{-2}A^{-1}Xy \in \mathbb{R}^d
+\]</span></p>
 <p>Then,</p>
-
-<p>$$
-\sigma_n^{-2} ||y - X^T b||^2 + b^T \Sigma_p b = b^T A b - \sigma_n^{-2}(b^T Xy + (b^T Xy)^T) + \sigma_n^{-2}y^Ty.
-$$</p>
-
-<p>The last term does not depend on \(b\) so we can ignore it for the calculation. Observe that \(\sigma_n^{-2} b^T Xy = \sigma_n^{-2} b^TAA^{-1}Xy = b^TA\bar{b}\), hence</p>
-
-<p>$$
-b^T A b - \sigma_n^{-2}(b^T Xy + (b^T Xy)^T) =
+<p><span class="math display">\[
+\sigma_n^{-2} ||y - X^T b||^2 + b^T \Sigma_p b
+=
+b^T A b - \sigma_n^{-2}(b^T Xy + (b^T Xy)^T) + \sigma_n^{-2}y^Ty.
+\]</span></p>
+<p>The last term does not depend on <span class="math inline">\(b\)</span> so we can ignore it for the calculation. Observe that <span class="math inline">\(\sigma_n^{-2} b^T Xy = \sigma_n^{-2} b^TAA^{-1}Xy = b^TA\bar{b}\)</span>, hence</p>
+<p><span class="math display">\[
+b^T A b - \sigma_n^{-2}(b^T Xy + (b^T Xy)^T) = 
 b^T A b - b^TA\bar{b} - \bar{b}^TAb =
-(b - \bar{b})^TA(b - \bar{b}) - \bar{b}^TA\bar{b}
-$$</p>
-
-<p>Again, the therm \(\bar{b}^TA\bar{b}\) does not depend on \(b\), so it is not relevant for the computation. We <em>then recognize the form of the posterior distribution as gaussian with mean \(\bar{b}\) and covariance matrix \(A^{-1}\).</em></p>
-
-<p>$$
+b^T A b - b^TA\bar{b} - \bar{b}^TAb =
+(b - \bar{b})^TA(b - \bar{b}) - \bar{b}^TA\bar{b} 
+\]</span></p>
+<p>Again, the therm <span class="math inline">\(\bar{b}^TA\bar{b}\)</span> does not depend on <span class="math inline">\(b\)</span>, so it is not relevant for the computation. We <em>then recognize the form of the posterior distribution as gaussian with mean <span class="math inline">\(\bar{b}\)</span> and covariance matrix <span class="math inline">\(A^{-1}\)</span>.</em></p>
+<p><span class="math display">\[
 p(b|y, X) \sim N
 \left(
-\frac{1}{\sigma_n^2} A^{-1}Xy,
+\bar{b}, 
 A^{-1}
 \right)
-$$</p>
-
+\]</span></p>
 <p>Let us compute the analytic solution for this example:</p>
-
-<pre><code class="language-python"># Compute A.
+<pre class="python"><code># Compute A.
 A = (sigma_n)**(-2)*np.dot(X, X.T) + np.linalg.inv(sigma_p)
 # Compute its inverse. 
-A_inv = np.linalg.inv(A)
-</code></pre>
-
-<pre><code class="language-python"># Compute b_bar.
+A_inv = np.linalg.inv(A)</code></pre>
+<pre class="python"><code># Compute b_bar.
 b_bar = (sigma_n)**(-2)*np.dot(A_inv, np.dot(X, y))
-b_bar
-</code></pre>
-
-<pre><code>array([[0.99260517],
-       [2.97552207]])
-</code></pre>
-
+b_bar</code></pre>
+<p>array([[0.94578232],
+[3.08015972]])</p>
 <p>Note that these values coincide with the values above obtained from the MCMC sampling. Let us sample from the analytical solution of the posterior distribution.</p>
-
-<pre><code class="language-python">m = 10000
-
+<pre class="python"><code># Set number of samples. 
+m = 10000
+# Sample from the posterior distribution. 
 z = np.random.multivariate_normal(mean=b_bar.squeeze(), cov=A_inv, size=m)
-
 z = z.T
 
-sns.jointplot(x=z[0],
-              y=z[1], 
-              kind=&quot;kde&quot;, 
-              space=0);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_47_0.png" alt="png" />
-</center></p>
-
-<p>These level curves coinncide with the ones obtained above.</p>
-
-<h2 id="predictions">Predictions</h2>
-
-<p>Next, we use the posterior distribution of the weights vector to generate predictions.</p>
-
-<h3 id="parameter-mean">Parameter Mean</h3>
-
-<p>Let us begin by using the mean of the posterior distribution of each parameter to find the linear fit.</p>
-
-<pre><code class="language-python"># Compute mean of the posterior distribution. 
-beta_hat = (np.apply_over_axes(func=np.mean, a=trace[&quot;beta&quot;], axes=0)
-            .squeeze()
-            .reshape(d,1))
-
-# Compute lineear fit. 
-y_hat = np.dot(X.T, beta_hat)
-</code></pre>
-
-<p>Let us plot the result.</p>
-
-<pre><code class="language-python">fig, ax = plt.subplots(figsize=(8,6))
-
-# Plot raw data.
-sns.scatterplot(x=x.T.reshape(n,), y=y.reshape(n,));
-# Plot &quot;true&quot; linear fit.
-sns.lineplot(x=x.T.reshape(n,), y=f.reshape(n,), color=&quot;red&quot;, label = &quot;true&quot;);
-# Plot line corresponding to the posterior mean of the weight vector. 
-sns.lineplot(x=x.T.reshape(n,), y=y_hat.reshape(n,), color=&quot;green&quot;, label = &quot;prediction&quot;);
-
-ax.set_ylim((0,5));
-ax.legend(loc=&quot;lower right&quot;)
-ax.set_title(&quot;Linear fit Prediction&quot;);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_53_0.png" alt="png" />
-</center></p>
-
-<h3 id="confidence-inteval">Confidence Inteval</h3>
-
-<p>Next, let us compute the confidence interval for the fit.</p>
-
-<pre><code class="language-python"># We sample from the posterior. 
-y_hat_samples = np.dot(X.T, trace[&quot;beta&quot;].T)
-</code></pre>
-
-<pre><code class="language-python"># Compute the standard deviation. 
-y_hat_sd = np.apply_over_axes(func=np.std, a=y_hat_samples, axes=1).squeeze()
-</code></pre>
-
-<p>Let us plot the confidence interval corrsponding to a corridor coresponding to two standard deviations.</p>
-
-<pre><code class="language-python">fig, ax = plt.subplots(figsize=(8,6))
-# Plot raw data.
-sns.scatterplot(x=x.T.reshape(n,), y=y.reshape(n,));
-# Plot line corresponding to the posterior mean of the weight vector. 
-sns.lineplot(x=x.T.reshape(n,), y=y_hat.reshape(n,), color=&quot;green&quot;);
-# Plot confidence interval.
-plt.fill_between(x=x.T.reshape(n,), 
-                 y1=(y_hat.reshape(n,) - 2*y_hat_sd), 
-                 y2=(y_hat.reshape(n,) + 2*y_hat_sd), 
-                 color = &quot;green&quot;, alpha = 0.3)
-
-ax.set_ylim((0,5));
-ax.set_title(&quot;Confidence Interval Prediction&quot;);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_58_0.png" alt="png" />
-</center></p>
-
-<h3 id="test-set">Test Set</h3>
-
-<p>Now, we write a function to generate predictions for a new data point.</p>
-
-<pre><code class="language-python">def generate_prediction(x_star):
-    # Compute prediction distribution. 
-    prob = np.dot(x_star.T, trace[&quot;beta&quot;].T)
-    # Sample from it. 
-    y_hat = np.random.choice(a=prob.squeeze())
-    
-    return y_hat
-</code></pre>
-
-<p>Let us generate a prediction for the value \(x_* = 0.85\)</p>
-
-<pre><code class="language-python">x_star = np.array([[1], [0.85]])
-
-y_hat_star = generate_prediction(x_star)
-
-y_hat_star
-</code></pre>
-
-<pre><code>3.527626262691181
-</code></pre>
-
-<pre><code class="language-python">fig, ax = plt.subplots(figsize=(8,6))
-# Plot raw data.
-sns.scatterplot(x=x.T.reshape(n,), y=y.reshape(n,));
-# Plot line corresponding to the posterior mean of the weight vector. 
-sns.lineplot(x=x.T.reshape(n,), y=y_hat.reshape(n,), color=&quot;green&quot;);
-# Plot confidence interval.
-plt.fill_between(x=x.T.reshape(n,), 
-                 y1=(y_hat.reshape(n,) - 2*y_hat_sd), 
-                 y2=(y_hat.reshape(n,) + 2*y_hat_sd), 
-                 color = &quot;green&quot;, alpha = 0.3)
-# Plot prediction point. 
-sns.scatterplot(x=x_star[1], y=y_hat_star, color=&quot;red&quot;);
-
-
-ax.set_ylim((0,5));
-ax.set_title(&quot;Prediction&quot;);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_63_0.png" alt="png" />
-</center></p>
-
-<h2 id="regularized-bayesian-linear-regression-as-a-gaussian-process">Regularized Bayesian Linear Regression as a Gaussian Process</h2>
-
-<p>A <strong>gaussian process</strong> is a collection of random variables, any finite number of which have a joint gaussian distribution (See  <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch2 - Section 2.2</a>).</p>
-
-<p>A Gaussian process \(f(x) \) is completely specified by its mean function \(m(x)\) and covariance function \(k(x, x&rsquo;)\). Here \(x \in \mathcal{X}\) denotes a point on the index set \(\mathcal{X}\). These functions are defined by</p>
-
-<p>$$
+sns.jointplot(x=z[0], y=z[1], kind=&#39;kde&#39;, color=&#39;green&#39;, space=0);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_72_0.png" alt="png" />
+</center>
+<p>These level curves coincide with the ones obtained above.</p>
+<p>A straightforward computation shows that the predictive posterior distribution is given by:</p>
+<p><span class="math display">\[
+p(y_*|z_*, X, y) = N\left(\frac{1}{\sigma_n^2}z_*^T A^{-1}Xy, z_*^TA^{-1}z_*\right)
+\]</span></p>
+</div>
+<div id="regularized-bayesian-linear-regression-as-a-gaussian-process" class="section level2">
+<h2>Regularized Bayesian Linear Regression as a Gaussian Process</h2>
+<p>A <strong>gaussian process</strong> is a collection of random variables, any finite number of which have a joint gaussian distribution (See <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch2 - Section 2.2</a>).</p>
+<p>A Gaussian process <span class="math inline">\(f(x)\)</span> is completely specified by its mean function <span class="math inline">\(m(x)\)</span> and covariance function <span class="math inline">\(k(x, x&#39;)\)</span>. Here <span class="math inline">\(x \in \mathcal{X}\)</span> denotes a point on the index set <span class="math inline">\(\mathcal{X}\)</span>. These functions are defined by</p>
+<p><span class="math display">\[
 m(x) = E[f(x)]
 \quad
 \text{and}
 \quad
-k(x, x&rsquo;) = E[(f(x) - m(x))(f(x&rsquo;) - m(x&rsquo;))]
-$$</p>
-
+k(x, x&#39;) = E[(f(x) - m(x))(f(x&#39;) - m(x&#39;))]
+\]</span></p>
 <p><strong>Claim:</strong> The map \(f(x) = x^T b \) defines a Gaussian process.</p>
-
 <p><em>Proof:</em></p>
-
-<ol>
-<li>Let \(x_1, \cdots, x_N \in \mathcal{X}=\mathbb{R}^d\). As \(b\) has a multivariate normal distribution, then every linear combination of its components is normally distributed (see <a href="https://juanitorduz.github.io/multivariate_normal/">here</a>). In particular, for any \(a_1, \cdots, a_N \in \mathbb{R}\), we see that</li>
+<ol style="list-style-type: decimal">
+<li>Let <span class="math inline">\(x_1, \cdots, x_N \in \mathcal{X}=\mathbb{R}^d\)</span>. As <span class="math inline">\(b\)</span> has a multivariate normal distribution, then every linear combination of its components is normally distributed (see <a href="https://juanitorduz.github.io/multivariate_normal/">here</a>). In particular, for any <span class="math inline">\(a_1, \cdots, a_N \in \mathbb{R}\)</span>, we see that</li>
 </ol>
-
-<p>$$
-\sum_{i=1}^N a_i f(x_i) = \sum_{i=1}^N a_i x_i^Tb = \left(\sum_{i=1}^N a_i x_i\right)^Tb
-$$</p>
-
+<p><span class="math display">\[
+\sum_{i=1}^N a_i f(x_i)
+=
+\sum_{i=1}^N a_i x_i^Tb
+=
+\left(\sum_{i=1}^N a_i x_i\right)^Tb
+\]</span></p>
 <p>is a linear combination of the components of \(b\), thus is normally distributed. This shows that \(f(x)\) is a gaussian process.</p>
-
 <p>Let us now compute the mean and covariance functions:</p>
-
-<ol>
-<li><p>\(m (x) = E[f(x)] = x^T E[b]\) = 0.</p></li>
-
-<li><p>\(k(x, x&rsquo;) = E[f(x)f(x&rsquo;)] = E[x^T b (x&rsquo;)^T b] = E[x^T b b^T x&rsquo;] = x^T E[bb^T]x&rsquo; = x^T \Sigma_px&rsquo;\).</p></li>
+<ol start="2" style="list-style-type: decimal">
+<li><p><span class="math inline">\(m (x) = E[f(x)] = x^T E[b] = 0\)</span>.</p></li>
+<li><p><span class="math inline">\(k(x, x&#39;) = E[f(x)f(x&#39;)] = E[x^T b (x&#39;)^T b] = E[x^T b b^T x&#39;] = x^T E[bb^T]x&#39; = x^T \Sigma_px&#39;\)</span>.</p></li>
 </ol>
-
-<h2 id="function-space-view">Function-Space View</h2>
-
-<p>We can understand a gaussian process, and in particular a regularized bayesian regression, as an inference directly in function space (see details on a later post).</p>
-
-<p>Let us begin by sampling lines from the prior distribution.</p>
-
-<pre><code class="language-python"># Number of samples to select. 
+<p>Note that the posterior predictive distribution can be written in therms of this kernel function (more generally, even for non-linear regressions, this statement remains valid in therm of the so called “kernel trick”).</p>
+</div>
+<div id="function-space-view" class="section level2">
+<h2>Function-Space View</h2>
+<p>We can understand a gaussian process, and in particular a regularized bayesian regression, as an inference directly in function space (see details in <a href="https://juanitorduz.github.io/gaussian_process_reg/">this</a> post). The main difference in this change of perspective is that we do not sample from the parameters join distribution but rather on the space of functions themselves (to be precise, this function space is infinitely dimensional, so the function is characterized by evaluating it on a finite sample of points which we call the “test” set).</p>
+<pre class="python"><code># Number of test points
+n_star = 80
+# Create test set. 
+x_star = np.linspace(start=0, stop=1, num=n_star).reshape([1, n_star])
+# Add columns of ones.
+X_star = np.append(np.ones(n_star).reshape([1, n_star]), x_star, axis=0)</code></pre>
+<p>From the calculation above, let us define the kernel function:</p>
+<pre class="python"><code>def kernel(x_1, x_2, k):
+    &quot;&quot;&quot;Kernel function.&quot;&quot;&quot;
+    z = np.dot(x_1.T, k)
+    
+    return np.dot(z, x_2)</code></pre>
+<p>Let us compute the kernel image between <span class="math inline">\(X\)</span> and <span class="math inline">\(X_*\)</span>.</p>
+<pre class="python"><code>K = kernel(X, X, sigma_p)
+K_star = kernel(X_star, X, sigma_p)
+K_star_star = kernel(X_star, X_star, sigma_p)</code></pre>
+<p>In the function view of regularized linear regression, the kernel on the test set defines the prior distribution on the function space.</p>
+<pre class="python"><code>cov_prior = K_star_star</code></pre>
+<p>Let us sample from the prior distribution:</p>
+<pre class="python"><code># Number of samples to select. 
 m = 200
-# Sample from prior distribution of the weight vector.
-z_prior = np.random.multivariate_normal(mean=mu_0, cov=sigma_p, size=m)
-# Compute prior lines. 
-lines_prior = np.dot(z_prior, X)
-</code></pre>
 
-<p>We visualize the sample lines.</p>
-
-<pre><code class="language-python">fig, ax = plt.subplots(figsize=(8,6))
+fig, ax = plt.subplots()
 
 for i in range(0, m):
+    
+    points_sample = np.random.multivariate_normal(
+        mean=np.zeros(n_star), 
+        cov=cov_prior
+    )
+    
+    sns.lineplot(
+        x=x_star.flatten(), 
+        y=points_sample, 
+        color=&#39;purple&#39;, 
+        alpha=0.2, 
+        ax=ax
+    )
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
+# Plot raw data.
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
 
-    sns.lineplot(x=x.T.reshape(n,), 
-                 y=lines_prior[i], 
-                 color=&quot;blue&quot;, 
-                 alpha=0.3);
+ax.set(title=&#39;Curves drawn from the GP prior distribution&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_91_0.png" alt="png" />
+</center>
+<p>As pointed out above, we can express the posterior predictive distribution iin terms of the kernel function (refer to <a href="http://www.gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Ch 2.2</a>):</p>
+<pre class="python"><code>mean_posterior = np.dot(np.dot(K_star, np.linalg.inv(K + sigma_n**2*np.eye(n))), y)
 
-ax.set_ylim((0,5));
-ax.set_title(&quot;Curves drawn from the prior distribution of the weight vector&quot;);
-</code></pre>
+cov_posterior = K_star_star - np.dot(np.dot(K_star, np.linalg.inv(K + sigma_n**2*np.eye(n))), K_star.T)</code></pre>
+<p>Let us sample from the posterior distribution:</p>
+<pre class="python"><code># Number of samples to select. 
+m = 200
 
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_72_0.png" alt="png" />
-</center></p>
-
-<p>Now let us sample from the posterior distribution.</p>
-
-<pre><code class="language-python"># Get a sub-sammple of indices of length m. 
-sample_posterior_indices = np.random.choice(trace[&quot;beta&quot;].shape[0], m, replace=False)
-# Select samples from the trace of the posterior. 
-z_posterior = trace[&quot;beta&quot;][sample_posterior_indices, ]
-# Compute posterior lines. 
-lines_posterior = np.dot(z_posterior, X)
-</code></pre>
-
-<p>Similarly, let us plot the posterior samples.</p>
-
-<pre><code class="language-python">fig, ax = plt.subplots(figsize=(8,6))
+fig, ax = plt.subplots()
 
 for i in range(0, m):
+    
+    points_sample = np.random.multivariate_normal(
+        mean=mean_posterior.flatten(),
+        cov=cov_posterior
+    )
+    
+    sns.lineplot(
+        x=x_star.flatten(), 
+        y=points_sample, 
+        color=&#39;green&#39;, 
+        alpha=0.2, 
+        ax=ax
+    )
+    
+# Plot &quot;true&quot; linear fit.
+sns.lineplot(x=x.T.flatten(), y=f.flatten(), color=&#39;red&#39;, label=&#39;true&#39;)
+# Plot raw data.
+sns.scatterplot(x=x.T.flatten(), y=y.flatten())
 
-    sns.lineplot(x=x.T.reshape(n,), 
-                 y=lines_posterior[i], 
-                 color=&quot;blue&quot;, 
-                 alpha=0.2);
-
-ax.set_ylim((0,5));
-ax.set_title(&quot;Curves drawn from the posterior distribution of the weight vector&quot;);
-</code></pre>
-
-<p><center>
-<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_76_0.png" alt="png" />
-</center></p>
-
-<p>We see how the data makes the posterior distribution much more localized around the mean.</p>
+ax.set(title=&#39;Curves drawn from the GP posterior distribution&#39;)
+ax.legend(loc=&#39;lower right&#39;);</code></pre>
+<center>
+<img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_95_0.png" alt="png" />
+</center>
+<p>This analysis should give a better intuition on the definition of gaussian process, which at first glance might appear somehow mysterious. I will continue exploring this topic in future posts.</p>
+</div>
 
     </div>
   </article>
