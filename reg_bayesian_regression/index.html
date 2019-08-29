@@ -6,8 +6,8 @@
 <meta name="generator" content="Hugo 0.52" />
 
 
-<title>Regularized Bayesian Regression as a Gaussian Process - Dr. Juan Camilo Orduz</title>
-<meta property="og:title" content="Regularized Bayesian Regression as a Gaussian Process - Dr. Juan Camilo Orduz">
+<title>Bayesian Regression as a Gaussian Process - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Bayesian Regression as a Gaussian Process - Dr. Juan Camilo Orduz">
 
 
 
@@ -64,7 +64,7 @@
     <span class="article-duration">11 min read</span>
     
 
-    <h1 class="article-title">Regularized Bayesian Regression as a Gaussian Process</h1>
+    <h1 class="article-title">Bayesian Regression as a Gaussian Process</h1>
 
     
     <span class="article-date">2019/04/01</span>
@@ -429,24 +429,24 @@ ax.legend(loc=&#39;lower right&#39;);</code></pre>
 <img src="../images/reg_bayesian_regression_files/reg_bayesian_regression_47_0.png" alt="png" />
 </center>
 </div>
-<div id="confidence-interval" class="section level3">
-<h3>Confidence Interval</h3>
-<p>Next, let us compute the confidence interval for the fit.</p>
+<div id="credible-interval" class="section level3">
+<h3>Credible Interval</h3>
+<p>Next, let us compute the credible interval for the fit.</p>
 <pre class="python"><code># We sample from the posterior. 
 y_hat_samples = np.dot(X.T, trace[&#39;beta&#39;].T)</code></pre>
 <pre class="python"><code># Compute the standard deviation. 
 y_hat_sd = np.apply_over_axes(func=np.std, a=y_hat_samples, axes=1).squeeze()</code></pre>
-<p>Let us plot the confidence interval corresponding to a corridor corresponding to two standard deviations.</p>
+<p>Let us plot the credible interval corresponding to a corridor corresponding to two standard deviations.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 
-# Plot confidence interval.
+# Plot credible interval.
 plt.fill_between(
     x=x.T.reshape(n,), 
     y1=(y_hat.reshape(n,) - 2*y_hat_sd), 
     y2=(y_hat.reshape(n,) + 2*y_hat_sd), 
     color = &#39;green&#39;, 
     alpha = 0.3, 
-    label=&#39;confidence interval: mean $\pm 2 \sigma$&#39;
+    label=&#39;credible interval: mean $\pm 2 \sigma$&#39;
 )
 
 # Plot &quot;true&quot; linear fit.
@@ -485,14 +485,14 @@ y_hat_star</code></pre>
 <p>3.5449253914610828</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 
-# Plot confidence interval.
+# Plot credible interval.
 plt.fill_between(
     x=x.T.reshape(n,), 
     y1=(y_hat.reshape(n,) - 2*y_hat_sd), 
     y2=(y_hat.reshape(n,) + 2*y_hat_sd), 
     color = &#39;green&#39;, 
     alpha = 0.3, 
-    label=&#39;confidence interval: mean $\pm 2 \sigma$&#39;
+    label=&#39;credible interval: mean $\pm 2 \sigma$&#39;
 )
 
 # Plot &quot;true&quot; linear fit.
