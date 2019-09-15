@@ -47,7 +47,8 @@ Prepare Notebook library(glue) library(lubridate) library(magrittr) library(tidy
       <pubDate>Mon, 01 Apr 2019 00:00:00 +0000</pubDate>
       
       <guid>/reg_bayesian_regression/</guid>
-      <description>In this post we study the Regularized Bayesian Regression model to explore and compare the weight and function space and views of Gaussian Process Regression as described in the book Gaussian Processes for Machine Learning, Ch 2. We follow this reference very closely (and encourage to read it!). Our main objective is to illustrate the concepts and results through a concrete example. We use PyMC3 to run bayesian sampling.</description>
+      <description>In this post we study the Bayesian Regression model to explore and compare the weight and function space and views of Gaussian Process Regression as described in the book Gaussian Processes for Machine Learning, Ch 2. We follow this reference very closely (and encourage to read it!). Our main objective is to illustrate the concepts and results through a concrete example. We use PyMC3 to run bayesian sampling.
+References:</description>
     </item>
     
     <item>
@@ -140,8 +141,9 @@ When the number of features \(p\) is large, there tends to be a deterioration in
       
       <guid>/about/</guid>
       <description>Dr. Juan Camilo Orduz Mathematician &amp;amp; Data Scientist    --  
-I have a PhD and Master degree in Mathematics from Humboldt Universität zu Berlin under the supervision of Prof. Jochen Brüning. My graduate studies were supported by the Berlin Mathematical School. Here I share my experience. Before coming to Berlin I did two bachelor degrees: Mathematics and Physics at Universidad de los Andes.
-My research interests are differential geometry, topology and geometric analysis, in particular variants of the Atiyah-Singer Index Theorem for singular spaces.</description>
+You can find the code associated with the blog posts on this GitHub repository.
+Contact: juanitorduz@gmail.com
+  **Contact:** juanitorduz@gmail.com    -- I have a PhD and a Master degree in Mathematics from Humboldt Universität zu Berlin under the supervision of Prof. Jochen Brüning as member of the research group in Geometrische Analysis und Spektraltheorie.</description>
     </item>
     
     <item>
