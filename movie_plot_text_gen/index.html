@@ -3,11 +3,12 @@
   <head>
     <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Hugo 0.52" />
+<meta name="generator" content="Hugo 0.58.3" />
 
 
 <title>Movie Plots Text Generation with Keras - Dr. Juan Camilo Orduz</title>
 <meta property="og:title" content="Movie Plots Text Generation with Keras - Dr. Juan Camilo Orduz">
+
 
 
 
@@ -67,7 +68,7 @@
     <h1 class="article-title">Movie Plots Text Generation with Keras</h1>
 
     
-    <span class="article-date">2019/01/13</span>
+    <span class="article-date">2019-01-13</span>
     
 
     <div class="article-content">
@@ -547,59 +548,69 @@ y
 <ul>
 <li>loss =&lsquo;categorical_crossentropy&rsquo;</li>
 <li>optimizer = &lsquo;adam&rsquo;,</li>
-<li>metrics = [&lsquo;accuracy&rsquo;]</li>
-</ul>
+
+<li><p>metrics = [&lsquo;accuracy&rsquo;]</p>
 
 <pre><code class="language-python">from keras.models import Sequential
 from keras.layers import Dense, LSTM, Embedding
 
 def create_model(vocabulary_size, seq_len):
     
-    model = Sequential()
+model = Sequential()
     
-    model.add(Embedding(input_dim=vocabulary_size, 
-                        output_dim=seq_len, 
-                        input_length=seq_len))
+model.add(Embedding(input_dim=vocabulary_size, 
+                    output_dim=seq_len, 
+                    input_length=seq_len))
     
-    model.add(LSTM(units=50, return_sequences=True))
+model.add(LSTM(units=50, return_sequences=True))
     
-    model.add(LSTM(units=50))
+model.add(LSTM(units=50))
     
-    model.add(Dense(units=50, activation='relu'))
+model.add(Dense(units=50, activation='relu'))
     
-    model.add(Dense(units=vocabulary_size, activation='softmax'))
+model.add(Dense(units=vocabulary_size, activation='softmax'))
     
-    model.compile(loss='categorical_crossentropy', 
-                  optimizer='adam', 
-                  metrics=['accuracy'])
+model.compile(loss='categorical_crossentropy', 
+              optimizer='adam', 
+              metrics=['accuracy'])
     
-    model.summary()
+model.summary()
     
-    return model
+return model
 </code></pre>
 
 <pre><code class="language-python"># Let us create the model and see summary.
 model = create_model(vocabulary_size=(vocabulary_size + 1), seq_len=seq_len)
 </code></pre>
 
-<pre><code>_________________________________________________________________
-Layer (type)                 Output Shape              Param #   
-=================================================================
-embedding_1 (Embedding)      (None, 25, 25)            314675    
-_________________________________________________________________
-lstm_1 (LSTM)                (None, 25, 50)            15200     
-_________________________________________________________________
-lstm_2 (LSTM)                (None, 50)                20200     
-_________________________________________________________________
-dense_1 (Dense)              (None, 50)                2550      
-_________________________________________________________________
-dense_2 (Dense)              (None, 12587)             641937    
-=================================================================
-Total params: 994,562
+<hr />
+
+<h1 id="layer-type-output-shape-param">Layer (type)                 Output Shape              Param #</h1>
+
+<p>embedding_1 (Embedding)      (None, 25, 25)            314675</p>
+
+<hr />
+
+<p>lstm_1 (LSTM)                (None, 25, 50)            15200</p>
+
+<hr />
+
+<p>lstm_2 (LSTM)                (None, 50)                20200</p>
+
+<hr />
+
+<p>dense_1 (Dense)              (None, 50)                2550</p>
+
+<hr />
+
+<h1 id="dense-2-dense-none-12587-641937">dense_2 (Dense)              (None, 12587)             641937</h1>
+
+<p>Total params: 994,562
 Trainable params: 994,562
-Non-trainable params: 0
-_________________________________________________________________
-</code></pre>
+Non-trainable params: 0</p>
+
+<hr /></li>
+</ul>
 
 <h2 id="model-fit">Model Fit</h2>
 
@@ -814,54 +825,54 @@ $$</p>
 </code></pre>
 
 <ul>
-<li><code>temperature</code> = \(0.9\)</li>
-</ul>
+<li><p><code>temperature</code> = \(0.9\)</p>
 
 <pre><code class="language-python">generated_text = generate_text2(model=model, 
-                                tokenizer=tokenizer,
-                                seq_len=seq_len, 
-                                seed_text=seed_text, 
-                                num_gen_words=80, 
-                                temperature=0.9)
+                            tokenizer=tokenizer,
+                            seq_len=seq_len, 
+                            seed_text=seed_text, 
+                            num_gen_words=80, 
+                            temperature=0.9)
 
 print(seed_text + ' ' + generated_text + ' ...')
-</code></pre>
+</code></pre></li>
+</ul>
 
 <blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear noises the next day owen stabs his seventh when sophie shoots her in the search such he subdues him exist pulls her bloody late eliot then discover that he can do so of kristi so will be letting her that that he had some friends constantly slicing away by confronted by nikki who to the hospital anna is stuck in a switch who grip thomas drains a incident that he strikes justin from frustration and learn it do so that &hellip;</em></p>
 </blockquote>
 
 <ul>
-<li><code>temperature</code> = \(0.5\)</li>
-</ul>
+<li><p><code>temperature</code> = \(0.5\)</p>
 
 <pre><code class="language-python">generated_text = generate_text2(model=model, 
-                                tokenizer=tokenizer,
-                                seq_len=seq_len, 
-                                seed_text=seed_text, 
-                                num_gen_words=82, 
-                                temperature=0.5)
+                            tokenizer=tokenizer,
+                            seq_len=seq_len, 
+                            seed_text=seed_text, 
+                            num_gen_words=82, 
+                            temperature=0.5)
 
 print(seed_text + ' ' + generated_text + ' ...')
-</code></pre>
+</code></pre></li>
+</ul>
 
 <blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear noises hunter and sarah descend the bodies and history of falburn the disappearance of vampires the killer learns that she did n&rsquo;t make a large pipe and return to the house and he distracts him dead the man enters the house and kills him on the cellar door by breaking into the house and points to their wounds but carrie runs into town and bearing time taggart becomes convinced that the united states light and convinces to the twelve treatment as well &hellip;.</em></p>
 </blockquote>
 
 <ul>
-<li><code>temperature</code> = \(0.1\)</li>
-</ul>
+<li><p><code>temperature</code> = \(0.1\)</p>
 
 <pre><code class="language-python">generated_text = generate_text2(model=model, 
-                                tokenizer=tokenizer,
-                                seq_len=seq_len, 
-                                seed_text=seed_text, 
-                                num_gen_words=82, 
-                                temperature = 0.1)
+                            tokenizer=tokenizer,
+                            seq_len=seq_len, 
+                            seed_text=seed_text, 
+                            num_gen_words=82, 
+                            temperature = 0.1)
 
 print(seed_text + ' ' + generated_text + ' ...')
-</code></pre>
+</code></pre></li>
+</ul>
 
 <blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear voices he meets the old woman who is bitten by a large swarm of lunges likely of her farm for help he is captured and discovers their way out the operation is not a brief struggle with the parapsychologists in a field tubbs finds stones of the house and the group straps him to the hospital where he is attacked by a skinhead gang garret volunteers to reveal that the two and informs them that the film ends which is why is &hellip;</em></p>
@@ -909,13 +920,14 @@ print(seed_text + ' ' + generated_text + ' ...')
 
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
 <script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
 
 
 
     
 <script src="../js/math-code.js"></script>
-<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
 
 
     

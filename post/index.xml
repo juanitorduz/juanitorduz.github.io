@@ -158,7 +158,7 @@ When the number of features \(p\) is large, there tends to be a deterioration in
       <pubDate>Sun, 11 Nov 2018 00:00:00 +0000</pubDate>
       
       <guid>/hopf_fibration/</guid>
-      <description>In this post I want to present some notes around the fundamentals of the Hopf fibration \(\pi: S^3 \longrightarrow S^2\) which I started writing during my PhD period at Humboldt Universität zu Berlin. First, I describe its definition and I show that it is a non-trivial map by computing its first Chern class. Then I give a detailed treatment of the construction of two important Dirac-type operators: the Hodge-de Rham and the spin-Dirac.</description>
+      <description>In this expository article I discuss the definition and basic properties of the Hopf fibration, with particular emphasis on Dirac-type operators induced, in the sense of Brüning and Heintze, by the Hodge-de Rham and spin-Dirac operators. In addition, we compute the Dirac-Schrödinger type operator introduced in my PhD thesis.</description>
     </item>
     
     <item>
@@ -167,10 +167,7 @@ When the number of features \(p\) is large, there tends to be a deterioration in
       <pubDate>Fri, 12 Oct 2018 00:00:00 +0000</pubDate>
       
       <guid>/intro_plumber/</guid>
-      <description>In this post we explore the basics of the Plumber package. Our aim is to ilustrate how to fit a \(L^2\)-regularized linear model and expose it to a web API so that we can request predictions.
-Prepare Notebook Let us load the necessary libraries.
-library(caret) library(httr) library(magrittr) library(plumber) library(tidyverse)  Load Data As a toy example we consider the mtcars data set.
-df &amp;lt;- mtcars %&amp;gt;% as_tibble() df %&amp;gt;% head  ## # A tibble: 6 x 11 ## mpg cyl disp hp drat wt qsec vs am gear carb ## &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; &amp;lt;dbl&amp;gt; ## 1 21 6 160 110 3.</description>
+      <description>In this post we present a simple example of how to expose a prediction model to a web API using the Plumber package.</description>
     </item>
     
     <item>
@@ -179,8 +176,7 @@ df &amp;lt;- mtcars %&amp;gt;% as_tibble() df %&amp;gt;% head  ## # A tibble: 6 
       <pubDate>Sun, 09 Sep 2018 00:00:00 +0000</pubDate>
       
       <guid>/circle-radius-fit-for-a-cloud-of-points/</guid>
-      <description>In this post I explore how to render a .Rmd file directly with blogdown. To play around with it, I wrote a simple R notebook which fits a circle to a cloud of points.
-Prepare the Notebook library(tidyverse)  Generate Circle Data # Dimension of the space. d &amp;lt;- 2 # Number of sample points. N &amp;lt;- 1000 # Radius. R &amp;lt;- 4 # Generate random sample of points (x - axis).</description>
+      <description>We explore how to include an R notebook into a pelican post. As an example, we describe how to fit a circle onto a cloud of points.</description>
     </item>
     
     <item>
@@ -189,9 +185,7 @@ Prepare the Notebook library(tidyverse)  Generate Circle Data # Dimension of the
       <pubDate>Thu, 02 Aug 2018 00:00:00 +0000</pubDate>
       
       <guid>/vdl_experience/</guid>
-      <description>In this post I want to write about my experience as a participant (in various occasions) of the Summer School on Geometric, Algebraic and Topological Methods in Quantum field Theory in Villa de Leyva, Colombia.
-The idea of writing this post came to me in my last visit to Villa de Leyva in May 2018.
-   This picture was taken in front of Villa de Leyva&amp;rsquo;s main church.</description>
+      <description>We give an introduction to PyMC3, a probabilistic programming framework written in Python. We revise the basic mahematical theory and present two concrete examples.</description>
     </item>
     
     <item>
@@ -200,7 +194,7 @@ The idea of writing this post came to me in my last visit to Villa de Leyva in M
       <pubDate>Sun, 08 Jul 2018 00:00:00 +0000</pubDate>
       
       <guid>/laplacian_eigenmaps_dim_red/</guid>
-      <description>This summer I had the great oportunity to attend an give a talk at Pydata Berlin 2018. The topic of my talk was On Laplacian Eigenmaps for Dimensionality Reduction. During the Unsupervised Learning &amp;amp; Visualization session Dr. Stefan Kühn presented a very interesting and visual talk on Manifold Learning and Dimensionality Reduction for Data Visualization and Feature Engineering and Dr. Evelyn Trautmann gave a nice application of spectral clustering (here are some nice notes around this subject) in the context of Extracting relevant Metrics.</description>
+      <description>This post contains the slides and material from a talk I gave at PyData Berlin 2018. I presented the paper &lt;em&gt;Laplacian Eigenmaps for Dimensionality Reduction and Data Representation&lt;/em&gt; by &lt;a href=&#34;http://web.cse.ohio-state.edu/~belkin.8/&#34;&gt;Mikhail Belkin&lt;/a&gt; and &lt;a href=&#34;http://people.cs.uchicago.edu/~niyogi/&#34;&gt;Partha Niyogi&lt;/a&gt;.</description>
     </item>
     
     <item>
@@ -209,7 +203,7 @@ The idea of writing this post came to me in my last visit to Villa de Leyva in M
       <pubDate>Wed, 29 Nov 2017 00:00:00 +0000</pubDate>
       
       <guid>/bootstrap/</guid>
-      <description>&amp;ldquo;The bootstrap is a widely applicable and extremely powerful statistical tool that can be used to quantify the uncertainty associated with a given estimator or statistical learning method.&amp;rdquo; This is how Section 5.2 of the book An Introduction to Statistical Learning, writen by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani, begins. Bootstrap can be used to estimate the standard errors of the coefficients from a linear regression and is the conceptual bais for some tree ensemble algorithms.</description>
+      <description>We study the problem of computing the probability that a given observation is part of a bootstrap sample. We include some numerical simulations.</description>
     </item>
     
     <item>
@@ -218,9 +212,7 @@ The idea of writing this post came to me in my last visit to Villa de Leyva in M
       <pubDate>Sat, 11 Nov 2017 00:00:00 +0000</pubDate>
       
       <guid>/phd/</guid>
-      <description>In this post I present the results of my Mathematics PhD thesis which I wrote under the supervision of Prof. Dr. Jochen Brüning at Humbolt Universität zu Berlin. I gratefully acknowledge the financial support of the Berlin Mathematical School and the research project SFB 647: Space - Time - Matter
-Abstract:
-John Lott has computed an integer-valued signature for the orbit space of a compact orientable \((4k+1)\) manifold with a semi-free \(S^1\)-action, which is a homotopy invariant of that space, but he did not construct a Dirac type operator which has this signature as its index.</description>
+      <description>I present the content of my PhD Thesis in mathematics, which has now been published in The Journal of Geometric Analysis.</description>
     </item>
     
     <item>
@@ -229,10 +221,7 @@ John Lott has computed an integer-valued signature for the orbit space of a comp
       <pubDate>Sun, 13 Aug 2017 00:00:00 +0000</pubDate>
       
       <guid>/intro_pymc3/</guid>
-      <description>This post is devoted to give an introduction to Bayesian modeling using PyMC3, an open source probabilistic programming framework written in Python. Part of this material was presented in the Python Users Berlin (PUB) meet up.
-   
-Why PyMC3? As described in the documentation:
- PyMC3’s user-facing features are written in pure Python, it leverages Theano to transparently transcode models to C and compile them to machine code, thereby boosting performance.</description>
+      <description>We give an introduction to PyMC3, a probabilistic programming framework written in Python. We revise the basic mahematical theory and present two concrete examples.</description>
     </item>
     
     <item>
@@ -241,9 +230,7 @@ Why PyMC3? As described in the documentation:
       <pubDate>Sun, 09 Jul 2017 00:00:00 +0000</pubDate>
       
       <guid>/plebiscito/</guid>
-      <description>Web scraping: Getting referendum data using Beautiful Soup In this post I am going to describe how to get the data of the peace referendum (which happened in October the 2nd in Colombia) from the official government website using Beautiful Soup in python (this a task was suggested by Sebastian Martinez). The data is not directly available but is represened as follows:
- 
-The aim is to get the percentages of votes for each town in Colombia by scraping the website.</description>
+      <description>We describe how to use Beautiful Soup to scrape the official goverment website in order to get the results of the peace referendum  in Colombia.</description>
     </item>
     
     <item>
@@ -261,8 +248,7 @@ The aim is to get the percentages of votes for each town in Colombia by scraping
       <pubDate>Wed, 28 Jun 2017 00:00:00 +0000</pubDate>
       
       <guid>/rectangle/</guid>
-      <description>In this first post I wanted to explore the basics of blogging blogdown. I treat an example of a little python challenge which I encountered in first my job hunt process. I particularly like it because it is a geometric problem.
-Problem Write a function that tests if a point falls within a specified distance &amp;ldquo;dist&amp;rdquo; of any part of a solid, 2D rectangle. The rectangle is specified by the bottom left corner, a width, and a height.</description>
+      <description>In this first post we get started with a small python script to explore the basic capabilities of Pelican.</description>
     </item>
     
   </channel>

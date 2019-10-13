@@ -3,11 +3,12 @@
   <head>
     <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Hugo 0.52" />
+<meta name="generator" content="Hugo 0.58.3" />
 
 
 <title>Python Exercise: Distance to Rectangle - Dr. Juan Camilo Orduz</title>
 <meta property="og:title" content="Python Exercise: Distance to Rectangle - Dr. Juan Camilo Orduz">
+
 
 
 
@@ -67,7 +68,7 @@
     <h1 class="article-title">Python Exercise: Distance to Rectangle</h1>
 
     
-    <span class="article-date">2017/06/28</span>
+    <span class="article-date">2017-06-28</span>
     
 
     <div class="article-content">
@@ -111,50 +112,50 @@ $$</p>
 <ol>
 <li><p>It checks if its outside the Rectangle but still within a distance less that dist (checks to the left and to the right).</p></li>
 
-<li><p>It checks if it is inside the Rectangle.</p></li>
-</ol>
+<li><p>It checks if it is inside the Rectangle.</p>
 
 <pre><code class="language-python">import math
 
 def is_point_within_dist_of_rect(rect=Rectangle(), point=Point(), dist=0.0):
     
-    if((rect.bottom_left.x - dist)&lt; point.x and point.x &lt; (rect.bottom_left.x + rect.width + dist)):
+if((rect.bottom_left.x - dist)&lt; point.x and point.x &lt; (rect.bottom_left.x + rect.width + dist)):
         
-        if(point.x &lt; rect.bottom_left.x):
+    if(point.x &lt; rect.bottom_left.x):
             
-            a = rect.bottom_left.x - point.x
-            y_max = rect.bottom_left.y + rect.height + math.sqrt(dist**2-a**2)
-            y_min = rect.bottom_left.y - math.sqrt(dist**2-a**2)
+        a = rect.bottom_left.x - point.x
+        y_max = rect.bottom_left.y + rect.height + math.sqrt(dist**2-a**2)
+        y_min = rect.bottom_left.y - math.sqrt(dist**2-a**2)
             
-            if((y_min &lt; point.y) and point.y &lt; y_max):
-                return True
-            else:
-                return False
-            
-        elif(point.x &lt; (rect.bottom_left.x + rect.width)):
-            
-            y_max = rect.bottom_left.y + rect.height + dist
-            y_min = rect.bottom_left.y - dist
-            
-            if((y_min &lt; point.y) and point.y &lt; y_max):
-                return True
-            else:
-                return False
-            
+        if((y_min &lt; point.y) and point.y &lt; y_max):
+            return True
         else:
-
-            a = rect.bottom_left.x+rect.width - point.x
-            y_max = rect.bottom_left.y + rect.height + math.sqrt(dist**2-a**2)
-            y_min = rect.bottom_left.y - math.sqrt(dist**2-a**2)
+            return False
             
-            if((y_min &lt; point.y) and point.y &lt; y_max):
-                return True
-            else:
-                return False
+    elif(point.x &lt; (rect.bottom_left.x + rect.width)):
+            
+        y_max = rect.bottom_left.y + rect.height + dist
+        y_min = rect.bottom_left.y - dist
+            
+        if((y_min &lt; point.y) and point.y &lt; y_max):
+            return True
+        else:
+            return False
+            
+    else:
+
+        a = rect.bottom_left.x+rect.width - point.x
+        y_max = rect.bottom_left.y + rect.height + math.sqrt(dist**2-a**2)
+        y_min = rect.bottom_left.y - math.sqrt(dist**2-a**2)
+            
+        if((y_min &lt; point.y) and point.y &lt; y_max):
+            return True
+        else:
+            return False
     
-    return False
+return False
     
-</code></pre>
+</code></pre></li>
+</ol>
 
 <h2 id="eamples">Eamples</h2>
 
@@ -202,8 +203,7 @@ epsilon = 0.0001
 <p>We consider two cases:</p>
 
 <ul>
-<li>We check a point close (outside) to the region boundary.</li>
-</ul>
+<li><p>We check a point close (outside) to the region boundary.</p>
 
 <pre><code class="language-python">
 point_4 = Point(threshold_value + epsilon, threshold_value + epsilon)
@@ -211,20 +211,17 @@ point_4 = Point(threshold_value + epsilon, threshold_value + epsilon)
 is_point_within_dist_of_rect(rectangle, point_4, dist=1)
 </code></pre>
 
-<pre><code>False
-</code></pre>
+<p>False</p></li>
 
-<ul>
-<li>We check a point close (inside) to the region boundary.</li>
-</ul>
+<li><p>We check a point close (inside) to the region boundary.</p>
 
 <pre><code class="language-python">point_5 = Point(threshold_value - epsilon, threshold_value - epsilon)
 
 is_point_within_dist_of_rect(rectangle, point_5, dist=1)
 </code></pre>
 
-<pre><code>True
-</code></pre>
+<p>True</p></li>
+</ul>
 
     </div>
   </article>
@@ -256,13 +253,14 @@ is_point_within_dist_of_rect(rectangle, point_5, dist=1)
 
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
 <script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
 
 
 
     
 <script src="../js/math-code.js"></script>
-<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
 
 
     
