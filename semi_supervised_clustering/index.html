@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>The Graph Laplacian &amp; Semi-Supervised Clustering - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="The Graph Laplacian &amp; Semi-Supervised Clustering - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">6 min read</span>
+    
+
+    <h1 class="article-title">The Graph Laplacian &amp; Semi-Supervised Clustering</h1>
+
+    
+    <span class="article-date">2019-12-05</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post we want to explore the semi-supervided algorithm presented <a href="https://eldad-haber.webnode.com/">Eldad Haber</a> in the <a href="https://www.math-berlin.de/academics/summer-schools/2019">BMS Summer School 2019: Mathematics of Deep Learning</a>, during 19 - 30 August 2019, at the Zuse Institute Berlin. He developed an implementation in Matlab which you can find in <a href="https://github.com/eldadHaber/CompAI/">this</a> GitHub repository. In addition, please find the corresponding slides <a href="https://github.com/eldadHaber/CompAI/blob/master/02-SemiSup.pdf">here</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns; sns.set()
+
+%matplotlib inline</code></pre>
+</div>
+<div id="generate-sample-data" class="section level2">
+<h2>Generate Sample Data</h2>
+<p>Let us generate the sample data as 3 concentric circles:</p>
+<pre class="python"><code>def generate_circle_sample_data(r, n, sigma):
+    &quot;&quot;&quot;Generates circle data with random gaussian noise.&quot;&quot;&quot;
+    angles = np.random.uniform(low=0, high=2*np.pi, size=n)
+
+    x_epsilon = np.random.normal(loc=0.0, scale=sigma, size=n)
+    y_epsilon = np.random.normal(loc=0.0, scale=sigma, size=n)
+
+    x = r*np.cos(angles) + x_epsilon
+    y = r*np.sin(angles) + y_epsilon
+    
+    return x, y</code></pre>
+<pre class="python"><code># Number of classes.
+n_c = 3
+# Number of samples per class (without label).
+n_c_samples = 500
+# Radius grid. 
+r1, r2, r3 = 2, 4, 6
+# Noise standard deviation. 
+sigma = 0.4
+
+x1, y1 = generate_circle_sample_data(r1, n_c_samples, sigma)
+x2, y2 = generate_circle_sample_data(r2, n_c_samples, sigma)
+x3, y3 = generate_circle_sample_data(r3, n_c_samples, sigma)</code></pre>
+<p>Let us plot the sample data:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 10))
+
+sns.scatterplot(x=x1, y=y1, ax=ax, color=&#39;k&#39;)
+sns.scatterplot(x=x2, y=y2, ax=ax, color=&#39;k&#39;)
+sns.scatterplot(x=x3, y=y3, ax=ax, color=&#39;k&#39;)
+
+ax.set(title=&#39;Raw Data&#39;);</code></pre>
+<center>
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_7_0.png" alt="png" />
+</center>
+</div>
+<div id="add-labeled-data" class="section level2">
+<h2>Add Labeled Data</h2>
+<p>Now we generate some labeled samples:</p>
+<pre class="python"><code># Set number of labeled samples per class.
+n_c_ex = 20
+# Total number of labeled samples. 
+n_ex = n_c*n_c_ex
+# Generate labeled data.
+q1, p1 = generate_circle_sample_data(2, n_c_ex, sigma)
+q2, p2 = generate_circle_sample_data(4, n_c_ex, sigma)
+q3, p3 = generate_circle_sample_data(6, n_c_ex, sigma)</code></pre>
+<p>Let us plot the complete data set:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 10))
+
+sns.scatterplot(x=x1, y=y1, ax=ax, color=&#39;k&#39;, alpha=0.1)
+sns.scatterplot(x=x2, y=y2, ax=ax, color=&#39;k&#39;, alpha=0.1)
+sns.scatterplot(x=x3, y=y3, ax=ax, color=&#39;k&#39;, alpha=0.1)
+
+sns.scatterplot(x=q1, y=p1, ax=ax, color=&#39;b&#39;)
+sns.scatterplot(x=q2, y=p2, ax=ax, color=&#39;r&#39;)
+sns.scatterplot(x=q3, y=p3, ax=ax, color=&#39;g&#39;)
+
+ax.set(title=&#39;Raw Data + Labeled Data&#39;);</code></pre>
+<center>
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_11_0.png" alt="png" />
+</center>
+<pre class="python"><code># Merge Data  
+x = np.concatenate([x1, x2, x3, q1, q2, q3]).reshape(-1, 1)
+y = np.concatenate([y1, y2, y3, p1, p2, p3]).reshape(-1, 1)
+
+data_matrix = np.concatenate([x, y], axis=1)</code></pre>
+<p>Le tus compute the total number of points in the data set:</p>
+<pre class="python"><code>n = data_matrix.shape[0]
+n</code></pre>
+<pre><code>1560</code></pre>
+<pre class="python"><code># Common sense check:
+n == n_c*(n_c_samples + n_c_ex)</code></pre>
+<pre><code>True</code></pre>
+</div>
+<div id="generate-adjacency-matrix" class="section level2">
+<h2>Generate Adjacency Matrix</h2>
+<p>In the same spirit as in the blog post <a href="https://juanitorduz.github.io/laplacian_eigenmaps_dim_red/">PyData Berlin 2018: On Laplacian Eigenmaps for Dimensionality Reduction</a>, we consider the adjacency matrix associated to the graph constructed from the data using the <span class="math inline">\(k\)</span>-nearest neighbors. This matrix encodes the a local structure of the data defined by the integer <span class="math inline">\(k&gt;0\)</span> (please refer to the bolg post mentioned for more details and examples).</p>
+<pre class="python"><code>from sklearn.neighbors import kneighbors_graph
+
+# Set nearest neighbors used to compute the graph.
+nn = 7
+# We store the as a sparse matrix.
+adjacency_matrix_s = kneighbors_graph(X=data_matrix,n_neighbors=nn)</code></pre>
+<p>Let us plot the adjacency matrix:</p>
+<pre class="python"><code>from scipy import sparse
+
+# Convert to numpy array&#39;
+adjacency_matrix = adjacency_matrix_s.toarray()
+
+fig, ax = plt.subplots(figsize=(12, 10))
+sns.heatmap(adjacency_matrix, ax=ax, cmap=&#39;viridis_r&#39;)
+ax.set(title=&#39;Adjacency Matrix&#39;);</code></pre>
+<center>
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_19_0.png" alt="png" />
+</center>
+<p>As the data was not not shuffled, we can see the “cluster” blocks. We also see the three small groups of labeled data on the right column.</p>
+</div>
+<div id="generate-graph-laplacian" class="section level2">
+<h2>Generate Graph Laplacian</h2>
+<p>Next, we compute the <a href="https://en.wikipedia.org/wiki/Laplacian_matrix">graph Laplacian</a>,</p>
+<p><span class="math display">\[L = D - A\]</span></p>
+<p>where <span class="math inline">\(A\)</span> and <span class="math inline">\(D\)</span> are the adjacency matrix and the degree matrix of the graph respectively.</p>
+<pre class="python"><code>graph_laplacian_s = sparse.csgraph.laplacian(csgraph=adjacency_matrix_s, normed=False)</code></pre>
+<pre class="python"><code>graph_laplacian = graph_laplacian_s.toarray()
+
+fig, ax = plt.subplots(figsize=(12, 10))
+sns.heatmap(graph_laplacian, ax=ax, cmap=&#39;viridis_r&#39;)
+ax.set(title=&#39;Graph Laplacian&#39;);</code></pre>
+<center>
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_23_0.png" alt="png" />
+</center>
+</div>
+<div id="learning-problem-description" class="section level2">
+<h2>Learning Problem Description</h2>
+<p>Following the <a href="https://github.com/eldadHaber/CompAI/blob/master/02-SemiSup.pdf">exposition</a> of <a href="https://eldad-haber.webnode.com/">Eldad Haber</a>, the loss function we want to minimize is:</p>
+<p><span class="math display">\[
+\min_{U}\mathcal{E}(U) = \min_{U} \left(\text{loss}(U, U_{obs}) + \frac{\alpha}{2} \text{tr}(U^T L U)\right)
+\]</span></p>
+<p>where</p>
+<ul>
+<li><p><span class="math inline">\(\text{loss}(U, U_{obs})\)</span> is the cost function associated with the labels (see details below).</p></li>
+<li><p><span class="math inline">\(\frac{\alpha}{2} \text{tr}(U^T L U)\)</span> encodes the locality property: <em>close points should be similar</em> (to see this go to <a href="https://juanitorduz.github.io/documents/orduz_pydata2018.pdf">The Algorithm</a> section of my PyData presentation). In Haber’s words: <em>Try to find the non-constant vector with the minimal energy. The solution should be “smooth” on the graph.</em></p></li>
+<li><p>The constant <span class="math inline">\(\alpha&gt;0\)</span> is controls the contriibution of these two components of the cost function.</p></li>
+</ul>
+</div>
+<div id="construct-loss-function" class="section level2">
+<h2>Construct Loss Function</h2>
+<ul>
+<li>One-Hot Encoding of the labels</li>
+</ul>
+<pre class="python"><code>u_obs = np.zeros(shape=(n_ex, n_c))
+
+# Encode the known labels for each class. 
+u_obs[0:n_c_ex, 0] = 1
+u_obs[n_c_ex:2*n_c_ex, 1] = 1
+u_obs[2*n_c_ex:3*n_c_ex, 2] = 1
+
+u_obs.shape</code></pre>
+<pre><code>(60, 3)</code></pre>
+<pre class="python"><code># Get index of labeled data.
+label_index = np.arange(start=n_c*n_c_samples, stop=n)</code></pre>
+<pre class="python"><code># We define a function to project onto the labeled labels.
+def project_to_labeled(u, label_index):
+    &quot;&quot;&quot;Project matrix into the set of labeled data.&quot;&quot;&quot;
+    return u[label_index, :]</code></pre>
+<ul>
+<li>Softmax Loss</li>
+</ul>
+<p>We define a function which computes the softmax loss functions of a vector of labels <code>u_obs</code>. Here the distance function is the cross entropy</p>
+<p><span class="math display">\[
+\text{loss}(U, U_{obs}) = - \frac{1}{m} U^T_{obs} \log(\text{softmax(U}))
+\]</span></p>
+<p>where <span class="math inline">\(m\)</span> is the number of labeled data points and</p>
+<p><span class="math display">\[
+\text{softmax}(z) = \frac{\exp(z)}{\sum \exp(z)}
+\]</span></p>
+<pre class="python"><code>from scipy.special import softmax
+
+def sofmax_loss(c, c_obs):
+    &quot;&quot;&quot;Computes the softmax loss function of two vectors.&quot;&quot;&quot;
+    m = c.shape[0]
+    
+    soft_max = np.apply_along_axis(softmax, axis=1, arr=c)
+    # Add small epsilon for numerical stability.
+    loss = - (1/m)*np.dot(c_obs.T, np.log(soft_max + 0.001))
+
+    loss = np.trace(loss)
+    
+    return loss</code></pre>
+<ul>
+<li>Laplacian Loss</li>
+</ul>
+<pre class="python"><code>def laplacial_loss(c, graph_laplacian):
+    &quot;&quot;&quot;Loss function associated to the graph Laplacian.&quot;&quot;&quot;
+    loss = 0.5*np.dot(c.T, np.dot(graph_laplacian, c))
+    
+    loss = np.trace(loss)
+    
+    return loss</code></pre>
+<pre class="python"><code>def loss(u, u_obs, label_index, graph_laplacian, alpha):
+    &quot;&quot;&quot;Loss function of the semi-supervised algorithm based 
+    on the graph Laplacian. 
+    &quot;&quot;&quot;
+    u_proj = project_to_labeled(u, label_index)
+    
+    loss = sofmax_loss(u_proj, u_obs) + (alpha/2)*laplacial_loss(u, graph_laplacian)
+    
+    return loss</code></pre>
+</div>
+<div id="run-optimizer" class="section level2">
+<h2>Run Optimizer</h2>
+<p>Next, we simply run an optimizer to find a solution for out problem.</p>
+<p><strong>Warning:</strong> This is done just for illustration purposes. This step must not be overlooked in applications. For example, in <a href="https://github.com/eldadHaber/CompAI/blob/master/matlabCode/semiSuperLearn.m">this</a> Matlab code the solution is found using inexact Newton&quot;s method.</p>
+<pre class="python"><code>from scipy.optimize import minimize
+
+# Define initial estimate.
+u0 = np.ones(shape=(n, n_c)) / 0.5
+
+# Run optimizer.
+optimizer_result = minimize(
+    fun = lambda x: loss(x.reshape(n, n_c), u_obs, label_index, graph_laplacian, 1.0), 
+    x0=u0.flatten()
+)</code></pre>
+</div>
+<div id="predict-classes" class="section level2">
+<h2>Predict Classes</h2>
+<p>Finally, let us see the predicted classes:</p>
+<pre class="python"><code># Get best parameter. 
+u_best = optimizer_result.x.reshape(n, n_c) 
+# Compute classes 
+u_best_softmax = np.apply_along_axis(softmax, axis=1, arr=u_best)
+u_pred = np.argmax(a=u_best_softmax, axis=1)</code></pre>
+<pre class="python"><code># Store in a dataframe. 
+data_df = pd.DataFrame(data_matrix, columns=[&#39;x&#39;, &#39;y&#39;])
+# Add one to have class labels starting form one. 
+data_df[&#39;pred_class&#39;] = u_pred + 1
+# Store as categorical variable. 
+data_df[&#39;pred_class&#39;] = data_df[&#39;pred_class&#39;].astype(&#39;category&#39;)
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: center;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+x
+</th>
+<th>
+y
+</th>
+<th>
+pred_class
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2.131937
+</td>
+<td>
+-0.026668
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+-1.873468
+</td>
+<td>
+0.788236
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2.353201
+</td>
+<td>
+-0.567092
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+-0.046962
+</td>
+<td>
+2.220652
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+0.667804
+</td>
+<td>
+-2.905643
+</td>
+<td>
+2
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 10))
+
+sns.scatterplot(
+    x=&#39;x&#39;, 
+    y=&#39;y&#39;, 
+    data=data_df, 
+    hue=&#39;pred_class&#39;, 
+    palette=[&#39;b&#39;, &#39;r&#39;, &#39;g&#39;],
+    ax=ax
+)
+
+ax.set(title=&#39;Predicted Classes&#39;);</code></pre>
+<center>
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_41_0.png" alt="png" />
+</center>
+<pre class="python"><code>fig, (ax1, ax2) = plt.subplots(ncols=2, sharey=True, figsize=(20, 10))
+
+sns.scatterplot(x=x1, y=y1, ax=ax1, color=&#39;k&#39;, alpha=0.1)
+sns.scatterplot(x=x2, y=y2, ax=ax1, color=&#39;k&#39;, alpha=0.1)
+sns.scatterplot(x=x3, y=y3, ax=ax1, color=&#39;k&#39;, alpha=0.1)
+
+sns.scatterplot(x=q1, y=p1, ax=ax1, color=&#39;b&#39;)
+sns.scatterplot(x=q2, y=p2, ax=ax1, color=&#39;r&#39;)
+sns.scatterplot(x=q3, y=p3, ax=ax1, color=&#39;g&#39;)
+
+ax1.set(title=&#39;Raw Data + Labeled Data&#39;, xlabel=&#39;x&#39;, ylabel=&#39;y&#39;)
+
+sns.scatterplot(
+    x=&#39;x&#39;,
+    y=&#39;y&#39;, 
+    data=data_df,
+    hue=&#39;pred_class&#39;,  
+    palette=[&#39;b&#39;, &#39;r&#39;, &#39;g&#39;], 
+    ax=ax2
+)
+
+ax2.set(title=&#39;Predicted Classes&#39;);</code></pre>
+<center>
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_42_0.png" alt="png" />
+</center>
+<p>The results are pretty good! To conclude, this algorithm balances a given input of labels and local similarity based on the graph model (representation) of the data. For control on locality, the graph Laplacian (and its spectrum!) is a key ingredient.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
