@@ -23,7 +23,7 @@
 
 
 
-<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/github.min.css' rel='stylesheet' type='text/css' />
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
 
 
 
@@ -95,7 +95,7 @@
 <li>The folder <code>data</code> contains a csv and an rds file which might be nessesary for the application (cleaned data set, for example).</li>
 </ul>
 <p>To create a docker image you need to create a <a href="https://docs.docker.com/engine/reference/builder/">Dockerfile</a>, which is a simple text file located in the same directory as <code>app.R</code>. The name of the file must be <code>Dockerfile</code>. A common structure of this file is the following:</p>
-<pre><code># get shiny serves plus tidyverse packages image
+<pre class="dockerfile"><code># get shiny serves plus tidyverse packages image
 FROM rocker/shiny-verse:latest
 
 # system libraries of general use
@@ -173,6 +173,8 @@ CMD [&quot;/usr/bin/shiny-server.sh&quot;]</code></pre>
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
 <script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
 
 
