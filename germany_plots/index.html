@@ -1,0 +1,1792 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Open Data: Germany Maps Viz - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Open Data: Germany Maps Viz - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">9 min read</span>
+    
+
+    <h1 class="article-title">Open Data: Germany Maps Viz</h1>
+
+    
+    <span class="article-date">2020-01-07</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post I want to show how to use public available (open) data to create geo visualizations in python. Maps are a great way to communicate and compare information when working with geolocation data. There are many frameworks to plot maps, here I focus on <a href="https://matplotlib.org">matplotlib</a> and <a href="http://geopandas.org">geopandas</a> (and give a glimpse of <a href="https://github.com/jwass/mplleaflet">mplleaflet</a>).</p>
+<p><strong>Remark:</strong> When I finished writing this notebook, I discovered a similar analysis done in R <a href="https://www.r-bloggers.com/case-study-mapping-german-zip-codes-in-r/">here</a>. Please check it out!</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import geopandas as gpd
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+plt.style.use(&#39;seaborn&#39;)
+
+%matplotlib inline</code></pre>
+</div>
+<div id="get-germany-data" class="section level2">
+<h2>Get Germany Data</h2>
+<p>The main data source for this post is <a href="https://www.suche-postleitzahl.org/downloads">www.suche-postleitzahl.org/downloads</a>. Here we download three data sets:</p>
+<ul>
+<li><code>plz-gebiete.shp</code>: shapefile with germany postal codes polygons.</li>
+<li><code>zuordnung_plz_ort.csv</code>: postal code to city and bundesland mapping.</li>
+<li><code>plz_einwohner.csv</code>: population is assigned to each postal code area.</li>
+</ul>
+</div>
+<div id="germany-maps" class="section level2">
+<h2>Germany Maps</h2>
+<p>We begin by generating a Germany map with the most important cities.</p>
+<pre class="python"><code># Make sure you read postal codes as strings, otherwise 
+# the postal code 01110 will be parsed as the number 1110. 
+plz_shape_df = gpd.read_file(&#39;../Data/plz-gebiete.shp&#39;, dtype={&#39;plz&#39;: str})
+
+plz_shape_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+note
+</th>
+<th>
+geometry
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+52538
+</td>
+<td>
+52538 Gangelt, Selfkant
+</td>
+<td>
+POLYGON ((5.86632 51.05110, 5.86692 51.05124, …
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+47559
+</td>
+<td>
+47559 Kranenburg
+</td>
+<td>
+POLYGON ((5.94504 51.82354, 5.94580 51.82409, …
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+52525
+</td>
+<td>
+52525 Waldfeucht, Heinsberg
+</td>
+<td>
+POLYGON ((5.96811 51.05556, 5.96951 51.05660, …
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+52074
+</td>
+<td>
+52074 Aachen
+</td>
+<td>
+POLYGON ((5.97486 50.79804, 5.97495 50.79809, …
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+52531
+</td>
+<td>
+52531 Ãbach-Palenberg
+</td>
+<td>
+POLYGON ((6.01507 50.94788, 6.03854 50.93561, …
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The <code>geometry</code> column contains the polygons which define the postal code’s shape.</p>
+<p>We can use <a href="http://geopandas.org/mapping.html">geopandas mapping tools</a> to generate the map with the <code>plot</code> method.</p>
+<pre class="python"><code>plt.rcParams[&#39;figure.figsize&#39;] = [16, 11]
+
+# Get lat and lng of Germany&#39;s main cities. 
+top_cities = {
+    &#39;Berlin&#39;: (13.404954, 52.520008), 
+    &#39;Cologne&#39;: (6.953101, 50.935173),
+    &#39;Düsseldorf&#39;: (6.782048, 51.227144),
+    &#39;Frankfurt am Main&#39;: (8.682127, 50.110924),
+    &#39;Hamburg&#39;: (9.993682, 53.551086),
+    &#39;Leipzig&#39;: (12.387772, 51.343479),
+    &#39;Munich&#39;: (11.576124, 48.137154),
+    &#39;Dortmund&#39;: (7.468554, 51.513400),
+    &#39;Stuttgart&#39;: (9.181332, 48.777128),
+    &#39;Nuremberg&#39;: (11.077438, 49.449820),
+    &#39;Hannover&#39;: (9.73322, 52.37052)
+}
+
+fig, ax = plt.subplots()
+
+plz_shape_df.plot(ax=ax, color=&#39;orange&#39;, alpha=0.8)
+
+# Plot cities. 
+for c in top_cities.keys():
+    # Plot city name.
+    ax.text(
+        x=top_cities[c][0], 
+        # Add small shift to avoid overlap with point.
+        y=top_cities[c][1] + 0.08, 
+        s=c, 
+        fontsize=12,
+        ha=&#39;center&#39;, 
+    )
+    # Plot city location centroid.
+    ax.plot(
+        top_cities[c][0], 
+        top_cities[c][1], 
+        marker=&#39;o&#39;,
+        c=&#39;black&#39;, 
+        alpha=0.5
+    )
+
+ax.set(
+    title=&#39;Germany&#39;, 
+    aspect=1.3, 
+    facecolor=&#39;lightblue&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_8_0.png" alt="png" />
+</center>
+<div id="first-digit-postalcodes-areas" class="section level3">
+<h3>First-Digit-Postalcodes Areas</h3>
+<p>Next, let us plot different regions corresponding to the first digit of each postal code.</p>
+<pre class="python"><code># Create feature.
+plz_shape_df = plz_shape_df \
+    .assign(first_dig_plz = lambda x: x[&#39;plz&#39;].str.slice(start=0, stop=1))</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+plz_shape_df.plot(
+    ax=ax, 
+    column=&#39;first_dig_plz&#39;, 
+    categorical=True, 
+    legend=True, 
+    legend_kwds={&#39;title&#39;:&#39;First Digit&#39;, &#39;loc&#39;:&#39;lower right&#39;},
+    cmap=&#39;tab20&#39;,
+    alpha=0.9
+)
+
+for c in top_cities.keys():
+
+    ax.text(
+        x=top_cities[c][0], 
+        y=top_cities[c][1] + 0.08, 
+        s=c, 
+        fontsize=12,
+        ha=&#39;center&#39;, 
+    )
+
+    ax.plot(
+        top_cities[c][0], 
+        top_cities[c][1], 
+        marker=&#39;o&#39;,
+        c=&#39;black&#39;, 
+        alpha=0.5
+    )
+
+ax.set(
+    title=&#39;Germany First-Digit-Postal Codes Areas&#39;, 
+    aspect=1.3,
+    facecolor=&#39;white&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_12_0.png" alt="png" />
+</center>
+</div>
+<div id="bundesland-map" class="section level3">
+<h3>Bundesland Map</h3>
+<p>Let us now map each postal code to the corresponding region:</p>
+<pre class="python"><code>plz_region_df = pd.read_csv(
+    &#39;../Data/zuordnung_plz_ort.csv&#39;, 
+    sep=&#39;,&#39;, 
+    dtype={&#39;plz&#39;: str}
+)
+
+plz_region_df.drop(&#39;osm_id&#39;, axis=1, inplace=True)
+
+plz_region_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+ort
+</th>
+<th>
+plz
+</th>
+<th>
+bundesland
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+Aach
+</td>
+<td>
+78267
+</td>
+<td>
+Baden-Württemberg
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+Aach
+</td>
+<td>
+54298
+</td>
+<td>
+Rheinland-Pfalz
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+Aachen
+</td>
+<td>
+52062
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+Aachen
+</td>
+<td>
+52064
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+Aachen
+</td>
+<td>
+52066
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code># Merge data.
+germany_df = pd.merge(
+    left=plz_shape_df, 
+    right=plz_region_df, 
+    on=&#39;plz&#39;,
+    how=&#39;inner&#39;
+)
+
+germany_df.drop([&#39;note&#39;], axis=1, inplace=True)
+
+germany_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+geometry
+</th>
+<th>
+first_dig_plz
+</th>
+<th>
+ort
+</th>
+<th>
+bundesland
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+52538
+</td>
+<td>
+POLYGON ((5.86632 51.05110, 5.86692 51.05124, …
+</td>
+<td>
+5
+</td>
+<td>
+Gangelt
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+52538
+</td>
+<td>
+POLYGON ((5.86632 51.05110, 5.86692 51.05124, …
+</td>
+<td>
+5
+</td>
+<td>
+Selfkant
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+47559
+</td>
+<td>
+POLYGON ((5.94504 51.82354, 5.94580 51.82409, …
+</td>
+<td>
+4
+</td>
+<td>
+Kranenburg
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+52525
+</td>
+<td>
+POLYGON ((5.96811 51.05556, 5.96951 51.05660, …
+</td>
+<td>
+5
+</td>
+<td>
+Heinsberg
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+52525
+</td>
+<td>
+POLYGON ((5.96811 51.05556, 5.96951 51.05660, …
+</td>
+<td>
+5
+</td>
+<td>
+Waldfeucht
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Generate Bundesland map:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+germany_df.plot(
+    ax=ax, 
+    column=&#39;bundesland&#39;, 
+    categorical=True, 
+    legend=True, 
+    legend_kwds={&#39;title&#39;:&#39;Bundesland&#39;, &#39;bbox_to_anchor&#39;: (1.35, 0.8)},
+    cmap=&#39;tab20&#39;,
+    alpha=0.9
+)
+
+for c in top_cities.keys():
+
+    ax.text(
+        x=top_cities[c][0], 
+        y=top_cities[c][1] + 0.08, 
+        s=c, 
+        fontsize=12,
+        ha=&#39;center&#39;, 
+    )
+
+    ax.plot(
+        top_cities[c][0], 
+        top_cities[c][1], 
+        marker=&#39;o&#39;,
+        c=&#39;black&#39;, 
+        alpha=0.5
+    )
+
+ax.set(
+    title=&#39;Germany - Bundesländer&#39;, 
+    aspect=1.3, 
+    facecolor=&#39;white&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_18_0.png" alt="png" />
+</center>
+</div>
+<div id="number-of-inhabitants" class="section level3">
+<h3>Number of Inhabitants</h3>
+<p>Now we include the number of inhabitants per postal code:</p>
+<pre class="python"><code>plz_einwohner_df = pd.read_csv(
+    &#39;../Data/plz_einwohner.csv&#39;, 
+    sep=&#39;,&#39;, 
+    dtype={&#39;plz&#39;: str, &#39;einwohner&#39;: int}
+)
+
+plz_einwohner_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+einwohner
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+01067
+</td>
+<td>
+11957
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+01069
+</td>
+<td>
+25491
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+01097
+</td>
+<td>
+14811
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+01099
+</td>
+<td>
+28021
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+01108
+</td>
+<td>
+5876
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code># Merge data.
+germany_df = pd.merge(
+    left=germany_df, 
+    right=plz_einwohner_df, 
+    on=&#39;plz&#39;,
+    how=&#39;left&#39;
+)
+
+germany_df.head()</code></pre>
+</center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+geometry
+</th>
+<th>
+first_dig_plz
+</th>
+<th>
+ort
+</th>
+<th>
+bundesland
+</th>
+<th>
+einwohner
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+52538
+</td>
+<td>
+POLYGON ((5.86632 51.05110, 5.86692 51.05124, …
+</td>
+<td>
+5
+</td>
+<td>
+Gangelt
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+<td>
+21390
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+52538
+</td>
+<td>
+POLYGON ((5.86632 51.05110, 5.86692 51.05124, …
+</td>
+<td>
+5
+</td>
+<td>
+Selfkant
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+<td>
+21390
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+47559
+</td>
+<td>
+POLYGON ((5.94504 51.82354, 5.94580 51.82409, …
+</td>
+<td>
+4
+</td>
+<td>
+Kranenburg
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+<td>
+10220
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+52525
+</td>
+<td>
+POLYGON ((5.96811 51.05556, 5.96951 51.05660, …
+</td>
+<td>
+5
+</td>
+<td>
+Heinsberg
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+<td>
+49737
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+52525
+</td>
+<td>
+POLYGON ((5.96811 51.05556, 5.96951 51.05660, …
+</td>
+<td>
+5
+</td>
+<td>
+Waldfeucht
+</td>
+<td>
+Nordrhein-Westfalen
+</td>
+<td>
+49737
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Generate map:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+germany_df.plot(
+    ax=ax, 
+    column=&#39;einwohner&#39;, 
+    categorical=False, 
+    legend=True, 
+    cmap=&#39;autumn_r&#39;,
+    alpha=0.8
+)
+
+for c in top_cities.keys():
+
+    ax.text(
+        x=top_cities[c][0], 
+        y=top_cities[c][1] + 0.08, 
+        s=c, 
+        fontsize=12,
+        ha=&#39;center&#39;, 
+    )
+
+    ax.plot(
+        top_cities[c][0], 
+        top_cities[c][1], 
+        marker=&#39;o&#39;,
+        c=&#39;black&#39;, 
+        alpha=0.5
+    )
+    
+ax.set(
+    title=&#39;Germany: Number of Inhabitants per Postal Code&#39;, 
+    aspect=1.3, 
+    facecolor=&#39;lightblue&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_23_0.png" alt="png" />
+</center>
+</div>
+</div>
+<div id="city-maps" class="section level2">
+<h2>City Maps</h2>
+<p>We can now filter for cities using the <code>ort</code> feature.</p>
+<ul>
+<li>Munich</li>
+</ul>
+<pre class="python"><code>munich_df = germany_df.query(&#39;ort == &quot;München&quot;&#39;)
+
+fig, ax = plt.subplots()
+
+munich_df.plot(
+    ax=ax, 
+    column=&#39;einwohner&#39;, 
+    categorical=False, 
+    legend=True, 
+    cmap=&#39;autumn_r&#39;,
+)
+
+ax.set(
+    title=&#39;Munich: Number of Inhabitants per Postal Code&#39;, 
+    aspect=1.3, 
+    facecolor=&#39;lightblue&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_26_0.png" alt="png" />
+</center>
+<ul>
+<li>Berlin</li>
+</ul>
+<pre class="python"><code>berlin_df = germany_df.query(&#39;ort == &quot;Berlin&quot;&#39;)
+
+fig, ax = plt.subplots()
+
+berlin_df.plot(
+    ax=ax, 
+    column=&#39;einwohner&#39;, 
+    categorical=False, 
+    legend=True, 
+    cmap=&#39;autumn_r&#39;,
+)
+
+ax.set(
+    title=&#39;Berlin: Number of Inhabitants per Postal Code&#39;, 
+    aspect=1.3,
+    facecolor=&#39;lightblue&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_28_0.png" alt="png" />
+<center>
+<p>/</p>
+</div>
+<div id="berlin" class="section level2">
+<h2>Berlin</h2>
+<p>We can use the portal <a href="https://www.statistik-berlin-brandenburg.de">https://www.statistik-berlin-brandenburg.de</a> to get the official postal code to area mapping in Berlin <a href="https://www.statistik-berlin-brandenburg.de/produkte/verzeichnisse/ZuordnungderBezirkezuPostleitzahlen.xls">here</a>. After some formating (not structured raw data):</p>
+<pre class="python"><code>berlin_plz_area_df = pd.read_excel(
+    &#39;../Data/ZuordnungderBezirkezuPostleitzahlen.xls&#39;, 
+    sheet_name=&#39;plz_bez_tidy&#39;,
+    dtype={&#39;plz&#39;: str}
+)
+
+berlin_plz_area_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+area
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+10115
+</td>
+<td>
+Mitte
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+10117
+</td>
+<td>
+Mitte
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+10119
+</td>
+<td>
+Mitte
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+10178
+</td>
+<td>
+Mitte
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+10179
+</td>
+<td>
+Mitte
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Note however that this map is not one-to-one, i.e. a postal code can correspond to many areas:</p>
+<pre class="python"><code>berlin_plz_area_df \
+    [berlin_plz_area_df[&#39;plz&#39;].duplicated(keep=False)] \
+    .sort_values(&#39;plz&#39;)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+area
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+2
+</th>
+<td>
+10119
+</td>
+<td>
+Mitte
+</td>
+</tr>
+<tr>
+<th>
+41
+</th>
+<td>
+10119
+</td>
+<td>
+Pankow
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+10179
+</td>
+<td>
+Mitte
+</td>
+</tr>
+<tr>
+<th>
+26
+</th>
+<td>
+10179
+</td>
+<td>
+Friedrichshain-Kreuzberg
+</td>
+</tr>
+<tr>
+<th>
+42
+</th>
+<td>
+10247
+</td>
+<td>
+Pankow
+</td>
+</tr>
+<tr>
+<th>
+…
+</th>
+<td>
+…
+</td>
+<td>
+…
+</td>
+</tr>
+<tr>
+<th>
+133
+</th>
+<td>
+14197
+</td>
+<td>
+Steglitz-Zehlendorf
+</td>
+</tr>
+<tr>
+<th>
+95
+</th>
+<td>
+14197
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+</tr>
+<tr>
+<th>
+165
+</th>
+<td>
+14197
+</td>
+<td>
+Tempelhof-Schöneberg
+</td>
+</tr>
+<tr>
+<th>
+134
+</th>
+<td>
+14199
+</td>
+<td>
+Steglitz-Zehlendorf
+</td>
+</tr>
+<tr>
+<th>
+96
+</th>
+<td>
+14199
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+</tr>
+</tbody>
+</table>
+<p>
+99 rows × 2 columns
+</p>
+</div>
+</center>
+<p>Hence, we need to change the postal code grouping variable.</p>
+<div id="berlin-neighbourhoods" class="section level3">
+<h3>Berlin Neighbourhoods</h3>
+<p>Fortunately, the website <a href="http://insideairbnb.com/get-the-data.html">http://insideairbnb.com/get-the-data.html</a>, containing AirBnB data for many cities (which is definitely worth investigatinig!), has a convinient data set <code>neighbourhoods.geojson</code> which maps Berlin’s area to <em>neighbourhoods</em>:</p>
+<pre class="python"><code>berlin_neighbourhoods_df = gpd.read_file(&#39;../Data/neighbourhoods.geojson&#39;)
+
+berlin_neighbourhoods_df = berlin_neighbourhoods_df \
+    [~ berlin_neighbourhoods_df[&#39;neighbourhood_group&#39;].isnull()]
+
+berlin_neighbourhoods_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+neighbourhood
+</th>
+<th>
+neighbourhood_group
+</th>
+<th>
+geometry
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+Blankenfelde/Niederschönhausen
+</td>
+<td>
+Pankow
+</td>
+<td>
+MULTIPOLYGON (((13.41191 52.61487, 13.41183 52…
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+Helmholtzplatz
+</td>
+<td>
+Pankow
+</td>
+<td>
+MULTIPOLYGON (((13.41405 52.54929, 13.41422 52…
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+Wiesbadener Straße
+</td>
+<td>
+Charlottenburg-Wilm.
+</td>
+<td>
+MULTIPOLYGON (((13.30748 52.46788, 13.30743 52…
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+Schmöckwitz/Karolinenhof/Rauchfangswerder
+</td>
+<td>
+Treptow - Köpenick
+</td>
+<td>
+MULTIPOLYGON (((13.70973 52.39630, 13.70926 52…
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+Müggelheim
+</td>
+<td>
+Treptow - Köpenick
+</td>
+<td>
+MULTIPOLYGON (((13.73762 52.40850, 13.73773 52…
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+berlin_df.plot(
+    ax=ax, 
+    alpha=0.2
+)
+
+berlin_neighbourhoods_df.plot(
+    ax=ax, 
+    column=&#39;neighbourhood_group&#39;,
+    categorical=True, 
+    legend=True, 
+    legend_kwds={&#39;title&#39;: &#39;Neighbourhood&#39;, &#39;loc&#39;: &#39;upper right&#39;},
+    cmap=&#39;tab20&#39;, 
+    edgecolor=&#39;black&#39;
+)
+
+ax.set(
+    title=&#39;Berlin Neighbourhoods&#39;, 
+    aspect=1.3
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_36_0.png" alt="png" />
+</center>
+<p>Here the divisions correspond to <code>Neighbourhood</code> <span class="math inline">\(\subset\)</span> <code>Neighbourhood Group</code>.</p>
+</div>
+<div id="selected-locations-in-berlin" class="section level3">
+<h3>Selected Locations in Berlin</h3>
+<p>Sometimes it is useful to include well-known locations on the maps so that the user can identify them and understand the distances and scales. One way to do it is to manualy input the latitude and longitude of each point (as above). This of course can be time consuming and prone to errors. As expected, there is a library which can fetch this type of data automatically, namely <a href="https://github.com/geopy/geopy">geopy</a>.</p>
+<p>Here is a simple example:</p>
+<pre class="python"><code>from geopy import Nominatim
+
+locator = Nominatim(user_agent=&#39;myGeocoder&#39;)
+
+location = locator.geocode(&#39;Humboldt Universität zu Berlin&#39;)
+
+print(location)</code></pre>
+<p>Humboldt-Universität zu Berlin, Dorotheenstraße, Spandauer Vorstadt, Mitte, Berlin, 10117, Deutschland</p>
+<p>Let us write a function to get the latitude and longitude coordinates:</p>
+<pre class="python"><code>def lat_lng_from_string_loc(x):
+    
+    locator = Nominatim(user_agent=&#39;myGeocoder&#39;)
+
+    location = locator.geocode(x)
+    
+    if location is None:
+        None
+    else:
+        return location.longitude, location.latitude</code></pre>
+<pre class="python"><code># Define some well-known Berlin locations.
+berlin_locations = [
+    &#39;Alexander Platz&#39;, 
+    &#39;Zoo Berlin&#39;, 
+    &#39;Berlin Tegel&#39;, 
+    &#39;Berlin Schönefeld&#39;,
+    &#39;Berlin Adlershof&#39;,
+    &#39;Olympia Stadium Berlin&#39;,
+    &#39;Berlin Südkreuz&#39;, 
+    &#39;Frei Universität Berlin&#39;,
+    &#39;Mauerpark&#39;, 
+    &#39;Treptower Park&#39;,
+]
+
+# Get geodata.
+berlin_locations_geo = {
+    x: lat_lng_from_string_loc(x) 
+    for x in berlin_locations 
+}
+
+# Remove None.
+berlin_locations_geo = {
+    k: v 
+    for k, v in berlin_locations_geo.items()
+    if v is not None
+}</code></pre>
+<p>Let us see the resulting map:</p>
+<pre class="python"><code>berlin_df = germany_df.query(&#39;ort == &quot;Berlin&quot;&#39;)
+
+fig, ax = plt.subplots()
+
+berlin_df.plot(
+    ax=ax, 
+    color=&#39;orange&#39;, 
+    alpha=0.8
+)
+
+for c in berlin_locations_geo.keys():
+
+    ax.text(
+        x=berlin_locations_geo[c][0], 
+        y=berlin_locations_geo[c][1] + 0.005, 
+        s=c, 
+        fontsize=12,
+        ha=&#39;center&#39;, 
+    )
+
+    ax.plot(
+        berlin_locations_geo[c][0], 
+        berlin_locations_geo[c][1], 
+        marker=&#39;o&#39;,
+        c=&#39;black&#39;, 
+        alpha=0.5
+    )
+
+ax.set(
+    title=&#39;Berlin - Some Relevant Locations&#39;, 
+    aspect=1.3,
+    facecolor=&#39;lightblue&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_44_0.png" alt="png" />
+</center>
+</div>
+<div id="christmas-markets" class="section level3">
+<h3>Christmas Markets</h3>
+<p>Let us enrich the maps by including other type of information. There is a great resource for publicly available data for Berlin: <a href="https://daten.berlin.de">Berlin Open Data</a>. Among many interesting datasets, I found one on the Christmas markets around the city (which are really fun to visit!) <a href="https://daten.berlin.de/datensaetze/berliner-weihnachtsmärkte-2019">here</a>. You can acces the data via a public API. Let us use the <code>requests</code> module to do this:</p>
+<pre class="python"><code>import requests
+
+# GET request.
+response = requests.get(
+    &#39;https://www.berlin.de/sen/web/service/maerkte-feste/weihnachtsmaerkte/index.php/index/all.json?q=&#39;
+)
+
+response_json = response.json()</code></pre>
+<p>Convert to pandas dataframe.</p>
+<pre class="python"><code>berlin_maerkte_raw_df = pd.DataFrame(response_json[&#39;index&#39;])</code></pre>
+<p>We do not have a postal code feature, but we can create one by extracting it from the <code>plz_ort</code> column.</p>
+<pre class="python"><code>berlin_maerkte_df = berlin_maerkte_raw_df[[&#39;name&#39;, &#39;bezirk&#39;, &#39;plz_ort&#39;, &#39;lat&#39;, &#39;lng&#39;]]
+
+berlin_maerkte_df = berlin_maerkte_df \
+    .query(&#39;lat != &quot;&quot;&#39;) \
+    .assign(plz = lambda x: x[&#39;plz_ort&#39;].str.split(&#39; &#39;).apply(lambda x: x[0]).astype(str)) \
+    .drop(&#39;plz_ort&#39;, axis=1)
+
+# Convert to float.
+berlin_maerkte_df[&#39;lat&#39;] = berlin_maerkte_df[&#39;lat&#39;].str.replace(&#39;,&#39;, &#39;.&#39;).astype(float)
+berlin_maerkte_df[&#39;lng&#39;] = berlin_maerkte_df[&#39;lng&#39;].str.replace(&#39;,&#39;, &#39;.&#39;).astype(float)
+
+berlin_maerkte_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+name
+</th>
+<th>
+bezirk
+</th>
+<th>
+lat
+</th>
+<th>
+lng
+</th>
+<th>
+plz
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+Weihnachtsmarkt vor dem Schloss Charlottenburg
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+52.519951
+</td>
+<td>
+13.295946
+</td>
+<td>
+14059
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+<ol start="36" style="list-style-type: decimal">
+<li>Weihnachtsmarkt an der Gedächtniskirche
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+52.504886
+</td>
+<td>
+13.335511
+</td>
+<td>
+10789
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+Weihnachtsmarkt in der Fußgängerzone Wilmersdo…
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+52.509313
+</td>
+<td>
+13.305994
+</td>
+<td>
+10627
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+Weihnachten in Westend
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+52.512538
+</td>
+<td>
+13.259213
+</td>
+<td>
+14052
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+Weihnachtsmarkt Berlin-Grunewald des Johannisc…
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+52.488350
+</td>
+<td>
+13.277250
+</td>
+<td>
+14193
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center></li>
+</ol>
+<p>Let us plot the Christmas markets locations:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+berlin_df.plot(ax=ax, color= &#39;green&#39;, alpha=0.4)
+
+for c in berlin_locations_geo.keys():
+
+    ax.text(
+        x=berlin_locations_geo[c][0], 
+        y=berlin_locations_geo[c][1] + 0.005, 
+        s=c, 
+        fontsize=12,
+        ha=&#39;center&#39;, 
+    )
+
+    ax.plot(
+        berlin_locations_geo[c][0], 
+        berlin_locations_geo[c][1], 
+        marker=&#39;o&#39;,
+        c=&#39;black&#39;, 
+        alpha=0.5
+    )
+
+berlin_maerkte_df.plot(
+    kind=&#39;scatter&#39;, 
+    x=&#39;lng&#39;, 
+    y=&#39;lat&#39;, 
+    c=&#39;r&#39;, 
+    marker=&#39;*&#39;,
+    s=50,
+    label=&#39;Christmas Market&#39;,  
+    ax=ax
+)
+
+ax.set(
+    title=&#39;Berlin Christmas Markets (2019)&#39;, 
+    aspect=1.3, 
+    facecolor=&#39;white&#39;
+);</code></pre>
+<center>
+<img src="../images/germany_plot_files/germany_plot_52_0.png" alt="png" />
+</center>
+</div>
+</div>
+<div id="interactive-maps" class="section level2">
+<h2>Interactive Maps</h2>
+<p>We can use the <a href="https://github.com/jwass/mplleaflet">mplleaflet</a> library which <em>converts a matplotlib plot into a webpage containing a pannable, zoomable Leaflet map</em>.</p>
+<ul>
+<li>Berlin Neighbourhoods</li>
+</ul>
+<pre class="python"><code>import mplleaflet
+
+fig, ax = plt.subplots()
+
+berlin_df.plot(
+    ax=ax, 
+    alpha=0.2
+)
+
+berlin_neighbourhoods_df.plot(
+    ax=ax, 
+    column=&#39;neighbourhood_group&#39;,
+    categorical=True, 
+    cmap=&#39;tab20&#39;,
+)
+
+mplleaflet.display(fig=fig)</code></pre>
+<center>
+<iframe src="../images/germany_plot_files/nbh.html" width="672" height="500">
+</iframe>
+</center>
+<ul>
+<li>Christmas Markets</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+berlin_df.plot(ax=ax, color= &#39;green&#39;, alpha=0.4)
+
+berlin_maerkte_df.plot(
+    kind=&#39;scatter&#39;, 
+    x=&#39;lng&#39;, 
+    y=&#39;lat&#39;, 
+    c=&#39;r&#39;, 
+    marker=&#39;*&#39;,
+    s=30,
+    ax=ax
+)
+
+mplleaflet.display(fig=fig)</code></pre>
+<center>
+<iframe src="../images/germany_plot_files/cm.html" width="672" height="500">
+</iframe>
+</center>
+<p>I hope these data sources and code snippets serve as a starting point to explore geodata analysis and visualization with python.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
