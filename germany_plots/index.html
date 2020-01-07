@@ -78,6 +78,7 @@
 
 
 <p>In this post I want to show how to use public available (open) data to create geo visualizations in python. Maps are a great way to communicate and compare information when working with geolocation data. There are many frameworks to plot maps, here I focus on <a href="https://matplotlib.org">matplotlib</a> and <a href="http://geopandas.org">geopandas</a> (and give a glimpse of <a href="https://github.com/jwass/mplleaflet">mplleaflet</a>).</p>
+<p><strong>Reference:</strong> A very good introduction to matplotlib is the chapter on <a href="https://jakevdp.github.io/PythonDataScienceHandbook/04.00-introduction-to-matplotlib.html">Visualization with Matplotlib</a> from the <a href="https://jakevdp.github.io/PythonDataScienceHandbook/">Python Data Science Handbook</a> by <a href="https://jakevdp.github.io/pages/about.html">Jake VanderPlas</a>.</p>
 <p><strong>Remark:</strong> When I finished writing this notebook, I discovered a similar analysis done in R <a href="https://www.r-bloggers.com/case-study-mapping-german-zip-codes-in-r/">here</a>. Please check it out!</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
@@ -1703,7 +1704,7 @@ berlin_neighbourhoods_df.plot(
 
 mplleaflet.display(fig=fig)</code></pre>
 <center>
-<iframe src="../images/germany_plot_files/nbh.html" width="672" height="500">
+<iframe src="../html/germany_plot_files/nbh.html" width="672" height="500">
 </iframe>
 </center>
 <ul>
@@ -1725,7 +1726,7 @@ berlin_maerkte_df.plot(
 
 mplleaflet.display(fig=fig)</code></pre>
 <center>
-<iframe src="../images/germany_plot_files/cm.html" width="672" height="500">
+<iframe src="../html/germany_plot_files/cm.html" width="672" height="500">
 </iframe>
 </center>
 <p>I hope these data sources and code snippets serve as a starting point to explore geodata analysis and visualization with python.</p>
