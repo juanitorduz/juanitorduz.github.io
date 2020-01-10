@@ -585,33 +585,24 @@ return model
 model = create_model(vocabulary_size=(vocabulary_size + 1), seq_len=seq_len)
 </code></pre>
 
-<hr />
-
-<h1 id="layer-type-output-shape-param">Layer (type)                 Output Shape              Param #</h1>
-
-<p>embedding_1 (Embedding)      (None, 25, 25)            314675</p>
-
-<hr />
-
-<p>lstm_1 (LSTM)                (None, 25, 50)            15200</p>
-
-<hr />
-
-<p>lstm_2 (LSTM)                (None, 50)                20200</p>
-
-<hr />
-
-<p>dense_1 (Dense)              (None, 50)                2550</p>
-
-<hr />
-
-<h1 id="dense-2-dense-none-12587-641937">dense_2 (Dense)              (None, 12587)             641937</h1>
-
-<p>Total params: 994,562
+<pre><code>_________________________________________________________________
+Layer (type)                 Output Shape              Param #   
+=================================================================
+embedding_1 (Embedding)      (None, 25, 25)            314675    
+_________________________________________________________________
+lstm_1 (LSTM)                (None, 25, 50)            15200     
+_________________________________________________________________
+lstm_2 (LSTM)                (None, 50)                20200     
+_________________________________________________________________
+dense_1 (Dense)              (None, 50)                2550      
+_________________________________________________________________
+dense_2 (Dense)              (None, 12587)             641937    
+=================================================================
+Total params: 994,562
 Trainable params: 994,562
-Non-trainable params: 0</p>
-
-<hr /></li>
+Non-trainable params: 0
+_________________________________________________________________
+</code></pre></li>
 </ul>
 
 <h2 id="model-fit">Model Fit</h2>
