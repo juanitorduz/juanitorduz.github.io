@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Drawing Manifolds in LaTeX with TikZ - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Drawing Manifolds in LaTeX with TikZ - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">2 min read</span>
+    
+
+    <h1 class="article-title">Drawing Manifolds in LaTeX with TikZ</h1>
+
+    
+    <span class="article-date">2020-01-10</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post I want to present some <span class="math inline">\(\LaTeX\)</span> code to create common manifold figures which I often used during my graduate studies in differential geometry. I am going to use the <a href="http://www.texample.net/tikz/">TikZ</a> package. In <a href="https://www.tug.org/TUGboat/tb29-1/tb91walczak.pdf">this</a> short paper there is a brief introduction to this package.</p>
+<p>I am going to describe the structure of the <code>.tex</code> file. Let us first define the document type and load the <a href="http://www.texample.net/tikz/">TikZ</a> package.</p>
+<pre><code>\documentclass[11pt]{amsart}
+\usepackage{tikz}</code></pre>
+<p>Next we begin the document.</p>
+<pre><code>\begin{document}</code></pre>
+<div id="cylinder" class="section level2">
+<h2>Cylinder</h2>
+<p>We draw a schematic picture of a cylinder on a closed manifold <span class="math inline">\(N\)</span>.</p>
+<pre><code>\begin{tikzpicture}
+\draw[rounded corners=35pt](0,0)--(8,0);
+\draw[rounded corners=35pt](0,-2)--(8,-2);
+\draw (8.5,-1) arc (0:360:0.5cm and 1cm);
+\draw (0.5,-1) arc (0:360:0.5cm and 1cm);
+\node (a) at (0,0.5) {$N$};
+\node (b) at (4,-2.5) {$\mathbb{R}^+$};
+\end{tikzpicture}</code></pre>
+<center>
+<img src="../images/manifold_fig_latex/cylinder.png" alt="html" style="width: 700px;"/>
+</center>
+</div>
+<div id="manifold-with-boundary" class="section level2">
+<h2>Manifold with Boundary</h2>
+<pre><code>\begin{tikzpicture}
+\draw[rounded corners=35pt](7,-1)--(4.2,-1)--(2,-2)--(0,0) -- (2,2)--(4.2,1)--(7,1);
+\draw (1.5,0.2) arc (175:315:1cm and 0.5cm);
+\draw (3,-0.28) arc (-30:180:0.7cm and 0.3cm);
+\draw (7.5,0) arc (0:360:0.5cm and 1cm);
+\node (a) at (20:2.5) {$M$};
+\node (a) at (-12:7.5) {$\partial M=N$};
+\end{tikzpicture}</code></pre>
+<center>
+<img src="../images/manifold_fig_latex/manifold_boundary.png" alt="html" style="width: 700px;"/>
+</center>
+</div>
+<div id="manifold-with-boundary-cylinder" class="section level2">
+<h2>Manifold with Boundary + Cylinder</h2>
+<p>In geometric analysis it is quite common to attach a cylinder to a manifold with boundary (<span class="math inline">\(L^2\)</span>-index theorems).</p>
+<pre><code>\begin{tikzpicture}
+\draw[rounded corners=35pt](7.5,-1)--(4.2,-1)--(2,-2)--(0,0) -- (2,2)--(4.2,1)--(7.5,1);
+\draw (1.5,0.2) arc (175:315:1cm and 0.5cm);
+\draw (3,-0.28) arc (-30:180:0.7cm and 0.3cm);
+\draw (6,0) arc (0:360:0.5cm and 1cm);
+\draw (8,0) arc (0:360:0.5cm and 1cm);
+\node (a) at (20:2.5) {$M$};
+\node (a) at (12:6.5) {$[0,1]$};
+\node (a) at (-12:7.5) {$\partial M$};
+\end{tikzpicture}</code></pre>
+<center>
+<img src="../images/manifold_fig_latex/manifold_cylinder.png" alt="html" style="width: 700px;"/>
+</center>
+</div>
+<div id="double-manifold" class="section level2">
+<h2>Double Manifold</h2>
+<p>The <em>double</em> <span class="math inline">\(\tilde{M}\)</span> of a manifold with boundary <span class="math inline">\(M\)</span> is the resulting closed manifold obtained by gluing two copies of <span class="math inline">\(M\)</span> along the boundary. Concretely, <span class="math inline">\(\tilde{M} = M \cup (- M)\)</span>, where <span class="math inline">\(-M\)</span> denotes <span class="math inline">\(M\)</span> with the orientation reversed.</p>
+<pre><code>\begin{tikzpicture}
+\draw[rounded corners=35pt](6,-1)--(4.2,-1)--(2,-2)--(0,0)--(2,2)--(4.2,1)--(7,1)--(9.2,2)--(11,0)
+--(9,-2)--(6,-1);
+\draw (1.5,0.2) arc (175:315:1cm and 0.5cm);
+\draw (3,-0.28) arc (-30:180:0.7cm and 0.3cm);
+\draw (5.8,0) arc (0:360:0.5cm and 1cm);
+\draw (7.5,0.2) arc (175:315:1cm and 0.5cm);
+\draw (9,-0.28) arc (-30:180:0.7cm and 0.3cm);
+\node (a) at (-13:5.8) {$\partial M$};
+\node (a) at (26:2.5) {$\tilde{M}$};
+\end{tikzpicture}</code></pre>
+<center>
+<img src="../images/manifold_fig_latex/double.png" alt="html" style="width: 700px;"/>
+</center>
+</div>
+<div id="cobordant-manifolds" class="section level2">
+<h2>Cobordant Manifolds</h2>
+<p>The following is the most common schematic figure of <a href="https://en.wikipedia.org/wiki/Cobordism">cobordant manifolds</a>.</p>
+<pre><code>\begin{figure}[h]
+\begin{center}
+\begin{tikzpicture}
+\draw[rounded corners=50pt](0,2)--(3,0)--(0,-2);
+\draw (0.3,2.7) arc (0:360:0.3 and 0.7);
+\draw [-&gt;&gt;] (0.3,-2.7) arc (0:360:0.3 and 0.7);
+\draw[rounded corners=50pt](0,3.4)--(4,1)--(7,1);
+\draw[rounded corners=50pt](0,-3.4)--(4,-1)--(7,-1);
+\draw [-&gt;&gt;](7.3,0) arc (0:360:0.3 and 1);
+\draw (3.5,0.2) arc (175:315:1cm and 0.5cm);
+\draw (5,-0.28) arc (-30:180:0.7cm and 0.3cm);
+\end{tikzpicture}
+\caption{Two cobordant manifolds,}
+\end{center}
+\end{figure}</code></pre>
+<center>
+<img src="../images/manifold_fig_latex/cobordant.png" alt="html" style="width: 600px;"/>
+</center>
+<p>Finally, we end the document.</p>
+<pre><code>\end{document}</code></pre>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
