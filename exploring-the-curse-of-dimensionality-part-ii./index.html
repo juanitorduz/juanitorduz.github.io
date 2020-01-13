@@ -77,29 +77,44 @@
       
 
 
-<p>I continue exploring the <strong>curse of dimensionality</strong>. Following the analysis form <a href="https://juanitorduz.github.io/exploring-the-curse-of-dimensionality/">Part I.</a>, I want to discuss another consequence of sparse sampling in high dimensions: sample points are close to an edge of the sample. This post is based on <a href="https://web.stanford.edu/~hastie/ElemStatLearn/">The Elements of Statistical Learning, Section 2.5</a>, which I encourage to read!</p>
+<p>I continue exploring the <strong>curse of dimensionality</strong>. Following the analysis form <a href="https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-i./">Part I.</a>, I want to discuss another consequence of sparse sampling in high dimensions: sample points are close to an edge of the sample. This post is based on <a href="https://web.stanford.edu/~hastie/ElemStatLearn/">The Elements of Statistical Learning, Section 2.5</a>, which I encourage to read!</p>
 <div id="uniform-sampling" class="section level1">
 <h1>Uniform Sampling</h1>
-<p><em>Consider <span class="math inline">\(N\)</span> data points uniformly distributed in a <span class="math inline">\(p\)</span>-dimensional unit ball centered at the origin. Suppose we consider a nearest-neighbor estimate at the origin. The median distance from the origin to the closest data point is given by the expression</em> <span class="math display">\[
+<p><em>Consider <span class="math inline">\(N\)</span> data points uniformly distributed in a <span class="math inline">\(p\)</span>-dimensional unit ball centered at the origin. Suppose we consider a nearest-neighbor estimate at the origin. The median distance from the origin to the closest data point is given by the expression</em>
+<span class="math display">\[
 d(p,N)  = \left(1-\frac{1}{2}^{1/N}\right)^{1/p}.
 \]</span></p>
 <p><em>Proof (Exercise 2.3):</em></p>
-<p>Let <span class="math inline">\(X\)</span> be the random variable <span class="math display">\[
+<p>Let <span class="math inline">\(X\)</span> be the random variable
+<span class="math display">\[
 X = \min_{i \in \{1, 2, \cdots, N\}}||z_i||_{2}
-\]</span> where the <span class="math inline">\(z_i\)</span> are uniformly distributed in a <span class="math inline">\(p\)</span>-dimensional unit ball centered at the origin. Here <span class="math inline">\(||\cdot||_{2}\)</span> denotes the Euclidean norm.</p>
-<p>We want to find <span class="math inline">\(\alpha\in[0,1]\)</span> such that (this is the definition of the median) <span class="math display">\[
+\]</span>
+where the <span class="math inline">\(z_i\)</span> are uniformly distributed in a <span class="math inline">\(p\)</span>-dimensional unit ball centered at the origin. Here <span class="math inline">\(||\cdot||_{2}\)</span> denotes the Euclidean norm.</p>
+<p>We want to find <span class="math inline">\(\alpha\in[0,1]\)</span> such that (this is the definition of the median)
+<span class="math display">\[
 P(X\geq \alpha) = \frac{1}{2}.
-\]</span> First, as the samples are independent we have <span class="math display">\[
+\]</span>
+First, as the samples are independent we have
+<span class="math display">\[
 P(X \geq \alpha) = \prod_{i=1}^N P(z_i \geq \alpha).
-\]</span> As the points are uniformly distrributed over the <span class="math inline">\(p\)</span>-ball, the key observation is that <span class="math display">\[
+\]</span>
+As the points are uniformly distrributed over the <span class="math inline">\(p\)</span>-ball, the key observation is that
+<span class="math display">\[
 P(z_i &lt; \alpha) = \frac{vol (B^p_\alpha(0))}{vol (B^p_1(0))},
-\]</span> where <span class="math inline">\(vol (B^p_\alpha(0)) \propto \alpha^p\)</span> denotes the <a href="https://en.wikipedia.org/wiki/Volume_of_an_n-ball">volume</a> of the <span class="math inline">\(p\)</span>-dimensional ball with radius <span class="math inline">\(\alpha\)</span> centered at the origin. Therefore, <span class="math display">\[
+\]</span>
+where <span class="math inline">\(vol (B^p_\alpha(0)) \propto \alpha^p\)</span> denotes the <a href="https://en.wikipedia.org/wiki/Volume_of_an_n-ball">volume</a> of the <span class="math inline">\(p\)</span>-dimensional ball with radius <span class="math inline">\(\alpha\)</span> centered at the origin. Therefore,
+<span class="math display">\[
 P(z_i \geq \alpha) = 1- \alpha^p. 
-\]</span> All together, <span class="math display">\[
+\]</span>
+All together,
+<span class="math display">\[
 P(X\geq \alpha) = (1 - \alpha^p)^N. 
-\]</span> Finally, we solve for <span class="math inline">\(\alpha\)</span> in the equation <span class="math display">\[
+\]</span>
+Finally, we solve for <span class="math inline">\(\alpha\)</span> in the equation
+<span class="math display">\[
 (1 - \alpha^p)^N = \frac{1}{2},
-\]</span> to get the desired result.</p>
+\]</span>
+to get the desired result.</p>
 <div id="simulation" class="section level2">
 <h2>Simulation</h2>
 <p>Now we code a simulation to ilustrate this result.</p>
@@ -152,6 +167,8 @@ registerDoMC(cores=8)</code></pre>
   ylab(label = &#39;p2&#39;) + 
   ggtitle(label = &#39;Uniform Random Sample Over a 2-Ball&#39;, 
           subtitle = glue(&#39;N Samples = {N}&#39;))</code></pre>
+<pre><code>## Warning: `as_tibble.matrix()` requires a matrix with column names or a `.name_repair` argument. Using compatibility `.name_repair`.
+## This warning is displayed once per session.</code></pre>
 <p><img src="../post/curse_dim2_files/figure-html/unnamed-chunk-4-1.png" width="480" style="display: block; margin: auto;" /></p>
 <p>Next we write the simulation function.</p>
 <pre class="r"><code>RunSimulation &lt;- function(N, p, n0, n1) {
@@ -170,11 +187,11 @@ registerDoMC(cores=8)</code></pre>
     samples &lt;- 1:N %&gt;% map(.f = ~ SampleUniformBall(N = N, p = p)) 
     # Compute distance to the origin.                                        
     distance.to.origin &lt;- samples %&gt;% 
-                            map_dbl(.f = ~ norm(.x, type = &#39;2&#39;)) %&gt;% 
-                            min
+      map_dbl(.f = ~ norm(.x, type = &#39;2&#39;)) %&gt;% 
+      min()
     }
     # Compute the median.
-    distances.to.origin %&gt;% median 
+    distances.to.origin %&gt;% median()
   }
   median.samples %&lt;&gt;% as.vector
   
@@ -187,10 +204,12 @@ registerDoMC(cores=8)</code></pre>
 <pre class="r"><code>N &lt;- 500
 p &lt;- 2
 
-median.samples &lt;- RunSimulation(N = N, 
-                                p = p, 
-                                n0 = 50, 
-                                n1 = 100)
+median.samples &lt;- RunSimulation(
+  N = N, 
+  p = p, 
+  n0 = 50, 
+  n1 = 100
+)
 
 analytical.median &lt;- d(N = N, p = p) %&gt;% round(digits = 4)
 
@@ -206,6 +225,8 @@ median.samples %&gt;%
   xlab(label = &#39;Median&#39;) +
   ggtitle(label = &#39;Median Simulation Distribution&#39;, 
           subtitle = glue(&#39;N = {N}, p = {p}, Median = {analytical.median}&#39;)) </code></pre>
+<pre><code>## Warning: Calling `as_tibble()` on a vector is discouraged, because the behavior is likely to change in the future. Use `tibble::enframe(name = NULL)` instead.
+## This warning is displayed once per session.</code></pre>
 <p><img src="../post/curse_dim2_files/figure-html/unnamed-chunk-6-1.png" width="672" style="display: block; margin: auto;" /></p>
 <ul>
 <li><span class="math inline">\(p=10\)</span></li>
@@ -213,10 +234,12 @@ median.samples %&gt;%
 <pre class="r"><code>N &lt;- 500
 p &lt;- 10
 
-median.samples &lt;- RunSimulation(N = N, 
-                                p = p, 
-                                n0 = 50, 
-                                n1 = 100)
+median.samples &lt;- RunSimulation(
+  N = N, 
+  p = p, 
+  n0 = 50, 
+  n1 = 100
+)
 
 analytical.median &lt;- d(N = N, p = p) %&gt;% round(digits = 4)
 
@@ -252,11 +275,15 @@ median.samples %&gt;%
 <p><em>The edge effect problem discussed above is not peculiar to uniform sampling from bounded domains. Consider inputs drawn from a spherical multinormal distribution <span class="math inline">\(X ∼ N(0,I_p)\)</span>. The squared distance from any sample point to the origin has a <span class="math inline">\(χ^2_p\)</span> distribution with mean <span class="math inline">\(p\)</span>. Consider a prediction point <span class="math inline">\(x_0\)</span> drawn from this distribution, and let <span class="math inline">\(a = x_0/||x_0||\)</span> be an associated unit vector. Let <span class="math inline">\(z_i = a^T x_i\)</span> be the projection of each of the training points on this direction.</em></p>
 <p><em>Show that the <span class="math inline">\(z_i\)</span> are distributed <span class="math inline">\(N(0,1)\)</span> with expected squared distance from the origin <span class="math inline">\(1\)</span>, while the target point has expected squared distance <span class="math inline">\(p\)</span> from the origin.</em></p>
 <p><em>Proof:</em></p>
-<p>The <span class="math inline">\(z_i\)</span> are normal being a linear combination of normal random variables. The expected value of <span class="math inline">\(z_i\)</span> is <span class="math display">\[
+<p>The <span class="math inline">\(z_i\)</span> are normal being a linear combination of normal random variables. The expected value of <span class="math inline">\(z_i\)</span> is
+<span class="math display">\[
 E(z_i) = E(a^T x_i) = a^T E(x_i) = 0.
-\]</span> The variance is <span class="math display">\[
+\]</span>
+The variance is
+<span class="math display">\[
 Var(z_i) = Var(a^T x_i) = Var\left(\sum_{k=1}^N a_k x_{ik}\right) = \sum_{k=1}^N a^2_k Var(x_{ik}) = ||a||_{2} = 1.
-\]</span> The expected squared distance from the origin of each <span class="math inline">\(z_i\)</span> is <span class="math inline">\(E(z_i^2) = 1\)</span> because <span class="math inline">\(z_i^2 ∼ \chi_1^2\)</span>.</p>
+\]</span>
+The expected squared distance from the origin of each <span class="math inline">\(z_i\)</span> is <span class="math inline">\(E(z_i^2) = 1\)</span> because <span class="math inline">\(z_i^2 ∼ \chi_1^2\)</span>.</p>
 <p><em>Hence for <span class="math inline">\(p = 10\)</span>, a randomly drawn test point is about 3.1 standard deviations from the origin, while all the training points are on average one standard deviation along direction a. So most prediction points see themselves as lying on the edge of the training set.</em></p>
 </div>
 
