@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Intro ML in Production: Flask, Docker and GitHub Actions - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Intro ML in Production: Flask, Docker and GitHub Actions - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">3 min read</span>
+    
+
+    <h1 class="article-title">Intro ML in Production: Flask, Docker and GitHub Actions</h1>
+
+    
+    <span class="article-date">2020-01-28</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>The role of a <em>Data Scientist</em> has evolved very fast over time, and it is going to continue changing by its own nature. Nevertheless, what many people agree on is that the true value of data science is deploying models into production where they have a concrete impact (I am not saying that static analysis/reports are not important!). As a matter of fact, in practical machine learning projects the time spent in actually building the models is much less as compared with the data requirements setup, data processing and feature engineering phases. The final step, deploying the model into a production system, often comes as a collaboration between data scientist and data engineers. It is therefore very important for data scientist to develop skills which makes such collaboration easy and productive. Such skills include, among many version control (git) and Docker.</p>
+<p>There are many interesting resources out there on this topic. Last week I was lucky to find one which I particularly liked: <a href="http://mlinproduction.com/">http://mlinproduction.com/</a> by <a href="mailto:luigi@mlinproduction.com">Luigi Patruno</a>. He has a sequence of blog post ilustrating how the path <code>ml model -&gt; Docker -&gt; Kubernetes</code>. This motivated me to write a GitHub repository (<a href="https://github.com/juanitorduz/ml_prod_tutorial">github.com/juanitorduz/ml_prod_tutorial</a>) on this topic as a complement to his blog. I focused on his posts about dockerizing a machine learning models:</p>
+<ul>
+<li><a href="https://mlinproduction.com/docker-for-ml-part-1/">Docker for Machine Learning – Part I</a></li>
+<li><a href="https://mlinproduction.com/docker-for-ml-part-2/">Docker for Machine Learning – Part II</a></li>
+<li><a href="https://mlinproduction.com/docker-for-ml-part-3/">Docker for Machine Learning – Part III</a></li>
+<li><a href="https://mlinproduction.com/docker-for-ml-part-4/">Using Docker to Generate Machine Learning Predictions in Real Time</a></li>
+</ul>
+<p>The core of this repository is based on this reference and <strong>I encourage everyone to read them before going into the code if you do not have much experience on this topic</strong>.</p>
+<p>In addition to the main functionalities, I also wanted to complement it with extra features which are not discussed on Luigi’s posts:</p>
+<ul>
+<li><p>Train the machine learning model with data stored in a private <a href="https://aws.amazon.com/s3/">AWS S3 bucket</a>. In particular, when building the Docker image, do not copy the training data into it. (Most of the Docker tutorials either use dummy data from a package or a file stored in the repository, which is not how works in real applications).</p></li>
+<li><p>Describe how to build a Docker image passing the credentials as <code>ARG</code> variables and not as <code>ENV</code> variables. This is particular special for security reasons.</p></li>
+<li><p>Unit Testing (needs more tests).</p></li>
+<li>Set up <a href="https://github.com/features/actions">GitHub Actions</a>:
+<ul>
+<li><img src="https://github.com/juanitorduz/ml_prod_tutorial/workflows/Docker%20Image%20CI/badge.svg" alt="Build" /> <a href="https://help.github.com/en/actions/automating-your-workflow-with-github-actions/creating-a-docker-container-action">Docker container GitHub Action</a>. In particular, how to access credentials using <a href="https://help.github.com/en/actions/automating-your-workflow-with-github-actions/creating-and-using-encrypted-secrets">GitHub Secrets</a>.</li>
+<li><img src="https://github.com/juanitorduz/ml_prod_tutorial/workflows/Pytest%20CI/badge.svg" alt="Build" /> <a href="https://help.github.com/en/actions/automating-your-workflow-with-github-actions/using-python-with-github-actions">Python (pytest) Action</a>.</li>
+<li><a href="https://codecov.io/gh/juanitorduz/ml_prod_tutorial"><img src="https://codecov.io/gh/juanitorduz/ml_prod_tutorial/branch/master/graph/badge.svg" alt="codecov" /></a>
+<a href="https://github.com/codecov/codecov-action">Codecov GitHub Action</a> to get reports on tests coverage.</li>
+</ul>
+<p>which get trigger on <code>push</code> and ensures reliability on the code.</p></li>
+</ul>
+<p>I have also added a <a href="https://github.com/juanitorduz/ml_prod_tutorial/blob/master/resources.md">Resources</a> section where I store useful references, interesting reading and similar approaches.</p>
+<p><strong>Remark:</strong> This repository structure should be seen as a minimal <em>toy-use-case</em>. You might want to package the files correctly, using for example <a href="https://drivendata.github.io/cookiecutter-data-science/">Cookiecutter Data Science</a>.</p>
+<p><strong>Deployment</strong>: This is out of the scope of this repository. There are many ways of doing this! See, for example, <a href="https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create_deploy_docker.html">Deploying Elastic Beanstalk applications from Docker containers</a>.</p>
+<div id="contributing" class="section level2">
+<h2>Contributing</h2>
+<p>I will keep adding functionalities to this <em>toy model</em> repository. If you have some other relevant resources, suggestions, comments or find bugs please create a Pull Request or <a href="mailto:juanitorduz@gmail.com">drop me a line</a>.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+    
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
