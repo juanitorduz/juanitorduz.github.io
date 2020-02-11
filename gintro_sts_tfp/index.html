@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Exploring TensorFlow Probability STS Forecasting - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Exploring TensorFlow Probability STS Forecasting - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">18 min read</span>
+    
+
+    <h1 class="article-title">Exploring TensorFlow Probability STS Forecasting</h1>
+
+    
+    <span class="article-date">2020-02-11</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we explore the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/sts">Structural Time Series (STS) Module</a> of <a href="https://www.tensorflow.org/probability/">TensorFlow Probability</a>. We follow closely the <a href="https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083">use cases</a> presented in their <a href="https://medium.com/tensorflow">Medium blog</a>. As described there: <em>An STS model expresses an observed time series as the sum of simpler components</em> <a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>:</p>
+<p><span class="math display">\[
+f(t) = \sum_{k=1}^{N}f_{k}(t) + \varepsilon, \quad \text{where}\quad \varepsilon \sim N(0, \sigma^2).
+\]</span></p>
+<p>Each summand <span class="math inline">\(f_{k}(t)\)</span> has a particular structure, e.g. specific seasonality, trend, autoregressive terms, etc.</p>
+<p>In this notebook we generate a time series sample and then present some techniques to recover its component structure. This is indeed a crucial step since in real applications we are not given the components separately. We then show how to fit and generate predictions using <a href="https://en.wikipedia.org/wiki/Variational_Bayesian_methods">variational inference</a>. Finally we run some diagnostics of the errors on the test set.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(&#39;darkgrid&#39;, {&#39;axes.facecolor&#39;: &#39;.9&#39;})
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
+import tensorflow as tf
+import tensorflow_probability as tfp</code></pre>
+<pre class="python"><code>print(tf.__version__)
+print(tfp.__version__)</code></pre>
+<pre><code>2.1.0
+0.8.0-rc0</code></pre>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>We generate are going to consider daily data on the range <code>2017-01-01</code> to <code>2020-12-31</code>.</p>
+<pre class="python"><code># Create dataframe with a date range (4 years).
+date_range = pd.date_range(start=&#39;2017-01-01&#39;, end=&#39;2020-12-31&#39;, freq=&#39;D&#39;)
+# Create data frame.
+df = pd.DataFrame(data={&#39;date&#39;: date_range})
+# Extract number of points.
+n = df.shape[0]</code></pre>
+<p>We begin by generating Gaussian noise.</p>
+<pre class="python"><code># Set seed.
+np.random.seed(seed=42)
+
+df[&#39;y&#39;] = np.random.normal(loc=0.0, scale=0.5, size=n)</code></pre>
+<p>Next we define an external regressor <code>x</code>.</p>
+<pre class="python"><code># External regressor:
+df[&#39;x&#39;] = np.random.uniform(low=0.0, high=1.0, size=n)
+df[&#39;x&#39;] = df[&#39;x&#39;].apply(lambda x: x if abs(x) &gt; 0.95 else 0.0)
+
+df[&#39;y&#39;] = df[&#39;y&#39;] + 6*df[&#39;x&#39;]</code></pre>
+<pre class="python"><code>plt.rcParams[&#39;figure.figsize&#39;] = [12, 7]
+
+fig, ax = plt.subplots()
+sns.lineplot(x=&#39;date&#39;, y=&#39;x&#39;, label=&#39;x&#39;, data=df, ax=ax)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=r&#39;External Regressor $x$&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_11_0.png" alt="png" />
+</center>
+<p>Now, lewt us add a non-linear trend component of the form <span class="math inline">\(t\longmapsto t^{1/3}\)</span>.</p>
+<pre class="python"><code>df[&#39;y&#39;] = df[&#39;y&#39;] + np.power(df.index.values, 1/3)</code></pre>
+<p>Finally, we add some seasonal variables, which we encode as cyclic variables using <span class="math inline">\(\sin(z)\)</span> and <span class="math inline">\(\cos(z)\)</span> functions.</p>
+<pre class="python"><code># Seasonal features:
+df[&#39;day_of_month&#39;] = df[&#39;date&#39;].dt.day
+df[&#39;month&#39;] = df[&#39;date&#39;].dt.month
+df[&#39;day_of_week&#39;] = df[&#39;date&#39;].dt.dayofweek
+df[&#39;daysinmonth&#39;] = df[&#39;date&#39;].dt.daysinmonth
+
+
+df[&#39;y&#39;] = df[&#39;y&#39;] \
+    + 2*np.cos(2*np.pi*df[&#39;month&#39;]/12) + 0.5*np.sin(2*np.pi*df[&#39;month&#39;]/12)\
+    + 1.5*np.cos(2*np.pi*df[&#39;day_of_week&#39;]/7) \
+    + 2*np.sin(2*np.pi*df[&#39;day_of_month&#39;]/ df[&#39;daysinmonth&#39;])
+
+df[&#39;y&#39;] = df[&#39;y&#39;].fillna(method=&#39;backfill&#39;).astype(np.float32)
+
+df.head(10)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+    
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: center;">
+<th>
+</th>
+<th>
+date
+</th>
+<th>
+y
+</th>
+<th>
+x
+</th>
+<th>
+day_of_month
+</th>
+<th>
+month
+</th>
+<th>
+day_of_week
+</th>
+<th>
+daysinmonth
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2017-01-01
+</td>
+<td>
+3.568240
+</td>
+<td>
+0.00000
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+6
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2017-01-02
+</td>
+<td>
+5.201631
+</td>
+<td>
+0.00000
+</td>
+<td>
+2
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2017-01-03
+</td>
+<td>
+5.643587
+</td>
+<td>
+0.00000
+</td>
+<td>
+3
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2017-01-04
+</td>
+<td>
+11.252480
+</td>
+<td>
+0.99181
+</td>
+<td>
+4
+</td>
+<td>
+1
+</td>
+<td>
+2
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2017-01-05
+</td>
+<td>
+3.798210
+</td>
+<td>
+0.00000
+</td>
+<td>
+5
+</td>
+<td>
+1
+</td>
+<td>
+3
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+5
+</th>
+<td>
+2017-01-06
+</td>
+<td>
+4.099009
+</td>
+<td>
+0.00000
+</td>
+<td>
+6
+</td>
+<td>
+1
+</td>
+<td>
+4
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+6
+</th>
+<td>
+2017-01-07
+</td>
+<td>
+6.231933
+</td>
+<td>
+0.00000
+</td>
+<td>
+7
+</td>
+<td>
+1
+</td>
+<td>
+5
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+7
+</th>
+<td>
+2017-01-08
+</td>
+<td>
+7.211367
+</td>
+<td>
+0.00000
+</td>
+<td>
+8
+</td>
+<td>
+1
+</td>
+<td>
+6
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+8
+</th>
+<td>
+2017-01-09
+</td>
+<td>
+7.183468
+</td>
+<td>
+0.00000
+</td>
+<td>
+9
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+31
+</td>
+</tr>
+<tr>
+<th>
+9
+</th>
+<td>
+2017-01-10
+</td>
+<td>
+7.064259
+</td>
+<td>
+0.00000
+</td>
+<td>
+10
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+31
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us plot the generated data:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;y&#39;, data=df, ax=ax)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Dependent Variable&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_17_0.png" alt="png" />
+</center>
+</div>
+<div id="train---test-split" class="section level2">
+<h2>Train - Test Split</h2>
+<p>We assume we have data until <code>2020-06-30</code> and we will predict six months ahead. We assume we have acces to the <code>x</code> variable in advance (e.g. media spend plan).</p>
+<pre class="python"><code>threshold_date = pd.to_datetime(&#39;2020-07-01&#39;)
+mask = df[&#39;date&#39;] &lt; threshold_date
+
+df_train = df[mask]
+df_test = df[~ mask]</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;y_train&#39;, data=df_train, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;y_test&#39;, data=df_test, ax=ax)
+ax.axvline(threshold_date, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train test split&#39;)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Dependent Variable&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_20_0.png" alt="png" />
+</center>
+</div>
+<div id="time-series-exploratory-analysis" class="section level2">
+<h2>Time Series Exploratory Analysis</h2>
+<p>We are going to assume we do not know how the data was generated. We present a sample of techniques to extract the seasonality and estimate the effect of the <code>x</code> variable on <code>y</code>. There is no unique way to do this and we focus on using the intuition and common sense to extract the relevant features. Time series forecasting can be a very challenging problem. Spending time on exploring the data is always a good investment in order to generate meaningful models.</p>
+<p><strong>Warning:</strong> We just use the training data in this step so that we do not leak information from the test set.</p>
+<div id="smoothing" class="section level3">
+<h3>Smoothing</h3>
+<p>We begin the analysis by studying and visualize various level of smoothness using a <a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.gaussian_filter.html"><code>gaussian_filter</code></a>. You can think of it as a weighted centered moving average based on a normal distribution. In particular, the level of smoothness is controlled by the parameter <code>sigma</code> which represents the standard deviation.</p>
+<pre class="python"><code>from scipy.ndimage import gaussian_filter
+
+df_smooth = df_train \
+    .assign(y_smooth_1 = lambda x: gaussian_filter(input=x[&#39;y&#39;], sigma=3.5)) \
+    .assign(y_smooth_2 = lambda x: gaussian_filter(input=x[&#39;y&#39;], sigma=15)) \
+
+fig, ax = plt.subplots()
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;y_train&#39;, data=df_smooth, alpha=0.5, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y_smooth_1&#39;, label=&#39;y_train_smooth monthly&#39;, data=df_smooth, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y_smooth_2&#39;, label=&#39;y_train_smooth yearly&#39;, data=df_smooth, ax=ax)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Dependent Variable - Smoothing&#39;, ylabel=&#39;y&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_23_0.png" alt="png" />
+</center>
+<p>From this plot we see two clear seasonalities: yearly and monthly. The variable <code>y_train_smooth yearly</code> also includes a positive trend component, which does not look linear.</p>
+<p>To understand how to model the monthly seasonality we plot the mean of <code>y</code> over the day of the month.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+df_train.groupby(&#39;day_of_month&#39;).agg({&#39;y&#39;: np.mean}).plot(ax=ax)
+ax.set(title=&#39;Day of the month mean&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_25_0.png" alt="png" />
+</center>
+<p>This shows a good first approximation is to model this component via a cyclic variable of the form <span class="math inline">\(z\longmapsto \sin(z)\)</span>.</p>
+</div>
+<div id="remove-yearly-and-monthly-seasonality" class="section level3">
+<h3>Remove yearly and monthly seasonality</h3>
+<p>Let us remove these two seasonal components:</p>
+<pre class="python"><code># Remove yearly seasonality.
+y_no_year_season = df_smooth[&#39;y&#39;] - df_smooth[&#39;y_smooth_2&#39;]
+# Remove monthly seasonality.
+y_no_year_month_season = y_no_year_season \
+    - gaussian_filter(input=y_no_year_season, sigma=3.5)
+
+# Plot components.
+fig, ax = plt.subplots(3, 1, figsize=(12, 16))
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;y_train&#39;, data=df_smooth, alpha=0.5, ax=ax[0])
+sns.lineplot(x=&#39;date&#39;, y=&#39;y_smooth_1&#39;, label=&#39;y_train_smooth monthly&#39;, data=df_smooth, ax=ax[0])
+sns.lineplot(x=&#39;date&#39;, y=&#39;y_smooth_2&#39;, label=&#39;y_train_smooth yearly&#39;, data=df_smooth, ax=ax[0])
+ax[0].set(title=&#39;y&#39;)
+
+ax[1].plot(df_smooth[&#39;date&#39;], y_no_year_season, c=sns_c[2])
+ax[1].axhline(y_no_year_season.mean(), color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;mean&#39;)
+ax[1].legend()
+ax[1].set(title=&#39;y no year seasonality&#39;)
+
+ax[2].plot(df_smooth[&#39;date&#39;], y_no_year_month_season, c=sns_c[1])
+ax[2].axhline(y_no_year_month_season.mean(), color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;mean&#39;)
+ax[2].legend()
+ax[2].set(title=&#39;y no year &amp; month seasonality&#39;);</code></pre>
+<center>
+<p><img src="../images/intro_sts_tfp_files/intro_sts_tfp_28_0.png" alt="png" />
+<c/enter></p>
+</div>
+<div id="ac-and-pac" class="section level3">
+<h3>AC and PAC</h3>
+<p>Let us now compute the auto correlation and partial-autocorrelation of the remainder component.</p>
+<pre class="python"><code>from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+
+fig, ax = plt.subplots(2, 1)
+plot_acf(x=y_no_year_month_season, ax=ax[0])
+plot_pacf(x=y_no_year_month_season, ax=ax[1]);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_30_0.png" alt="png" />
+</center>
+<p>From the autocorrelation plot we observe a clear seasonality component at lag 7. Moreover, looking into the shape of the plot we can also see that the encoding is cyclical.</p>
+</div>
+<div id="correlations" class="section level3">
+<h3>Correlations</h3>
+<p>We want to see wether there is a linear effect of <code>x</code> on <code>y</code>. A first good indiication can be obtained by looking into correlations. Naively, one would simply compute:</p>
+<pre class="python"><code>np.corrcoef(df_train[&#39;y&#39;], df_train[&#39;x&#39;])[0, 1]</code></pre>
+<pre><code>0.3773272976778308</code></pre>
+<p>However, this correlation does not reflect the potential relation of <code>x</code> on <code>y</code> since we have a clear positive trend and seasonality components. A more meaningful indication is the correlation:</p>
+<pre class="python"><code>np.corrcoef(y_no_year_month_season, df_train[&#39;x&#39;])[0, 1]</code></pre>
+<pre><code>0.6714258581031259</code></pre>
+<p>Note that we still have not removed the 7-day (weekly) seasonality. This of course has an effect on this correlation. To see this let us consider the scatter plot:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(
+    x=y_no_year_month_season, 
+    y=df_train[&#39;x&#39;], 
+    hue=df[&#39;day_of_week&#39;],
+    palette=&#39;viridis&#39;,
+    ax=ax, 
+)
+
+ax.set(
+    title=&#39;y_no_year_month_season vs x&#39;, 
+    xlabel=&#39;x&#39;, 
+    ylabel=&#39;y_no_year_month_season&#39;
+);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_37_0.png" alt="png" />
+</center>
+<p>We indeed see we have clear clusters on each level of <code>x</code> corrspondinig to each day of the week.</p>
+<p>One way of removing this seasonality is via a linear regression model. We use a one-hot encoding for the day of the week variable.</p>
+<p><strong>Remark:</strong> As we have seen before a cyclical encoding might be a better choise. Nevertheless, given how the data was generated, we want to test the one-hot encoding approach.</p>
+<pre class="python"><code># Prepare model data frame.
+dow_df = df_train[[&#39;day_of_week&#39;]].copy()
+dow_df[&#39;y_no_year_month_season&#39;] = y_no_year_month_season
+# One-hot encoding of the day of the week.
+dow_dummies = pd.get_dummies(dow_df[&#39;day_of_week&#39;], drop_first=True)
+dow_dummies.columns = [&#39;d&#39; + str(i) for i in dow_dummies.columns]
+dow_df = pd.concat([dow_df, dow_dummies], axis=1)
+dow_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+    
+     .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+day_of_week
+</th>
+<th>
+y_no_year_month_season
+</th>
+<th>
+d1
+</th>
+<th>
+d2
+</th>
+<th>
+d3
+</th>
+<th>
+d4
+</th>
+<th>
+d5
+</th>
+<th>
+d6
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+6
+</td>
+<td>
+-2.105084
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+0
+</td>
+<td>
+-0.513847
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+1
+</td>
+<td>
+-0.143844
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2
+</td>
+<td>
+5.383627
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+3
+</td>
+<td>
+-2.138967
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Next, we fit the linear model.</p>
+<pre class="python"><code>import statsmodels.formula.api as smf
+
+dow_mod = smf.ols(
+    formula=&#39;y_no_year_month_season ~  d1 + d2 + d3 + d4 + d5 + d6&#39;, 
+    data=dow_df
+)
+
+dow_res = dow_mod.fit()
+
+print(dow_res.summary())</code></pre>
+<pre><code>                        OLS Regression Results                              
+==================================================================================
+Dep. Variable:     y_no_year_month_season   R-squared:                       0.350
+Model:                                OLS   Adj. R-squared:                  0.347
+Method:                     Least Squares   F-statistic:                     114.2
+Date:                    Tue, 11 Feb 2020   Prob (F-statistic):          2.64e-115
+Time:                            11:32:43   Log-Likelihood:                -2214.7
+No. Observations:                    1277   AIC:                             4443.
+Df Residuals:                        1270   BIC:                             4479.
+Df Model:                               6                                         
+Covariance Type:                nonrobust                                         
+==============================================================================
+                 coef    std err          t      P&gt;|t|      [0.025      0.975]
+------------------------------------------------------------------------------
+Intercept      1.4182      0.102     13.958      0.000       1.219       1.618
+d1            -0.6520      0.144     -4.538      0.000      -0.934      -0.370
+d2            -1.7017      0.144    -11.826      0.000      -1.984      -1.419
+d3            -2.7558      0.144    -19.151      0.000      -3.038      -2.473
+d4            -2.6323      0.144    -18.293      0.000      -2.915      -2.350
+d5            -1.7910      0.144    -12.446      0.000      -2.073      -1.509
+d6            -0.4125      0.144     -2.871      0.004      -0.694      -0.131
+==============================================================================
+Omnibus:                      665.602   Durbin-Watson:                   2.277
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):             3977.387
+Skew:                           2.431   Prob(JB):                         0.00
+Kurtosis:                      10.150   Cond. No.                         7.86
+==============================================================================
+
+Warnings:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.</code></pre>
+<p>We now compute the correlation of the regressor <code>x</code> with the model residuals:</p>
+<pre class="python"><code>np.corrcoef(dow_res.resid, df_train[&#39;x&#39;])[0, 1]</code></pre>
+<p>0.8612502137457188</p>
+<p>The correlation increased significantly.</p>
+</div>
+<div id="regressor-effect" class="section level3">
+<h3>Regressor Effect</h3>
+<p>A common question in time series analysis is to estimate the effect (ROI) of a specific external regressor (e.g. what is the ROI of media spend on sales?) For this specific case, given the correlation above, we can estimate this for <code>x</code> running a linear model on the residuals of the <code>dow_model</code>.</p>
+<pre class="python"><code>x_df = df_train[[&#39;x&#39;]].copy()
+x_df[&#39;dow_model_resid&#39;] = dow_res.resid
+
+x_mod = smf.ols(formula=&#39;dow_model_resid ~ x&#39;, data=x_df)
+
+x_res = x_mod.fit()
+
+print(x_res.summary())</code></pre>
+<pre><code>                      OLS Regression Results                            
+==============================================================================
+Dep. Variable:        dow_model_resid   R-squared:                       0.742
+Model:                            OLS   Adj. R-squared:                  0.742
+Method:                 Least Squares   F-statistic:                     3662.
+Date:                Tue, 11 Feb 2020   Prob (F-statistic):               0.00
+Time:                        11:32:44   Log-Likelihood:                -1350.3
+No. Observations:                1277   AIC:                             2705.
+Df Residuals:                    1275   BIC:                             2715.
+Df Model:                           1                                         
+Covariance Type:            nonrobust                                         
+==============================================================================
+                 coef    std err          t      P&gt;|t|      [0.025      0.975]
+------------------------------------------------------------------------------
+Intercept     -0.2907      0.020    -14.467      0.000      -0.330      -0.251
+x              5.2360      0.087     60.515      0.000       5.066       5.406
+==============================================================================
+Omnibus:                       31.128   Durbin-Watson:                   1.226
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):               34.638
+Skew:                          -0.340   Prob(JB):                     3.01e-08
+Kurtosis:                       3.435   Cond. No.                         4.45
+==============================================================================
+
+Warnings:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.</code></pre>
+<p>The estimates effect is then:</p>
+<pre class="python"><code>x_res.params[&#39;x&#39;]</code></pre>
+<p>5.236046936179519</p>
+<p>Recall that the <em>true</em> effect is 5.0.</p>
+</div>
+<div id="periodogram" class="section level3">
+<h3>Periodogram</h3>
+<p>There is another way to extract seasonality patterns: using a <a href="https://en.wikipedia.org/wiki/Periodogram">periodogram</a> to estimate the <a href="https://en.wikipedia.org/wiki/Spectral_density">spectral densty</a> of a signal.</p>
+<pre class="python"><code>from scipy import signal
+
+f, Pxx_den = signal.periodogram(
+    x=df_train[&#39;y&#39;], 
+    detrend=&#39;linear&#39;, 
+    nfft=int(7e2)
+)
+
+fig, ax = plt.subplots()
+sns.lineplot(x=f, y=Pxx_den, ax=ax)
+ax.set(title=&#39;Power Spectral Density&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_51_0.png" alt="png" />
+</center>
+<p>Each of these peaks represent the seasonal components. To compute the associated frequency wee need to compute their multiplicative inverse.</p>
+<pre class="python"><code># Sort to get the peak values.
+sort_freq_index = np.argsort(a=Pxx_den)[::-1]
+
+periodogram_df = pd.DataFrame(
+    {&#39;sort_freq&#39;: f[sort_freq_index], &#39;Pxx_den&#39;: Pxx_den[sort_freq_index]}
+)
+
+periodogram_df.assign(days = lambda x: 1/x[&#39;sort_freq&#39;]).head(5)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+    
+     .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+sort_freq
+</th>
+<th>
+Pxx_den
+</th>
+<th>
+days
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+0.032857
+</td>
+<td>
+1341.182617
+</td>
+<td>
+30.434783
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+0.002857
+</td>
+<td>
+966.455322
+</td>
+<td>
+350.000000
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+0.142857
+</td>
+<td>
+701.349792
+</td>
+<td>
+7.000000
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+0.001429
+</td>
+<td>
+191.129486
+</td>
+<td>
+700.000000
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+0.030000
+</td>
+<td>
+41.348232
+</td>
+<td>
+33.333333
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The first three values correspond to <code>days</code> = 30, 350 and 7. Which correspond to monthly, yearly and weekly seasonality.</p>
+</div>
+<div id="time-series-decomposition" class="section level3">
+<h3>Time Series Decomposition</h3>
+<p><a href="https://www.statsmodels.org/stable/index.html"><code>statsmodels</code></a> has an inbuilt decomposition function using moving averages. Let us use it to estimate the effect of the external regressor (which we already know it should be the is the residual component).</p>
+<pre class="python"><code>from statsmodels.tsa.seasonal import seasonal_decompose
+
+decomposition_obj = seasonal_decompose(
+    x=df_train[[&#39;date&#39;, &#39;y&#39;]].set_index(&#39;date&#39;), 
+    model=&#39;additive&#39;
+)
+
+fig, ax = plt.subplots(4, 1, figsize=(12, 12))
+
+decomposition_obj.observed.plot(ax=ax[0])
+ax[0].set(title=&#39;observed&#39;)
+decomposition_obj.trend.plot(ax=ax[1])
+ax[1].set(title=&#39;trend&#39;)
+decomposition_obj.seasonal.plot(ax=ax[2])
+ax[2].set(title=&#39;seasonal&#39;)
+decomposition_obj.resid.plot(ax=ax[3])
+ax[3].set(title=&#39;residual&#39;)
+plt.tight_layout()</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_56_0.png" alt="png" />
+</center>
+<p>Note that the trend component also includes the monthly and yearly seasonality. This might not always be desired. You can of course use the smoothing technique presented above or keep decomposing the resulting trend by specifying the <code>period</code> parameter in the <code>seasonal_decompose</code> function.</p>
+<ul>
+<li>Correlation</li>
+</ul>
+<pre class="python"><code># We remove the first and last 3 entries as they are np.nan 
+# coming from the moving average method. 
+np.corrcoef(decomposition_obj.resid[3:-3], df_train[&#39;x&#39;][3:-3])[0, 1]</code></pre>
+<p>0.8616875939727174</p>
+<ul>
+<li>Effect Estimation</li>
+</ul>
+<pre class="python"><code>x_df[&#39;decomposition_resid&#39;] = decomposition_obj.resid.values
+
+x_mod2 = smf.ols(formula=&#39;decomposition_resid ~ x&#39;, data=x_df[3:-3])
+
+x_res2 = x_mod2.fit()
+
+print(x_res2.summary())</code></pre>
+<pre><code>                       OLS Regression Results                            
+===============================================================================
+Dep. Variable:     decomposition_resid   R-squared:                       0.743
+Model:                             OLS   Adj. R-squared:                  0.742
+Method:                  Least Squares   F-statistic:                     3659.
+Date:                 Tue, 11 Feb 2020   Prob (F-statistic):               0.00
+Time:                         11:32:47   Log-Likelihood:                -1311.4
+No. Observations:                 1271   AIC:                             2627.
+Df Residuals:                     1269   BIC:                             2637.
+Df Model:                            1                                         
+Covariance Type:             nonrobust                                         
+==============================================================================
+                 coef    std err          t      P&gt;|t|      [0.025      0.975]
+------------------------------------------------------------------------------
+Intercept     -0.2828      0.020    -14.404      0.000      -0.321      -0.244
+x              5.1026      0.084     60.492      0.000       4.937       5.268
+==============================================================================
+Omnibus:                       73.490   Durbin-Watson:                   1.441
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):               88.742
+Skew:                          -0.568   Prob(JB):                     5.37e-20
+Kurtosis:                       3.620   Cond. No.                         4.44
+==============================================================================
+
+Warnings:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.</code></pre>
+<p>We get similar results as above.</p>
+<p><strong>Remarks:</strong></p>
+<ul>
+<li>In real life applications the effects of external regressors might include lags. A correlation analysis with lags needs to be done before modeling.</li>
+<li>Also, linear relations might serve as a good first approximation. Nevertheless, going into non-linear relations might improve the model significantly. Two concrete methods which appear often is to model via <a href="https://en.wikipedia.org/wiki/Advertising_adstock">adstock effect</a> and <a href="https://en.wikipedia.org/wiki/Generalized_additive_model">generalized additive models</a>.</li>
+</ul>
+</div>
+</div>
+<div id="define-model" class="section level2">
+<h2>Define Model</h2>
+<p>Based on the previous analysis we have identified the main components of out time series:</p>
+<ul>
+<li><p>A <code>local_linear_trend</code></p></li>
+<li><p>Seasonality:</p>
+<ul>
+<li><code>month_of_year</code></li>
+<li><code>day_of_week</code></li>
+<li><code>day_of_month</code></li>
+</ul></li>
+<li><p>External regressor <code>x_var</code>.</p></li>
+</ul>
+<p>We define each of these components separately in order to build out sts-model using TensorFlow Probability.</p>
+<pre class="python"><code># Local linear trend. 
+local_linear_trend = tfp.sts.LocalLinearTrend(
+    observed_time_series=df_train[&#39;y&#39;], 
+    name=&#39;local_linear_trend&#39;,
+)
+
+# We need to pre-define the number of days in each month.
+num_days_per_month = np.array(
+  [
+    [31, 28, 31, 30, 30, 31, 31, 31, 30, 31, 30, 31],
+    [31, 28, 31, 30, 30, 31, 31, 31, 30, 31, 30, 31],
+    [31, 28, 31, 30, 30, 31, 31, 31, 30, 31, 30, 31],
+    [31, 29, 31, 30, 30, 31, 31, 31, 30, 31, 30, 31] # year with leap day.
+  ] 
+)  
+
+# Define month of year seasonal variable.
+month_of_year = tfp.sts.Seasonal(
+  num_seasons=12,
+  num_steps_per_season=num_days_per_month,
+  name=&#39;month_of_year&#39;
+)
+
+# Define day of week as seasonal variable.
+day_of_week = tfp.sts.Seasonal(
+    num_seasons=7, 
+    num_steps_per_season=1,
+    observed_time_series=df_train[&#39;y&#39;], 
+    name=&#39;day_of_week&#39;,
+)
+
+# Create cyclic variable for day of the month.
+design_matrix_day_of_month = tf.reshape(
+    np.sin(2*np.pi*df[&#39;day_of_month&#39;] / df[&#39;daysinmonth&#39;]).values.astype(np.float32), 
+    (-1, 1)
+)
+
+# Define day of the month as an external regressor.
+# We do not encode it as seasonal as the number of steps is not uniform.
+day_of_month = tfp.sts.LinearRegression(
+    design_matrix=design_matrix_day_of_month,
+    name=&#39;day_of_month&#39;
+)
+
+# Define external regressor component. 
+# We use the whole data set (df) as we expect to have these values in the future. 
+design_matrix_x_var = tf.reshape(df[&#39;x&#39;].values.astype(np.float32), (-1, 1))
+
+x_var = tfp.sts.LinearRegression(
+    design_matrix=design_matrix_x_var,
+    name=&#39;x_var&#39;
+)</code></pre>
+<p>Now we build the model:</p>
+<pre class="python"><code>model_components = [
+    local_linear_trend, 
+    month_of_year, 
+    day_of_week, 
+    day_of_month, 
+    x_var,
+]
+
+toy_model = tfp.sts.Sum(
+    components=model_components, 
+    observed_time_series=df_train[&#39;y&#39;]
+)</code></pre>
+<p>Let us see the model parameters and their priors:</p>
+<pre class="python"><code>for p in toy_model.parameters:
+    print(&#39;-&#39;*140)
+    print(&#39;Parameter: &#39; + p.name)
+    print(&#39;Prior: &#39; + str(p.prior))
+    </code></pre>
+<pre><code>    --------------------------------------------------------------------------------------------------------------------------------------------
+    Parameter: observation_noise_scale
+    Prior: tfp.distributions.LogNormal(&quot;Sum_LogNormal&quot;, batch_shape=[], event_shape=[], dtype=float32)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Parameter: local_linear_trend/_level_scale
+    Prior: tfp.distributions.LogNormal(&quot;local_linear_trend_level_scale_prior&quot;, batch_shape=[], event_shape=[], dtype=float32)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Parameter: local_linear_trend/_slope_scale
+    Prior: tfp.distributions.LogNormal(&quot;local_linear_trend_slope_scale_prior&quot;, batch_shape=[], event_shape=[], dtype=float32)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Parameter: month_of_year/_drift_scale
+    Prior: tfp.distributions.LogNormal(&quot;month_of_year_LogNormal&quot;, batch_shape=[], event_shape=[], dtype=float32)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Parameter: day_of_week/_drift_scale
+    Prior: tfp.distributions.LogNormal(&quot;day_of_week_LogNormal&quot;, batch_shape=[], event_shape=[], dtype=float32)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Parameter: day_of_month/_weights
+    Prior: tfp.distributions.TransformedDistribution(&quot;day_of_month_day_of_month_identityday_of_month_StudentT&quot;, batch_shape=[], event_shape=[1], dtype=float32)
+    --------------------------------------------------------------------------------------------------------------------------------------------
+    Parameter: x_var/_weights
+    Prior: tfp.distributions.TransformedDistribution(&quot;x_var_x_var_identityx_var_StudentT&quot;, batch_shape=[], event_shape=[1], dtype=float32)
+</code></pre>
+</div>
+<div id="model-fit" class="section level2">
+<h2>Model Fit</h2>
+<div id="variational-inference-short-intro" class="section level3">
+<h3>Variational Inference (Short Intro)</h3>
+<p>We follow the strategy of the TensorFlow Probability <a href="https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083">use cases</a> and fit the model using variational inference. I find the article <a href="https://arxiv.org/pdf/1601.00670.pdf">Variational Inference: A Review for Statisticians</a> very good for an introduction to the subject. The main idea of variational inference is to use otimization methods to minimize the <a href="https://en.wikipedia.org/wiki/Kullback–Leibler_divergence">Kullback-Leibler</a> divergence inorder to approximate a conditional density within a family of specified parameter densities <span class="math inline">\(\mathfrak{D}\)</span>. Specifically, assume we are given observed variables <span class="math inline">\(x\)</span> (i.e. data) and let <span class="math inline">\(z\)</span> be a set of latent variables with joint density <span class="math inline">\(p(x, z)\)</span>. We are interested in computing the conditional density</p>
+<p><span class="math display">\[
+p(z|x) = \frac{p(x, z)}{p(x)}, \quad\text{where} \quad p(x)=\int p(x, z) dz. 
+\]</span></p>
+<p>This last integral (known as the <em>evidence</em>) is in general very hard to compute. The main idea of variational inference is to solve the optimization problem</p>
+<p><span class="math display">\[
+q^{*}(z)=\min_{q \in \mathfrak{D}} \text{KL}(q(z)||p(z|x)), 
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+\begin{align}
+\text{KL}(q(z)||p(z|x)) =&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z|x))] \\
+=&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z,x))] - \text{E}[\log(p(x))] \\
+=&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z,x))] - \log(p(x)
+\end{align}
+\]</span></p>
+<p>is the Kullback-Leibler (KL) divergence (the expected values are taked with respect to <span class="math inline">\(q(z)\)</span>). Note that this quanity contains a term <span class="math inline">\(\text{E}[\log(p(x))]\)</span>, which is hard to compute. <em>Because we cannot compute the KL, we optimize an alternative objective that is equivalent
+to the KL up to an added constant </em><a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>,</p>
+<p><span class="math display">\[
+\text{ELBO}(q) = \text{E}[p(z, x)] - \text{E}[\log(q(z))]
+\]</span></p>
+<p>ELBO stands for <em>evidence lower bound</em>.</p>
+<p><strong>Remark:</strong> Note that</p>
+<p><span class="math display">\[
+\text{ELBO}(q)= -\text{KL}(q(z)||p(z|x)) + \log(p(x))
+\]</span></p>
+<p>Moreover, it is easy to see that</p>
+<p><span class="math display">\[
+\text{ELBO}(q)= \text{E}[\log(p(x|z)]-\text{KL}(q(z)||p(x))
+\]</span></p>
+<p>The first term is the expected likelihood and the second term is the negative divergence between the variational density and the prior.</p>
+<p>For more details and enlightening comments, please refer to the artivle mentioned above (from which this short introduction was taken from).</p>
+</div>
+<div id="variational-inference-in-tensorflow-probability" class="section level3">
+<h3>Variational Inference in TensorFlow Probability</h3>
+<p>First we build the variational surrogate posteriors, which consist of independent normal distributions with two trainable hyper-parameters <code>loc</code> and <code>scale</code> for each paramter in the model. That is, <span class="math inline">\(\mathfrak{D}\)</span> above consists of normal distributions.</p>
+<pre class="python"><code>variational_posteriors = tfp.sts.build_factored_surrogate_posterior(
+  model=toy_model, 
+  seed=42
+)</code></pre>
+<p>Let us sample from the prior distributions and plot the corresponding densities:</p>
+<pre class="python"><code>q_prior_samples = variational_posteriors.sample(1000)</code></pre>
+<pre class="python"><code>num_parameters = len(toy_model.parameters)
+
+fig, ax = plt.subplots(num_parameters, 1, figsize=(12, 21))
+
+for i, param in enumerate(toy_model.parameters):
+    
+    param_mean = np.mean(q_prior_samples[param.name], axis=0)
+    param_median = np.median(q_prior_samples[param.name], axis=0)
+    param_std = np.std(q_prior_samples[param.name], axis=0)
+    
+    sns.distplot(a=q_prior_samples[param.name], rug=True, ax=ax[i])
+    ax[i].set(title=param.name)
+    ax[i].axvline(x= param_median, color=sns_c[1], linestyle=&#39;--&#39;, label=&#39;median&#39;)
+    ax[i].axvline(x= param_mean, color=sns_c[2], linestyle=&#39;--&#39;, label=&#39;mean&#39;)
+    ax[i].axvline(x= param_mean + param_std, color=sns_c[3], linestyle=&#39;--&#39;, label=r&#39;$\mu \pm 2\sigma$&#39;)
+    ax[i].axvline(x= param_mean - param_std, color=sns_c[3], linestyle=&#39;--&#39;)
+    ax[i].legend()
+    
+plt.tight_layout(pad=3.0)
+plt.suptitle(&#39;PRIOR DISTRIBUTIONS&#39;, y=0.99);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_76_0.png" alt="png" />
+</center>
+<p>Next we run the optimization procedure.</p>
+<pre class="python"><code>num_variational_steps = int(200)
+
+# Set optimizer.
+optimizer = tf.optimizers.Adam(learning_rate=0.1)
+
+# Using fit_surrogate_posterior to build and optimize 
+# the variational loss function.
+@tf.function(experimental_compile=True)
+def train():
+    # Build the joint density. 
+    target_log_prob_fn = toy_model.joint_log_prob(
+        observed_time_series=df_train[&#39;y&#39;]
+    )
+    
+    elbo_loss_curve = tfp.vi.fit_surrogate_posterior(
+        target_log_prob_fn=target_log_prob_fn,
+        surrogate_posterior=variational_posteriors,
+        optimizer=optimizer,
+        num_steps=num_variational_steps,
+        seed=42
+    )
+    
+    return elbo_loss_curve
+
+# Run optimization.
+elbo_loss_curve = train()</code></pre>
+<p>Let us plot the <code>elbo_loss_curve</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(elbo_loss_curve, marker=&#39;.&#39;)
+ax.set(title=&#39;ELBO Loss Curve&#39;, xlabel=&#39;iteration&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_80_0.png" alt="png" />
+</center>
+<p>We see that a minimum has been reached.</p>
+<p>Now we sample from the variational posteriors obtained:</p>
+<pre class="python"><code>q_samples = variational_posteriors.sample(1000)</code></pre>
+<p>Let us plot the parameter posterior distributions:</p>
+<pre class="python"><code>num_parameters = len(toy_model.parameters)
+
+fig, ax = plt.subplots(num_parameters, 1, figsize=(12, 21))
+
+for i, param in enumerate(toy_model.parameters):
+    
+    param_mean = np.mean(q_samples[param.name], axis=0)
+    param_median = np.median(q_samples[param.name], axis=0)
+    param_std = np.std(q_samples[param.name], axis=0)
+    
+    sns.distplot(a=q_samples[param.name], rug=True, ax=ax[i])
+    ax[i].set(title=param.name)
+    ax[i].axvline(x= param_median, color=sns_c[1], linestyle=&#39;--&#39;, label=&#39;median&#39;)
+    ax[i].axvline(x= param_mean, color=sns_c[2], linestyle=&#39;--&#39;, label=&#39;mean&#39;)
+    ax[i].axvline(x= param_mean + param_std, color=sns_c[3], linestyle=&#39;--&#39;, label=r&#39;$\mu \pm 2\sigma$&#39;)
+    ax[i].axvline(x= param_mean - param_std, color=sns_c[3], linestyle=&#39;--&#39;)
+    ax[i].legend()
+    
+plt.tight_layout(pad=3.0)
+plt.suptitle(&#39;POSTERIOR DISTRIBUTIONS&#39;, y=0.99);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_85_0.png" alt="png" />
+</center>
+<pre class="python"><code># Get mean and std for each parameter.
+print(&#39;Inferred parameters:&#39;)
+for param in toy_model.parameters:
+    print(&#39;{}: {} +- {}&#39;.format(
+        param.name,
+        np.mean(q_samples[param.name], axis=0),
+        np.std(q_samples[param.name], axis=0))
+    )</code></pre>
+<pre><code>    Inferred parameters:
+    observation_noise_scale: 0.5021326541900635 +- 0.007594980299472809
+    local_linear_trend/_level_scale: 0.009583557024598122 +- 0.006971438881009817
+    local_linear_trend/_slope_scale: 0.0018680891953408718 +- 0.0003248010470997542
+    month_of_year/_drift_scale: 0.024883059784770012 +- 0.08357027918100357
+    day_of_week/_drift_scale: 0.018588630482554436 +- 0.004957796074450016
+    day_of_month/_weights: [1.9918456] +- [0.02078216]
+    x_var/_weights: [5.9605927] +- [0.07460035]</code></pre>
+<p><strong>Remark:</strong> Observe that the estimated effect of the regressor <code>x</code> is around 5.96.</p>
+</div>
+</div>
+<div id="model-predictions" class="section level2">
+<h2>Model Predictions</h2>
+<p>We now generate the forecast six months ahead.</p>
+<pre class="python"><code># Compute number of days in the last 6 months of 2020.
+forecast_window = num_days_per_month[-1][6:13].sum()
+
+# Get forecast distribution.
+forecast_dist = tfp.sts.forecast(
+    toy_model,
+    observed_time_series=df_train[&#39;y&#39;],
+    parameter_samples=q_samples,
+    num_steps_forecast=forecast_window 
+)</code></pre>
+<pre class="python"><code># Sample and compute mean and std. 
+num_samples = 100
+
+forecast_mean, forecast_scale, forecast_samples = (
+    forecast_dist.mean().numpy().flatten(),
+    forecast_dist.stddev().numpy().flatten(),
+    forecast_dist.sample(num_samples).numpy().flatten()
+)</code></pre>
+<p>Next, we store the predictions on the <code>df_test</code> data frame.</p>
+<pre class="python"><code>df_test[&#39;y_pred&#39;] = forecast_mean
+df_test[&#39;y_pred_std&#39;] = forecast_scale
+df_test[&#39;errors&#39;] = df_test[&#39;y&#39;] - df_test[&#39;y_pred&#39;]</code></pre>
+<p>Let us plot the predictions:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+ax.fill_between(
+    x=df_test[&#39;date&#39;],
+    y1=df_test[&#39;y_pred&#39;]-2*df_test[&#39;y_pred_std&#39;],
+    y2=df_test[&#39;y_pred&#39;]+2*df_test[&#39;y_pred_std&#39;],
+    color=sns_c[2], 
+    alpha=0.25,
+    label=r&#39;credible_interval ($\mu \pm 2\sigma$)&#39;
+)
+
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;train&#39;, data=df_train, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;test&#39;, data=df_test, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y_pred&#39;, label=&#39;prediction&#39;, data=df_test, ax=ax)
+ax.axvline(x= threshold_date, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train-test split&#39;)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;STS Forecast&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_94_0.png" alt="png" />
+</center>
+<p>Zooming in:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+ax.fill_between(
+    x=df_test[&#39;date&#39;],
+    y1=df_test[&#39;y_pred&#39;]-2*df_test[&#39;y_pred_std&#39;],
+    y2=df_test[&#39;y_pred&#39;]+2*df_test[&#39;y_pred_std&#39;],
+    color=sns_c[2], 
+    alpha=0.25,
+    label=r&#39;credible_interval ($\mu \pm 2\sigma$)&#39;
+)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;test&#39;, data=df_test, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y_pred&#39;, label=&#39;prediction&#39;, data=df_test, ax=ax)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;STS Forecast&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_96_0.png" alt="png" />
+</center>
+<p>Let us see it as a scatter plot.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8,8))
+
+# Generate diagonal line to plot. 
+d_x = np.linspace(start=df_test[&#39;y&#39;].min() - 1, stop=df_test[&#39;y&#39;].max() + 1, num=100)
+
+sns.regplot(x=&#39;y&#39;, y=&#39;y_pred&#39;, data=df_test, ax=ax)
+sns.lineplot(x=d_x, y=d_x, dashes={&#39;linestyle&#39;: &#39;&#39;}, ax=ax)
+ax.lines[1].set_linestyle(&#39;--&#39;)</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_98_0.png" alt="png" />
+</center>
+</div>
+<div id="error-analysis" class="section level2">
+<h2>Error Analysis</h2>
+<p>It is important to emphazise that, for any modeling problem, getting the predictions is not the end of the story. It is very important to analyze the errors to understand where is the model not working as expected.</p>
+<ul>
+<li>Distribution</li>
+</ul>
+<pre class="python"><code>errors_mean = df_test[&#39;errors&#39;].mean()
+errors_std = df_test[&#39;errors&#39;].std()
+
+fig, ax = plt.subplots()
+
+sns.distplot(a=df_test[&#39;errors&#39;], ax=ax, bins=20, rug=True)
+ax.axvline(x=errors_mean, color=sns_c[2], linestyle=&#39;--&#39;, label=r&#39;$\mu$&#39;)
+ax.axvline(x=errors_mean + 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;, label=r&#39;$\mu \pm 2\sigma$&#39;)
+ax.axvline(x=errors_mean - 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;)
+ax.legend()
+ax.set(title=&#39;Model Errors (Test Set)&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_101_0.png" alt="png" />
+</center>
+<p>The errors look normally distributed and centered around zero.</p>
+<ul>
+<li>Autocorrelation</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.scatterplot(x=&#39;index&#39;, y=&#39;errors&#39;, data=df_test.reset_index(), ax=ax)
+ax.axhline(y=errors_mean, color=sns_c[2], linestyle=&#39;--&#39;, label=r&#39;$\mu$ &#39;)
+ax.axhline(y=errors_mean + 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;, label=r&#39;$\mu \pm 2\sigma$&#39;)
+ax.axhline(y=errors_mean - 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;)
+ax.legend()
+ax.set(title=&#39;Model Errors (Test Set)&#39;);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_104_0.png" alt="png" />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(2, 1)
+plot_acf(x=df_test[&#39;errors&#39;], ax=ax[0])
+plot_pacf(x=df_test[&#39;errors&#39;], ax=ax[1]);</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_105_0.png" alt="png" />
+</center>
+<p>We do not see any significant (partial) autocorrelation nor patterns on the errors. They look independent and normally distributed around zero.</p>
+</div>
+<div id="model-fit-decomposition" class="section level2">
+<h2>Model Fit Decomposition</h2>
+<p>Finally, let us see the individual model components.</p>
+<pre class="python"><code>component_dists = tfp.sts.decompose_by_component(
+    model=toy_model,
+    observed_time_series=df_train[&#39;y&#39;],
+    parameter_samples=q_samples
+)</code></pre>
+<pre class="python"><code>component_means, component_stddevs = (
+    {k.name: c.mean() for k, c in component_dists.items()},
+    {k.name: c.stddev() for k, c in component_dists.items()}
+)</code></pre>
+<pre class="python"><code>num_components = len(component_means)
+
+fig, ax = plt.subplots(num_components, 1, figsize= (12, 15))
+
+for i, component_name in enumerate(component_means.keys()):
+    component_mean = component_means[component_name]
+    component_stddev = component_stddevs[component_name]
+    
+    sns.lineplot(x=df_train[&#39;date&#39;], y=component_mean, color=sns_c[0], ax=ax[i])
+    
+    ax[i].fill_between(
+        x=df_train[&#39;date&#39;],
+        y1=component_mean-2*component_stddev,
+        y2=component_mean+2*component_stddev,
+        alpha=0.4, 
+        color=sns_c[1]
+    )
+    
+    ax[i].set(title=component_name)
+
+plt.tight_layout()</code></pre>
+<center>
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_110_0.png" alt="png" />
+</center>
+<hr />
+<p>This was a first exploration of the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/sts">STS TensorFlow Probability</a> module. We emphasized on the time series exploratory analysis since, in real applications, we are never given the time series structure prior modeling (that would be quite boring). I really want to keep exploring the tools and techniques implemented in the this probabilistic programing framework.</p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><a href="https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083">Structural Time Series modeling in TensorFlow Probability</a><a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p><a href="https://arxiv.org/pdf/1601.00670.pdf">Variational Inference: A Review for Statisticians</a><a href="#fnref2" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
