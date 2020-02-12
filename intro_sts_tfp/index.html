@@ -1267,7 +1267,7 @@ q^{*}(z)=\min_{q \in \mathfrak{D}} \text{KL}(q(z)||p(z|x)),
 <p>is the Kullback-Leibler (KL) divergence (the expected values are taked with respect to <span class="math inline">\(q(z)\)</span>). Note that this quanity contains a term <span class="math inline">\(\text{E}[\log(p(x))]\)</span>, which is hard to compute. <em>Because we cannot compute the KL, we optimize an alternative objective that is equivalent
 to the KL up to an added constant </em><a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>,</p>
 <p><span class="math display">\[
-\text{ELBO}(q) = \text{E}[p(z, x)] - \text{E}[\log(q(z))]
+\text{ELBO}(q) = \text{E}[\log(p(z, x))] - \text{E}[\log(q(z))]
 \]</span></p>
 <p>ELBO stands for <em>evidence lower bound</em>.</p>
 <p><strong>Remark:</strong> Note that</p>
