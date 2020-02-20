@@ -107,14 +107,14 @@ print(tfp.__version__)</code></pre>
 </div>
 <div id="generate-data" class="section level2">
 <h2>Generate Data</h2>
-<p>We generate are going to consider daily data on the range <code>2017-01-01</code> to <code>2020-12-31</code>.</p>
+<p>We are going to generate daily data on the range <code>2017-01-01</code> to <code>2020-12-31</code>.</p>
 <pre class="python"><code># Create dataframe with a date range (4 years).
 date_range = pd.date_range(start=&#39;2017-01-01&#39;, end=&#39;2020-12-31&#39;, freq=&#39;D&#39;)
 # Create data frame.
 df = pd.DataFrame(data={&#39;date&#39;: date_range})
 # Extract number of points.
 n = df.shape[0]</code></pre>
-<p>We begin by generating Gaussian noise.</p>
+<p>We begin with Gaussian noise.</p>
 <pre class="python"><code># Set seed.
 np.random.seed(seed=42)
 
@@ -134,7 +134,7 @@ ax.set(title=r&#39;External Regressor $x$&#39;);</code></pre>
 <center>
 <img src="../images/intro_sts_tfp_files/intro_sts_tfp_11_0.png" alt="png" />
 </center>
-<p>Now, lewt us add a non-linear trend component of the form <span class="math inline">\(t\longmapsto t^{1/3}\)</span>.</p>
+<p>Now, let us add a non-linear trend component of the form <span class="math inline">\(t\longmapsto t^{1/3}\)</span>.</p>
 <pre class="python"><code>df[&#39;y&#39;] = df[&#39;y&#39;] + np.power(df.index.values, 1/3)</code></pre>
 <p>Finally, we add some seasonal variables, which we encode as cyclic variables using <span class="math inline">\(\sin(z)\)</span> and <span class="math inline">\(\cos(z)\)</span> functions.</p>
 <pre class="python"><code># Seasonal features:
@@ -487,7 +487,7 @@ ax.set(title=&#39;Dependent Variable&#39;);</code></pre>
 </div>
 <div id="train---test-split" class="section level2">
 <h2>Train - Test Split</h2>
-<p>We assume we have data until <code>2020-06-30</code> and we will predict six months ahead. We assume we have acces to the <code>x</code> variable in advance (e.g. media spend plan).</p>
+<p>We assume we have data until <code>2020-06-30</code> and we will predict six months ahead. We assume we have access to the <code>x</code> variable in advance (e.g. media spend plan).</p>
 <pre class="python"><code>threshold_date = pd.to_datetime(&#39;2020-07-01&#39;)
 mask = df[&#39;date&#39;] &lt; threshold_date
 
@@ -566,7 +566,7 @@ ax[2].set(title=&#39;y no year &amp; month seasonality&#39;);</code></pre>
 </div>
 <div id="ac-and-pac" class="section level3">
 <h3>AC and PAC</h3>
-<p>Let us now compute the auto correlation and partial-autocorrelation of the remainder component.</p>
+<p>Let us now compute the autocorrelation and partial-autocorrelation of the remainder component.</p>
 <pre class="python"><code>from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 
 fig, ax = plt.subplots(2, 1)
@@ -579,7 +579,7 @@ plot_pacf(x=y_no_year_month_season, ax=ax[1]);</code></pre>
 </div>
 <div id="correlations" class="section level3">
 <h3>Correlations</h3>
-<p>We want to see wether there is a linear effect of <code>x</code> on <code>y</code>. A first good indiication can be obtained by looking into correlations. Naively, one would simply compute:</p>
+<p>We want to see whether there is a linear effect of <code>x</code> on <code>y</code>. A first good indication can be obtained by looking into correlations. Naively, one would simply compute:</p>
 <pre class="python"><code>np.corrcoef(df_train[&#39;y&#39;], df_train[&#39;x&#39;])[0, 1]</code></pre>
 <pre><code>0.3773272976778308</code></pre>
 <p>However, this correlation does not reflect the potential relation of <code>x</code> on <code>y</code> since we have a clear positive trend and seasonality components. A more meaningful indication is the correlation:</p>
@@ -603,9 +603,9 @@ ax.set(
 <center>
 <img src="../images/intro_sts_tfp_files/intro_sts_tfp_37_0.png" alt="png" />
 </center>
-<p>We indeed see we have clear clusters on each level of <code>x</code> corrspondinig to each day of the week.</p>
+<p>We indeed see we have clear clusters on each level of <code>x</code> corresponding to each day of the week.</p>
 <p>One way of removing this seasonality is via a linear regression model. We use a one-hot encoding for the day of the week variable.</p>
-<p><strong>Remark:</strong> As we have seen before a cyclical encoding might be a better choise. Nevertheless, given how the data was generated, we want to test the one-hot encoding approach.</p>
+<p><strong>Remark:</strong> As we have seen before a cyclical encoding might be a better choice. Nevertheless, given how the data was generated, we want to test the one-hot encoding approach.</p>
 <pre class="python"><code># Prepare model data frame.
 dow_df = df_train[[&#39;day_of_week&#39;]].copy()
 dow_df[&#39;y_no_year_month_season&#39;] = y_no_year_month_season
@@ -914,7 +914,7 @@ Warnings:
 </div>
 <div id="periodogram" class="section level3">
 <h3>Periodogram</h3>
-<p>There is another way to extract seasonality patterns: using a <a href="https://en.wikipedia.org/wiki/Periodogram">periodogram</a> to estimate the <a href="https://en.wikipedia.org/wiki/Spectral_density">spectral densty</a> of a signal.</p>
+<p>There is another way to extract seasonality patterns: using a <a href="https://en.wikipedia.org/wiki/Periodogram">periodogram</a> to estimate the <a href="https://en.wikipedia.org/wiki/Spectral_density">spectral density</a> of a signal.</p>
 <pre class="python"><code>from scipy import signal
 
 f, Pxx_den = signal.periodogram(
@@ -1063,7 +1063,7 @@ days
 </div>
 <div id="time-series-decomposition" class="section level3">
 <h3>Time Series Decomposition</h3>
-<p><a href="https://www.statsmodels.org/stable/index.html"><code>statsmodels</code></a> has an inbuilt decomposition function using moving averages. Let us use it to estimate the effect of the external regressor (which we already know it should be the is the residual component).</p>
+<p><a href="https://www.statsmodels.org/stable/index.html"><code>statsmodels</code></a> has an inbuilt decomposition function using moving averages. Let us use it to estimate the effect of the external regressor (which we already know it should be the residual component).</p>
 <pre class="python"><code>from statsmodels.tsa.seasonal import seasonal_decompose
 
 decomposition_obj = seasonal_decompose(
@@ -1138,7 +1138,7 @@ Warnings:
 </div>
 <div id="define-model" class="section level2">
 <h2>Define Model</h2>
-<p>Based on the previous analysis we have identified the main components of out time series:</p>
+<p>Based on the previous analysis we have identified the main components of our time series:</p>
 <ul>
 <li><p>A <code>local_linear_trend</code></p></li>
 <li><p>Seasonality:</p>
@@ -1149,7 +1149,7 @@ Warnings:
 </ul></li>
 <li><p>External regressor <code>x_var</code>.</p></li>
 </ul>
-<p>We define each of these components separately in order to build out sts-model using TensorFlow Probability.</p>
+<p>We define each of these components separately in order to build the sts-model using TensorFlow Probability.</p>
 <pre class="python"><code># Local linear trend. 
 local_linear_trend = tfp.sts.LocalLinearTrend(
     observed_time_series=df_train[&#39;y&#39;], 
@@ -1248,7 +1248,7 @@ toy_model = tfp.sts.Sum(
 <h2>Model Fit</h2>
 <div id="variational-inference-short-intro" class="section level3">
 <h3>Variational Inference (Short Intro)</h3>
-<p>We follow the strategy of the TensorFlow Probability <a href="https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083">use cases</a> and fit the model using variational inference. I find the article <a href="https://arxiv.org/pdf/1601.00670.pdf">Variational Inference: A Review for Statisticians</a> very good for an introduction to the subject. The main idea of variational inference is to use otimization methods to minimize the <a href="https://en.wikipedia.org/wiki/Kullback–Leibler_divergence">Kullback-Leibler</a> divergence inorder to approximate a conditional density within a family of specified parameter densities <span class="math inline">\(\mathfrak{D}\)</span>. Specifically, assume we are given observed variables <span class="math inline">\(x\)</span> (i.e. data) and let <span class="math inline">\(z\)</span> be a set of latent variables with joint density <span class="math inline">\(p(x, z)\)</span>. We are interested in computing the conditional density</p>
+<p>We follow the strategy of the TensorFlow Probability <a href="https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083">use cases</a> and fit the model using variational inference. I find the article <a href="https://arxiv.org/pdf/1601.00670.pdf">Variational Inference: A Review for Statisticians</a> very good for an introduction to the subject. The main idea of variational inference is to use optimization methods to minimize the <a href="https://en.wikipedia.org/wiki/Kullback–Leibler_divergence">Kullback-Leibler</a> divergence in order to approximate a conditional density within a family of specified parameter densities <span class="math inline">\(\mathfrak{D}\)</span>. Specifically, assume we are given observed variables <span class="math inline">\(x\)</span> (i.e. data) and let <span class="math inline">\(z\)</span> be a set of latent variables with joint density <span class="math inline">\(p(x, z)\)</span>. We are interested in computing the conditional density</p>
 <p><span class="math display">\[
 p(z|x) = \frac{p(x, z)}{p(x)}, \quad\text{where} \quad p(x)=\int p(x, z) dz. 
 \]</span></p>
@@ -1264,7 +1264,7 @@ q^{*}(z)=\min_{q \in \mathfrak{D}} \text{KL}(q(z)||p(z|x)),
 =&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z,x))] - \log(p(x)
 \end{align}
 \]</span></p>
-<p>is the Kullback-Leibler (KL) divergence (the expected values are taked with respect to <span class="math inline">\(q(z)\)</span>). Note that this quanity contains a term <span class="math inline">\(\text{E}[\log(p(x))]\)</span>, which is hard to compute. <em>Because we cannot compute the KL, we optimize an alternative objective that is equivalent
+<p>is the Kullback-Leibler (KL) divergence (the expected values are taken with respect to <span class="math inline">\(q(z)\)</span>). Note that this quantity contains a term <span class="math inline">\(\text{E}[\log(p(x))]\)</span>, which is hard to compute. <em>Because we cannot compute the KL, we optimize an alternative objective that is equivalent
 to the KL up to an added constant </em><a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>,</p>
 <p><span class="math display">\[
 \text{ELBO}(q) = \text{E}[\log(p(z, x))] - \text{E}[\log(q(z))]
@@ -1279,11 +1279,11 @@ to the KL up to an added constant </em><a href="#fn2" class="footnote-ref" id="f
 \text{ELBO}(q)= \text{E}[\log(p(x|z)]-\text{KL}(q(z)||p(x))
 \]</span></p>
 <p>The first term is the expected likelihood and the second term is the negative divergence between the variational density and the prior.</p>
-<p>For more details and enlightening comments, please refer to the artivle mentioned above (from which this short introduction was taken from).</p>
+<p>For more details and enlightening comments, please refer to the article mentioned above (from which this short introduction was taken from).</p>
 </div>
 <div id="variational-inference-in-tensorflow-probability" class="section level3">
 <h3>Variational Inference in TensorFlow Probability</h3>
-<p>First we build the variational surrogate posteriors, which consist of independent normal distributions with two trainable hyper-parameters <code>loc</code> and <code>scale</code> for each paramter in the model. That is, <span class="math inline">\(\mathfrak{D}\)</span> above consists of normal distributions.</p>
+<p>First we build the variational surrogate posteriors, which consist of independent normal distributions with two trainable hyper-parameters <code>loc</code> and <code>scale</code> for each parameter in the model. That is, <span class="math inline">\(\mathfrak{D}\)</span> above consists of normal distributions.</p>
 <pre class="python"><code>variational_posteriors = tfp.sts.build_factored_surrogate_posterior(
   model=toy_model, 
   seed=42
@@ -1472,7 +1472,7 @@ ax.lines[1].set_linestyle(&#39;--&#39;)</code></pre>
 </div>
 <div id="error-analysis" class="section level2">
 <h2>Error Analysis</h2>
-<p>It is important to emphazise that, for any modeling problem, getting the predictions is not the end of the story. It is very important to analyze the errors to understand where is the model not working as expected.</p>
+<p>It is important to emphasize that, for any modeling problem, getting the predictions is not the end of the story. It is very important to analyze the errors to understand where is the model not working as expected.</p>
 <ul>
 <li>Distribution</li>
 </ul>
@@ -1550,7 +1550,7 @@ plt.tight_layout()</code></pre>
 <img src="../images/intro_sts_tfp_files/intro_sts_tfp_110_0.png" alt="png" />
 </center>
 <hr />
-<p>This was a first exploration of the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/sts">STS TensorFlow Probability</a> module. We emphasized on the time series exploratory analysis since, in real applications, we are never given the time series structure prior modeling (that would be quite boring). I really want to keep exploring the tools and techniques implemented in the this probabilistic programing framework.</p>
+<p>This was a first exploration of the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/sts">STS TensorFlow Probability</a> module. We emphasized on the time series exploratory analysis since, in real applications, we are never given the time series structure prior modeling (that would be quite boring). I really want to keep exploring the tools and techniques implemented in this probabilistic programming framework.</p>
 </div>
 <div class="footnotes">
 <hr />
