@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Forecasting Weekly Data with Prophet - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Forecasting Weekly Data with Prophet - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">14 min read</span>
+    
+
+    <h1 class="article-title">Forecasting Weekly Data with Prophet</h1>
+
+    
+    <span class="article-date">2020-02-21</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we are present an initial exploration of the <a href="https://facebook.github.io/prophet/">Prophet</a> package by <a href="https://opensource.facebook.com/">Facebook</a>. From the documentation:</p>
+<p><em>Prophet is a procedure for forecasting time series data based on an additive model where non-linear trends are fit with yearly, weekly, and daily seasonality, plus holiday effects. It works best with time series that have strong seasonal effects and several seasons of historical data. Prophet is robust to missing data and shifts in the trend, and typically handles outliers well.</em><a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a></p>
+<p>There is an accompanying paper <a href="https://peerj.com/preprints/3190.pdf">Forecasting at scale</a> which is quite accessible (of, course the devil is hidden in the details!). In addition, the <a href="https://facebook.github.io/prophet/docs/quick_start.html">Quick Start Guide</a> is very informative and provides enough information to get a first good impression of the package. There is a R and a Python API.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+from fbprophet import Prophet
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(&#39;darkgrid&#39;, {&#39;axes.facecolor&#39;: &#39;.9&#39;})
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()</code></pre>
+<p><strong>Warning:</strong> At the time of writing this post I encounter a problem when importing <code>fbprophet</code>, see the <a href="https://github.com/facebook/prophet/issues/1293">issue</a> on GitHub. The (partial) solution is given on the thread. The problem as in the structure change of the <a href="https://pypi.org/project/holidays/"><code>holidays</code></a> package.</p>
+</div>
+<div id="brief-model-description" class="section level2">
+<h2>Brief Model Description</h2>
+<p>The Prophet model has the form <span class="math inline">\(y(t) = g(t) + s(t) + h(t) + \varepsilon_t\)</span>, where:</p>
+<ul>
+<li><span class="math inline">\(g(t)\)</span> is the trend function.</li>
+<li><span class="math inline">\(s(t)\)</span> is the periodic component (seasonalities)</li>
+<li><span class="math inline">\(h(t)\)</span> represents holidays/events which occur on potentially irregular basis.</li>
+<li><span class="math inline">\(\varepsilon_t\)</span> is the error term (which is often assumed to be normally distributed)</li>
+</ul>
+<p>Let us describe these components in more detail:</p>
+<div id="trend" class="section level3">
+<h3>Trend:</h3>
+<p>The basic model for this term is</p>
+<p><span class="math display">\[
+g(t) = \frac{C}{1 + e^{-k(t-m)}}
+ \]</span></p>
+<p>where <span class="math inline">\(C\)</span> is known as the <em>capacity</em>, <span class="math inline">\(k\)</span> the <em>growth rate</em> and <span class="math inline">\(m\)</span> the <em>offset parameter.</em> Observe that</p>
+<p><span class="math display">\[
+\lim_{t\rightarrow \infty} g(t) = C
+\]</span></p>
+<p>Let us plot <span class="math inline">\(g(t)\)</span> for various values of <span class="math inline">\(k\)</span>.</p>
+<pre class="python"><code>plt.rcParams[&#39;figure.figsize&#39;] = [12, 7]
+
+def g(t, k, C=1, m=0):
+    &quot;&quot;&quot;Trend model.&quot;&quot;&quot;
+    return C/(1 + np.exp(-k*(t - m)))
+
+# grid of k values. 
+k_grid = [0.5, 1, 3, 5, 10, 30, 80]
+# Time range. 
+t = np.linspace(start=0, stop=1, num=50)
+
+fig, ax = plt.subplots()
+
+for k in k_grid:
+    
+    sns.lineplot(
+        x=t, 
+        y=np.apply_along_axis(lambda t: g(t, k, C=2, m=0), axis=0, arr=t),
+        label=f&#39;k = {k}&#39;,
+        ax=ax
+    )
+
+ax.axvline(x=0.0, color=&#39;gray&#39;, linestyle=&#39;--&#39;, label=&#39;m = 0&#39;)
+ax.axhline(y=2.0, color=&#39;black&#39;, linestyle=&#39;--&#39;, label=&#39;C = 2&#39;)
+ax.legend(bbox_to_anchor=(1.02, 1.0))
+ax.set(title=&#39;Trend Model&#39;, ylim=(0.9, 2.1));</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_6_0.png" alt="png" />
+</center>
+<p>Hence, <span class="math inline">\(C\)</span> can be understood as the saturation point.</p>
+<p>In the actual implementation there are some extensions:</p>
+<ul>
+<li>The capacity is a function of time <span class="math inline">\(C=C(t)\)</span>.</li>
+<li>The growth rate is not constant. There is a change-point-grid on which the growth rate is allowed to change. To avoid overfitting, the vector of rate growth adjustments <span class="math inline">\(\bf{\delta}\in \mathbb{R}^{s}\)</span> has a Laplace prior (related to an <span class="math inline">\(L^1\)</span> regularization). For the details please refer to the original paper.<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></li>
+</ul>
+</div>
+<div id="seasonality" class="section level3">
+<h3>Seasonality</h3>
+<p>The seasonal components are approximated by Fourier modes:</p>
+<p><span class="math display">\[
+s(t) = 
+\sum_{n=1}^{N}
+\left(
+a_n\cos\left(\frac{2\pi nt}{P}\right)
++
+b_n\sin\left(\frac{2\pi nt}{P}\right)
+\right) 
+\]</span></p>
+<p>where <span class="math inline">\(P\)</span> is the period.</p>
+<p>Let us plot some of these Fourier modes:</p>
+<pre class="python"><code>P = 1.0
+n_grid = [1, 2 , 5, 20]
+t = np.linspace(start=0, stop=P, num=100)
+
+fig, ax = plt.subplots(2, 1, figsize=(12, 9))
+
+for n in n_grid:
+    
+    sns.lineplot(
+        x=t, 
+        y=np.apply_along_axis(lambda t: np.cos(2*np.pi*n*t/P), axis=0, arr=t), 
+        label=f&#39;n = {n}&#39;, 
+        ax=ax[0]
+    )
+    
+    sns.lineplot(
+        x=t, 
+        y=np.apply_along_axis(lambda t: np.sin(2*np.pi*n*t/P), axis=0, arr=t), 
+        label=f&#39;n = {n}&#39;, 
+        ax=ax[1]
+    )
+    
+ax[0].legend(bbox_to_anchor=(1.12, 1.01))
+ax[0].set(title=r&#39;$\cos(2\pi n t/P)$&#39;)
+
+ax[1].legend(bbox_to_anchor=(1.12, 1.01))
+ax[1].set(title=r&#39;$\sin(2\pi n t/P)$&#39;)
+
+fig.suptitle(&#39;Fourier Modes&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_9_0.png" alt="png" />
+</center>
+</div>
+<div id="holidays-and-events" class="section level3">
+<h3>Holidays and Events</h3>
+<p>Similar to the seasonal component.</p>
+</div>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>We generate a time series by including the following components:</p>
+<ul>
+<li><p>We include a non-linear <strong>trend</strong> of the form <span class="math inline">\(\text{trend}(w) = (w + 1)^{2/5} + \log(w + 3)\)</span>, where <span class="math inline">\(w\)</span> denotes the week index.</p></li>
+<li><p>Seasonality:</p>
+<ul>
+<li>We use the formula <span class="math inline">\(\sin(2\pi \times \text{day_of_month}/\text{daysinmonth})\)</span> to generate a <strong>monthly seasonality</strong>.<br />
+</li>
+<li>We use the formula <span class="math inline">\(\sin(2\pi \times\text{month}/3) + \cos(2\pi \times \text{month}/4)\)</span> to generate the <strong>yearly seasonality</strong>. Note that as <span class="math inline">\(3\)</span> and <span class="math inline">\(4\)</span> are relative primes, which implies that the period is the least common multiple <span class="math inline">\(\text{lcm}(3, 4)=12\)</span>.</li>
+<li>We model the <strong>End of the year season</strong> as a <a href="https://juanitorduz.github.io/bump_func/">bump function</a>.</li>
+</ul></li>
+<li><p>Gaussian Noise</p></li>
+</ul>
+<pre class="python"><code>np.random.seed(seed=42)
+
+def generate_time_series_df(start_date, end_date, freq):
+    &quot;&quot;&quot;Generate time series sample data.&quot;&quot;&quot;
+    date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
+
+    df = pd.DataFrame(data={&#39;ds&#39;: date_range})
+    
+    # Get date variables. 
+    df[&#39;day_of_month&#39;] = df[&#39;ds&#39;].dt.day
+    df[&#39;month&#39;] = df[&#39;ds&#39;].dt.month
+    df[&#39;daysinmonth&#39;] = df[&#39;ds&#39;].dt.daysinmonth
+    df[&#39;week&#39;] = df[&#39;ds&#39;].dt.week
+    
+    # Time Series Components 
+    ## Trend
+    df[&#39;trend&#39;] = np.power(df.index.values + 1, 2/5) + np.log(df.index.values + 3)
+    ## Seasonal
+    df[&#39;monthly_seas&#39;] = np.cos(2*np.pi*df[&#39;day_of_month&#39;]/df[&#39;daysinmonth&#39;])
+    df[&#39;yearly_seas&#39;] = 1.2*(np.sin(np.pi*df[&#39;month&#39;]/3) + np.cos(2*np.pi*df[&#39;month&#39;]/4))
+    df[&#39;end_of_year&#39;]= - 8.5*np.exp(- ((df[&#39;week&#39;] - 51.5)/1.0)**2) \
+    ## Gaussian noise
+    df[&#39;noise&#39;] = np.random.normal(loc=0.0, scale=0.3, size=df.shape[0])
+    
+    # Target variable.
+    df[&#39;y&#39;] = df[&#39;trend&#39;] \
+        + df[&#39;monthly_seas&#39;] \
+        + df[&#39;yearly_seas&#39;] \
+        + df[&#39;end_of_year&#39;] \
+        + df[&#39;noise&#39;]
+    
+    return df
+
+df = generate_time_series_df(
+    start_date=&#39;2016-06-30&#39;, 
+    end_date=&#39;2020-10-31&#39;, 
+    freq=&#39;W&#39;
+)
+
+df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+    
+     .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+ds
+</th>
+<th>
+day_of_month
+</th>
+<th>
+month
+</th>
+<th>
+daysinmonth
+</th>
+<th>
+week
+</th>
+<th>
+trend
+</th>
+<th>
+monthly_seas
+</th>
+<th>
+yearly_seas
+</th>
+<th>
+end_of_year
+</th>
+<th>
+noise
+</th>
+<th>
+y
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2016-07-03
+</td>
+<td>
+3
+</td>
+<td>
+7
+</td>
+<td>
+31
+</td>
+<td>
+26
+</td>
+<td>
+2.098612
+</td>
+<td>
+0.820763
+</td>
+<td>
+1.03923
+</td>
+<td>
+-3.384013e-282
+</td>
+<td>
+0.149014
+</td>
+<td>
+4.107620
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2016-07-10
+</td>
+<td>
+10
+</td>
+<td>
+7
+</td>
+<td>
+31
+</td>
+<td>
+27
+</td>
+<td>
+2.705802
+</td>
+<td>
+-0.440394
+</td>
+<td>
+1.03923
+</td>
+<td>
+-1.754511e-260
+</td>
+<td>
+-0.041479
+</td>
+<td>
+3.263159
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2016-07-17
+</td>
+<td>
+17
+</td>
+<td>
+7
+</td>
+<td>
+31
+</td>
+<td>
+28
+</td>
+<td>
+3.161283
+</td>
+<td>
+-0.954139
+</td>
+<td>
+1.03923
+</td>
+<td>
+-1.231094e-239
+</td>
+<td>
+0.194307
+</td>
+<td>
+3.440681
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2016-07-24
+</td>
+<td>
+24
+</td>
+<td>
+7
+</td>
+<td>
+31
+</td>
+<td>
+29
+</td>
+<td>
+3.532861
+</td>
+<td>
+0.151428
+</td>
+<td>
+1.03923
+</td>
+<td>
+-1.169062e-219
+</td>
+<td>
+0.456909
+</td>
+<td>
+5.180428
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2016-07-31
+</td>
+<td>
+31
+</td>
+<td>
+7
+</td>
+<td>
+31
+</td>
+<td>
+30
+</td>
+<td>
+3.849564
+</td>
+<td>
+1.000000
+</td>
+<td>
+1.03923
+</td>
+<td>
+-1.502431e-200
+</td>
+<td>
+-0.070246
+</td>
+<td>
+5.818549
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us plot the resulting time series:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;ds&#39;, y=&#39;y&#39;, label=&#39;y&#39;, data=df, ax=ax)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Raw Data&#39;, xlabel=&#39;date&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_14_0.png" alt="png" />
+</center>
+<p>Let us now plot the individual components:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;ds&#39;, y=&#39;y&#39;, label=&#39;y&#39;, data=df, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;trend&#39;, label=&#39;trend&#39;, data=df, alpha=0.7, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;monthly_seas&#39;, label=&#39;monthly_seas&#39;, data=df, alpha=0.7, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;yearly_seas&#39;, label=&#39;yearly_seas&#39;, data=df, alpha=0.7, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;end_of_year&#39;, label=&#39;end_of_year&#39;, data=df, alpha=0.7, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;noise&#39;, label=&#39;noise&#39;, data=df, alpha=0.7, ax=ax)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Raw Data -  Components&#39;, xlabel=&#39;date&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_16_0.png" alt="png" />
+</center>
+</div>
+<div id="training---test-split" class="section level2">
+<h2>Training - Test Split</h2>
+<p>Let us split the data into a training and test set in order to evaluate our model.</p>
+<pre class="python"><code># Define threshold date.
+threshold_date = pd.to_datetime(&#39;2019-11-01&#39;)
+mask = df[&#39;ds&#39;] &lt; threshold_date
+# Split the data and select `ds` and `y` columns.
+df_train = df[mask][[&#39;ds&#39;, &#39;y&#39;]]
+df_test = df[~ mask][[&#39;ds&#39;, &#39;y&#39;]]</code></pre>
+<p><strong>Warning:</strong> <em>The input to Prophet is always a data frame with two columns: <code>ds</code> and <code>y</code>.</em><a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a></p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;ds&#39;, y=&#39;y&#39;, label=&#39;y_train&#39;, data=df_train, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;y&#39;, label=&#39;y_test&#39;, data=df_test, ax=ax)
+ax.axvline(threshold_date, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train test split&#39;)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Dependent Variable&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_20_0.png" alt="png" />
+</center>
+</div>
+<div id="time-series-decomposition" class="section level2">
+<h2>Time Series Decomposition</h2>
+<p>We begin the analysis by decomposing the (training) time series into the trend, seasonal and residual components.</p>
+<pre class="python"><code>from statsmodels.tsa.seasonal import seasonal_decompose
+
+decomposition_obj = seasonal_decompose(
+    x=df_train.set_index(&#39;ds&#39;), 
+    model=&#39;additive&#39;
+)</code></pre>
+<p>We plot and compare the results.</p>
+<pre class="python"><code>fig, ax = plt.subplots(4, 1, figsize=(12, 12))
+
+# Observed time series.
+decomposition_obj.observed.plot(ax=ax[0])
+ax[0].set(title=&#39;observed&#39;)
+# Trend component. 
+decomposition_obj.trend.plot(label=&#39;fit&#39;, ax=ax[1])
+df[mask][[&#39;ds&#39;, &#39;trend&#39;]].set_index(&#39;ds&#39;).plot(c=sns_c[1], ax=ax[1])
+ax[1].legend(loc=&#39;lower right&#39;)
+ax[1].set(title=&#39;trend&#39;)
+# Seasonal component. 
+decomposition_obj.seasonal.plot(label=&#39;fit&#39;, ax=ax[2])
+df.assign(seasonal = lambda x: x[&#39;yearly_seas&#39;] + x[&#39;monthly_seas&#39;] + x[&#39;end_of_year&#39;]) \
+    [mask][[&#39;ds&#39;, &#39;seasonal&#39;]] \
+    .set_index(&#39;ds&#39;)\
+    .plot(c=sns_c[2], ax=ax[2])
+ax[2].legend(loc=&#39;lower right&#39;)
+ax[2].set(title=&#39;seasonal&#39;)
+# Residual.
+decomposition_obj.resid.plot(label=&#39;fit&#39;, ax=ax[3])
+df[mask][[&#39;ds&#39;, &#39;noise&#39;]].set_index(&#39;ds&#39;).plot(c=sns_c[3], ax=ax[3])
+ax[3].legend(loc=&#39;lower right&#39;)
+ax[3].set(title=&#39;residual&#39;)
+
+fig.suptitle(&#39;Time Series Decomposition&#39;, y=1.01)
+plt.tight_layout()</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_25_0.png" alt="png" />
+</center>
+<p><strong>Remarks</strong>:</p>
+<ul>
+<li>The trend component is overall correct. Nevertheless, it fails to capture it for the initial (non-linear) period.</li>
+<li>From the seasonal component obtained we clearly see the yearly and monthly contributions.</li>
+</ul>
+</div>
+<div id="define-model" class="section level2">
+<h2>Define Model</h2>
+<p>Based on the analysis above, we now define the forecasting model structure.</p>
+<div id="holidays-end-of-the-year" class="section level3">
+<h3>Holidays: End of the Year</h3>
+<p>In most of the resources available, Prophet is applied to daily data. Here we are interested in the specific case of weekly data. The generalization is pretty straightforward. Nevertheless, There are some important aspects one needs to be particularly careful about.</p>
+<p>According to the documentation<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a>, we can model specific special events by explicitly including them into a <code>holidays</code> data frame which must have at least two columns <code>ds</code>: date stamp and <code>holiday</code>: name of the event. In addition, we can include two columns <code>lower_window</code> and <code>upper_window</code> which extend the event time stamp to the interval [<code>ds</code> - <code>lower_window</code>, <code>ds</code> + <code>upper_window</code>] in days.</p>
+<p><strong>Warning:</strong> The <code>holidays</code> data frame must contain the events in the historical data and also in the future.</p>
+<p>To create this data frame for our concrete use case let us get the week date stamps for the end of the year season.</p>
+<pre class="python"><code># End of the year season.
+mask_eoy = (df[&#39;month&#39;]==12) &amp; (df[&#39;day_of_month&#39;] &gt; 21)
+
+df[mask_eoy][[&#39;ds&#39;, &#39;end_of_year&#39;, &#39;y&#39;]]</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+ds
+</th>
+<th>
+end_of_year
+</th>
+<th>
+y
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+25
+</th>
+<td>
+2016-12-25
+</td>
+<td>
+-6.619807
+</td>
+<td>
+1.974179
+</td>
+</tr>
+<tr>
+<th>
+77
+</th>
+<td>
+2017-12-24
+</td>
+<td>
+-6.619807
+</td>
+<td>
+4.736599
+</td>
+</tr>
+<tr>
+<th>
+78
+</th>
+<td>
+2017-12-31
+</td>
+<td>
+-6.619807
+</td>
+<td>
+5.744007
+</td>
+</tr>
+<tr>
+<th>
+129
+</th>
+<td>
+2018-12-23
+</td>
+<td>
+-6.619807
+</td>
+<td>
+6.269033
+</td>
+</tr>
+<tr>
+<th>
+130
+</th>
+<td>
+2018-12-30
+</td>
+<td>
+-6.619807
+</td>
+<td>
+7.014116
+</td>
+</tr>
+<tr>
+<th>
+181
+</th>
+<td>
+2019-12-22
+</td>
+<td>
+-6.619807
+</td>
+<td>
+7.304637
+</td>
+</tr>
+<tr>
+<th>
+182
+</th>
+<td>
+2019-12-29
+</td>
+<td>
+-6.619807
+</td>
+<td>
+8.433138
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We use these dates to create the <code>holidays</code> data frame.</p>
+<pre class="python"><code>def create_end_of_year_holydays_df():
+    &quot;&quot;&quot;Create holidays data frame for the end of the year season.&quot;&quot;&quot;
+    holidays = pd.DataFrame({
+      &#39;holiday&#39;: &#39;end_of_year&#39;,
+      &#39;ds&#39;: pd.to_datetime(
+          [&#39;2016-12-25&#39;, &#39;2017-12-24&#39;, &#39;2018-12-23&#39;, &#39;2019-12-22&#39;]
+      ),
+      &#39;lower_window&#39;: -7,
+      &#39;upper_window&#39;: 7,
+    })
+    return holidays</code></pre>
+<p><strong>Warning:</strong> In a first implementation I just used the 24th of December as the event date stamp. This however did not produce the right result as in the <code>forecast</code> below, the <code>end_of_year</code> indication function did not appear in the future window. You can see the thread in the <a href="https://github.com/juanitorduz/website_projects/pull/13">pull request</a> associated to this notebook. This is definitely something to be aware of when working with weekly data in Prophet.</p>
+</div>
+</div>
+<div id="build-model" class="section level2">
+<h2>Build Model</h2>
+<p>Now we define the forecasting model object.</p>
+<pre class="python"><code>def build_model():
+    &quot;&quot;&quot;Define forecasting model.&quot;&quot;&quot;
+    # Create holidays data frame. 
+    holidays = create_end_of_year_holydays_df()
+    
+    model = Prophet(
+        yearly_seasonality=True,
+        weekly_seasonality=False,
+        daily_seasonality=False, 
+        holidays = holidays, 
+        interval_width=0.95, 
+        mcmc_samples = 500
+    )
+
+    model.add_seasonality(
+        name=&#39;monthly&#39;, 
+        period=30.5, 
+        fourier_order=5
+    )
+    
+    return model
+    
+model = build_model()</code></pre>
+<p><strong>Remarks:</strong></p>
+<ul>
+<li>We specify to fit the <code>yearly_seasonality</code> with the <em>auto</em> option for the Fourier modes.</li>
+<li>We ask for the 0.95 <code>interval_with</code> instead of the default (0.8).</li>
+<li>We include the <code>mcmc_samples</code> option to get uncertainty in seasonality (via Bayesian sampling).</li>
+<li>We add monthly seasonality by specifying the <code>period</code> and <code>fourier_order</code>. This is the general strategy for adding any type of seasonality.<a href="#fn5" class="footnote-ref" id="fnref5"><sup>5</sup></a></li>
+</ul>
+<pre class="python"><code># We train the model with the training data. 
+model.fit(df_train)</code></pre>
+</div>
+<div id="generate-predictions" class="section level2">
+<h2>Generate Predictions</h2>
+<p>Let us get the model predictions. First we extend the dates from the training data.</p>
+<pre class="python"><code># Extend dates and features. 
+future = model.make_future_dataframe(periods=df_test.shape[0], freq=&#39;W&#39;)
+# Generate predictions. 
+forecast = model.predict(df=future)</code></pre>
+<p>Let us see the columns of the <code>forecast</code> data frame.</p>
+<pre class="python"><code>for c in forecast.columns.sort_values():
+    print(c)</code></pre>
+<pre><code>    additive_terms
+    additive_terms_lower
+    additive_terms_upper
+    ds
+    end_of_year
+    end_of_year_lower
+    end_of_year_upper
+    holidays
+    holidays_lower
+    holidays_upper
+    monthly
+    monthly_lower
+    monthly_upper
+    multiplicative_terms
+    multiplicative_terms_lower
+    multiplicative_terms_upper
+    trend
+    trend_lower
+    trend_upper
+    yearly
+    yearly_lower
+    yearly_upper
+    yhat
+    yhat_lower
+    yhat_upper</code></pre>
+<ul>
+<li>The variable <code>yhat</code> represents the model predictions.</li>
+<li>For all the components we have the <code>_lower</code> and <code>_upper</code> bounds.</li>
+</ul>
+<p>Let us verify the encoding of the <code>end_of_year</code> season in the <code>forecast</code> data frame.</p>
+<pre class="python"><code>forecast[forecast[&#39;end_of_year&#39;].abs()&gt;0][[&#39;ds&#39;, &#39;end_of_year&#39;]]</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+ds
+</th>
+<th>
+end_of_year
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+24
+</th>
+<td>
+2016-12-18
+</td>
+<td>
+-1.767771
+</td>
+</tr>
+<tr>
+<th>
+25
+</th>
+<td>
+2016-12-25
+</td>
+<td>
+-7.380399
+</td>
+</tr>
+<tr>
+<th>
+26
+</th>
+<td>
+2017-01-01
+</td>
+<td>
+-6.862743
+</td>
+</tr>
+<tr>
+<th>
+76
+</th>
+<td>
+2017-12-17
+</td>
+<td>
+-1.767771
+</td>
+</tr>
+<tr>
+<th>
+77
+</th>
+<td>
+2017-12-24
+</td>
+<td>
+-7.380399
+</td>
+</tr>
+<tr>
+<th>
+78
+</th>
+<td>
+2017-12-31
+</td>
+<td>
+-6.862743
+</td>
+</tr>
+<tr>
+<th>
+128
+</th>
+<td>
+2018-12-16
+</td>
+<td>
+-1.767771
+</td>
+</tr>
+<tr>
+<th>
+129
+</th>
+<td>
+2018-12-23
+</td>
+<td>
+-7.380399
+</td>
+</tr>
+<tr>
+<th>
+130
+</th>
+<td>
+2018-12-30
+</td>
+<td>
+-6.862743
+</td>
+</tr>
+<tr>
+<th>
+180
+</th>
+<td>
+2019-12-15
+</td>
+<td>
+-1.767771
+</td>
+</tr>
+<tr>
+<th>
+181
+</th>
+<td>
+2019-12-22
+</td>
+<td>
+-7.380399
+</td>
+</tr>
+<tr>
+<th>
+182
+</th>
+<td>
+2019-12-29
+</td>
+<td>
+-6.862743
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;ds&#39;, y=&#39;end_of_year&#39;, data=forecast, ax=ax)
+ax.axvline(threshold_date, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train test split&#39;)
+ax.set(title=&#39;end_of_year&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_43_0.png" alt="png" />
+</center>
+<p>The seasonality works as expected (see <strong>Warning</strong> above).</p>
+<p>Let us split the predictions into training and test set.</p>
+<pre class="python"><code>mask2 = forecast[&#39;ds&#39;] &lt; threshold_date
+
+forecast_train = forecast[mask2]
+forecast_test = forecast[~ mask2]</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+ax.fill_between(
+    x=forecast[&#39;ds&#39;],
+    y1=forecast[&#39;yhat_lower&#39;],
+    y2=forecast[&#39;yhat_upper&#39;],
+    color=sns_c[2], 
+    alpha=0.25,
+    label=r&#39;0.95 credible_interval&#39;
+)
+
+sns.lineplot(x=&#39;ds&#39;, y=&#39;y&#39;, label=&#39;y_train&#39;, data=df_train, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;y&#39;, label=&#39;y_test&#39;, data=df_test, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;yhat&#39;, label=&#39;y_hat&#39;, data=forecast, ax=ax)
+ax.axvline(threshold_date, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train test split&#39;)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Dependent Variable&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_47_0.png" alt="png" />
+</center>
+<p>Zooming in:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+ax.fill_between(
+    x=forecast_test[&#39;ds&#39;],
+    y1=forecast_test[&#39;yhat_lower&#39;],
+    y2=forecast_test[&#39;yhat_upper&#39;],
+    color=sns_c[2], 
+    alpha=0.25,
+    label=r&#39;0.95 credible_interval&#39;
+)
+
+sns.lineplot(x=&#39;ds&#39;, y=&#39;y&#39;, label=&#39;y_test&#39;, data=df_test, ax=ax)
+sns.lineplot(x=&#39;ds&#39;, y=&#39;yhat&#39;, label=&#39;y_hat&#39;, data=forecast_test, ax=ax)
+ax.legend(loc=&#39;lower right&#39;)
+ax.set(title=&#39;Dependent Variable&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_49_0.png" alt="png" />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8,8))
+
+# Generate diagonal line to plot. 
+d_x = np.linspace(start=df_train[&#39;y&#39;].min() - 1, stop=df_train[&#39;y&#39;].max() + 1, num=100)
+
+sns.regplot(x=df_train[&#39;y&#39;], y=forecast_train[&#39;yhat&#39;], color=sns_c[0], label=&#39;train&#39;, ax=ax)
+sns.regplot(x=df_test[&#39;y&#39;], y=forecast_test[&#39;yhat&#39;], color=sns_c[1], label=&#39;test&#39;, ax=ax)
+sns.lineplot(x=d_x, y=d_x, dashes={&#39;linestyle&#39;: &#39;&#39;}, color=sns_c[3], ax=ax)
+ax.lines[2].set_linestyle(&#39;--&#39;)
+ax.set(title=&#39;Test Data vs Predictions&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_50_0.png" alt="png" />
+</center>
+<p>Let us compute the <code>r2_score</code> and <code>mean_absolute_error</code> on the training and test set respectively:</p>
+<pre class="python"><code>from sklearn.metrics import r2_score, mean_absolute_error
+
+print(&#39;r2 train: {}&#39;.format(r2_score(y_true=df_train[&#39;y&#39;], y_pred=forecast_train[&#39;yhat&#39;])))
+print(&#39;r2 test: {}&#39;.format(r2_score(y_true=df_test[&#39;y&#39;], y_pred=forecast_test[&#39;yhat&#39;])))
+print(&#39;---&#39;*10)
+print(&#39;mae train: {}&#39;.format(mean_absolute_error(y_true=df_train[&#39;y&#39;], y_pred=forecast_train[&#39;yhat&#39;])))
+print(&#39;mae test: {}&#39;.format(mean_absolute_error(y_true=df_test[&#39;y&#39;], y_pred=forecast_test[&#39;yhat&#39;])))</code></pre>
+<pre><code>    r2 train: 0.9830369776415686
+    r2 test: 0.9320449074303058
+    ------------------------------
+    mae train: 0.3113940440897326
+    mae test: 0.38975341010250913</code></pre>
+<p>This might indicate a potential overfit. In a second iteration one could modify the <code>prior_scale</code> in the model definition to add more regularization.<a href="#fn6" class="footnote-ref" id="fnref6"><sup>6</sup></a></p>
+</div>
+<div id="error-analysis" class="section level2">
+<h2>Error Analysis</h2>
+<p>Let us study the forecast errors.</p>
+<ul>
+<li>Distribution</li>
+</ul>
+<pre class="python"><code>forecast_test.loc[:, &#39;errors&#39;] = forecast_test.loc[:, &#39;yhat&#39;] - df_test.loc[:, &#39;y&#39;]
+
+errors_mean = forecast_test[&#39;errors&#39;].mean()
+errors_std = forecast_test[&#39;errors&#39;].std()
+
+fig, ax = plt.subplots()
+
+sns.distplot(a=forecast_test[&#39;errors&#39;], ax=ax, bins=15, rug=True)
+ax.axvline(x=errors_mean, color=sns_c[2], linestyle=&#39;--&#39;, label=r&#39;$\mu$&#39;)
+ax.axvline(x=errors_mean + 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;, label=r&#39;$\mu \pm 2\sigma$&#39;)
+ax.axvline(x=errors_mean - 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;)
+ax.legend()
+ax.set(title=&#39;Model Errors (Test Set)&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_55_1.png" alt="png" />
+</center>
+<ul>
+<li>Autocorrelation</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.scatterplot(x=&#39;index&#39;, y=&#39;errors&#39;, data=forecast_test.reset_index(), ax=ax)
+ax.axhline(y=errors_mean, color=sns_c[2], linestyle=&#39;--&#39;, label=r&#39;$\mu$ &#39;)
+ax.axhline(y=errors_mean + 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;, label=r&#39;$\mu \pm 2\sigma$&#39;)
+ax.axhline(y=errors_mean - 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;)
+ax.legend()
+ax.set(title=&#39;Model Errors (Test Set)&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_57_0.png" alt="png" />
+</center>
+<pre class="python"><code>from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+
+fig, ax = plt.subplots(2, 1)
+plot_acf(x=forecast_test[&#39;errors&#39;], ax=ax[0])
+plot_pacf(x=forecast_test[&#39;errors&#39;], ax=ax[1]);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_58_0.png" alt="png" />
+</center>
+<p>We do not see any (partial)-autocorrelation on the errors.</p>
+</div>
+<div id="model-deep-dive" class="section level2">
+<h2>Model Deep Dive</h2>
+<ul>
+<li>Model Components</li>
+</ul>
+<pre class="python"><code># Plot model components.
+fig = model.plot_components(forecast)</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_61_1.png" alt="png" />
+</center>
+<ul>
+<li>Trend Fit</li>
+</ul>
+<p>Let us plot where</p>
+<pre class="python"><code>from fbprophet.plot import add_changepoints_to_plot
+
+fig = model.plot(forecast)
+a = add_changepoints_to_plot(fig.gca(), model, forecast)</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_63_0.png" alt="png" />
+</center>
+<p>Let us compare the true and the fitted trend:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.lineplot(x=&#39;ds&#39;, y=&#39;trend&#39;, data=df, label=&#39;trend_true&#39;, ax=ax)
+
+ax.fill_between(
+    x=forecast[&#39;ds&#39;],
+    y1=forecast[&#39;trend_lower&#39;],
+    y2=forecast[&#39;trend_upper&#39;],
+    color=sns_c[1], 
+    alpha=0.25,
+    label=r&#39;0.95 credible_interval&#39;
+)
+
+sns.lineplot(x=&#39;ds&#39;, y=&#39;trend&#39;, data=forecast, label=&#39;trend_fit&#39;, ax=ax)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Trend Fit&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_65_0.png" alt="png" />
+</center>
+<p>The trend fit is quite good.</p>
+</div>
+<div id="diagnostics---time-slice-cross-validation" class="section level2">
+<h2>Diagnostics - Time-slice Cross-Validation</h2>
+<p>The <code>cross_validation</code> function from the <code>fbprophet.diagnostics</code> module allow us to run a time-slice cross-validation on the model by specifying<a href="#fn7" class="footnote-ref" id="fnref7"><sup>7</sup></a>:</p>
+<ul>
+<li><code>initial</code>: initial training period.</li>
+<li><code>period</code>: spacing between cutoff dates.</li>
+<li><code>horizon</code>: forecast horizon on each cross-validation step.</li>
+</ul>
+<p>From the documentation:</p>
+<p><em>The output of cross_validation is a dataframe with the true values y and the out-of-sample forecast values <code>yhat</code>, at each simulated forecast date and for each cutoff date. In particular, a forecast is made for every observed point between <code>cutoff</code> and <code>cutoff + horizon</code>. This dataframe can then be used to compute error measures of yhat vs. y.</em><a href="#fn8" class="footnote-ref" id="fnref8"><sup>8</sup></a></p>
+<pre class="python"><code>from fbprophet.diagnostics import cross_validation
+
+df_cv = cross_validation(
+    model=model, 
+    initial=&#39;730 days&#39;, 
+    period=&#39;35 days&#39;, 
+    horizon = &#39;56 days&#39;
+)
+
+df_cv.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+ds
+</th>
+<th>
+yhat
+</th>
+<th>
+yhat_lower
+</th>
+<th>
+yhat_upper
+</th>
+<th>
+y
+</th>
+<th>
+cutoff
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2018-07-15
+</td>
+<td>
+11.277463
+</td>
+<td>
+10.113520
+</td>
+<td>
+12.338289
+</td>
+<td>
+11.784229
+</td>
+<td>
+2018-07-08
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2018-07-22
+</td>
+<td>
+11.559885
+</td>
+<td>
+10.260493
+</td>
+<td>
+12.750059
+</td>
+<td>
+12.048262
+</td>
+<td>
+2018-07-08
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2018-07-29
+</td>
+<td>
+13.233127
+</td>
+<td>
+12.005542
+</td>
+<td>
+14.549008
+</td>
+<td>
+13.275847
+</td>
+<td>
+2018-07-08
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2018-08-05
+</td>
+<td>
+13.433929
+</td>
+<td>
+12.215635
+</td>
+<td>
+14.669104
+</td>
+<td>
+14.019124
+</td>
+<td>
+2018-07-08
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2018-08-12
+</td>
+<td>
+13.037136
+</td>
+<td>
+11.860215
+</td>
+<td>
+14.280776
+</td>
+<td>
+12.210764
+</td>
+<td>
+2018-07-08
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p><strong>Remark:</strong> For weekly data it might be convenient to choose <code>horizon</code> as a multiple of <span class="math inline">\(7\)</span> to have the same number of observations on each week of the horizon.</p>
+<p>It is then easy to compute some error metrics via the <code>performance_metrics</code> function.</p>
+<p><strong>Remark:</strong> The metric computations are done on a rolling window specified by the <code>rolling_window</code> parameter. There is a clear explanation of it on the function doc-strings:</p>
+<p><em>Metrics are calculated over a rolling window of cross validation predictions, after sorting by horizon. Averaging is first done within each value of horizon, and then across horizons as needed to reach the window size. The size of that window (number of simulated forecast points) is determined by the rolling_window argument, which specifies a proportion of simulated forecast points to include in each window. rolling_window=0 will compute it separately for each horizon. The default of <code>rolling_window</code>=0.1 will use 10% of the rows in df in each window. <code>rolling_window</code>=1 will compute the metric across all simulated forecast points. The results are set to the right edge of the window.</em><a href="#fn9" class="footnote-ref" id="fnref9"><sup>9</sup></a></p>
+<pre class="python"><code>from fbprophet.diagnostics import performance_metrics
+
+df_p = performance_metrics(df=df_cv, rolling_window=0.1)
+
+df_p.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+horizon
+</th>
+<th>
+mse
+</th>
+<th>
+rmse
+</th>
+<th>
+mae
+</th>
+<th>
+mape
+</th>
+<th>
+coverage
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+7 days
+</td>
+<td>
+0.257659
+</td>
+<td>
+0.507601
+</td>
+<td>
+0.426332
+</td>
+<td>
+0.035046
+</td>
+<td>
+0.923077
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+14 days
+</td>
+<td>
+0.178867
+</td>
+<td>
+0.422926
+</td>
+<td>
+0.349699
+</td>
+<td>
+0.028023
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+21 days
+</td>
+<td>
+0.134741
+</td>
+<td>
+0.367070
+</td>
+<td>
+0.313919
+</td>
+<td>
+0.026665
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+28 days
+</td>
+<td>
+0.218242
+</td>
+<td>
+0.467164
+</td>
+<td>
+0.414246
+</td>
+<td>
+0.036193
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+35 days
+</td>
+<td>
+0.373152
+</td>
+<td>
+0.610862
+</td>
+<td>
+0.457132
+</td>
+<td>
+0.044546
+</td>
+<td>
+0.846154
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us see the how to compute the <code>mae</code> for the case <code>rolling_window</code> = 0.0</p>
+<pre class="python"><code>df_p = performance_metrics(df=df_cv, rolling_window=0.0)
+
+df_p.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+horizon
+</th>
+<th>
+mse
+</th>
+<th>
+rmse
+</th>
+<th>
+mae
+</th>
+<th>
+mape
+</th>
+<th>
+coverage
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+7 days
+</td>
+<td>
+0.257659
+</td>
+<td>
+0.507601
+</td>
+<td>
+0.426332
+</td>
+<td>
+0.035046
+</td>
+<td>
+0.923077
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+14 days
+</td>
+<td>
+0.178867
+</td>
+<td>
+0.422926
+</td>
+<td>
+0.349699
+</td>
+<td>
+0.028023
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+21 days
+</td>
+<td>
+0.134741
+</td>
+<td>
+0.367070
+</td>
+<td>
+0.313919
+</td>
+<td>
+0.026665
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+28 days
+</td>
+<td>
+0.218242
+</td>
+<td>
+0.467164
+</td>
+<td>
+0.414246
+</td>
+<td>
+0.036193
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+35 days
+</td>
+<td>
+0.373152
+</td>
+<td>
+0.610862
+</td>
+<td>
+0.457132
+</td>
+<td>
+0.044546
+</td>
+<td>
+0.846154
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We can get the <code>mae</code> column explicitly as:</p>
+<pre class="python"><code>df_cv.assign(abs_error = lambda x: (x[&#39;y&#39;] - x[&#39;yhat&#39;]).abs()) \
+    .assign(horizon = lambda x: x[&#39;ds&#39;] - x[&#39;cutoff&#39;]) \
+    .assign(horizon = lambda x: x[&#39;horizon&#39;]) \
+    .groupby(&#39;horizon&#39;, as_index=False) \
+    .agg({&#39;abs_error&#39;: np.mean}) \
+    .rename(columns={&#39;abs_error&#39;: &#39;mae&#39;})</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+horizon
+</th>
+<th>
+mae
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+7 days
+</td>
+<td>
+0.426332
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+14 days
+</td>
+<td>
+0.349699
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+21 days
+</td>
+<td>
+0.313919
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+28 days
+</td>
+<td>
+0.414246
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+35 days
+</td>
+<td>
+0.457132
+</td>
+</tr>
+<tr>
+<th>
+5
+</th>
+<td>
+42 days
+</td>
+<td>
+0.397166
+</td>
+</tr>
+<tr>
+<th>
+6
+</th>
+<td>
+49 days
+</td>
+<td>
+0.353108
+</td>
+</tr>
+<tr>
+<th>
+7
+</th>
+<td>
+56 days
+</td>
+<td>
+0.309288
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We can plot these metrics as a function of the <code>horizon</code> parameter.</p>
+<pre class="python"><code>from fbprophet.plot import plot_cross_validation_metric
+
+fig = plot_cross_validation_metric(df_cv=df_cv, metric=&#39;mae&#39;, rolling_window=0.1)</code></pre>
+<center>
+<img src="../images/fb_prophet_files/fb_prophet_78_0.png" alt="png" />
+</center>
+<p>Prophet makes the time-slice cross-validation metric computation procedure quite straightforward.</p>
+<hr />
+<p>I strongly recommend going to <a href="https://facebook.github.io/prophet/docs/quick_start.html">Prophet Documentation</a> and the <a href="https://github.com/facebook/prophet">source code</a> to keep learning abut this forecasting framework (I definitely will!). Moreover, the <a href="https://nbviewer.jupyter.org/github/nicolasfauchereau/Auckland_Cycling/blob/master/notebooks/Auckland_cycling_and_weather.ipynb">notebook</a> shows a concrete use case when external regressors are added to the model. Finally, I want to point out an <a href="https://databricks.com/blog/2020/01/27/time-series-forecasting-prophet-spark.html">article</a> on how to scale this via <a href="https://spark.apache.org/">Spark</a>.</p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><a href="https://facebook.github.io/prophet/">https://facebook.github.io/prophet/</a><a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p><a href="https://peerj.com/preprints/3190.pdf">Forecasting at Scale</a><a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p><a href="https://facebook.github.io/prophet/docs/quick_start.html">Prophet Docs - Quick Start</a><a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p><a href="https://facebook.github.io/prophet/docs/seasonality,_holiday_effects,_and_regressors.html#modeling-holidays-and-special-events">Prophet Docs - Modeling Holidays and Special Events</a><a href="#fnref4" class="footnote-back">↩</a></p></li>
+<li id="fn5"><p><a href="https://facebook.github.io/prophet/docs/seasonality,_holiday_effects,_and_regressors.html#specifying-custom-seasonalities">Prophet Docs - Specifying Custom Seasonalities</a><a href="#fnref5" class="footnote-back">↩</a></p></li>
+<li id="fn6"><p><a href="https://facebook.github.io/prophet/docs/seasonality,_holiday_effects,_and_regressors.html#prior-scale-for-holidays-and-seasonality">Prophet Docs - Prior Scale for Holidays and Seasonality</a><a href="#fnref6" class="footnote-back">↩</a></p></li>
+<li id="fn7"><p><a href="https://facebook.github.io/prophet/docs/diagnostics.html">Prophet Docs - Diagnostics</a><a href="#fnref7" class="footnote-back">↩</a></p></li>
+<li id="fn8"><p><a href="https://facebook.github.io/prophet/docs/diagnostics.html">Prophet Docs - Diagnostics</a><a href="#fnref8" class="footnote-back">↩</a></p></li>
+<li id="fn9"><p><a href="https://github.com/facebook/prophet/blob/master/python/fbprophet/diagnostics.py">https://github.com/facebook/prophet/blob/master/python/fbprophet/diagnostics.py</a><a href="#fnref9" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
