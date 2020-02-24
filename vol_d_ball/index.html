@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>The volume of the d-Ball via Monte Carlo Simulation - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="The volume of the d-Ball via Monte Carlo Simulation - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">5 min read</span>
+    
+
+    <h1 class="article-title">The volume of the d-Ball via Monte Carlo Simulation</h1>
+
+    
+    <span class="article-date">2020-02-24</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we run Monte Carlo simulations to estimate the volume of the <span class="math inline">\(d\)</span>-ball
+<span class="math display">\[
+B^{d}:=\{x \in \mathbb{R}^d : ||x|| \leq 1\}.
+\]</span>
+There are many ways to obtain a closed formula for this volume , see for example this <a href="https://en.wikipedia.org/wiki/N-sphere">Wikipedia article</a>. Here we do it via sampling just for fun!</p>
+<div id="main-idea" class="section level2">
+<h2>Main Idea</h2>
+<p>Consider a square <span class="math inline">\(A_{d}\subset \mathbb{R}\)</span> centered at the origin with side length <span class="math inline">\(2\)</span>. We estimate the volume of the <span class="math inline">\(d\)</span>-ball <span class="math inline">\(B^{d}:=\{x \in \mathbb{R}^d : ||x|| \leq 1\}\subset A^{d}\)</span> by sampling uniformly from <span class="math inline">\(A\)</span> and computing the proportions of vectors having length less or equal than one. Note that <span class="math inline">\(\text{vol}(A^{d}) = 2^{d}\)</span>.</p>
+<pre class="r"><code>library(tidyverse)</code></pre>
+<pre class="r"><code>area_square &lt;- function (d) { 2^d }</code></pre>
+<p>Let us write a function to generate such samples:</p>
+<pre class="r"><code># d: dimension.
+# n: number os samples.
+get_samples_df &lt;- function (d, n) {
+   map(.x = 1:d, 
+      .f = function(i) { 
+        samples &lt;- runif(n = n, min = -1, max = 1)
+        tibble(!!str_c(&quot;d_&quot;, as.character(i)) := samples)
+  }
+  ) %&gt;% reduce(.f = ~ bind_cols(.x, .y))
+}</code></pre>
+<p>Let us see an example for <span class="math inline">\(n=2\)</span>.</p>
+<pre class="r"><code># Get samples. 
+samples_df &lt;- get_samples_df(d = 2, n = 1E4)
+# Compute L2-norm.
+norm_2 &lt;- samples_df %&gt;% mutate_all(.funs = ~ .x^2) %&gt;% rowSums() 
+# Inside the ball condtion.
+is_in_ball &lt;- (norm_2 &lt;= 1)
+samples_df &lt;- samples_df %&gt;% mutate(is_in_ball = is_in_ball) 
+
+# Plot.
+samples_df %&gt;% 
+  ggplot(mapping = aes(x = d_1, y = d_2, color = is_in_ball)) +
+  geom_point(alpha = 0.4) +
+  scale_color_brewer(palette = &quot;Set1&quot;) +
+  theme(aspect.ratio = 1)</code></pre>
+<p><img src="../post/vol_d_ball_files/figure-html/unnamed-chunk-5-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Let us compute the area ratio:</p>
+<pre class="r"><code>area_square(d = 2)*(sum(samples_df$is_in_ball) / nrow(samples_df))</code></pre>
+<pre><code>## [1] 3.1444</code></pre>
+<p>Recall that the true area of the <span class="math inline">\(2\)</span>-ball is <span class="math inline">\(\pi\)</span>, so the estimation is quite close.</p>
+</div>
+<div id="volume-computation" class="section level2">
+<h2>Volume Computation</h2>
+<p>Let us now generalize the above computation for arbitrary dimensions.</p>
+<pre class="r"><code>compute_vol_ball &lt;- function (d, n) {
+  
+  samples_df &lt;- get_samples_df(d = d, n = n)
+
+  norm_d &lt;- samples_df %&gt;% 
+    mutate_all(.funs = ~ .x^2) %&gt;% 
+    rowSums()
+
+  is_in_ball &lt;- norm_d &lt; 1
+
+  vol &lt;- 2^(d)*(sum(is_in_ball) / n)
+  
+  return(vol)
+}</code></pre>
+</div>
+<div id="simulation" class="section level2">
+<h2>Simulation</h2>
+<p>Next, we write a function to run the simulation. We do this as a function of the dimension <span class="math inline">\(1\leq d \leq d_{max}.\)</span></p>
+<pre class="r"><code># N: Number of iteration per dimension. 
+run_simulation &lt;- function (d_max, n, N) {
+  
+  simulation_list &lt;- map(.x = 1:d_max, .f = function (d) {
+    map_dbl(.x = 1:N, .f = ~ compute_vol_ball(d = d, n = n))
+  })
+  
+  simulation_df &lt;- tibble(volume = simulation_list) %&gt;% 
+    rowid_to_column(var = &quot;d&quot;) %&gt;% 
+    unnest(cols = volume) 
+  
+  return(simulation_df)
+}</code></pre>
+<p>We run the simulation:</p>
+<pre class="r"><code># Simulation parameters. 
+d_max &lt;- 25
+n &lt;- 1E5
+N &lt;- 100
+
+# Run simulation. 
+simulation_df &lt;- run_simulation(d_max = d_max, n = n, N = N)
+# Get simulation mean.
+mean_simulation_df &lt;- simulation_df %&gt;% 
+  group_by(d) %&gt;% 
+  summarise(volume = mean(volume))</code></pre>
+<p>The analytic expression for the volume is<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a></p>
+<p><span class="math display">\[
+\text{vol}(B^{d}) = \frac{\pi^{d/2}}{\Gamma(d/2 + 1)}
+\]</span>
+where <span class="math inline">\(\Gamma\)</span> denotes the special <a href="https://en.wikipedia.org/wiki/Gamma_function">gamma function</a>.</p>
+<pre class="r"><code># Analytic expresion for the volume of B^d.
+vol_d_ball &lt;- function (d) {
+  pi^{(d)/2} / gamma(d/2 + 1)
+}
+# Compute it for a sequence of dimensions. 
+vol_df &lt;- tibble(
+  d = 1:d_max , 
+  volume_true = map_dbl(.x = 1:d_max, .f = vol_d_ball)
+)</code></pre>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<p>Let us compare the simulation results with the analytic solution:</p>
+<pre class="r"><code>set1_pal &lt;- RColorBrewer::brewer.pal(n = 9, name = &quot;Set1&quot;)
+
+ggplot() +
+  geom_point(data= simulation_df, mapping = aes(x = d, y = volume), color = set1_pal[2], alpha = 0.3) +
+  geom_point(data = mean_simulation_df, mapping = aes(x = d, y = volume, color=&quot;sample&quot;)) +
+  geom_line(data = mean_simulation_df, mapping = aes(x = d, y = volume, color=&quot;sample&quot;), alpha = 0.5) +
+  geom_point(data = vol_df, mapping = aes(x = d, y = volume_true, color = &quot;true&quot;)) +
+  geom_line(data = vol_df, mapping = aes(x = d, y = volume_true, color = &quot;true&quot;), alpha = 0.5) +
+  labs(title = &quot;Volume d-Balls&quot;,subtitle = &quot;Monte Carlo Simulation&quot;, xlabel = &quot;dimension&quot;) +
+  scale_color_manual(values=c(set1_pal[2], set1_pal[1])) +
+  scale_y_continuous(breaks = scales::pretty_breaks())</code></pre>
+<p><img src="../post/vol_d_ball_files/figure-html/unnamed-chunk-11-1.png" width="672" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>ggplot() +
+  geom_point(data = mean_simulation_df, mapping = aes(x = d, y = volume, color=&quot;sample&quot;)) +
+  geom_line(data = mean_simulation_df, mapping = aes(x = d, y = volume, color=&quot;sample&quot;), alpha = 0.5) +
+  geom_point(data = vol_df, mapping = aes(x = d, y = volume_true, color = &quot;true&quot;)) +
+  geom_line(data = vol_df, mapping = aes(x = d, y = volume_true, color = &quot;true&quot;), alpha = 0.5) +
+  labs(title = &quot;Volume d-Balls&quot;,subtitle = &quot;Monte Carlo Simulation (Mean) vs Analytic Expression&quot;, xlabel = &quot;dimension&quot;) +
+  scale_color_manual(values=c(set1_pal[2], set1_pal[1])) +
+  scale_y_continuous(breaks = scales::pretty_breaks())</code></pre>
+<p><img src="../post/vol_d_ball_files/figure-html/unnamed-chunk-12-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>It is very interesting to see that the ball in dimension <span class="math inline">\(d=5\)</span> has the biggest volume and then the volume tends to zero. But why? Does this make sense? Well, this plot is actually misleading as we are comparing apples with oranges as we are comparing different units. That is, we are comparing meters (<span class="math inline">\(m\)</span>) with square meters (<span class="math inline">\(m^2\)</span>) and so on.</p>
+<p>We can compare the ratio of the volumes of each ball and the corresponding squares, i.e. <span class="math inline">\(\text{vol}(B^2)/\text{vol}(A^d)\)</span> which does not have any units.</p>
+<pre class="r"><code>vol_df %&gt;% 
+  mutate(vol_prop = volume_true / 2^(d)) %&gt;% 
+  ggplot(mapping = aes(x = d, y = vol_prop)) +
+  geom_point() +
+  geom_line(alpha = 0.5) +
+  labs(title = &quot;Ratio d-Ball/d-Square&quot;, y=&quot;&quot;)</code></pre>
+<p><img src="../post/vol_d_ball_files/figure-html/unnamed-chunk-13-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>Note that this ratio is always decreasing and converges to zero. This is related to the <a href="https://en.wikipedia.org/wiki/Curse_of_dimensionality">Curse of dimensionality</a>. See <a href="https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-i./">Exploring the Curse of Dimensionality - Part I.</a> and <a href="https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-ii./">Exploring the Curse of Dimensionality - Part II.</a></p>
+<p><strong>Remark</strong> If we define the <em>diameter</em> of a set <span class="math inline">\(S\subset \mathbb{R}^{d}\)</span>as
+<span class="math display">\[
+\text{diam}(S):= \sup_{x, y\in S}||x - y||
+\]</span>
+Then <span class="math inline">\(\text{diam}(B^{d})=2\)</span>, where the <span class="math inline">\(\sup\)</span> is attained when considering two antipodal points, and <span class="math inline">\(\text{diam}(A^{d})=2\sqrt{d}\)</span>, where again the <span class="math inline">\(\sup\)</span> by considering the points <span class="math inline">\((-1, -1, \cdots, -1)\)</span> and <span class="math inline">\((1, 1, \cdots, 1)\)</span>.</p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><a href="https://en.wikipedia.org/wiki/N-sphere">Wikipedia: N-Sphere</a><a href="#fnref1" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

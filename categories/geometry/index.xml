@@ -6,10 +6,20 @@
     <description>Recent content in Geometry on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 13 Oct 2019 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Mon, 24 Feb 2020 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="/categories/geometry/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>The volume of the d-Ball via Monte Carlo Simulation</title>
+      <link>/vol_d_ball/</link>
+      <pubDate>Mon, 24 Feb 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/vol_d_ball/</guid>
+      <description>In this notebook we run Monte Carlo simulations to estimate the volume of the \(d\)-ball \[ B^{d}:=\{x \in \mathbb{R}^d : ||x|| \leq 1\}. \] There are many ways to obtain a closed formula for this volume , see for example this Wikipedia article. Here we do it via sampling just for fun!
+Main Idea Consider a square \(A_{d}\subset \mathbb{R}\) centered at the origin with side length \(2\). We estimate the volume of the \(d\)-ball \(B^{d}:=\{x \in \mathbb{R}^d : ||x|| \leq 1\}\subset A^{d}\) by sampling uniformly from \(A\) and computing the proportions of vectors having length less or equal than one.</description>
+    </item>
     
     <item>
       <title>The Lapacian on the 2-Torus</title>
