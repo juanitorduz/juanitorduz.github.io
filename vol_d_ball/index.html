@@ -6,8 +6,8 @@
 <meta name="generator" content="Hugo 0.58.3" />
 
 
-<title>The volume of the d-Ball via Monte Carlo Simulation - Dr. Juan Camilo Orduz</title>
-<meta property="og:title" content="The volume of the d-Ball via Monte Carlo Simulation - Dr. Juan Camilo Orduz">
+<title>The Volume of the d-Ball via Monte Carlo Simulation - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="The Volume of the d-Ball via Monte Carlo Simulation - Dr. Juan Camilo Orduz">
 
 
   <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
@@ -67,7 +67,7 @@
     <span class="article-duration">5 min read</span>
     
 
-    <h1 class="article-title">The volume of the d-Ball via Monte Carlo Simulation</h1>
+    <h1 class="article-title">The Volume of the d-Ball via Monte Carlo Simulation</h1>
 
     
     <span class="article-date">2020-02-24</span>
@@ -116,7 +116,7 @@ samples_df %&gt;%
 <p><img src="../post/vol_d_ball_files/figure-html/unnamed-chunk-5-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>Let us compute the area ratio:</p>
 <pre class="r"><code>area_square(d = 2)*(sum(samples_df$is_in_ball) / nrow(samples_df))</code></pre>
-<pre><code>## [1] 3.1444</code></pre>
+<pre><code>## [1] 3.156</code></pre>
 <p>Recall that the true area of the <span class="math inline">\(2\)</span>-ball is <span class="math inline">\(\pi\)</span>, so the estimation is quite close.</p>
 </div>
 <div id="volume-computation" class="section level2">
@@ -204,7 +204,7 @@ ggplot() +
   scale_color_manual(values=c(set1_pal[2], set1_pal[1])) +
   scale_y_continuous(breaks = scales::pretty_breaks())</code></pre>
 <p><img src="../post/vol_d_ball_files/figure-html/unnamed-chunk-12-1.png" width="672" style="display: block; margin: auto;" /></p>
-<p>It is very interesting to see that the ball in dimension <span class="math inline">\(d=5\)</span> has the biggest volume and then the volume tends to zero. But why? Does this make sense? Well, this plot is actually misleading as we are comparing apples with oranges as we are comparing different units. That is, we are comparing meters (<span class="math inline">\(m\)</span>) with square meters (<span class="math inline">\(m^2\)</span>) and so on.</p>
+<p>It is very interesting to see that the ball in dimension <span class="math inline">\(d=5\)</span> has the biggest volume and then the volume tends to zero. But why? Does this make sense? Well, this plot is actually misleading as we are comparing apples with oranges since we are comparing different units. That is, we are comparing meters (<span class="math inline">\(m\)</span>) with square meters (<span class="math inline">\(m^2\)</span>) and so on.</p>
 <p>We can compare the ratio of the volumes of each ball and the corresponding squares, i.e. <span class="math inline">\(\text{vol}(B^2)/\text{vol}(A^d)\)</span> which does not have any units.</p>
 <pre class="r"><code>vol_df %&gt;% 
   mutate(vol_prop = volume_true / 2^(d)) %&gt;% 
