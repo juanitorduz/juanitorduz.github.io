@@ -171,7 +171,7 @@ n == n_c*(n_c_samples + n_c_ex)</code></pre>
 
 # Set nearest neighbors used to compute the graph.
 nn = 7
-# We store the as a sparse matrix.
+# We compute the adjacency matrix and store it as s sparse matrix.
 adjacency_matrix_s = kneighbors_graph(X=data_matrix,n_neighbors=nn)</code></pre>
 <p>Let us plot the adjacency matrix:</p>
 <pre class="python"><code>from scipy import sparse
