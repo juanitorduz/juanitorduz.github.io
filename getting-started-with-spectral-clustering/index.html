@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Getting Started with Spectral Clustering - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Getting Started with Spectral Clustering - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">12 min read</span>
+    
+
+    <h1 class="article-title">Getting Started with Spectral Clustering</h1>
+
+    
+    <span class="article-date">2020-04-04</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post I want to explore the ideas behind <a href="https://en.wikipedia.org/wiki/Spectral_clustering">spectral clustering</a>. I do not intend to develop the theory. Instead, I will unravel a practical example to illustrate and motivate the intuition behind each step of the spectral clustering algorithm. I particularly recommend two references:</p>
+<ul>
+<li>For an introduction/overview on the theory, see the lecture notes <a href="http://www.tml.cs.uni-tuebingen.de/team/luxburg/publications/Luxburg07_tutorial.pdf">A Tutorial on Spectral Clustering</a> by <a href="http://www.tml.cs.uni-tuebingen.de/team/luxburg/index.php">Prof. Dr. Ulrike von Luxburg</a>.</li>
+<li>For a concrete application of this clustering method you can see the PyData’s talk: <a href="https://www.youtube.com/watch?v=3heWpR6dC8k">Extracting relevant Metrics with Spectral Clustering</a> by Dr. Evelyn Trautmann.</li>
+</ul>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(&#39;darkgrid&#39;, {&#39;axes.facecolor&#39;: &#39;.9&#39;})
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()</code></pre>
+</div>
+<div id="generate-sample-data" class="section level2">
+<h2>Generate Sample Data</h2>
+<p>Let us generate some sample data. As we will see, spectral clustering is very effective for non-convex clusters. In this example, we consider concentric circles:</p>
+<pre class="python"><code># Set random state. 
+rs = np.random.seed(25)
+
+def generate_circle_sample_data(r, n, sigma):
+    &quot;&quot;&quot;Generate circle data with random Gaussian noise.&quot;&quot;&quot;
+    angles = np.random.uniform(low=0, high=2*np.pi, size=n)
+
+    x_epsilon = np.random.normal(loc=0.0, scale=sigma, size=n)
+    y_epsilon = np.random.normal(loc=0.0, scale=sigma, size=n)
+
+    x = r*np.cos(angles) + x_epsilon
+    y = r*np.sin(angles) + y_epsilon
+    return x, y
+
+
+def generate_concentric_circles_data(param_list):
+    &quot;&quot;&quot;Generates many circle data with random Gaussian noise.&quot;&quot;&quot;
+    coordinates = [ 
+        generate_circle_sample_data(param[0], param[1], param[2])
+     for param in param_list
+    ]
+    return coordinates</code></pre>
+<p>Let us plot some examples to see how the parameters affect the data structure and clusters.</p>
+<pre class="python"><code># Set global plot parameters. 
+plt.rcParams[&#39;figure.figsize&#39;] = [8, 8]
+plt.rcParams[&#39;figure.dpi&#39;] = 80
+
+# Number of points per circle. 
+n = 1000
+# Radius. 
+r_list =[2, 4, 6]
+# Standar deviation (Gaussian noise). 
+sigmas = [0.1, 0.25, 0.5]
+
+param_lists = [[(r, n, sigma) for r in r_list] for sigma in sigmas] 
+# We store the data on this list.
+coordinates_list = []
+
+fig, axes = plt.subplots(3, 1, figsize=(7, 21))
+
+for i, param_list in enumerate(param_lists):
+
+    coordinates = generate_concentric_circles_data(param_list)
+
+    coordinates_list.append(coordinates)
+    
+    ax = axes[i]
+    
+    for j in range(0, len(coordinates)):
+    
+        x, y = coordinates[j]
+        sns.scatterplot(x=x, y=y, color=&#39;black&#39;, ax=ax)
+        ax.set(title=f&#39;$\sigma$ = {param_list[0][2]}&#39;)
+
+plt.tight_layout()</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_6_0.png" alt="png" />
+</center>
+<p>The first two plots show <span class="math inline">\(3\)</span> clear clusters. For the last one the cluster structure is less clear.</p>
+</div>
+<div id="spectral-clustering-algorithm" class="section level2">
+<h2>Spectral Clustering Algorithm</h2>
+<p>Even though we are not going to give all the theoretical details, we are still going to motivate the logic behind the spectral clustering algorithm.</p>
+<div id="the-graph-laplacian" class="section level3">
+<h3>The Graph Laplacian</h3>
+<p>One of the key concepts of spectral clustering is the <a href="https://en.wikipedia.org/wiki/Laplacian_matrix">graph Laplacian</a>. Let us describe its construction<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>:</p>
+<ul>
+<li>Let us assume we are given a data set of points <span class="math inline">\(X:=\{x_1, \cdots, x_n\}\subset \mathbb{R}^{m}\)</span>.</li>
+<li>To this data set <span class="math inline">\(X\)</span> we associate a (weighted) graph <span class="math inline">\(G\)</span> which encodes how close the data points are. Concretely,
+<ul>
+<li>The nodes of <span class="math inline">\(G\)</span> are given by each data point <span class="math inline">\(x_i\in\mathbb{R}^{m}\)</span>.</li>
+<li>Two nodes <span class="math inline">\(x_{i}\)</span> and <span class="math inline">\(x_{j}\)</span> are connected by an edge if they are <em>close</em>. The notion of <em>closeness</em> depends on the distance we want to encode. There are two common choices.
+<ul>
+<li>(Euclidean Distance) Given <span class="math inline">\(\varepsilon &gt;0\)</span>, <span class="math inline">\(x_i\)</span> and <span class="math inline">\(x_j\)</span> are joint by and edge if <span class="math inline">\(||x_i - x_j||&lt; \varepsilon\)</span>. For some applications an edge might have a weight of the form <span class="math inline">\(e^{-||x_i - x_j||^2}\)</span>.</li>
+<li>(Nearest Neighbors) <span class="math inline">\(x_i\)</span> and <span class="math inline">\(x_j\)</span> are joint by and edge if <span class="math inline">\(x_j\)</span> is a <span class="math inline">\(k\)</span>-nearest neighbor of <span class="math inline">\(x_j\)</span>.</li>
+</ul></li>
+</ul></li>
+</ul>
+<p>Once the graph is constructed we can consider its associated <a href="https://en.wikipedia.org/wiki/Adjacency_matrix">adjacency matrix</a> <span class="math inline">\(W \in M_{n}(\mathbb{R})\)</span> which has a non-zero value in the <span class="math inline">\(W_{ij}\)</span> entry if <span class="math inline">\(x_i\)</span> and <span class="math inline">\(x_j\)</span> are connected by an edge. On the other hand, let <span class="math inline">\(D\in M_{n}(\mathbb{R})\)</span> denote <a href="https://en.wikipedia.org/wiki/Degree_matrix">degree matrix</a> of the graph, which is the diagonal matrix containing the degrees of each node. Then the graph Laplacian <span class="math inline">\(L \in M_{n}(\mathbb{R})\)</span> is defined as the difference <span class="math inline">\(L:= D - W \in M_{n}(\mathbb{R})\)</span>. This matrix is symmetric and positive semi-definite, which implies (by the <a href="https://juanitorduz.github.io/the-spectral-theorem-for-matrices/">spectral theorem</a>) that all its eigenvalues are real and non-negative. <a href="https://juanitorduz.github.io/documents/orduz_pydata2018.pdf">Here</a> you can find more details on the graph Laplacian’s definition and properties.</p>
+</div>
+<div id="the-motivation" class="section level3">
+<h3>The Motivation</h3>
+<p>Why is the graph Laplacian relevant for detecting clusters? Let us start with an easy case on which the data <span class="math inline">\(X\)</span> has two clusters <span class="math inline">\(X_1\)</span>, <span class="math inline">\(X_2\)</span> so spread apart that they correspond to the <a href="https://en.wikipedia.org/wiki/Component_(graph_theory)">connected components</a> <span class="math inline">\(G_1\)</span>, <span class="math inline">\(G_2\)</span> of the associated graph <span class="math inline">\(G=G_1\cup G_2\)</span>. Observe, from the pure definition of the graph Laplacian, that we can reorder the points in such a way that the graph Laplacian decomposes as</p>
+<p><span class="math display">\[
+L_G = 
+\left(
+\begin{array}{cc}
+L_{G_1} &amp; 0 \\
+0 &amp; L_{G_2}
+\end{array}
+\right)
+\]</span></p>
+<p>where <span class="math inline">\(L_{G_1}\)</span> and <span class="math inline">\(L_{G_2}\)</span> are the graph Laplacians of <span class="math inline">\(G_1\)</span> and <span class="math inline">\(G_2\)</span> respectively. One can show that the kernel (eigenspace of the zero eigenvalue) has dimension <span class="math inline">\(2\)</span> and it is generated by the pair of orthogonal eigenvectors <span class="math inline">\((1, 1, \cdots, 0, 0)\)</span> and <span class="math inline">\((0, 0, \cdots, 1, 1)\)</span>. This argument is easy to generalize for many connected components.</p>
+<p>In summary, the key property is that</p>
+<blockquote>
+<p><em>The number of connected components of the associated graph can be obtained by calculating the dimension of the kernel of the corresponding graph Laplacian.</em></p>
+</blockquote>
+<p>What if the associated graph of the data set is connected but we still want to detect clusters? Well, the approach above remains somehow stable (in certain sense) under small perturbations and one can detect clusters by running k-means on the rows of the matrix of eigenvectors of the small eigenvalues of the graph Laplacian. Again, please refer to the lecture notes suggested above to get the details.</p>
+</div>
+<div id="the-algorithm" class="section level3">
+<h3>The Algorithm</h3>
+<p>Here are the steps for the (unnormalized) spectral clustering<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>. The step should now sound reasonable based on the discussion above.</p>
+<p><em>Input:</em> Similarity matrix <span class="math inline">\(S\in M_{n}(\mathbb{R})\)</span> (i.e. choice of distance), number <span class="math inline">\(k\)</span> of clusters to construct.</p>
+<p><em>Steps:</em></p>
+<ul>
+<li>Let <span class="math inline">\(W\)</span> be the (weighted) adjacency matrix of the corresponding graph.</li>
+<li>Compute the (unnormalized) Laplacian <span class="math inline">\(L\)</span>.</li>
+<li>Compute the first <span class="math inline">\(k\)</span> eigenvectors <span class="math inline">\(u_1, \cdots, u_k\)</span> of <span class="math inline">\(L\)</span>.</li>
+<li>Let <span class="math inline">\(U \in M_{n×k}\)</span> be the matrix containing the vectors <span class="math inline">\(u_1, \cdots, u_k\)</span> as columns.</li>
+<li>For <span class="math inline">\(i = 1, \cdots, n\)</span> let <span class="math inline">\(y_i\in \mathbb{R}^k\)</span> be the vector corresponding to the <span class="math inline">\(i\)</span>-th row of <span class="math inline">\(U\)</span>.</li>
+<li>Cluster the points <span class="math inline">\(y_i\in \mathbb{R}^k\)</span> with the <span class="math inline">\(k\)</span>-means algorithm into clusters <span class="math inline">\(C_1, \cdots, C_k\)</span></li>
+</ul>
+<p><em>Output:</em> Clusters <span class="math inline">\(A_1, \cdots, A_k\)</span> with <span class="math inline">\(A_i = \{j\:|\: y_j ∈ C_i\}\)</span>.</p>
+<p>Let us reproduce these steps on an example to get a better feeling on why this algorithm works.</p>
+</div>
+</div>
+<div id="example-1-well-defined-clusters" class="section level2">
+<h2>Example 1: Well-defined Clusters</h2>
+<p>We consider sample data with the parameters defined above with <code>sigma</code> = 0.1. Note from the plots above that in this case the clusters separate well.</p>
+<pre class="python"><code>from itertools import chain
+
+coordinates = coordinates_list[0]
+
+def data_frame_from_coordinates(coordinates): 
+    &quot;&quot;&quot;From coordinates to data frame.&quot;&quot;&quot;
+    xs = chain(*[c[0] for c in coordinates])
+    ys = chain(*[c[1] for c in coordinates])
+
+    return pd.DataFrame(data={&#39;x&#39;: xs, &#39;y&#39;: ys})
+
+data_df = data_frame_from_coordinates(coordinates)
+
+# Plot the input data.
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, color=&#39;black&#39;, data=data_df, ax=ax)
+ax.set(title=&#39;Input Data&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_10_0.png" alt="png" />
+</center>
+<div id="k---means" class="section level3">
+<h3>K - Means</h3>
+<p>Let us begin by running a k-means algorithm to try to get some clusters. We select the number of cluster using the elbow method by considering the inertia (sum of squared distances of samples to their closest cluster center) as a function of the number of clusters.</p>
+<pre class="python"><code>from sklearn.cluster import KMeans
+
+inertias = []
+
+k_candidates = range(1, 10)
+
+for k in k_candidates:
+    k_means = KMeans(random_state=42, n_clusters=k)
+    k_means.fit(data_df)
+    inertias.append(k_means.inertia_)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.scatterplot(x=k_candidates, y = inertias, s=80, ax=ax)
+sns.scatterplot(x=[k_candidates[2]], y = [inertias[2]], color=sns_c[3], s=150, ax=ax)
+sns.lineplot(x=k_candidates, y = inertias, alpha=0.5, ax=ax)
+ax.set(title=&#39;Inertia K-Means&#39;, ylabel=&#39;inertia&#39;, xlabel=&#39;k&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_12_0.png" alt="png" />
+</center>
+<p>From this plot we see that <span class="math inline">\(k=3\)</span> is a good choice. Let us get the clusters.</p>
+<pre class="python"><code>k_means = KMeans(random_state=25, n_clusters=3)
+k_means.fit(data_df)
+cluster = k_means.predict(data_df)
+
+cluster = [&#39;k-means_c_&#39; + str(c) for c in cluster]
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, data=data_df.assign(cluster = cluster), hue=&#39;cluster&#39;, ax=ax)
+ax.set(title=&#39;K-Means Clustering&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_14_0.png" alt="png" />
+</center>
+<p>The result is not very surprising since <span class="math inline">\(k\)</span>-means generates convex clusters.</p>
+</div>
+<div id="step-1-compute-graph-laplacian" class="section level3">
+<h3>Step 1: Compute Graph Laplacian</h3>
+<p>In this first step we compute the graph Laplacian. We are going to use nearest neighbors to generate the graph to model our data set.</p>
+<pre class="python"><code>from sklearn.neighbors import kneighbors_graph
+from scipy import sparse
+
+def generate_graph_laplacian(df, nn):
+    &quot;&quot;&quot;Generate graph Laplacian from data.&quot;&quot;&quot;
+    # Adjacency Matrix.
+    connectivity = kneighbors_graph(X=df, n_neighbors=nn, mode=&#39;connectivity&#39;)
+    adjacency_matrix_s = (1/2)*(connectivity + connectivity.T)
+    # Graph Laplacian.
+    graph_laplacian_s = sparse.csgraph.laplacian(csgraph=adjacency_matrix_s, normed=False)
+    graph_laplacian = graph_laplacian_s.toarray()
+    return graph_laplacian 
+    
+graph_laplacian = generate_graph_laplacian(df=data_df, nn=8)
+
+# Plot the graph Laplacian as heat map.
+fig, ax = plt.subplots(figsize=(10, 8))
+sns.heatmap(graph_laplacian, ax=ax, cmap=&#39;viridis_r&#39;)
+ax.set(title=&#39;Graph Laplacian&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_17_0.png" alt="png" />
+</center>
+</div>
+<div id="step-2-compute-spectrum-of-the-graph-laplacian" class="section level3">
+<h3>Step 2: Compute Spectrum of the Graph Laplacian</h3>
+<p>Next, we compute the eigenvalues and eigenvectors of the graph Laplacian.</p>
+<pre class="python"><code>from scipy import linalg
+
+eigenvals, eigenvcts = linalg.eig(graph_laplacian)</code></pre>
+<p>The eigenvalues are represented by complex numbers. Since the graph Laplacian is a symmetric matrix, we know by the <a href="https://juanitorduz.github.io/the-spectral-theorem-for-matrices/">spectral theorem</a> that all the eigenvalues must be real. Let us verify this:</p>
+<pre class="python"><code>np.unique(np.imag(eigenvals))</code></pre>
+<pre><code>array([0.])</code></pre>
+<pre class="python"><code># We project onto the real numbers. 
+def compute_spectrum_graph_laplacian(graph_laplacian):
+    &quot;&quot;&quot;Compute eigenvalues and eigenvectors and project 
+    them onto the real numbers.
+    &quot;&quot;&quot;
+    eigenvals, eigenvcts = linalg.eig(graph_laplacian)
+    eigenvals = np.real(eigenvals)
+    eigenvcts = np.real(eigenvcts)
+    return eigenvals, eigenvcts
+
+eigenvals, eigenvcts = compute_spectrum_graph_laplacian(graph_laplacian)</code></pre>
+<p>We now compute the <span class="math inline">\(L^2\)</span>-norms of the eigenvectors.</p>
+<pre class="python"><code>eigenvcts_norms = np.apply_along_axis(
+  lambda v: np.linalg.norm(v, ord=2), 
+  axis=0, 
+  arr=eigenvcts
+)
+
+print(&#39;Min Norm: &#39; + str(eigenvcts_norms.min()))
+print(&#39;Max Norm: &#39; + str(eigenvcts_norms.max()))</code></pre>
+<pre><code>Min Norm: 0.9999999999999997
+Max Norm: 1.0000000000000002</code></pre>
+<p>Hence, all of the eigenvectors have length ~ 1.</p>
+<p>We then sort the eigenvalues in ascending order.</p>
+<pre class="python"><code>eigenvals_sorted_indices = np.argsort(eigenvals)
+eigenvals_sorted = eigenvals[eigenvals_sorted_indices]</code></pre>
+<p>Let us plot the sorted eigenvalues.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+sns.lineplot(x=range(1, eigenvals_sorted_indices.size + 1), y=eigenvals_sorted, ax=ax)
+ax.set(title=&#39;Sorted Eigenvalues Graph Laplacian&#39;, xlabel=&#39;index&#39;, ylabel=r&#39;$\lambda$&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_29_0.png" alt="png" />
+</center>
+</div>
+<div id="step-3-find-the-small-eigenvalues" class="section level3">
+<h3>Step 3: Find the Small Eigenvalues</h3>
+<p>Let us zoom in into small eigenvalues.</p>
+<pre class="python"><code>index_lim = 10
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.scatterplot(x=range(1, eigenvals_sorted_indices[: index_lim].size + 1), y=eigenvals_sorted[: index_lim], s=80, ax=ax)
+sns.lineplot(x=range(1, eigenvals_sorted_indices[: index_lim].size + 1), y=eigenvals_sorted[: index_lim], alpha=0.5, ax=ax)
+ax.axvline(x=3, color=sns_c[3], label=&#39;zero eigenvalues&#39;, linestyle=&#39;--&#39;)
+ax.legend()
+ax.set(title=f&#39;Sorted Eigenvalues Graph Laplacian (First {index_lim})&#39;, xlabel=&#39;index&#39;, ylabel=r&#39;$\lambda$&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_31_0.png" alt="png" />
+</center>
+<p>From the plot we see see that the first <span class="math inline">\(3\)</span> eigenvalues (sorted) are essentially zero.</p>
+<pre class="python"><code>zero_eigenvals_index = np.argwhere(abs(eigenvals) &lt; 1e-5)
+eigenvals[zero_eigenvals_index]</code></pre>
+<pre><code>array([[-9.42076177e-16],
+       [ 8.21825247e-16],
+       [ 5.97249344e-16]])</code></pre>
+<p>For these small eigenvalues, we consider their corresponding eigenvectors.</p>
+<pre class="python"><code>proj_df = pd.DataFrame(eigenvcts[:, zero_eigenvals_index.squeeze()])
+proj_df.columns = [&#39;v_&#39; + str(c) for c in proj_df.columns]
+proj_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+v_0
+</th>
+<th>
+v_1
+</th>
+<th>
+v_2
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+0.031623
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+0.031623
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+0.031623
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+0.031623
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+0.031623
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us visualize this data frame as a heat map:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 8))
+sns.heatmap(proj_df, ax=ax, cmap=&#39;viridis_r&#39;)
+ax.set(title=&#39;Eigenvectors Generating the Kernel of the Graph Laplacian&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_37_0.png" alt="png" />
+</center>
+<p>We can clearly see a block structure (representing the connected components). In general, finding zero eigenvalues, or the spectral gap happens, is to restrictive when the clusters are not isolated connected components. Hence, we simply choose the number of clusters we want to find.</p>
+<pre class="python"><code>def project_and_transpose(eigenvals, eigenvcts, num_ev):
+    &quot;&quot;&quot;Select the eigenvectors corresponding to the first 
+    (sorted) num_ev eigenvalues as columns in a data frame.
+    &quot;&quot;&quot;
+    eigenvals_sorted_indices = np.argsort(eigenvals)
+    indices = eigenvals_sorted_indices[: num_ev]
+
+    proj_df = pd.DataFrame(eigenvcts[:, indices.squeeze()])
+    proj_df.columns = [&#39;v_&#39; + str(c) for c in proj_df.columns]
+    return proj_df</code></pre>
+</div>
+<div id="step-4-run-k-means-clustering" class="section level3">
+<h3>Step 4: Run K-Means Clustering</h3>
+<p>To select the number of clusters (which from the plot above we already suspect is <span class="math inline">\(k=3\)</span>) we run k-means for various cluster values and plot the associated inertia (sum of squared distances of samples to their closest cluster center).</p>
+<pre class="python"><code>inertias = []
+
+k_candidates = range(1, 6)
+
+for k in k_candidates:
+    k_means = KMeans(random_state=42, n_clusters=k)
+    k_means.fit(proj_df)
+    inertias.append(k_means.inertia_)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+sns.scatterplot(x=k_candidates, y = inertias, s=80, ax=ax)
+sns.lineplot(x=k_candidates, y = inertias, alpha=0.5, ax=ax)
+ax.set(title=&#39;Inertia K-Means&#39;, ylabel=&#39;inertia&#39;, xlabel=&#39;k&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_42_0.png" alt="png" />
+</center>
+<p>From this plot we see that the optimal number of clusters is <span class="math inline">\(k=3\)</span>.</p>
+<pre class="python"><code>def run_k_means(df, n_clusters):
+    &quot;&quot;&quot;K-means clustering.&quot;&quot;&quot;
+    k_means = KMeans(random_state=25, n_clusters=n_clusters)
+    k_means.fit(df)
+    cluster = k_means.predict(df)
+    return cluster
+
+cluster = run_k_means(proj_df, n_clusters=3)</code></pre>
+<pre class="python"><code>from mpl_toolkits.mplot3d import Axes3D
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection=&#39;3d&#39;)
+ax.scatter(
+    xs=proj_df[&#39;v_0&#39;], 
+    ys=proj_df[&#39;v_1&#39;], 
+    zs=proj_df[&#39;v_2&#39;],
+    c=[{0: sns_c[0], 1: sns_c[1], 2: sns_c[2]}.get(c) for c in cluster]
+)
+ax.set_title(&#39;Small Eigenvectors Clusters&#39;, x=0.2);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_45_0.png" alt="png" />
+<center>
+</div>
+<div id="step-5-assign-cluster-tag" class="section level3">
+<h3>Step 5: Assign Cluster Tag</h3>
+<p>Finally we add the cluster tag to each point.</p>
+<pre class="python"><code>data_df[&#39;cluster&#39;] = [&#39;c_&#39; + str(c) for c in cluster]
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, data=data_df, hue=&#39;cluster&#39;, ax=ax)
+ax.set(title=&#39;Spectral Clustering&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_47_0.png" alt="png" />
+</center>
+<p>Note that via spectral clustering we can get non-convex clusters.</p>
+</div>
+<div id="summary" class="section level3">
+<h3>Summary</h3>
+<p>To wrap up the algorithm steps we summarize them in a function.</p>
+<pre class="python"><code>def spectral_clustering(df, n_neighbors, n_clusters):
+    &quot;&quot;&quot;Spectral Clustering Algorithm.&quot;&quot;&quot;
+    graph_laplacian = generate_graph_laplacian(df, n_neighbors)
+    eigenvals, eigenvcts = compute_spectrum_graph_laplacian(graph_laplacian)
+    proj_df = project_and_transpose(eigenvals, eigenvcts, n_clusters)
+    cluster = run_k_means(proj_df, proj_df.columns.size)
+    return [&#39;c_&#39; + str(c) for c in cluster]</code></pre>
+</div>
+</div>
+<div id="example-2" class="section level2">
+<h2>Example 2</h2>
+<p>Let us consider the data which has more noise:</p>
+<ul>
+<li>3 Clusters</li>
+</ul>
+<pre class="python"><code>data_df = data_frame_from_coordinates(coordinates_list[1])
+data_df[&#39;cluster&#39;] = spectral_clustering(df=data_df, n_neighbors=8, n_clusters=3)
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, data=data_df, hue=&#39;cluster&#39;, ax=ax)
+ax.set(title=&#39;Spectral Clustering&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_53_0.png" alt="png" />
+</center>
+<ul>
+<li>2 Clusters</li>
+</ul>
+<pre class="python"><code>data_df = data_frame_from_coordinates(coordinates_list[1])
+data_df[&#39;cluster&#39;] = spectral_clustering(df=data_df, n_neighbors=8, n_clusters=2)
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, data=data_df, hue=&#39;cluster&#39;, ax=ax)
+ax.set(title=&#39;Spectral Clustering&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_55_0.png" alt="png" />
+<center>
+</div>
+<div id="example-3" class="section level2">
+<h2>Example 3</h2>
+<p>For the last data set, we essentially find the same as we would with k-means.</p>
+<pre class="python"><code>data_df = data_frame_from_coordinates(coordinates_list[2])
+data_df[&#39;cluster&#39;] = spectral_clustering(df=data_df, n_neighbors=8, n_clusters=3)
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, data=data_df, hue=&#39;cluster&#39;, ax=ax)
+ax.set(title=&#39;Spectral Clustering&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_57_0.png" alt="png" />
+</center>
+</div>
+<div id="spectral-clustering-scikit-learn" class="section level2">
+<h2>Spectral Clustering (Scikit-Learn)</h2>
+<p>As expected, <a href="https://scikit-learn.org/stable/">scikit-learn</a> already has a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.cluster.SpectralClustering.html">spectral clustering implementation</a>. Let us compare with the results above.</p>
+<div id="example-2-revisited" class="section level3">
+<h3>Example 2 (Revisited)</h3>
+<pre class="python"><code>from sklearn.cluster import SpectralClustering
+
+data_df = data_frame_from_coordinates(coordinates_list[1])
+
+spec_cl = SpectralClustering(
+    n_clusters=3, 
+    random_state=25, 
+    n_neighbors=8, 
+    affinity=&#39;nearest_neighbors&#39;
+)
+
+data_df[&#39;cluster&#39;] = spec_cl.fit_predict(data_df[[&#39;x&#39;, &#39;y&#39;]])
+data_df[&#39;cluster&#39;] = [&#39;c_&#39; + str(c) for c in data_df[&#39;cluster&#39;]]
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, data=data_df, hue=&#39;cluster&#39;, ax=ax)
+ax.set(title=&#39;Spectral Clustering - Scikit Learn&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_60_0.png" alt="png" />
+</center>
+</div>
+<div id="example-3-revisited" class="section level3">
+<h3>Example 3 (Revisited)</h3>
+<pre class="python"><code>data_df = data_frame_from_coordinates(coordinates_list[2])
+
+spec_cl = SpectralClustering(
+    n_clusters=3, 
+    random_state=42, 
+    n_neighbors=8, 
+    affinity=&#39;nearest_neighbors&#39;
+)
+
+data_df[&#39;cluster&#39;] = spec_cl.fit_predict(data_df[[&#39;x&#39;, &#39;y&#39;]])
+data_df[&#39;cluster&#39;] = [&#39;c_&#39; + str(c) for c in data_df[&#39;cluster&#39;]]
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, data=data_df, hue=&#39;cluster&#39;, ax=ax)
+ax.set(title=&#39;Spectral Clustering - Scikit Learn&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_62_0.png" alt="png" />
+</center>
+</div>
+</div>
+<div id="final-remark" class="section level2">
+<h2>Final Remark</h2>
+<p>In concrete applications is sometimes hard to evaluate which clustering algorithm to choose. I often prefer to do some feature engineering (from intuition/domain knowledge) and proceed, if possible, with k-means. For the example above we see a rotationally symmetric data set, which suggest to use the radius as a new feature:</p>
+<pre class="python"><code>data_df = data_frame_from_coordinates(coordinates_list[1])
+
+data_df = data_df.assign(r2 = lambda x: np.power(x[&#39;x&#39;], 2) + np.power(x[&#39;y&#39;], 2))</code></pre>
+<p>Let us plot the radius feature (it is one-dimensional but we project it to the (diagonal) line <span class="math inline">\(x=y\)</span>).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;r2&#39;, y=&#39;r2&#39;, color=&#39;black&#39;, data=data_df, ax=ax)
+ax.set(title=&#39;Radius Feature&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_66_0.png" alt="png" />
+</center>
+<p>Then, we can just run k-means.</p>
+<pre class="python"><code>inertias = []
+
+k_candidates = range(1, 10)
+
+for k in k_candidates:
+    k_means = KMeans(random_state=42, n_clusters=k)
+    k_means.fit(data_df[[&#39;r2&#39;]])
+    inertias.append(k_means.inertia_)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.scatterplot(x=k_candidates, y = inertias, s=80, ax=ax)
+sns.scatterplot(x=[k_candidates[2]], y = [inertias[2]], color=sns_c[3], s=150, ax=ax)
+sns.lineplot(x=k_candidates, y = inertias, alpha=0.5, ax=ax)
+ax.set(title=&#39;Inertia K-Means&#39;, ylabel=&#39;inertia&#39;, xlabel=&#39;k&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_68_0.png" alt="png" />
+</center>
+<pre class="python"><code>k_means = KMeans(random_state=25, n_clusters=3)
+k_means.fit(data_df[[&#39;r2&#39;]])
+cluster = k_means.predict(data_df[[&#39;r2&#39;]])
+
+data_df = data_df.assign(cluster = [&#39;k-means_c_&#39; + str(c) for c in cluster])
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;r2&#39;, y=&#39;r2&#39;, hue=&#39;cluster&#39;, data=data_df, ax=ax)
+ax.set(title=&#39;Radius Feature (K-Means)&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_69_0.png" alt="png" />
+</center>
+<p>Finally, we visualize the original data with the corresponding clusters.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, hue=&#39;cluster&#39;, data=data_df, ax=ax)
+ax.set(title=&#39;Radius Feature (K-Means)&#39;);</code></pre>
+<center>
+<img src="../images/spectral_clustering_files/spectral_clustering_71_0.png" alt="png" />
+</center>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><a href="http://web.cse.ohio-state.edu/~belkin.8/papers/LEM_NC_03.pdf">Laplacian Eigenmaps for Dimensionality Reduction and Data Representation</a><a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p><a href="http://www.tml.cs.uni-tuebingen.de/team/luxburg/publications/Luxburg07_tutorial.pdf">A Tutorial on Spectral Clustering</a><a href="#fnref2" class="footnote-back">↩</a></p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
