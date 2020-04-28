@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Disease Spread Simulation (Animation) - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Disease Spread Simulation (Animation) - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/">About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz">GitHub</a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/">LinkedIn</a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz">Twitter</a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">4 min read</span>
+    
+
+    <h1 class="article-title">Disease Spread Simulation (Animation)</h1>
+
+    
+    <span class="article-date">2020-04-28</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This post is motivated by the tweet:</p>
+<center>
+<blockquote class="twitter-tweet"><p lang="en" dir="ltr">Friday afternoon challenge. Simulate the spread of a disease among 100 people beginning with 1 infected individual<br><br>Place people as points in a square grid with random starting points randomly moving in one direction<br><br>Transmission of disease proportional to distance from infected <a href="https://t.co/smWXpR6ZIC">pic.twitter.com/smWXpR6ZIC</a></p>&mdash; Ted Petrou (@TedPetrou) <a href="https://twitter.com/TedPetrou/status/1253792528593190912?ref_src=twsrc%5Etfw">April 24, 2020</a></blockquote>
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+</center>
+<p>This served as a perfect excuse to explore <a href="https://matplotlib.org/3.1.1/api/animation_api.html">animations with Matplotlib</a>.</p>
+<p><strong>Warning:</strong> This notebook does not aim to explain/predict anything related with <a href="https://en.wikipedia.org/wiki/Coronavirus_disease_2019">covid19</a> (I leave this to the experts!). Please take this as a programming/data-viz exercise.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+plt.style.use([&#39;dark_background&#39;])
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
+from matplotlib.animation import FuncAnimation
+from IPython.display import HTML
+
+# Set global plot parameters. 
+plt.rcParams[&#39;figure.figsize&#39;] = [8, 8]
+plt.rcParams[&#39;figure.dpi&#39;] = 80</code></pre>
+</div>
+<div id="model-definition" class="section level2">
+<h2>Model Definition</h2>
+<p>We define a class <code>Body</code> to represent each individual.</p>
+<ul>
+<li>Each body has a potion (x, y coordinates) inside a box of size <span class="math inline">\(L&gt;0\)</span> (when it hits a boundary it rebounds).</li>
+<li>A body can move randomly (normal steps) within the box. We record each position after a movement.</li>
+<li>A body has a health status: <em>sick</em> or <em>not sick</em>.</li>
+<li>We assume that, if the body is sick, then it can infect other bodies with a probability (via Bernoulli distribution) <span class="math inline">\(\exp(-d/\tau)\)</span>, where <span class="math inline">\(d\)</span> is the distance between two bodies and <span class="math inline">\(\tau\)</span> is a characteristic infection distance parameter.</li>
+<li>We record the health history on demand (not after every interaction).</li>
+</ul>
+<pre class="python"><code>L = 100
+
+class Body():
+
+    def __init__(self, x0, y0, box_size=L, sigma=0.02, inf_dist=2):
+        self.box_size = box_size
+        self.x = x0
+        self.y = y0
+        self.sigma = sigma
+        self.loc_history = [(x0, y0)]
+        self.is_sick = False
+        self.health_history = [False]
+        self.inf_dist = inf_dist
+
+    def add_to_loc_history(self, x, y):
+        self.loc_history.append((x, y))
+
+    def add_to_health_history(self, x):
+        self.health_history.append(x)
+
+    def get_infected(self):
+        self.is_sick = True
+
+    @staticmethod
+    def new_position(z, dz, box_size):
+        zhat = abs(z + dz)
+
+        if(zhat &gt; box_size):
+            zhat = 2*box_size - zhat
+        return zhat
+
+    def move(self):
+        sigma = self.sigma * self.box_size
+        dx = np.random.normal(loc=0.0, scale=sigma)
+        dy = np.random.normal(loc=0.0, scale=sigma)
+
+        self.x = Body.new_position(z=self.x, dz=dx, box_size=self.box_size)
+        self.y = Body.new_position(z=self.y, dz=dy, box_size=self.box_size)
+        self.add_to_loc_history(self.x, self.y)
+
+    def distance(self, other): 
+        return np.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+
+    def interact(self, other):
+        dist = self.distance(other)
+        status = self.is_sick + other.is_sick
+
+        if ((status % 2) != 0):
+
+            if (self.is_sick):
+                prob = np.exp(-dist/self.inf_dist)
+                change_status = np.random.binomial(n=1, p=prob)
+                if (change_status):
+                    other.get_infected()
+            else:
+                prob = np.exp(-dist/other.inf_dist)
+                change_status = np.random.binomial(n=1, p=prob)
+                if (change_status):
+                    self.get_infected()</code></pre>
+<p>Let us see an example:</p>
+<pre class="python"><code>b1 = Body(0, 0)
+b2 = Body(0.1, 0)
+print(&#39;B1 is sick: &#39; + str(b1.is_sick))
+print(&#39;B2 is sick: &#39; + str(b2.is_sick))</code></pre>
+<pre><code>B1 is sick: False
+B2 is sick: False</code></pre>
+<pre class="python"><code>b2.get_infected()
+b1.interact(b2)
+print(&#39;B1 is sick: &#39; + str(b1.is_sick))
+print(&#39;B2 is sick: &#39; + str(b2.is_sick))</code></pre>
+<pre><code>B1 is sick: True
+B2 is sick: True</code></pre>
+<p>Next let us define the <code>Simulation</code> class. This just makes a set of bodies interact in a box. The simulation starts wt just one sick body.</p>
+<pre class="python"><code>class Simulation():
+
+    def __init__(self, n_bodies, num, box_size=L, inf_dist=2):
+        self.box_size = box_size
+        self.n_bodies = n_bodies
+        self.num = num
+        self.bodies = [
+            Body(
+                x0=np.random.uniform(low=0.0, high=self.box_size),
+                y0=np.random.uniform(low=0.0, high=self.box_size),
+                box_size=self.box_size,
+                inf_dist=inf_dist
+            )
+            for i in range(0, self.n_bodies)
+        ]
+        self.hist_len = 1
+
+    def run(self):
+        self.bodies[0].get_infected()
+        for i in range(self.num):
+            for j, b1 in enumerate(self.bodies):
+                for k, b2 in enumerate(self.bodies):
+                    if (j &lt; k):
+                        b1.interact(b2)
+            [b.add_to_health_history(b.is_sick) for b in self.bodies]
+            [b.move() for b in self.bodies]
+        self.hist_len = self.hist_len + self.num
+
+    def animate(self):
+        fig, ax = plt.subplots()
+        ax.set(title=&#39;Animation&#39;, xlim=(0, self.box_size), ylim=(0, self.box_size))
+        scat = ax.scatter(x=[], y=[], c=&#39;black&#39;, linewidths=4)
+
+        def update(i):
+            x = [b.loc_history[i][0] for b in self.bodies]
+            y = [b.loc_history[i][1] for b in self.bodies]
+            x = np.array(x).reshape(-1, 1)
+            y = np.array(y).reshape(-1, 1)
+            scat.set_offsets(np.concatenate((x, y), axis=1))
+            scat.set_edgecolors(np.array([sns_c[3] if b.health_history[i] else sns_c[2] for b in self.bodies]))
+            return scat,  
+
+        anim = FuncAnimation(fig, update, frames=self.hist_len, interval=200, blit=True)
+        return anim</code></pre>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<p>First, let us plot a movement of one single body:</p>
+<pre class="python"><code>sim_1 = Simulation(n_bodies=1, num=500)
+sim_1.run()
+
+body_history_df = pd.DataFrame(sim_1.bodies[0].loc_history, columns=[&#39;x&#39;, &#39;y&#39;]).reset_index()
+
+fig, ax = plt.subplots()
+sns.scatterplot(x=&#39;x&#39;, y=&#39;y&#39;, hue=&#39;index&#39;, palette=&#39;cool&#39;, edgecolor=&#39;black&#39;, data=body_history_df, ax=ax)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=f&#39;One Body Movement - {sim_1.num} Steps&#39;, xlim=(0.0, L), ylim=(0.0, L))
+plt.savefig(&#39;one_body.png&#39;, dpi=200, bbox_inches=&#39;tight&#39;);</code></pre>
+<center>
+<img src="../images/infection_sim/one_body.png" alt="glue" style="width: 700px;"/>
+</center>
+<p>Next, let us generate an animation for <code>n_bodies = 200</code> and <code>num=100</code> (iterations).</p>
+<pre class="python"><code>sim = Simulation(n_bodies=200, num=100)
+sim.run()
+
+anim = sim.animate() 
+HTML(anim.to_jshtml())
+anim.save(&#39;animation.gif&#39;, writer=&#39;imagemagick&#39;, fps=10)</code></pre>
+<center>
+<img src="../images/infection_sim/animation.gif" />
+</center>
+<p>Finally, let us decrease the characteristic infection distance parameter to <code>inf_dist=0.5</code>. We indeed see the infection speed decreases.</p>
+<pre class="python"><code>sim2 = Simulation(n_bodies=200, num=100, inf_dist=0.5)
+sim2.run()
+
+anim2 = sim2.animate() 
+HTML(anim2.to_jshtml())
+anim2.save(&#39;animation2.gif&#39;, writer=&#39;imagemagick&#39;, fps=10)</code></pre>
+<center>
+<img src="../images/infection_sim/animation2.gif" />
+</center>
+<hr />
+</div>
+<div id="remark-animation-with-matplotlib" class="section level2">
+<h2>Remark: Animation with Matplotlib</h2>
+<p>This use case was a perfect setting to explore the animation module of Matplotlib.</p>
+<ul>
+<li><p>I believe it is very powerful, but non-trivial to start with. I found <a href="https://stackoverflow.com/questions/9401658/how-to-animate-a-scatter-plot">this</a> stackoverflow thread very useful.</p></li>
+<li><p>I was not able to do a simple task: color the points based on the health status via <code>scat.set_array(...)</code>. I had to color the edges of the points (if you manage to do it please let me know).</p></li>
+<li><p>It would be great to generate animations using <a href="https://seaborn.pydata.org/">seaborn</a>.</p></li>
+<li><p>To save the animation as a gift you can run <code># !brew install imagemagick</code> on a Jupyter cell.</p></li>
+</ul>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
