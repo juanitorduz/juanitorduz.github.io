@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>A Glimpse into TensorFlow Probability Distributions - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="A Glimpse into TensorFlow Probability Distributions - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">8 min read</span>
+    
+
+    <h1 class="article-title">A Glimpse into TensorFlow Probability Distributions</h1>
+
+    
+    <span class="article-date">2020-06-16</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we want to go take a look into the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/distributions">distributions</a> module of <a href="https://www.tensorflow.org/probability/api_docs/python/tfp">TensorFlow probability</a>. The aim is to understand the fundamentals and then explore further this probabilistic programming framework. <a href="https://www.tensorflow.org/probability/overview">Here</a> you can find an overview of TensorFlow Probability. We will concentrate on the first part of <em>Layer 1: Statistical Building Blocks</em>. As you could see from the distributions module documentation, there are many classes of distributions. We will explore a small sample of them in order to get an overall overview. I find the documentation itself a great place to start. In addition, there is a <a href="https://github.com/tensorflow/probability/tree/master/tensorflow_probability/examples/jupyter_notebooks">sample of notebooks</a> with concrete examples on the <a href="https://github.com/tensorflow/probability">GitHub repository</a>. In particular, I will follow some of cases presented on the <a href="https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/A_Tour_of_TensorFlow_Probability.ipynb">A_Tour_of_TensorFlow_Probability</a> notebook, expand on some details and add some other additional examples.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import tensorflow.compat.v2 as tf
+tf.enable_v2_behavior()
+import tensorflow_probability as tfp
+tfd = tfp.distributions
+
+# Data Viz. 
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
+plt.rcParams[&#39;figure.figsize&#39;] = [12, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+<pre class="python"><code># Get TensorFlow version.
+print(f&#39;TnesorFlow version: {tf.__version__}&#39;)
+print(f&#39;TnesorFlow Probability version: {tfp.__version__}&#39;)</code></pre>
+<pre><code>TnesorFlow version: 2.2.0
+TnesorFlow Probability version: 0.10.0</code></pre>
+</div>
+<div id="distributions" class="section level2">
+<h2>Distributions</h2>
+<p>Let us consider a couple of well-know distributions to begin:</p>
+<pre class="python"><code>normal = tfd.Normal(loc=0.0, scale=1.0)
+gamma = tfd.Gamma(concentration=5.0, rate=1.0)
+poisson = tfd.Poisson(rate=2.0)
+laplace = tfd.Laplace(loc=0.0, scale=1.0)</code></pre>
+<p>Let us sample from each of them and visualize their distributions.</p>
+<pre class="python"><code>n_samples = 800
+
+fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+
+axes = axes.flatten()
+
+sns.distplot(a=normal.sample(n_samples), color=sns_c[0], rug=True, ax=axes[0])
+axes[0].set(title=f&#39;Normal Distribution&#39;)
+
+sns.distplot(a=gamma.sample(n_samples), color=sns_c[1], rug=True, ax=axes[1])
+axes[1].set(title=f&#39;Gamma Distribution&#39;);
+
+sns.distplot(a=poisson.sample(n_samples), color=sns_c[2], kde=False, rug=True, ax=axes[2])
+axes[2].set(title=&#39;Poisson Distribution&#39;);
+
+sns.distplot(a=laplace.sample(n_samples), color=sns_c[3], rug=True, ax=axes[3])
+axes[3].set(title=&#39;Laplace Distribution&#39;)
+
+plt.suptitle(f&#39;Distribution Samples ({n_samples})&#39;, y=0.95);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_8_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We treat distributions as <em>tensors</em>, which can have many dimensions. In particular,</p>
+<ul>
+<li><p><strong>Batch shape</strong> denotes a collection of Distributions with distinct parameters.</p></li>
+<li><p><strong>Event shape</strong> denotes the shape of samples from the Distribution.</p></li>
+</ul>
+<p>As a convention, batch shapes are on the “left” and event shapes on the “right”<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>.</p>
+<p>We can take samples based on a tensor of sizes:</p>
+<pre class="python"><code>normal_samples = normal.sample([n_samples, n_samples])
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+axes = axes.flatten()
+
+for i in range(2):
+    sns.distplot(a=normal_samples[i], color=sns_c[0], rug=True, ax=axes[i])
+    axes[i].set(title=f&#39;Normal Distribution (Iter {i})&#39;)
+    
+plt.suptitle(f&#39;Distribution Samples ({n_samples})&#39;, y=0.97);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_10_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We can compute common stats of the distribution samples:</p>
+<pre class="python"><code>x = tf.linspace(start=-5.0, stop=5.0, num=100)
+
+fig, ax1 = plt.subplots()
+ax2 = ax1.twinx() 
+sns.lineplot(x=x, y=normal.cdf(x), color=sns_c[3], label=&#39;cdf&#39;, ax=ax1)
+sns.distplot(a=normal.sample(n_samples), color=sns_c[0], label=&#39;samples&#39;, rug=True, ax=ax2)
+ax1.axvline(x=0.0, color=sns_c[2], linestyle=&#39;--&#39;, label=r&#39;$\mu=0$&#39;)
+
+q_list = [0.05, 0.95]
+quantiles = normal.quantile(q_list).numpy()
+for i, q in zip(q_list , quantiles):
+    ax1.axvline(x=q, color=sns_c[1], linestyle=&#39;--&#39;, label=f&#39;quantile {i}&#39;)
+
+ax1.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[0])
+ax2.grid(None)
+ax2.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[3])
+ax1.legend(loc=&#39;upper left&#39;)
+ax2.legend(loc=&#39;center left&#39;)
+ax1.set(title=&#39;Normal Distribution&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_12_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Next, let us consider a sequence of normal distributions with fixed standard deviation and increasing mean.</p>
+<pre class="python"><code>loc_list = np.linspace(start=0.0, stop=8.0, num=5)
+normals = tfd.Normal(loc=loc_list, scale=1.0)
+normal_samples = normals.sample(n_samples)
+normal_samples.shape</code></pre>
+<pre><code>TensorShape([800, 5])</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+for i in range(normals.batch_shape[0]):
+    sns.distplot(a=normal_samples[:, i], ax=ax)
+ax.set(title=&#39;Batch Samples Normal Distribution&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_15_0.svg" title="fig:" alt="svg" />
+</center>
+<ul>
+<li>Entropy</li>
+</ul>
+<p>Let us compute the (Shannon) <a href="https://en.wikipedia.org/wiki/Entropy_(information_theory)">entropy</a> of each distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 6))
+sns.barplot(x=list(range(normals.batch_shape[0])), y=normals.entropy(), ax=ax)
+ax.set(title=&#39;Entropy&#39;, xlabel=&#39;batch&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_17_0.svg" title="fig:" alt="svg" />
+</center>
+<p>As expected, these values remain do not depend on the mean. Indeed, the entropy for a normal distribution just depends on the standard deviation. The explicit value can be <a href="https://en.wikipedia.org/wiki/Normal_distribution">computed as</a>:</p>
+<pre class="python"><code>(1/2)*np.log(2*np.pi*np.exp(1)*1.0)</code></pre>
+<pre><code>1.4189385332046727</code></pre>
+<ul>
+<li>Cross Entropy</li>
+</ul>
+<p>We now compute the <a href="https://en.wikipedia.org/wiki/Cross_entropy">cross-entropy</a> from the first normal distribution to the rest. We display the sample distributions as violin plots.</p>
+<pre class="python"><code>fig, ax1 = plt.subplots()
+sns.violinplot(data=normal_samples, ax=ax1)
+ax2 = ax1.twinx()
+sns.lineplot(
+    x=range(normals.batch_shape[0]), 
+    y=normals[0].cross_entropy(normals), 
+    color=&#39;black&#39;,  
+    alpha=0.5, 
+    ax=ax2
+)
+sns.scatterplot(
+    x=range(normals.batch_shape[0]), 
+    y=normals[0].cross_entropy(normals), 
+    s=80, 
+    color=&#39;black&#39;, 
+    label=&#39;cross entropy (first batch to others)&#39;, 
+    ax=ax2
+)
+ax2.grid(None)
+ax2.legend(loc=&#39;lower right&#39;)
+ax2.tick_params(axis=&#39;y&#39;, labelcolor=&#39;black&#39;)
+ax2.set(ylabel=&#39;cross entropy&#39;)
+ax1.set(title=&#39;Cross-Entropy from First Batch to the Others&#39;, xlabel=&#39;batch&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_21_0.svg" title="fig:" alt="svg" />
+</center>
+<p>As expected, the cross-entropy increases with the differences of the mean. If you want to have an introduction and enlightening discussion on the concept of entropy in probability theory I would recommend the (fantastic!) book <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a> by <a href="https://xcelab.net/rm/">Richard McElreath</a>.</p>
+<ul>
+<li>KL Divergence</li>
+</ul>
+<p>We generate a similar plot for the <a href="https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence">Kullback–Leibler divergence</a>.</p>
+<pre class="python"><code>fig, ax1 = plt.subplots()
+sns.violinplot(data=normal_samples, ax=ax1)
+ax2 = ax1.twinx()
+sns.lineplot(x=range(normals.batch_shape[0]), y=normals[0].kl_divergence(normals), color=&#39;black&#39;,  alpha=0.5, ax=ax2)
+sns.scatterplot(x=range(normals.batch_shape[0]), y=normals[0].kl_divergence(normals), s=80, color=&#39;black&#39;, label=&#39;Kullback--Leibler Divergence(first batch to others)&#39;, ax=ax2)
+ax2.grid(None)
+ax2.legend(loc=&#39;lower right&#39;)
+ax2.tick_params(axis=&#39;y&#39;, labelcolor=&#39;black&#39;)
+ax2.set(ylabel=&#39;Kullback-Leibler Divergence&#39;)
+ax1.set(title=&#39;Kullback-Leibler Divergence from First Batch to the Others&#39;, xlabel=&#39;batch&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_24_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="multivariate-normal-distribution" class="section level2">
+<h2>Multivariate Normal Distribution</h2>
+<p>We can easily sample from a Multivariate Normal distribution (see <a href="https://juanitorduz.github.io/multivariate_normal/">here</a> for more details). Here, the <code>MultivariateNormalTriL</code> class receives as input the mean vector and the <a href="https://en.wikipedia.org/wiki/Cholesky_decomposition">Cholesky decomposition</a> of the covariance matrix.</p>
+<pre class="python"><code>mu = [1.0, 2.0]
+cov = [[2.0, 1.0],
+       [1.0, 1.0]]
+cholesky = tf.linalg.cholesky(cov)
+multi_normal = tfd.MultivariateNormalTriL(loc=mu, scale_tril=cholesky)
+multi_normal_samples = multi_normal.sample(n_samples)</code></pre>
+<p>Let us plot the samples:</p>
+<pre class="python"><code>g = sns.jointplot(
+    x=multi_normal_samples[:,0], 
+    y=multi_normal_samples[:, 1], 
+    space=0,
+    height=5,
+)
+g.fig.suptitle(&#39;Multinormal Samples&#39;, y=1.04);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_28_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Now let us plot the (marginal) KDE.</p>
+<pre class="python"><code>g = sns.JointGrid(
+    x=multi_normal_samples[:,0], 
+    y=multi_normal_samples[:, 1], 
+    space=0,
+    height=5
+)
+g = g.plot_joint(sns.kdeplot, cmap=&#39;Blues_d&#39;)
+g = g.plot_marginals(sns.kdeplot, shade=True)
+g.fig.suptitle(&#39;Multinormal Samples (KDE Plot)&#39;, y=1.04);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_30_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="gaussian-process" class="section level2">
+<h2>Gaussian Process</h2>
+<p>A very useful distribution is the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/GaussianProcess">Gaussian Process</a>. For more details on this for of distribution you can see <a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a>.</p>
+<ul>
+<li>ExponentiatedQuadratic Kernel</li>
+</ul>
+<pre class="python"><code># Let us consider a Gaussian Process with Exponential Quadratic kernel. 
+eq_kernel = tfp.math.psd_kernels.ExponentiatedQuadratic(amplitude=0.1, length_scale=0.5)
+# Define gird (X).
+xs = tf.reshape(tf.linspace(0.0, 10.0, 100), [-1, 1])
+# Define Gaussian Process object.
+gp_eq = tfd.GaussianProcess(kernel=eq_kernel, index_points=xs)
+# Sample from the Gaussian Process. 
+gp_eq_samples = gp_eq.sample(7)</code></pre>
+<p>Now we plot each sample. Recall that this will give us functions defined on the grid <code>xs</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+for i in range(7):
+    sns.lineplot(
+        x=xs[..., 0], 
+        y=gp_eq_samples[i, :], 
+        color=sns_c[i], 
+        ax=ax
+    )
+sns.lineplot(x=xs[..., 0], y=gp_eq.mean(), color=&#39;black&#39;, ax=ax)
+# Compatibility interval.
+upper, lower = gp_eq.mean() + [2 * gp_eq.stddev(), -2 * gp_eq.stddev()]
+ax.fill_between(xs[..., 0], upper, lower, color=sns_c[8], alpha=0.2, label=r&#39;gp_mean $\pm$ 2std&#39;)
+ax.legend()
+ax.set(title=&#39;Gaussian Process Samples (ExponentiatedQuadratic Kernel)&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_35_0.svg" title="fig:" alt="svg" />
+</center>
+<ul>
+<li>ExpSinSquared Kernel</li>
+</ul>
+<pre class="python"><code># ExpSinSquared (periodic) Kernel.
+es_kernel = tfp.math.psd_kernels.ExpSinSquared(amplitude=0.5, length_scale=1.5, period=3)
+# Define gird (X).
+xs = tf.reshape(tf.linspace(0.0, 10.0, 80), [-1, 1])
+# Define Gaussian Process object.
+gp_es = tfd.GaussianProcess(kernel=es_kernel, index_points=xs)
+# Sample from Gaussian Process.
+gp_es_samples = gp_es.sample(7)</code></pre>
+<p>We plot the samples (note that each sample is indeed a periodic function).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+for i in range(7):
+    sns.lineplot(
+        x=xs[..., 0], 
+        y=gp_es_samples[i, :], 
+        color=sns_c[i], 
+        ax=ax
+    )
+sns.lineplot(x=xs[..., 0], y=gp_es.mean(), color=&#39;black&#39;, ax=ax)
+# Compatibility interval.
+upper, lower = gp_es.mean() + [2 * gp_es.stddev(), -2 * gp_es.stddev()]
+ax.fill_between(xs[..., 0], upper, lower, color=sns_c[8], alpha=0.2, label=r&#39;gp_mean $\pm$ 2std&#39;)
+ax.legend()
+ax.set(title=&#39;Gaussian Process Samples (ExpSinSquared Kernel)&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_39_0.svg" title="fig:" alt="svg" />
+</center>
+<ul>
+<li>Gaussian Process Regression</li>
+</ul>
+<p>Let us illustrate on a simple toy model how to solve an interpolation problem using a Gaussian Process Regression.</p>
+<pre class="python"><code># Define true generating function on the grid.
+ys = tf.math.sin(1*np.pi*xs) + tf.math.sin(0.5*np.pi*xs)
+# Get 20 random points. 
+n_obs = 20
+indices = np.random.uniform(low=0.0, high=xs.shape[0] - 1, size=n_obs )
+indices = [int(x) for x in np.round(indices)]
+x_obs = tf.gather(params=xs, indices=indices)
+y_obs = tf.gather(params=ys, indices=indices)
+# Add Gaussian noise. 
+y_obs = y_obs[..., 0] + tf.random.normal(mean=0.0, stddev=0.05, shape=(n_obs, ))
+
+# Plot.
+fig, ax = plt.subplots()
+sns.lineplot(x=xs[..., 0], y=ys[..., 0], color=sns_c[0], alpha=0.3, ax=ax)
+sns.scatterplot(x=x_obs[..., 0], y=y_obs, color=sns_c[0], s=20, edgecolor=sns_c[0], ax=ax)
+ax.set(title=&#39;Sample Data&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_41_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Assuming we know the data is periodic (up to Gaussian noise), we can use a <code>ExpSinSquared</code> kernel to model the data.</p>
+<pre class="python"><code>kernel = tfp.math.psd_kernels.ExpSinSquared(amplitude=0.5, length_scale=1.0, period=4)
+
+gprm = tfd.GaussianProcessRegressionModel(
+    kernel=kernel, 
+    index_points=xs, 
+    observation_index_points=x_obs, 
+    observations=y_obs, 
+    observation_noise_variance=0.05**2,
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+# Sample many times to get fits. 
+for _ in range(25):
+    sns.lineplot(x=xs[..., 0], y=gprm.sample(), c=sns_c[3], alpha=0.1, ax=ax)
+# Compatibility interval.
+upper, lower = gprm.mean() + [2 * gprm.stddev(), -2 * gprm.stddev()]
+
+sns.lineplot(x=xs[..., 0], y=ys[..., 0], color=sns_c[0], alpha=0.3, ax=ax)
+sns.scatterplot(x=x_obs[..., 0], y=y_obs, color=sns_c[0], s=40, edgecolor=sns_c[0], ax=ax)
+
+ax.fill_between(xs[..., 0], upper, lower, color=sns_c[8], alpha=0.3, label=r&#39;gp_mean $\pm$ 2std&#39;)
+ax.set(title=&#39;Gaussian Process Regression Fit - ExpSinSquared Kernel&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_44_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="hidden-markov-model" class="section level2">
+<h2>Hidden Markov Model</h2>
+<p>The final type, of distribution we want to touch is the <a href="https://en.wikipedia.org/wiki/Hidden_Markov_model">Hidden MArkov Model</a>. There is a very illustrative example on the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/HiddenMarkovModel">distribution documentation</a> where a simple Hidden Markov Model is used to predict temperature as a function of (hidden states) whether its a cold or a hot day. Here we discuss a different (but rather well-known) example studied on <a href="http://www.cs.jhu.edu/~langmea/resources/lecture_notes/23_hidden_markov_models_v2.pdf">this</a> presentation by Ben Langmead.</p>
+<blockquote>
+<p>Example: Dealer repeatedly flips a coin. Sometimes the coin is fair, with P(heads) = 0.5, sometimes it’s loaded, with P(heads) = 0.8. Between each flip, dealer switches coins (invisibly) with prob. 0.4.</p>
+</blockquote>
+<pre class="python"><code># We assume there is a 50/50 probability that the dealer begins with the fair coin. 
+initial_distribution = tfd.Categorical(probs=[0.5, 0.5])
+# Transition state matrix.
+transition_distribution = tfd.Categorical(
+    probs=[[0.6, 0.4],
+           [0.4, 0.6]]
+)
+# Transition matrix of the observed states. 
+observation_distribution = tfd.Categorical(
+    probs=[[0.5, 0.5],
+           [0.8, 0.2]]
+)
+# Define Hidden Markov Model.
+hmm_model = tfd.HiddenMarkovModel(
+    initial_distribution=initial_distribution, 
+    transition_distribution=transition_distribution, 
+    observation_distribution=observation_distribution, 
+    num_steps=100
+)                                </code></pre>
+<p>Let us sample from this model (sequences of length 100).</p>
+<pre class="python"><code>hmm_samples = hmm_model.sample(10000)</code></pre>
+<p>Let us compute the frequency of tails for each sequence.</p>
+<pre class="python"><code>hmm_samples_mean = tf.math.reduce_mean(input_tensor=tf.cast(x=hmm_samples, dtype=&#39;float32&#39;), axis=1)</code></pre>
+<pre class="python"><code># Let us plot the distribution.
+hmm_samples_mean_mean = tf.math.reduce_mean(input_tensor=hmm_samples_mean, axis=0).numpy()
+hmm_samples_mean_std = tf.math.reduce_std(input_tensor=hmm_samples_mean, axis=0).numpy()
+hmm_samples_plus = hmm_samples_mean_mean + 2*hmm_samples_mean_std
+hmm_samples_minus = hmm_samples_mean_mean - 2*hmm_samples_mean_std
+
+fig, ax = plt.subplots()
+sns.distplot(a=hmm_samples_mean, rug=True, ax=ax)
+ax.axvline(x=hmm_samples_mean_mean, color=sns_c[2], linestyle=&#39;--&#39;, label=f&#39;$\mu$ = {hmm_samples_mean_mean: 0.3f}&#39;)
+ax.axvline(x=hmm_samples_plus, color=sns_c[1], linestyle=&#39;--&#39;, label=f&#39;$\mu + 2\sigma$ ={hmm_samples_plus: 0.3f}&#39;)
+ax.axvline(x=hmm_samples_minus, color=sns_c[1], linestyle=&#39;--&#39;, label=f&#39;$\mu - 2\sigma$ ={hmm_samples_minus: 0.3f}&#39;)
+
+ax.legend()
+ax.set(title=&#39;Hidden Markov Model Samples Mean;&#39;);</code></pre>
+<center>
+<img src="../images/intro_tfp_distributions_files/intro_tfp_distributions_51_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Observe that the mean sample probability of getting tails is ~ 0.35 &lt; 0.5.</p>
+<p>We could also ask the question: <em>What is the probability of getting 10 heads in a row?</em></p>
+<pre class="python"><code># We can simply run the `prob` method.
+hmm_model.prob(tf.zeros(10, dtype=&#39;int32&#39;))</code></pre>
+<pre><code>&lt;tf.Tensor: shape=(), dtype=float32, numpy=0.015090796&gt;</code></pre>
+<p>The answer is around 1.6%. We could ask ourselves the same question for a fair coin:</p>
+<pre class="python"><code>tfd.Binomial(total_count=10, probs=0.5).prob(value=0)</code></pre>
+<pre><code>&lt;tf.Tensor: shape=(), dtype=float32, numpy=0.0009765625&gt;</code></pre>
+<p>This value is much more smaller as expected.</p>
+<hr />
+<p>This was just a glimpse of the distributions module of tensorflow probability. At the moment we did not do anything fancy, but this is the foundation for inference and prediction problems later to come.</p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><a href="https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/A_Tour_of_TensorFlow_Probability.ipynb">A_Tour_of_TensorFlow_Probability</a><a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
