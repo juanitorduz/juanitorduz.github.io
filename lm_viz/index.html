@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Regression Analysis &amp; Visualization - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Regression Analysis &amp; Visualization - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">11 min read</span>
+    
+
+    <h1 class="article-title">Regression Analysis &amp; Visualization</h1>
+
+    
+    <span class="article-date">2020-06-26</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook I want to collect some useful visualizations which can help model development and model evaluation in the context of regression analysis. I use many visualization resources not just only to share results but as a key component of my workflow: data QA, EDA, feature engineering, model development, model evaluation and communicating results. In this notebook I focus on a simple regression model (time series) with <a href="https://www.statsmodels.org/stable/index.html">statsmodels</a> and visualization with <a href="https://matplotlib.org/">matplotlib</a> and <a href="https://seaborn.pydata.org/index.html">seaborn</a>. The focus is not on the model development but rather visualization.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import statsmodels.formula.api as smf
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+# Data Viz. 
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
+plt.rcParams[&#39;figure.figsize&#39;] = [12, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+<p><strong>Remark:</strong> I usually store the <a href="https://seaborn.pydata.org/tutorial/color_palettes.html">seaborn palette</a> as a list <code>sns_c</code> which allows me to select colors efficiently.</p>
+</div>
+<div id="generate-sample-data" class="section level2">
+<h2>Generate Sample Data</h2>
+<p>We begin by generating a sample data for our analysis:</p>
+<pre class="python"><code>np.random.seed(42)
+
+def generate_sample_data():
+    &quot;&quot;&quot;Generate sample time series data.&quot;&quot;&quot;
+    df = pd.DataFrame(
+        data={&#39;date&#39;: pd.date_range(start=&#39;2018-01-01&#39;, end=&#39;2020-12-31&#39;, freq=&#39;W&#39;)}
+    )
+
+    n = df.shape[0]
+
+    df[&#39;t&#39;] = np.linspace(start=1, stop=n, num=n)
+    df[&#39;x1&#39;] = np.random.uniform(low=-1.0, high=1.0, size=n)
+    df[&#39;x1&#39;] = df[&#39;x1&#39;].apply(lambda x: x if abs(x) &gt; 0.7 else 0.0)
+    df[&#39;x2&#39;] = 10*np.log(df[&#39;t&#39;])
+    df[&#39;x3&#39;] = np.random.uniform(low=-1.0, high=1.0, size=n)
+    df[&#39;x3&#39;] = df[&#39;x3&#39;].apply(lambda x: x if abs(x) &gt; 0.95 else 0.0)
+    df[&#39;dayofyear&#39;] = df[&#39;date&#39;].dt.dayofyear
+    df[&#39;dayofyear_sc&#39;] = np.sin(2*np.pi*df[&#39;dayofyear&#39;]/365.5)
+    df[&#39;dayofyear_cc&#39;] = np.cos(2*np.pi*df[&#39;dayofyear&#39;]/365.5)
+    df[&#39;y&#39;] = 10.0 \
+         + 20*df[&#39;x1&#39;] \
+         + df[&#39;x2&#39;] \
+         + 15*df[&#39;dayofyear_sc&#39;] \
+         + 5*df[&#39;dayofyear_cc&#39;] + \
+         + 10*df[&#39;x3&#39;] \
+         + np.random.normal(loc=0.0, scale=5.0, size=n)
+
+    return df
+
+data_df = generate_sample_data()
+
+data_df = data_df[[&#39;date&#39;, &#39;y&#39;, &#39;x1&#39;, &#39;x2&#39;, &#39;dayofyear_sc&#39;, &#39;dayofyear_cc&#39;]]
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+date
+</th>
+<th>
+y
+</th>
+<th>
+x1
+</th>
+<th>
+x2
+</th>
+<th>
+dayofyear_sc
+</th>
+<th>
+dayofyear_cc
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2018-01-07
+</td>
+<td>
+19.289445
+</td>
+<td>
+0.000000
+</td>
+<td>
+0.000000
+</td>
+<td>
+0.120044
+</td>
+<td>
+0.992769
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2018-01-14
+</td>
+<td>
+47.720002
+</td>
+<td>
+0.901429
+</td>
+<td>
+6.931472
+</td>
+<td>
+0.238353
+</td>
+<td>
+0.971179
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2018-01-21
+</td>
+<td>
+24.960557
+</td>
+<td>
+0.000000
+</td>
+<td>
+10.986123
+</td>
+<td>
+0.353214
+</td>
+<td>
+0.935543
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2018-01-28
+</td>
+<td>
+33.566807
+</td>
+<td>
+0.000000
+</td>
+<td>
+13.862944
+</td>
+<td>
+0.462966
+</td>
+<td>
+0.886376
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2018-02-04
+</td>
+<td>
+36.331939
+</td>
+<td>
+0.000000
+</td>
+<td>
+16.094379
+</td>
+<td>
+0.566022
+</td>
+<td>
+0.824390
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us plot the target variable:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=data_df, color=sns_c[0], ax=ax)
+ax.set(title=&#39;Sample Data&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_7_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="train-test-split" class="section level2">
+<h2>Train-Test Split</h2>
+<p>We split our data intro a training and a test set (no random shuffle for time series data!).</p>
+<pre class="python"><code>threshold_date = &#39;2020-01-04&#39;
+
+data_train_df = data_df.query(f&#39;date &lt; &quot;{threshold_date}&quot;&#39;)
+data_test_df = data_df.query(f&#39;date &gt;= &quot;{threshold_date}&quot;&#39;)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=data_train_df, color=sns_c[0], label=&#39;training_data&#39;, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=data_test_df, color=sns_c[1], label=&#39;test_data&#39;, ax=ax)
+ax.axvline(x=threshold_date, color=&#39;black&#39;, linestyle=&#39;--&#39;, label=&#39;train-test split&#39;)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Sample Data - Train Test Split&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_10_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="plot-features" class="section level2">
+<h2>Plot Features</h2>
+<p>A key component in the modeling workflow is to explore the relation between potential predictors and the target variable. There are many ways of doing this, one of them is data visualization. In the next plot we plot one feature (<span class="math inline">\(x_1\)</span>) against the target variable <span class="math inline">\(y\)</span>. Note that we can use a twin axis to plot them together even if they are on different scales.</p>
+<pre class="python"><code>fig, ax1 = plt.subplots()
+ax2 = ax1.twinx() 
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=data_train_df, color=sns_c[0], label=&#39;y_train&#39;, ax=ax1)
+sns.lineplot(x=&#39;date&#39;, y=&#39;x1&#39;, data=data_train_df, color=sns_c[9], label=f&#39;$x_1$ (train)&#39;, ax=ax2)
+ax1.legend(bbox_to_anchor=(1.22, 0.42))
+ax2.legend(bbox_to_anchor=(1.22, 0.5))
+ax1.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[0])
+ax1.set_ylabel(&#39;y&#39;, fontdict={&#39;color&#39;: sns_c[0]})
+ax1.set(title=f&#39;y and $x_1$ (training data)&#39;)
+ax2.grid(None)
+ax2.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[9])
+ax2.set_ylabel(&#39;y&#39;, fontdict={&#39;color&#39;: sns_c[9]});</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_12_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Scatter plots are also very handy as we can encode various dimensions via color and size encoding.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(7, 7))
+
+cmap = sns.cubehelix_palette(rot=-0.2, as_cmap=True)
+
+sns.scatterplot(
+    x=&#39;x2&#39;, 
+    y=&#39;y&#39;, 
+    hue=&#39;x1&#39;, 
+    size=&#39;x1&#39;,
+    palette=cmap, 
+    edgecolor=&#39;white&#39;, 
+    data=data_train_df, 
+    ax=ax
+)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=r&#39;y ~ $x_2$ (training data)&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_14_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Correlation analysis is another powerful technique to study potential predictors and to detect multicollinearity. We can use a <a href="https://seaborn.pydata.org/generated/seaborn.heatmap.html">heatmap</a> plot to represent the correlation matrix (see <a href="https://seaborn.pydata.org/examples/many_pairwise_correlations.html">here</a>).</p>
+<pre class="python"><code>corr_mat = data_train_df.drop(&#39;date&#39;, axis=1).corr()
+
+fig, ax = plt.subplots(figsize=(8, 7))
+
+cmap = sns.diverging_palette(10, 220, as_cmap=True)
+
+sns.heatmap(
+    data=corr_mat, 
+    vmin=-1.0, 
+    vmax=1.0, 
+    center=0, 
+    cmap=cmap, 
+    square=True,
+    linewidths=0.5, 
+    linecolor=&#39;k&#39;,
+    annot=True, 
+    fmt=&#39;.3f&#39;,
+    ax=ax
+)
+
+ax.set_yticklabels(ax.get_yticklabels(), rotation=0, horizontalalignment=&#39;right&#39;)
+ax.set_xticklabels(ax.get_yticklabels(), horizontalalignment=&#39;center&#39;)
+ax.set(title=&#39;Correlarion Matrix (training data)&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_16_0.svg" title="fig:" alt="svg" />
+</center>
+<p><strong>Warning:</strong> If the target variable has a trend and/or a strong seasonal pattern, it is a good practice to run a correlation analysis on each component of the time series decomposition, see for example the analysis on <a href="https://juanitorduz.github.io/intro_sts_tfp/">this post</a>.</p>
+<p>In order to test for mulicollinearity (besides the one-to-one relation via correlation), we can compute the <a href="https://www.statsmodels.org/stable/generated/statsmodels.stats.outliers_influence.variance_inflation_factor.html">Variance Inflation Factor</a> which is calculated <em>by taking the the ratio of the variance of all a given model’s betas divide by the variance of a single beta if it were fit alone.</em><a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> <em>A rule of thumb is that if <span class="math inline">\(VIF(\beta_i)&gt; 10\)</span> then multicollinearity is high.</em><a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
+<pre class="python"><code>from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+X_train = data_train_df.drop([&#39;y&#39;, &#39;date&#39;], axis=1)
+
+vif_df = pd.DataFrame(
+    data= [ 
+        (c, variance_inflation_factor(exog=X_train.to_numpy(), exog_idx=i)) 
+        for i, c in enumerate(X_train.columns)
+    ], 
+    columns=[&#39;variable&#39;, &#39;vif&#39;]
+)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+
+sns.barplot(
+    x=&#39;variable&#39;, 
+    y=&#39;vif&#39;, 
+    color=sns_c[4],
+    edgecolor=sns_c[4],
+    alpha=0.8,
+    dodge=False,
+    data=vif_df, 
+    ax=ax
+)
+
+ax.axhline(y=1, color=&#39;black&#39;, linestyle=&#39;--&#39;)
+ax.set(title=&#39;Variance Inflation Factor&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_19_0.svg" title="fig:" alt="svg" />
+</center>
+<p>The all the values are close to one so there is no strong evidence of multicollinearity.</p>
+</div>
+<div id="data-pre-processing" class="section level2">
+<h2>Data Pre-Processing</h2>
+<p>As we want to run a linear model, it is very important to scale the features.</p>
+<pre class="python"><code>from sklearn.preprocessing import StandardScaler
+from sklearn.compose import ColumnTransformer
+
+target_variable = [&#39;y&#39;]
+
+date_features = [&#39;date&#39;]
+
+numeric_features = [&#39;x1&#39;, &#39;x2&#39;, &#39;dayofyear_sc&#39;, &#39;dayofyear_cc&#39;]
+
+preprocesser = ColumnTransformer(
+    transformers=[(&#39;std&#39;, StandardScaler(), numeric_features)]
+)
+preprocesser.fit(data_train_df)
+
+# Scale training data.
+data_train_scaled_df = pd.DataFrame(
+    data=preprocesser.transform(data_train_df),
+    columns=numeric_features
+)
+data_train_scaled_df[&#39;y&#39;] = data_train_df[&#39;y&#39;] 
+
+# Scale test data.
+data_test_scaled_df = pd.DataFrame(
+    data=preprocesser.transform(data_test_df),
+    columns=numeric_features
+)
+data_test_scaled_df[&#39;y&#39;] = data_train_df[&#39;y&#39;]</code></pre>
+</div>
+<div id="linear-model" class="section level2">
+<h2>Linear Model</h2>
+<p>Now we fit a linear model using <em>R-like</em> formulas.</p>
+<pre class="python"><code>model_formula = &#39;y ~ x1 + x2 + dayofyear_sc + dayofyear_cc&#39;
+model = smf.ols(model_formula, data=data_train_scaled_df)
+result = model.fit()
+# Print linear model stats.
+print(result.summary())</code></pre>
+<pre><code>    OLS Regression Results                            
+    ==============================================================================
+    Dep. Variable:                      y   R-squared:                       0.895
+    Model:                            OLS   Adj. R-squared:                  0.891
+    Method:                 Least Squares   F-statistic:                     211.6
+    Date:                Fri, 26 Jun 2020   Prob (F-statistic):           1.39e-47
+    Time:                        08:53:00   Log-Likelihood:                -312.92
+    No. Observations:                 104   AIC:                             635.8
+    Df Residuals:                      99   BIC:                             649.1
+    Df Model:                           4                                         
+    Covariance Type:            nonrobust                                         
+    ================================================================================
+                       coef    std err          t      P&gt;|t|      [0.025      0.975]
+    --------------------------------------------------------------------------------
+    Intercept       45.3816      0.493     92.085      0.000      44.404      46.359
+    x1               8.9506      0.499     17.946      0.000       7.961       9.940
+    x2               9.3664      0.542     17.272      0.000       8.290      10.442
+    dayofyear_sc    11.0818      0.534     20.771      0.000      10.023      12.140
+    dayofyear_cc     3.5598      0.500      7.115      0.000       2.567       4.552
+    ==============================================================================
+    Omnibus:                        5.514   Durbin-Watson:                   2.238
+    Prob(Omnibus):                  0.063   Jarque-Bera (JB):                4.898
+    Skew:                          -0.497   Prob(JB):                       0.0864
+    Kurtosis:                       3.378   Cond. No.                         1.57
+    ==============================================================================
+    
+    Warnings:
+    [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.</code></pre>
+</div>
+<div id="predictions" class="section level2">
+<h2>Predictions</h2>
+<p>Let us get the model predictions and confidence intervals (for both the mean and the observations).</p>
+<pre class="python"><code># Predictions on the training set.
+train_pred_df = result.get_prediction(data_train_scaled_df).summary_frame()
+train_pred_df.columns = &#39;pred_&#39; + train_pred_df.columns
+train_pred_df = pd.concat([data_train_df, train_pred_df], axis=1)
+train_pred_df = train_pred_df.assign(
+    error = lambda x: x[&#39;pred_mean&#39;] - x[&#39;y&#39;],
+    abs_error = lambda x: x[&#39;error&#39;].abs(),
+    p_error = lambda x: x[&#39;error&#39;].div(x[&#39;y&#39;])
+)
+# Predictions on the test set.
+test_pred_df = result.get_prediction(data_test_scaled_df).summary_frame()
+test_pred_df.columns = &#39;pred_&#39; + test_pred_df.columns
+test_pred_df = pd.concat([data_test_df.reset_index(drop=True), test_pred_df], axis=1)
+test_pred_df = test_pred_df.assign(
+    error = lambda x: x[&#39;pred_mean&#39;] - x[&#39;y&#39;],
+    abs_error = lambda x: x[&#39;error&#39;].abs(),
+    p_error = lambda x: x[&#39;error&#39;].div(x[&#39;y&#39;])
+)
+# Concatenate predictions.
+pred_df = pd.concat(
+    [train_pred_df.assign(tag=&#39;train&#39;), test_pred_df.assign(tag=&#39;test&#39;)], 
+    axis=0
+)</code></pre>
+<p>Now we plot the training fit and the prediction on the test set. In addition, we plot the confidence intervals on the prediction mean and on the observations.To make a difference between these two, we use the <code>alpha</code> parameter to modify the color transparency.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=train_pred_df, color=sns_c[0], label=&#39;y_train&#39;, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;pred_mean&#39;, data=train_pred_df, color=sns_c[3], label=&#39;y_train_pred&#39;, ax=ax)
+ax.fill_between(
+    x=train_pred_df[&#39;date&#39;],
+    y1=train_pred_df[&#39;pred_mean_ci_lower&#39;],
+    y2=train_pred_df[&#39;pred_mean_ci_upper&#39;],
+    color=sns_c[3], 
+    alpha=0.5,
+    label=&#39;Confidence Interval (mean_pred)&#39;
+)
+ax.fill_between(
+    x=train_pred_df[&#39;date&#39;],
+    y1=train_pred_df[&#39;pred_obs_ci_lower&#39;],
+    y2=train_pred_df[&#39;pred_obs_ci_upper&#39;],
+    color=sns_c[3], 
+    alpha=0.10,
+    label=&#39;Confidence Interval (mean_pred)&#39;
+)
+sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=test_pred_df, color=sns_c[1], label=&#39;y_test&#39;, ax=ax)
+sns.lineplot(x=&#39;date&#39;, y=&#39;pred_mean&#39;, data=test_pred_df, color=sns_c[2], label=&#39;y_test_pred&#39;, ax=ax)
+ax.fill_between(
+    x=test_pred_df[&#39;date&#39;],
+    y1=test_pred_df[&#39;pred_mean_ci_lower&#39;],
+    y2=test_pred_df[&#39;pred_mean_ci_upper&#39;],
+    color=sns_c[2], 
+    alpha=0.5,
+    label=&#39;Confidence Interval (obs_pred)&#39;
+)
+ax.fill_between(
+    x=test_pred_df[&#39;date&#39;],
+    y1=test_pred_df[&#39;pred_obs_ci_lower&#39;],
+    y2=test_pred_df[&#39;pred_obs_ci_upper&#39;],
+    color=sns_c[2], 
+    alpha=0.10,
+    label=&#39;Confidence Interval (obs_pred)&#39;
+)
+ax.legend(bbox_to_anchor=(1.3, 0.65))
+ax.set(title=&#39;Linear Model Prediction (train-Test Split)&#39;, ylabel=&#39;y&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_28_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Another useful way to visualize the predictions is using a scatter plot them against the true values.</p>
+<pre class="python"><code>g = sns.lmplot(x=&#39;y&#39;, y =&#39;pred_mean&#39;, data=pred_df, hue=&#39;tag&#39;)
+g.fig.suptitle(&#39;True Vs Pred&#39;, y=1.02)
+g.set_axis_labels(&#39;y_true&#39;, &#39;y_pred&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_30_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="error-analysis" class="section level2">
+<h2>Error Analysis</h2>
+<p>A crucial step in the model development/evaluation is the error analysis. Here we want to understand where the model is not doing well and see if there are hidden patterns which might inspire new features. In addition, we want to see if there are indicators of an overfit. For the later we can plot the (percent) errors distribution on the training and the test set.</p>
+<pre class="python"><code>fig, ax = plt.subplots(1, 2)
+sns.violinplot(x=&#39;tag&#39;, y=&#39;error&#39;, data=pred_df, hue=&#39;tag&#39;, palette=[sns_c[0], sns_c[1]], ax=ax[0])
+sns.violinplot(x=&#39;tag&#39;, y=&#39;p_error&#39;, data=pred_df, hue=&#39;tag&#39;, palette=[sns_c[2], sns_c[3]], ax=ax[1])
+ax[0].set(title=&#39;Absolute&#39;)
+ax[1].set(title=&#39;Percentaje&#39;)
+plt.suptitle(f&#39;Linear Model Errors Distribution&#39;, y=0.94);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_32_0.svg" title="fig:" alt="svg" />
+</center>
+<p>The distributions look comparable. Note however that there is point on which the percent error is very high:</p>
+<pre class="python"><code>pred_df.query(&#39;abs(p_error) &gt; 1.0&#39;).T</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+29
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+date
+</th>
+<td>
+2018-07-29 00:00:00
+</td>
+</tr>
+<tr>
+<th>
+y
+</th>
+<td>
+7.45683
+</td>
+</tr>
+<tr>
+<th>
+x1
+</th>
+<td>
+-0.907099
+</td>
+</tr>
+<tr>
+<th>
+x2
+</th>
+<td>
+34.012
+</td>
+</tr>
+<tr>
+<th>
+dayofyear_sc
+</th>
+<td>
+-0.4515
+</td>
+</tr>
+<tr>
+<th>
+dayofyear_cc
+</th>
+<td>
+-0.892271
+</td>
+</tr>
+<tr>
+<th>
+pred_mean
+</th>
+<td>
+15.2096
+</td>
+</tr>
+<tr>
+<th>
+pred_mean_se
+</th>
+<td>
+1.26779
+</td>
+</tr>
+<tr>
+<th>
+pred_mean_ci_lower
+</th>
+<td>
+12.694
+</td>
+</tr>
+<tr>
+<th>
+pred_mean_ci_upper
+</th>
+<td>
+17.7252
+</td>
+</tr>
+<tr>
+<th>
+pred_obs_ci_lower
+</th>
+<td>
+4.92487
+</td>
+</tr>
+<tr>
+<th>
+pred_obs_ci_upper
+</th>
+<td>
+25.4943
+</td>
+</tr>
+<tr>
+<th>
+error
+</th>
+<td>
+7.75276
+</td>
+</tr>
+<tr>
+<th>
+abs_error
+</th>
+<td>
+7.75276
+</td>
+</tr>
+<tr>
+<th>
+p_error
+</th>
+<td>
+1.03969
+</td>
+</tr>
+<tr>
+<th>
+tag
+</th>
+<td>
+train
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>In the next figure we represent the (percent) errors distributions in various ways: as a density an as a time series. In addition, we include the (partial) autocorrelation plots. These metrics are very useful to detect patterns on the errors. We also report the mape and wape error metrics. For a good model we want the errors to be <a href="https://en.wikipedia.org/wiki/White_noise">white noise</a>. I use this type of visualization to check model performance and to share the results.</p>
+<p><strong>Warning:</strong> The code might look complicated and long. But bear with me! There are three main pars: (1) Define grid. (2) Add data and (3) Plot customization. It is probably a good idea to wrap it as a function(s) but in this notebook I want it to be quite verbose so that you can understand the role of each line.</p>
+<ul>
+<li>Training Errors</li>
+</ul>
+<pre class="python"><code># Linear Model Error Plots. 
+# Compute Errors Metrics.
+error_mean = train_pred_df[&#39;error&#39;].mean()
+error_std = train_pred_df[&#39;error&#39;].std()
+p_error_mean = train_pred_df[&#39;p_error&#39;].mean()
+p_error_std = train_pred_df[&#39;p_error&#39;].std()
+mape = train_pred_df[&#39;p_error&#39;].abs().mean()
+wape = train_pred_df[&#39;error&#39;].abs().sum() / train_pred_df[&#39;y&#39;].abs().sum()
+# Define plot grid.
+fig = plt.figure(figsize=(12, 18), constrained_layout=True)
+grid = plt.GridSpec(5, 2, hspace=0.4)
+ax00 = fig.add_subplot(grid[0, 0])
+ax01 = fig.add_subplot(grid[0, 1])
+ax1 = fig.add_subplot(grid[1, :2])
+ax2 = fig.add_subplot(grid[2, :2])
+ax30 = fig.add_subplot(grid[3, 0])
+ax31 = fig.add_subplot(grid[3, 1])
+ax40 = fig.add_subplot(grid[4, 0])
+ax41 = fig.add_subplot(grid[4, 1])
+# Add data.
+sns.distplot(a=train_pred_df[&#39;error&#39;], color=sns_c[0], rug=True, ax=ax00)
+ax00.axvline(x=error_mean, color=sns_c[0], linestyle=&#39;--&#39;, label=f&#39;error mean = {error_mean: 0.2f}&#39;, alpha=0.8)
+ax00.axvline(x=error_mean + 2*error_std, color=sns_c[0], linestyle=&#39;--&#39;, alpha=0.5)
+ax00.axvline(x=error_mean - 2*error_std, color=sns_c[0], linestyle=&#39;--&#39;, alpha=0.5)
+sns.distplot(a=train_pred_df[&#39;p_error&#39;], color=sns_c[3], rug=True, ax=ax01)
+ax01.axvline(x=p_error_mean , color=sns_c[3], linestyle=&#39;--&#39;, label=f&#39;p_error mean = {p_error_mean: 0.2%}&#39;, alpha=0.8)
+ax01.axvline(x=p_error_mean + 2*p_error_std, color=sns_c[3], linestyle=&#39;--&#39;, alpha=0.5)
+ax01.axvline(x=p_error_mean - 2*p_error_std, color=sns_c[3], linestyle=&#39;--&#39;, alpha=0.5)
+sns.lineplot(x=&#39;date&#39;, y=&#39;error&#39;, data=train_pred_df, color=sns_c[0], label=&#39;error&#39;, ax=ax1)
+ax1.axhline(y=error_mean, color=sns_c[0], linestyle=&#39;--&#39;, label=&#39;error mean&#39;, alpha=0.7)
+ax1.fill_between(
+    x=train_pred_df[&#39;date&#39;], 
+    y1=error_mean - 2*error_std, 
+    y2=error_mean + 2*error_std,
+    color=sns_c[0],
+    alpha=0.1,
+    label=r&#39;mean $\pm$ 2 std&#39;
+)
+sns.lineplot(x=&#39;date&#39;, y=&#39;p_error&#39;, data=train_pred_df, color=sns_c[3], label=&#39;p_error&#39;, ax=ax2)
+ax2.axhline(y=p_error_mean , color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;p_error mean&#39;, alpha=0.7)
+ax2.fill_between(
+    x=train_pred_df[&#39;date&#39;], 
+    y1=p_error_mean - 2*p_error_std, 
+    y2=p_error_mean + 2*p_error_std,
+    color=sns_c[3],
+    alpha=0.1,
+    label=r&#39;mean $\pm$ 2 std&#39;
+)
+plot_acf(x=train_pred_df[&#39;error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[0]}, color=sns_c[0], ax=ax30)
+plot_acf(x=train_pred_df[&#39;p_error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[3]}, color=sns_c[3], ax=ax31)
+plot_pacf(x=train_pred_df[&#39;error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[0]}, color=sns_c[0], ax=ax40)
+plot_pacf(x=train_pred_df[&#39;p_error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[3]}, color=sns_c[3], ax=ax41)
+# Customization
+ax00.legend(loc=&#39;upper right&#39;)
+ax00.set(title=&#39;Errors Distribution&#39;)
+xvals01 = ax01.get_xticks()
+ax01.set_xticklabels([f&#39;{x:.0%}&#39; for x in xvals01])
+ax01.legend(loc=&#39;upper right&#39;)
+ax01.set(title=&#39;Percent Errors Distribution&#39;)
+ax1.legend(loc=&#39;upper left&#39;)
+ax1.set(title=&#39;Errors&#39;)
+yvals2 = ax2.get_yticks()
+ax2.set_yticklabels([f&#39;{x:.0%}&#39; for x in yvals2])
+ax2.legend(loc=&#39;upper left&#39;)
+ax2.set(title=&#39;Percent Errors&#39;)
+ax30.set(title=&#39;Autocorrelation (Errors)&#39;)
+ax31.set(title=&#39;Autocorrelation (Percent Errors)&#39;)
+ax40.set(title=&#39;Partial Autocorrelation (Errors)&#39;)
+ax41.set(title=&#39;Partial Autocorrelation (Percent Errors)&#39;)
+plt.suptitle(f&#39;Linear Model Errors (Training) - (mape = {mape: 0.2%}, wape = {wape: 0.2%}))&#39;, y=0.905);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_37_0.svg" title="fig:" alt="svg" />
+</center>
+<ul>
+<li>Test Errors</li>
+</ul>
+<pre class="python"><code># Linear Model Error Plots.
+# Compute Errors Metrics.
+error_mean = test_pred_df[&#39;error&#39;].mean()
+error_std = test_pred_df[&#39;error&#39;].std()
+p_error_mean = test_pred_df[&#39;p_error&#39;].mean()
+p_error_std = test_pred_df[&#39;p_error&#39;].std()
+mape = test_pred_df[&#39;p_error&#39;].abs().mean()
+wape = test_pred_df[&#39;error&#39;].abs().sum() / test_pred_df[&#39;y&#39;].abs().sum()
+# Define plot grid.
+fig = plt.figure(figsize=(12, 18), constrained_layout=True)
+grid = plt.GridSpec(5, 2, hspace=0.4)
+ax00 = fig.add_subplot(grid[0, 0])
+ax01 = fig.add_subplot(grid[0, 1])
+ax1 = fig.add_subplot(grid[1, :2])
+ax2 = fig.add_subplot(grid[2, :2])
+ax30 = fig.add_subplot(grid[3, 0])
+ax31 = fig.add_subplot(grid[3, 1])
+ax40 = fig.add_subplot(grid[4, 0])
+ax41 = fig.add_subplot(grid[4, 1])
+# Add data.
+sns.distplot(a=test_pred_df[&#39;error&#39;], color=sns_c[1], rug=True, ax=ax00)
+ax00.axvline(x=error_mean, color=sns_c[1], linestyle=&#39;--&#39;, label=f&#39;error mean = {error_mean: 0.2f}&#39;, alpha=0.8)
+ax00.axvline(x=error_mean + 2*error_std, color=sns_c[1], linestyle=&#39;--&#39;, alpha=0.5)
+ax00.axvline(x=error_mean - 2*error_std, color=sns_c[1], linestyle=&#39;--&#39;, alpha=0.5)
+sns.distplot(a=test_pred_df[&#39;p_error&#39;], color=sns_c[2], rug=True, ax=ax01)
+ax01.axvline(x=p_error_mean , color=sns_c[2], linestyle=&#39;--&#39;, label=f&#39;p_error mean = {p_error_mean: 0.2%}&#39;, alpha=0.8)
+ax01.axvline(x=p_error_mean + 2*p_error_std, color=sns_c[2], linestyle=&#39;--&#39;, alpha=0.5)
+ax01.axvline(x=p_error_mean - 2*p_error_std, color=sns_c[2], linestyle=&#39;--&#39;, alpha=0.5)
+sns.lineplot(x=&#39;date&#39;, y=&#39;error&#39;, data=test_pred_df, color=sns_c[1], label=&#39;error&#39;, ax=ax1)
+ax1.axhline(y=error_mean, color=sns_c[1], linestyle=&#39;--&#39;, label=&#39;error mean&#39;, alpha=0.7)
+ax1.fill_between(
+    x=test_pred_df[&#39;date&#39;], 
+    y1=error_mean - 2*error_std, 
+    y2=error_mean + 2*error_std,
+    color=sns_c[1],
+    alpha=0.1,
+    label=r&#39;mean $\pm$ 2 std&#39;
+)
+sns.lineplot(x=&#39;date&#39;, y=&#39;p_error&#39;, data=test_pred_df, color=sns_c[2], label=&#39;p_error&#39;, ax=ax2)
+ax2.axhline(y=p_error_mean , color=sns_c[2], linestyle=&#39;--&#39;, label=&#39;p_error mean&#39;, alpha=0.7)
+ax2.fill_between(
+    x=test_pred_df[&#39;date&#39;], 
+    y1=p_error_mean - 2*p_error_std, 
+    y2=p_error_mean + 2*p_error_std,
+    color=sns_c[2],
+    alpha=0.1,
+    label=r&#39;mean $\pm$ 2 std&#39;
+)
+plot_acf(x=test_pred_df[&#39;error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[1]}, color=sns_c[1], ax=ax30)
+plot_acf(x=test_pred_df[&#39;p_error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[2]}, color=sns_c[2], ax=ax31)
+plot_pacf(x=test_pred_df[&#39;error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[1]}, color=sns_c[1], ax=ax40)
+plot_pacf(x=test_pred_df[&#39;p_error&#39;], vlines_kwargs={&#39;color&#39;: sns_c[2]}, color=sns_c[2], ax=ax41)
+# Customization.
+ax00.legend(loc=&#39;upper left&#39;)
+ax00.set(title=&#39;Errors Distribution&#39;)
+xvals01 = ax01.get_xticks()
+ax01.set_xticklabels([f&#39;{x:.0%}&#39; for x in xvals01])
+ax01.legend(loc=&#39;upper left&#39;)
+ax01.set(title=&#39;Percent Errors Distribution&#39;)
+ax1.legend(loc=&#39;lower left&#39;)
+ax1.set(title=&#39;Errors&#39;)
+yvals2 = ax2.get_yticks()
+ax2.set_yticklabels([f&#39;{x:.0%}&#39; for x in yvals2])
+ax2.legend(loc=&#39;lower left&#39;)
+ax2.set(title=&#39;Percent Errors&#39;)
+ax30.set(title=&#39;Autocorrelation (Errors)&#39;)
+ax31.set(title=&#39;Autocorrelation (Percent Errors)&#39;)
+ax40.set(title=&#39;Partial Autocorrelation (Errors)&#39;)
+ax41.set(title=&#39;Partial Autocorrelation (Percent Errors)&#39;)
+plt.suptitle(f&#39;Linear Model Errors (Test) - (mape = {mape: 0.2%}, wape = {wape: 0.2%}))&#39;, y=0.905);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_39_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Finally, we can use quantile plots to see who similar/different are the (percent) errors distributions.</p>
+<pre class="python"><code>q_grid = np.linspace(start=0.0, stop=1.0, num=100)
+train_error_quantiles = np.quantile(a=train_pred_df[&#39;error&#39;], q=q_grid)
+test_error_quantiles = np.quantile(a=test_pred_df[&#39;error&#39;], q=q_grid)
+train_p_error_quantiles = np.quantile(a=train_pred_df[&#39;p_error&#39;], q=q_grid)
+test_p_error_quantiles = np.quantile(a=test_pred_df[&#39;p_error&#39;], q=q_grid)
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+sns.lineplot(x=q_grid, y=train_error_quantiles, color=sns_c[0], label=&#39;train&#39;, ax=ax[0])
+sns.lineplot(x=q_grid, y=test_error_quantiles, color=sns_c[1], label=&#39;tetst&#39;, ax=ax[0])
+sns.lineplot(x=q_grid, y=train_p_error_quantiles, color=sns_c[2], label=&#39;train&#39;, ax=ax[1])
+sns.lineplot(x=q_grid, y=test_p_error_quantiles, color=sns_c[3], label=&#39;tetst&#39;, ax=ax[1])
+ax[0].legend(loc=&#39;upper left&#39;)
+ax[0].set(title=&#39;Quantile Plot (Errors)&#39;, xlabel=&#39;q&#39;, ylabel=&#39;quantile&#39;)
+ax[1].legend(loc=&#39;upper left&#39;)
+ax[1].set(title=&#39;Quantile Plot (Percentaje Errors)&#39;, xlabel=&#39;q&#39;, ylabel=&#39;quantile&#39;);</code></pre>
+<center>
+<img src="../images/lm_viz_files/lm_viz_41_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Note for example that we can distinguish the long tail on the percent errors distribution of the training data (green line for <span class="math inline">\(q&gt;0.8\)</span>).</p>
+<hr />
+</div>
+<div id="final-remarks" class="section level2">
+<h2>Final Remarks</h2>
+<ul>
+<li>The methods and plots presented in this notebook are of course not exhaustive of the types of analysis and diagnostics one can do in the context of regression analysis.</li>
+<li>For an in-depth time series analysis model, one would run a time-slice cross-validation to estimate model performance (and not just one train-test split).</li>
+<li>We have worked out some concrete examples which might be useful as references to use during the modeling cycle.</li>
+<li>In addition, I have found in practive that these types of visualizations can be very effective in communicating results.</li>
+</ul>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><a href="https://etav.github.io/python/vif_factor_python.html">https://etav.github.io/python/vif_factor_python.html</a><a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p><a href="https://en.wikipedia.org/wiki/Variance_inflation_factor">Wiki: Variance Inflation Factor</a><a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
