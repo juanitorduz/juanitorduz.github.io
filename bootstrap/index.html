@@ -78,7 +78,7 @@
       
 
 
-<p>“The bootstrap is a widely applicable and extremely powerful statistical tool that can be used to quantify the uncertainty associated with a given estimator or statistical learning method.” This is how Section 5.2 of the book <a href="http://www-bcf.usc.edu/~gareth/ISL/">An Introduction to Statistical Learning</a>, writen by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani, begins. Bootstrap can be used to estimate the standard errors of the coefficients from a linear regression and is the conceptual bais for some tree ensemble algorithms.</p>
+<p><em>“The bootstrap is a widely applicable and extremely powerful statistical tool that can be used to quantify the uncertainty associated with a given estimator or statistical learning method.”</em> This is how Section 5.2 of the book <a href="http://www-bcf.usc.edu/~gareth/ISL/">An Introduction to Statistical Learning</a>, written by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani, begins. Bootstrap can be used to estimate the standard errors of the coefficients from a linear regression and is the conceptual basis for some tree ensemble algorithms.</p>
 <p>This post is not devoted the bootstrap itself but rather about understanding the often encountered statement:</p>
 <p><em>On average, each bootstrap sample makes use of around two-thirds of the observations</em>.</p>
 <p>What does this mean and why it is true?</p>
@@ -136,12 +136,12 @@ def generate_plot(sample_size_max):
     plt.ylabel(&#39;probability the j-th observation is in the bootstrap&#39;);</code></pre>
 <pre class="python"><code>generate_plot(50);</code></pre>
 <center>
-<img src="../images/bootstrap_files/bootstrap_11_0.png" alt="png" />
+<img src="../images/bootstrap_files/bootstrap_11_0.png" title="fig:" alt="png" />
 </center>
 <p>Now we do it for <span class="math inline">\(n\)</span> from 1 to 100,000:</p>
 <pre class="python"><code>generate_plot(1e5);</code></pre>
 <center>
-<img src="../images/bootstrap_files/bootstrap_13_0.png" alt="png" />
+<img src="../images/bootstrap_files/bootstrap_13_0.png" title="fig:" alt="png" />
 </center>
 <p>Clearly this probabilities are converging! But, to which value?</p>
 <p>Recall that the <a href="https://en.wikipedia.org/wiki/Exponential_function">exponential function</a> satisfies:</p>
@@ -159,12 +159,12 @@ p_j := \lim_{n\rightarrow \infty}p_j(n) = e^{-1} \approx 0.3678794
 <pre class="python"><code>generate_plot(50)
 plt.axhline(y=1 - np.exp(-1) , color=&#39;g&#39;, linestyle=&#39;--&#39;);</code></pre>
 <center>
-<img src="../images/bootstrap_files/bootstrap_17_0.png" alt="png" />
+<img src="../images/bootstrap_files/bootstrap_17_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code>generate_plot(1e5)
 plt.axhline(y=1 - np.exp(-1) , color=&#39;g&#39;, linestyle=&#39;--&#39;);</code></pre>
 <center>
-<img src="../images/bootstrap_files/bootstrap_18_0.png" alt="png" />
+<img src="../images/bootstrap_files/bootstrap_18_0.png" title="fig:" alt="png" />
 </center>
 <p><strong>(h)</strong> We will now investigate numerically the probability that a bootstrap sample of size \(n = 100\) contains the \(j\)-th observation. Here \(j = 4\). We repeatedly create bootstrap samples, and each time we record whether or not the fourth observation is contained in the bootstrap sample.</p>
 <p>We write this function as:</p>
@@ -208,7 +208,7 @@ plt.axvline(1 - np.exp(-1), color=&#39;purple&#39;, linestyle=&#39;--&#39;, labe
 plt.legend()
 plt.title(f&#39;Histogram:  Bootstrap sample of size n=100 contains the {j}-th observation&#39;);</code></pre>
 <center>
-<img src="../images/bootstrap_files/bootstrap_28_0.png" alt="png" />
+<img src="../images/bootstrap_files/bootstrap_28_0.png" title="fig:" alt="png" />
 </center>
 <p>If we compute the mean:</p>
 <pre class="python"><code>simulation_array.mean()</code></pre>
