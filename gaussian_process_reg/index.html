@@ -123,7 +123,7 @@ sns.lineplot(x=x, y=np.sin((4*np.pi)*x), color=&#39;purple&#39;, label=&#39;sin(
 ax.legend(loc=&#39;upper right&#39;)
 ax.set_title(r&#39;Graph of $f(x) = \sin(4\pi x) + \sin(7\pi x)$&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_6_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_6_0.png" title="fig:" alt="png" />
 </center>
 <p>Next, we generate some training sample observations:</p>
 <pre class="python"><code># Error standard deviation. 
@@ -138,7 +138,7 @@ y = f_x + epsilon</code></pre>
 sns.distplot(epsilon, ax=ax)
 ax.set(title=&#39;Error Distribution&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_10_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_10_0.png" title="fig:" alt="png" />
 </center>
 <p>We now visualize the sample data:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
@@ -150,7 +150,7 @@ sns.lineplot(x=x, y=f_x, color=&#39;red&#39;, label=&#39;f(x)&#39;, ax=ax);
 ax.set(title=&#39;Sample Data&#39;)
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_12_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_12_0.png" title="fig:" alt="png" />
 </center>
 <p>We now consider test data points on which we want to generate predictions.</p>
 <pre class="python"><code>n_star = 100
@@ -219,7 +219,7 @@ def compute_cov_matrices(x, x_star, sigma_f=1, l=1):
 sns.heatmap(data=K, cmap=&#39;Blues&#39;, ax=ax)
 ax.set(title=&#39;Components of the Kernel Matrix K&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_28_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_28_0.png" title="fig:" alt="png" />
 </center>
 <ul>
 <li><span class="math inline">\(K(X_*, X_*)\)</span></li>
@@ -230,7 +230,7 @@ ax.set(title=&#39;Components of the Kernel Matrix K&#39;);</code></pre>
 sns.heatmap(data=K_star2, cmap=&#39;Blues&#39;, ax=ax)
 ax.set(title=&#39;Components of the Kernel Matrix K_star2&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_31_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_31_0.png" title="fig:" alt="png" />
 </center>
 <ul>
 <li><span class="math inline">\(K(X_*, X)\)</span></li>
@@ -241,7 +241,7 @@ ax.set(title=&#39;Components of the Kernel Matrix K_star2&#39;);</code></pre>
 sns.heatmap(data=K_star, cmap=&#39;Blues&#39;, ax=ax)
 ax.set(title=&#39;Components of the Kernel Matrix K_star&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_34_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_34_0.png" title="fig:" alt="png" />
 </center>
 <p>Note how the highest values of the support of all these matrices is localized around the diagonal.</p>
 </div>
@@ -289,7 +289,7 @@ C.shape == (n + n_star, n + n_star)</code></pre>
 sns.heatmap(data=C, cmap=&#39;Blues&#39;, ax=ax)
 ax.set(title=&#39;Components of the Covariance Matrix C&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_45_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_45_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="prior-distribution" class="section level2">
@@ -308,7 +308,7 @@ sns.lineplot(x=x, y=f_x, color=&#39;red&#39;, label=&#39;f(x)&#39;, ax=ax)
 ax.set(title=&#39;Samples of Prior Distribution&#39;)
 ax.legend(loc=&#39;lower right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_48_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_48_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="conditional-distribution" class="section level2">
@@ -327,7 +327,7 @@ N(\bar{f}_*, \text{cov}(f_*))
 \]</span></p>
 <p>and</p>
 <p><span class="math display">\[
-\text{cov}(f_*) = K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} K(X, X_*) \in M_{n_*}(\mathbb{R})
+\text{cov}(f_*) = K(X_*, X_*) - K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} K(X, X_*) \in M_{n_*}(\mathbb{R})
 \]</span></p>
 <p>We now calculate the parameters of the posterior distribution:</p>
 <pre class="python"><code>def compute_gpr_parameters(K, K_star2, K_star, sigma_n):
@@ -346,7 +346,7 @@ f_bar_star, cov_f_star = compute_gpr_parameters(K, K_star2, K_star, sigma_n)</co
 sns.heatmap(data=cov_f_star, cmap=&#39;Blues&#39;, ax=ax)
 ax.set_title(&#39;Components of the Covariance Matrix cov_f_star&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_55_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_55_0.png" title="fig:" alt="png" />
 </center>
 <p>Let us now sample from the posterior distribution:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
@@ -362,7 +362,7 @@ sns.lineplot(x=x, y=f_x, color=&#39;red&#39;, label = &#39;f(x)&#39;, ax=ax)
 ax.set(title=f&#39;Samples of Posterior Distribution, sigma_f = {sigma_f} and l = {l}&#39;)
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_57_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_57_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="hyperparameters" class="section level2">
@@ -389,7 +389,7 @@ fig, ax = plt.subplots(figsize=(10, 8))
 sns.heatmap(data=cov_f_star, cmap=&#39;Blues&#39;, ax=ax)
 ax.set(title=f&#39;Components of the Covariance Matrix cov_f_star, sigma_f = {sigma_f} and l = {l}&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_62_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_62_0.png" title="fig:" alt="png" />
 </center>
 <p>In this case the values of the posterior covariance matrix are not that localized. This means that we expect points far away can still have some interaction, i.e. the fit becomes more global. Let us plot the resulting fit:</p>
 <pre class="python"><code>K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f=sigma_f, l=l)
@@ -409,7 +409,7 @@ sns.lineplot(x=x, y=f_x, color=&#39;red&#39;, label=&#39;f(x)&#39;, ax=ax)
 ax.set(title=f&#39;Samples of Posterior Distribution, sigma_f = {sigma_f} and l = {l}&#39;)
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_64_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_64_0.png" title="fig:" alt="png" />
 </center>
 <ul>
 <li><span class="math inline">\(\sigma_f = 2\)</span> and <span class="math inline">\(\ell = 0.001\)</span></li>
@@ -426,7 +426,7 @@ fig, ax = plt.subplots(figsize=(10, 8))
 sns.heatmap(data=cov_f_star, cmap=&#39;Blues&#39;, ax=ax)
 ax.set(title=f&#39;Components of the Covariance Matrix cov_f_star, sigma_f = {sigma_f} and l = {l}&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_66_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_66_0.png" title="fig:" alt="png" />
 </center>
 <p>In contrast, we see that for these set of hyper parameters the higher values of the posterior covariance matrix are concentrated along the diagonal. This means that we expect points far away to have no effect on each other, i.e. the fit becomes more local. Let us plot the resulting fit:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
@@ -442,7 +442,7 @@ sns.lineplot(x=x, y=f_x, color=&#39;red&#39;, label=&#39;f(x)&#39;, ax=ax)
 ax.set(title=f&#39;Samples of Posterior Distribution, sigma_f = {sigma_f} and l = {l}&#39;)
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_68_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_68_0.png" title="fig:" alt="png" />
 </center>
 <p>Hence, we see that the hyperparameter <span class="math inline">\(\ell\)</span> somehow encodes the “complexity” and “locality” of the model.</p>
 <ul>
@@ -461,7 +461,7 @@ fig, ax = plt.subplots(figsize=(10, 8))
 sns.heatmap(data=cov_f_star, cmap=&#39;Blues&#39;, ax=ax)
 ax.set(title=f&#39;Components of the Covariance Matrix cov_f_star, sigma_f = {sigma_f} and l = {l}&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_71_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_71_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code>fig, ax = plt.subplots()
 
@@ -476,7 +476,7 @@ sns.lineplot(x=x, y=f_x, color=&#39;red&#39;, label = &#39;f(x)&#39;, ax=ax);
 ax.set(title=f&#39;Samples of Posterior Distribution, sigma_f = {sigma_f} and l = {l}&#39;)
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_72_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_72_0.png" title="fig:" alt="png" />
 </center>
 <p>The hyperparameter <span class="math inline">\(\sigma_f\)</span> enoces the amplitude of the fit.</p>
 </div>
@@ -527,7 +527,7 @@ sns.lineplot(x=x_star, y=y_pred, color=&#39;green&#39;, label=&#39;pred&#39;, ax
 ax.set(title=f&#39;Prediction GaussianProcessRegressor, sigma_f = {sigma_f} and l = {l}&#39;)
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_88_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_88_0.png" title="fig:" alt="png" />
 </center>
 <p>Next, we plot this prediction against many samples from the posterior distribution obtained above.</p>
 <pre class="python"><code>K, K_star2, K_star = compute_cov_matrices(x, x_star, sigma_f = sigma_f, l = l)
@@ -549,7 +549,7 @@ sns.lineplot(x=x_star, y=y_pred, color=&#39;green&#39;, label=&#39;pred&#39;, ax
 ax.set(title=f&#39;Prediction GaussianProcessRegressor, sigma_f = {sigma_f} and l = {l}&#39;)
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_90_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_90_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="credible-interval-interval" class="section level3">
@@ -581,7 +581,7 @@ sns.lineplot(x=x_star, y=y_pred, color=&#39;green&#39;, label=&#39;pred&#39;, ax
 ax.set_title(&#39;Prediction &amp; Credible Interval, sigma_f = {} and l = {}&#39;.format(sigma_f, l))
 ax.legend(loc=&#39;upper right&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_95_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_95_0.png" title="fig:" alt="png" />
 </center>
 </div>
 </div>
@@ -673,7 +673,7 @@ sns.lineplot(x=x_star, y=y_pred, color=&#39;green&#39;, label=&#39;pred&#39;)
 ax.set(title=&#39;Prediction &amp; Credible Interval&#39;)
 ax.legend(loc=&#39;lower left&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_regression_files/gaussian_process_regression_107_0.png" alt="png" />
+<img src="../images/gaussian_process_regression_files/gaussian_process_regression_107_0.png" title="fig:" alt="png" />
 </center>
 <hr />
 <p>This is just the the beginning. There are many questions which are still open:</p>
@@ -697,6 +697,7 @@ ax.legend(loc=&#39;lower left&#39;);</code></pre>
 </ul></li>
 </ul>
 <p>I hope to keep exploring these and more questions in future posts.</p>
+<p><strong>Acknowledgments:</strong> Thank you to Fox Weng for pointing out a typo in one of the formulas presented in a previous version of the post.</p>
 </div>
 </div>
 
