@@ -87,8 +87,8 @@
 <li><p>PyMC3’s user-facing features are written in pure Python, it leverages <a href="http://deeplearning.net/software/theano/">Theano</a> to transparently transcode models to C and compile them to machine code, thereby boosting performance.</p></li>
 <li><p>Theano is a library that allows expressions to be defined using generalized vector data structures called tensors, which are tightly integrated with the popular <a href="http://www.numpy.org/">NumPy</a> ndarray data structure.</p></li>
 </ul>
-<p>In addition, from a practical point of view, PyMC3 syntax is very transpartent from the mathematical point of view.</p>
-<p>This post is not aimed to give a full treatment of the <del>mathematical details</del>, as there are many good (complete and detailed) references around these topics. Also, we are not going to dive deep into PyMC3 as all the details can be found in the documentation. Instead, we are interested in giving an overview of the basic mathematical consepts combinded with examples (writen in Python code) which should make clear why <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Monte Carlo</a> simulations are useful in Bayesian modeling.</p>
+<p>In addition, from a practical point of view, PyMC3 syntax is very transparent from the mathematical point of view.</p>
+<p>This post is not aimed to give a full treatment of the <del>mathematical details</del>, as there are many good (complete and detailed) references around these topics. Also, we are not going to dive deep into PyMC3 as all the details can be found in the documentation. Instead, we are interested in giving an overview of the basic mathematical concepts combined with examples (written in Python code) which should make clear why <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Monte Carlo</a> simulations are useful in Bayesian modeling.</p>
 <div id="mathematical-background" class="section level1">
 <h1>1. Mathematical Background</h1>
 </div>
@@ -183,7 +183,7 @@ plt.figure(figsize=(8, 6))
 plt.hist(y, bins=15)
 plt.title(&#39;Histogram of Simulated Data&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_8_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_8_0.png" title="fig:" alt="png" />
 </center>
 <div id="prior-gamma-distribution" class="section level3">
 <h3>Prior: Gamma Distribution</h3>
@@ -213,7 +213,7 @@ plt.title(&#39;Gamma Density Function for a={} and b={}&#39;.format(a,b))
 # Define the prior distribution.
 prior = lambda x: ss.gamma.pdf(x, a=a, scale=1/b)</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_10_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_10_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="likelihood" class="section level3">
@@ -265,7 +265,7 @@ plt.plot(x, 2.0e74*posterior_up_to_constant(x,y), label=&#39;posterior&#39;)
 plt.plot(x, ss.gamma.pdf(x,a=a,scale=1/b), &#39;r-&#39;, label=&#39;prior&#39;)
 plt.legend();</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_14_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_14_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="true-posterior-distribution-for-lambda" class="section level3">
@@ -287,7 +287,7 @@ plt.plot(x, posterior(x,y))
 plt.plot(x, ss.gamma.pdf(x,a=a,scale=1/b), &#39;r-&#39;)
 plt.title(&#39;Prior and Posterior Distributions&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_16_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_16_0.png" title="fig:" alt="png" />
 </center>
 <p>We indeed see how the posterior distribution is concentrated around the true parameter <span class="math inline">\(\lambda=2\)</span>.</p>
 <p>Note that the posterior mean is</p>
@@ -381,12 +381,12 @@ Sampling 3 chains: 100%|██████████| 7500/7500 [00:01&lt;00:0
 </ul>
 <pre class="python"><code>pm.traceplot(trace);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_26_1.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_26_1.png" title="fig:" alt="png" />
 </center>
 <p>We can also see the mean and quantile information for the posterior distribution.</p>
 <pre class="python"><code>pm.plot_posterior(trace);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_28_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_28_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="bayesian-hierarchical-modeling-a-chocolate-cookies-example" class="section level1">
@@ -511,14 +511,14 @@ fig, ax = plt.subplots(figsize=(8, 6))
 sns.distplot(cookies[&#39;chips&#39;], bins=15, ax=ax);
 ax.set(title=&#39;Chips Distribution (All Locations)&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_34_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_34_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code># Histogram distribution of chocolate chips
 # for cookies in each location.
 g = sns.FacetGrid(data=cookies, col=&#39;location&#39;, col_wrap=2, height=3, aspect=2)
 g = g.map(sns.distplot, &#39;chips&#39;)</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_35_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_35_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code># Box plot for different locations.
 fig, ax = plt.subplots(figsize=(10,6))
@@ -569,7 +569,7 @@ plt.plot(x, ss.expon.pdf(x,1), &#39;r-&#39;)
 plt.title(&#39;Prior Distribution for sigma2 \n Exponential Density Function&#39;)
 plt.xlim(1,10);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_38_1.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_38_1.png" title="fig:" alt="png" />
 </center>
 <p>Let us write the model in PyMC3. Note how the syntax mimics the mathematical formulation.</p>
 <pre class="python"><code>model = pm.Model()
@@ -621,7 +621,7 @@ Sampling 3 chains: 100%|██████████| 4500/4500 [00:02&lt;00:0
 <p>Many <a href="https://pymc-devs.github.io/pymc3/api/diagnostics.html">diagnostic</a> options are described in the PyMC3 documentation.</p>
 <pre class="python"><code>pm.traceplot(trace);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_42_1.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_42_1.png" title="fig:" alt="png" />
 </center>
 <p>From the traceplot we see that the chains have converged. We can also have a detailed summary of the posterior distribution for each parameter:</p>
 <pre class="python"><code>pm.summary(trace)</code></pre>
@@ -1029,7 +1029,7 @@ cookies.reset_index().plot.scatter(x=&#39;index&#39;, y=&#39;resid&#39;, ax=ax)
 ax.axhline(y=0.0, color=&#39;r&#39;, linestyle=&#39;--&#39;)
 ax.set(title=&#39;Cookies Residuals&#39;, xlabel=&#39;Observation&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_58_1.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_58_1.png" title="fig:" alt="png" />
 </center>
 <p>We do not see a particular partern in the scatter plot of the residuals against the observation.</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 6))
@@ -1037,7 +1037,7 @@ cookies.plot.scatter(x=&#39;yhat&#39;, y=&#39;resid&#39;, ax=ax)
 ax.axhline(y=0.0, color=&#39;red&#39;, linestyle=&#39;--&#39;)
 ax.set(title=&#39;Cookies Residuals&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_60_1.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_60_1.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="predictions" class="section level2">
@@ -1054,7 +1054,7 @@ fig, ax = plt.subplots(figsize=(8, 6))
 sns.distplot(y_pred_location_1, bins=30, ax=ax)
 ax.set(title=&#39;Chocolate Chips Distribution for Location 1&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_62_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_62_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code># Probability the next cookie in location has less than 7 chips.
 (y_pred_location_1 &lt; 7).astype(int).mean()</code></pre>
@@ -1076,7 +1076,7 @@ fig, ax = plt.subplots(figsize=(8, 6))
 sns.distplot(lambda_pred_dist, bins=30, ax=ax)
 ax.set(title=&#39;Lambda Predicted Distribution&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_65_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_65_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code># Posterior probability a new location has lambda &gt; 15.
 (lambda_pred_dist &gt; 15).astype(int).mean()</code></pre>
@@ -1090,7 +1090,7 @@ fig, ax = plt.subplots(figsize=(8, 6))
 sns.distplot(cookies_pred_dist, bins=30, ax=ax)
 ax.set(title=&#39;Chocolate Chips Distribution New Location&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_68_0.png" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_68_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code># Posterior probability that a cookie produced 
 # in a new location has more than 15 chocolate chips.

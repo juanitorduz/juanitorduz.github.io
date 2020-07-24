@@ -133,7 +133,7 @@ sns.lineplot(x=&#39;date&#39;, y=&#39;x&#39;, label=&#39;x&#39;, data=df, ax=ax)
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=r&#39;External Regressor $x$&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_11_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_11_0.png" title="fig:" alt="png" />
 </center>
 <p>Now, let us add a non-linear trend component of the form <span class="math inline">\(t\longmapsto t^{1/3}\)</span>.</p>
 <pre class="python"><code>df[&#39;y&#39;] = df[&#39;y&#39;] + np.power(df.index.values, 1/3)</code></pre>
@@ -483,7 +483,7 @@ sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, label=&#39;y&#39;, data=df, ax=ax)
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=&#39;Dependent Variable&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_17_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_17_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="train---test-split" class="section level2">
@@ -501,7 +501,7 @@ ax.axvline(threshold_date, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;tr
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=&#39;Dependent Variable&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_20_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_20_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="time-series-exploratory-analysis" class="section level2">
@@ -524,7 +524,7 @@ sns.lineplot(x=&#39;date&#39;, y=&#39;y_smooth_2&#39;, label=&#39;y_train_smooth
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=&#39;Dependent Variable - Smoothing&#39;, ylabel=&#39;y&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_23_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_23_0.png" title="fig:" alt="png" />
 </center>
 <p>From this plot we see two clear seasonalities: yearly and monthly. The variable <code>y_train_smooth yearly</code> also includes a positive trend component, which does not look linear.</p>
 <p>To understand how to model the monthly seasonality we plot the mean of <code>y</code> over the day of the month.</p>
@@ -532,7 +532,7 @@ ax.set(title=&#39;Dependent Variable - Smoothing&#39;, ylabel=&#39;y&#39;);</cod
 df_train.groupby(&#39;day_of_month&#39;).agg({&#39;y&#39;: np.mean}).plot(ax=ax)
 ax.set(title=&#39;Day of the month mean&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_25_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_25_0.png" title="fig:" alt="png" />
 </center>
 <p>This shows a good first approximation is to model this component via a cyclic variable of the form <span class="math inline">\(z\longmapsto \sin(z)\)</span>.</p>
 </div>
@@ -574,7 +574,7 @@ fig, ax = plt.subplots(2, 1)
 plot_acf(x=y_no_year_month_season, ax=ax[0])
 plot_pacf(x=y_no_year_month_season, ax=ax[1]);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_30_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_30_0.png" title="fig:" alt="png" />
 </center>
 <p>From the autocorrelation plot we observe a clear seasonality component at lag 7. Moreover, looking into the shape of the plot we can also see that the encoding is cyclical.</p>
 </div>
@@ -602,7 +602,7 @@ ax.set(
     ylabel=&#39;y_no_year_month_season&#39;
 );</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_37_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_37_0.png" title="fig:" alt="png" />
 </center>
 <p>We indeed see we have clear clusters on each level of <code>x</code> corresponding to each day of the week.</p>
 <p>One way of removing this seasonality is via a linear regression model. We use a one-hot encoding for the day of the week variable.</p>
@@ -928,7 +928,7 @@ fig, ax = plt.subplots()
 sns.lineplot(x=f, y=Pxx_den, ax=ax)
 ax.set(title=&#39;Power Spectral Density&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_51_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_51_0.png" title="fig:" alt="png" />
 </center>
 <p>Each of these peaks represent the seasonal components. To compute the associated frequency wee need to compute their multiplicative inverse.</p>
 <pre class="python"><code># Sort to get the peak values.
@@ -1084,7 +1084,7 @@ decomposition_obj.resid.plot(ax=ax[3])
 ax[3].set(title=&#39;residual&#39;)
 plt.tight_layout()</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_56_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_56_0.png" title="fig:" alt="png" />
 </center>
 <p>Note that the trend component also includes the monthly and yearly seasonality. This might not always be desired. You can of course use the smoothing technique presented above or keep decomposing the resulting trend by specifying the <code>period</code> parameter in the <code>seasonal_decompose</code> function.</p>
 <ul>
@@ -1312,7 +1312,7 @@ for i, param in enumerate(toy_model.parameters):
 plt.tight_layout(pad=3.0)
 plt.suptitle(&#39;PRIOR DISTRIBUTIONS&#39;, y=0.99);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_76_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_76_0.png" title="fig:" alt="png" />
 </center>
 <p>Next we run the optimization procedure.</p>
 <pre class="python"><code>num_variational_steps = int(200)
@@ -1346,7 +1346,7 @@ elbo_loss_curve = train()</code></pre>
 ax.plot(elbo_loss_curve, marker=&#39;.&#39;)
 ax.set(title=&#39;ELBO Loss Curve&#39;, xlabel=&#39;iteration&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_80_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_80_0.png" title="fig:" alt="png" />
 </center>
 <p>We see that a minimum has been reached.</p>
 <p>Now we sample from the variational posteriors obtained:</p>
@@ -1373,7 +1373,7 @@ for i, param in enumerate(toy_model.parameters):
 plt.tight_layout(pad=3.0)
 plt.suptitle(&#39;POSTERIOR DISTRIBUTIONS&#39;, y=0.99);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_85_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_85_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code># Get mean and std for each parameter.
 print(&#39;Inferred parameters:&#39;)
@@ -1438,7 +1438,7 @@ ax.axvline(x= threshold_date, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=&#39;STS Forecast&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_94_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_94_0.png" title="fig:" alt="png" />
 </center>
 <p>Zooming in:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
@@ -1456,7 +1456,7 @@ sns.lineplot(x=&#39;date&#39;, y=&#39;y_pred&#39;, label=&#39;prediction&#39;, d
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=&#39;STS Forecast&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_96_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_96_0.png" title="fig:" alt="png" />
 </center>
 <p>Let us see it as a scatter plot.</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(8,8))
@@ -1468,7 +1468,7 @@ sns.regplot(x=&#39;y&#39;, y=&#39;y_pred&#39;, data=df_test, ax=ax)
 sns.lineplot(x=d_x, y=d_x, dashes={&#39;linestyle&#39;: &#39;&#39;}, ax=ax)
 ax.lines[1].set_linestyle(&#39;--&#39;)</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_98_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_98_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="error-analysis" class="section level2">
@@ -1489,7 +1489,7 @@ ax.axvline(x=errors_mean - 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;)
 ax.legend()
 ax.set(title=&#39;Model Errors (Test Set)&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_101_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_101_0.png" title="fig:" alt="png" />
 </center>
 <p>The errors look normally distributed and centered around zero.</p>
 <ul>
@@ -1504,13 +1504,13 @@ ax.axhline(y=errors_mean - 2*errors_std, color=sns_c[3], linestyle=&#39;--&#39;)
 ax.legend()
 ax.set(title=&#39;Model Errors (Test Set)&#39;);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_104_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_104_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code>fig, ax = plt.subplots(2, 1)
 plot_acf(x=df_test[&#39;errors&#39;], ax=ax[0])
 plot_pacf(x=df_test[&#39;errors&#39;], ax=ax[1]);</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_105_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_105_0.png" title="fig:" alt="png" />
 </center>
 <p>We do not see any significant (partial) autocorrelation nor patterns on the errors. They look independent and normally distributed around zero.</p>
 </div>
@@ -1548,7 +1548,7 @@ for i, component_name in enumerate(component_means.keys()):
 
 plt.tight_layout()</code></pre>
 <center>
-<img src="../images/intro_sts_tfp_files/intro_sts_tfp_110_0.png" alt="png" />
+<img src="../images/intro_sts_tfp_files/intro_sts_tfp_110_0.png" title="fig:" alt="png" />
 </center>
 <hr />
 <p>This was a first exploration of the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/sts">STS TensorFlow Probability</a> module. We emphasized on the time series exploratory analysis since, in real applications, we are never given the time series structure prior modeling (that would be quite boring). I really want to keep exploring the tools and techniques implemented in this probabilistic programming framework.</p>
@@ -1556,8 +1556,8 @@ plt.tight_layout()</code></pre>
 <div class="footnotes">
 <hr />
 <ol>
-<li id="fn1"><p><a href="https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083">Structural Time Series modeling in TensorFlow Probability</a><a href="#fnref1" class="footnote-back">↩</a></p></li>
-<li id="fn2"><p><a href="https://arxiv.org/pdf/1601.00670.pdf">Variational Inference: A Review for Statisticians</a><a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn1"><p><a href="https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083">Structural Time Series modeling in TensorFlow Probability</a><a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p><a href="https://arxiv.org/pdf/1601.00670.pdf">Variational Inference: A Review for Statisticians</a><a href="#fnref2" class="footnote-back">↩︎</a></p></li>
 </ol>
 </div>
 

@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>A Simple HMC Example with TensorFlow Probability - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="A Simple HMC Example with TensorFlow Probability - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">8 min read</span>
+    
+
+    <h1 class="article-title">A Simple HMC Example with TensorFlow Probability</h1>
+
+    
+    <span class="article-date">2020-07-24</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this post we want to revisit a simple bayesian inference example worked out in <a href="https://juanitorduz.github.io/intro_pymc3/">this blog post</a>. This time we want to use <a href="https://www.tensorflow.org/probability">TensorFlow Probability</a> (TFP) instead of <a href="https://docs.pymc.io/notebooks/getting_started.html">PyMC3</a>.</p>
+<p><strong>References:</strong></p>
+<ul>
+<li><p><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a> is an amazing reference for Bayesian analysis. It also has a sequence of online lectures freely available on <a href="https://www.youtube.com/watch?v=4WVelCswXo4&amp;list=PLDcUM9US4XdNM4Edgs7weiyIguLSToZRI">YouTube</a>.</p></li>
+<li><p><a href="https://blog.tensorflow.org/2018/12/an-introduction-to-probabilistic.html">An introduction to probabilistic programming, now available in TensorFlow Probability</a></p></li>
+<li><p>There are many examples on the <a href="https://github.com/tensorflow/probability/tree/master/tensorflow_probability/examples/jupyter_notebooks">TensorFlow’s GitHub repository</a>. I am following the case study <a href="https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Bayesian_Switchpoint_Analysis.ipynb">Bayesian Switchpoint Analysis</a> for this example.</p></li>
+</ul>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import scipy.stats as ss
+import pandas as pd
+import tensorflow.compat.v2 as tf
+tf.enable_v2_behavior()
+import tensorflow_probability as tfp
+tfd = tfp.distributions
+
+# Data Viz. 
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
+plt.rcParams[&#39;figure.figsize&#39;] = [8, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100
+
+# Get TensorFlow version.
+print(f&#39;TnesorFlow version: {tf.__version__}&#39;)
+print(f&#39;TnesorFlow Probability version: {tfp.__version__}&#39;)</code></pre>
+<pre><code>TnesorFlow version: 2.2.0
+TnesorFlow Probability version: 0.10.0</code></pre>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>We generate sample data from a <a href="https://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a> using <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/distributions">TensorFlow Probability Distributions</a> (see <a href="https://juanitorduz.github.io/intro_tfd/">here</a> for an introduction to this module). Recall,</p>
+<p><span class="math display">\[
+y \sim \text{Poisson}(\lambda) \quad \text{means} \quad P(y=k) = \frac{\lambda^k e^{-k}}{k!} \quad \text{for} \quad \lambda &gt; 0, k\in \mathbb{N}_{\geq 0} 
+\]</span></p>
+<pre class="python"><code>tf.random.set_seed(seed=42)
+# Number of samples. 
+n = 100
+# True rate parameter. 
+rate_true = 2.0
+# Define Poisson distribution with the true rate parameter. 
+poisson_true = tfd.Poisson(rate=rate_true)
+# Generate samples.
+poisson_samples = poisson_true.sample(sample_shape=n)
+poisson_samples </code></pre>
+<pre><code>&lt;tf.Tensor: shape=(100,), dtype=float32, numpy=
+array([3., 3., 3., 1., 2., 1., 2., 0., 0., 2., 2., 1., 2., 2., 0., 3., 1.,
+       4., 1., 1., 2., 0., 3., 4., 1., 3., 1., 2., 2., 0., 0., 2., 1., 1.,
+       3., 5., 4., 3., 1., 4., 2., 2., 0., 2., 2., 4., 4., 2., 0., 4., 2.,
+       4., 1., 1., 2., 1., 1., 1., 4., 1., 3., 3., 1., 3., 0., 1., 1., 3.,
+       5., 1., 2., 2., 4., 0., 2., 3., 1., 3., 2., 4., 2., 2., 3., 2., 1.,
+       3., 1., 1., 0., 1., 2., 1., 2., 3., 4., 3., 2., 1., 0., 1.],
+      dtype=float32)&gt;</code></pre>
+<p>Let us plot the sample distribution.</p>
+<pre class="python"><code>y_range, idy, c = tf.unique_with_counts(poisson_samples)
+
+fig, ax = plt.subplots()
+sns.barplot(x=y_range.numpy(), y=c.numpy(), color=sns_c[0], edgecolor=sns_c[0], ax=ax)
+ax.xaxis.set_major_formatter(FormatStrFormatter(&#39;%.0f&#39;))
+ax.set(title=f&#39;Poisson Samples Distribution (num_samples = {n}, rate_true = {rate_true})&#39;);
+</code></pre>
+<center>
+<img src="../images/tfp_mcmc_files/tfp_mcmc_6_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="set-prior-distribution" class="section level2">
+<h2>Set Prior Distribution</h2>
+<p>We use a gamma distribution as prior. The reason for it is because we know the Poisson is <a href="https://en.wikipedia.org/wiki/Conjugate_prior">conjugate</a> to the gamma distribution. Hence, it is possible to get an analytical solution.</p>
+<p><strong>Remark:</strong> In most real applications an analytical solution is hopeless.</p>
+<p><span class="math display">\[
+y \sim \text{Poisson}(\lambda) \quad \text{with} \quad \lambda \sim \Gamma(a, b)
+\]</span></p>
+<pre class="python"><code># Define parameters for the prior distribution. 
+a = 4.5
+b = 2
+# Define prior distribution. 
+gamma_prior = tfd.Gamma(concentration=a, rate=b)</code></pre>
+<p>Let us generate some samples from this prior distribution:</p>
+<pre class="python"><code># Generate samples. 
+gamma_prior_samples = gamma_prior.sample(sample_shape=1e4)
+# Plot.
+fig, ax = plt.subplots(figsize=(7, 5))
+# Domain to plot. 
+x = np.linspace(start=0, stop=10, num=100)
+# Plot samples distribution.
+sns.distplot(
+    a=gamma_prior_samples, 
+    color=sns_c[1], 
+    kde=False, 
+    norm_hist=True, 
+    label=&#39;samples (1e4)&#39;, 
+    ax=ax
+)
+# Plot density function of the gamma density.
+sns.lineplot(
+    x=x, 
+    y=ss.gamma.pdf(x, a=a, scale=1/b), 
+    color=sns_c[1], 
+    label=&#39;gamma_density&#39;, 
+    ax=ax
+)
+# Some Stats.
+sample_mean = tf.reduce_mean(gamma_prior_samples)
+sample_median = tfp.stats.percentile(x=gamma_prior_samples, q=50)
+
+ax.axvline(
+    x=sample_mean, 
+    color=sns_c[1], 
+    linestyle=&#39;--&#39;, 
+    label=f&#39;sample mean={sample_mean: 0.2f}&#39;
+)
+
+ax.axvline(
+    x=sample_median, 
+    color=sns_c[1], 
+    linestyle=&#39;:&#39;, 
+    label=f&#39;sample median = {sample_median: 0.2f}&#39;
+)
+
+ax.legend()
+ax.set(title=f&#39;Prior Gamma Distribution (a={a}, b={b})&#39;);
+</code></pre>
+<center>
+<img src="../images/tfp_mcmc_files/tfp_mcmc_10_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="prior-predictive-sampling" class="section level2">
+<h2>Prior Predictive Sampling</h2>
+<p>Before fitting the model to the data, let us sample form Poisson distributions based on these prior samples for the rate parameter lambda.</p>
+<pre class="python"><code>y_prior_pred = tfd.Poisson(rate=gamma_prior_samples).sample(1)
+y_prior_pred  = tf.reshape(y_prior_pred, [-1])
+
+y_range_prior, idy_prior, c_prior = tf.unique_with_counts(y_prior_pred)
+
+fig, ax1 = plt.subplots()
+ax2 = ax1.twinx() 
+sns.barplot(
+    x=y_range.numpy(), 
+    y=c.numpy(), 
+    color=sns_c[0], 
+    edgecolor=sns_c[0], 
+    alpha=0.7, 
+    label=&#39;Sample Data Distribution&#39;, 
+    ax=ax2
+)
+sns.barplot(
+    x=y_range_prior.numpy(), 
+    y=c_prior.numpy(), 
+    color=sns_c[1], 
+    edgecolor=sns_c[1], 
+    label=&#39;Prior Predictive Sample Data Distribution&#39;, 
+    alpha=0.7, 
+    ax=ax1
+)
+ax1.set(title=f&#39;Poisson Samples (Sample Data &amp; Prior Predictive Samples)&#39;)
+ax1.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[1])
+ax1.xaxis.set_major_formatter(FormatStrFormatter(&#39;%.0f&#39;))
+ax1.legend(loc=&#39;upper right&#39;)
+ax2.grid(None)
+ax2.legend(bbox_to_anchor=(0.84, 0.92))
+ax2.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[0])</code></pre>
+<center>
+<img src="../images/tfp_mcmc_files/tfp_mcmc_12_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="define-model" class="section level2">
+<h2>Define Model</h2>
+<p>Next we are going to define our inference model. How do we do this with TFP?</p>
+<blockquote>
+<p>TFP performs probabilistic inference by evaluating the model using an unnormalized joint log probability function. The arguments to this joint_log_prob are data and model state. The function returns the log of the joint probability that the parameterized model generated the observed data.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a></p>
+</blockquote>
+<pre class="python"><code># First we set the model specification. 
+def build_model(a=4.5, b=2):
+    # Prior Distribution.
+    rate = tfd.Gamma(concentration=a, rate=b)
+    # Likelihood: Independent samples of a Poisson distribution. 
+    observations = lambda rate: tfd.Sample(
+        distribution=tfd.Poisson(rate=rate), 
+        sample_shape=len(poisson_samples)
+    )
+    return tfd.JointDistributionNamed(dict(rate=rate, obs=observations))
+    
+# We set the joint-log-probability as the target variable we want to maximize. 
+def target_log_prob_fn(rate):
+    model = build_model()
+    return model.log_prob(rate=rate, obs=poisson_samples)</code></pre>
+</div>
+<div id="bayesian-inference" class="section level2">
+<h2>Bayesian Inference</h2>
+<div id="grid-like-approximation-of-the-mean" class="section level3">
+<h3>Grid-Like-Approximation of the Mean</h3>
+<p>Let us start with a simple approach (compare with <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a>, Chapter 3), on which we run a grid search to estimate the value of lambda (rate) which maximizes the joint-log-probability.</p>
+<pre class="python"><code># Define rates range.
+rates = np.linspace(start=0.01, stop=10.0, num=1000)
+
+# Compute joint-log-probability.
+model_log_probs = np.array([
+    target_log_prob_fn(rate).numpy() 
+    for rate in rates
+])
+
+# Get rate which maximizes the log-probability of the model. 
+log_prob_maximizer = rates[np.argmax(model_log_probs)]
+
+# Plot the results. 
+fig, ax = plt.subplots() 
+sns.lineplot(x=rates, y=model_log_probs, color=sns_c[0], label=&#39;model_log_prob&#39;, ax=ax)
+ax.axvline(x=rate_true, linestyle=&#39;--&#39;, color=sns_c[3], label=f&#39;rate_true = {rate_true: 0.2f}&#39;)
+ax.axvline(x=log_prob_maximizer , linestyle=&#39;--&#39;, color=sns_c[1], label=f&#39;log-prob-maximizer: {log_prob_maximizer: 0.2f}&#39;)
+ax.legend(loc=&#39;upper right&#39;)
+ax.set(title=&#39;Model Log Probability&#39;, xlabel=&#39;rate&#39;, ylabel=&#39;log probability&#39;);</code></pre>
+<center>
+<img src="../images/tfp_mcmc_files/tfp_mcmc_17_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We see that the values that maximizes the joint-log-distribution is ~ 1.95. Still, we are interested in the distribution of the parameter lambda, not a single point estimate).</p>
+</div>
+<div id="hamiltonian-monte-carlo-sampling" class="section level3">
+<h3>Hamiltonian Monte Carlo Sampling</h3>
+<p>Next, we are going to use Hamiltonian Monte Carlo Sampling which is a very common way to run Bayesian inference. We are not going to go into the details of the methods, but rather on the direct usage of it using TFP. From TFP’s documentation:<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
+<blockquote>
+<p>Hamiltonian Monte Carlo (HMC) is a Markov chain Monte Carlo (MCMC) algorithm that takes a series of gradient-informed steps to produce a Metropolis proposal.</p>
+</blockquote>
+<p>Here are some useful references on this topic:</p>
+<ul>
+<li><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a>, Chapter 9.</li>
+<li><a href="https://arxiv.org/abs/1112.4118">The Geometry of Hamiltonian Monte Carlo</a></li>
+<li><a href="https://arxiv.org/abs/1701.02434">A Conceptual Introduction to Hamiltonian Monte Carlo</a></li>
+</ul>
+<p>For an in-depth description of the objects and methods please refer to the <a href="https://www.tensorflow.org/probability/api_docs/python/tfp/mcmc/">documentation</a>.</p>
+<p>Let us set up the Hamiltonian Monte Carlo algorithm.</p>
+<pre class="python"><code># Size of each chain.
+num_results = int(1e4)
+# Burn-in steps.
+num_burnin_steps = int(1e3)
+# Hamiltonian Monte Carlo transition kernel. 
+# I TFP a TransitionKernel returns a new state given some old state.
+hcm_kernel  = tfp.mcmc.HamiltonianMonteCarlo(
+  target_log_prob_fn=target_log_prob_fn,
+  step_size=1.0,
+  num_leapfrog_steps=3
+  
+)
+# This adapts the inner kernel&#39;s step_size.
+adaptive_hmc = tfp.mcmc.SimpleStepSizeAdaptation(
+  inner_kernel = hcm_kernel,
+  num_adaptation_steps=int(num_burnin_steps * 0.8)
+)
+# Run the chain (with burn-in).
+@tf.function
+def run_chain():
+  # Run the chain (with burn-in). 
+  # Implements MCMC via repeated TransitionKernel steps.
+  samples, is_accepted = tfp.mcmc.sample_chain(
+      num_results=num_results,
+      num_burnin_steps=num_burnin_steps,
+      current_state=1.0,
+      kernel=adaptive_hmc,
+      trace_fn=lambda _, pkr: pkr.inner_results.is_accepted
+    )
+  return samples</code></pre>
+<p>Next, we run it and get samples from the posterior distribution for different chains.</p>
+<pre class="python"><code># Set number of chains. 
+num_chains = 5
+# Run sampling. 
+chains = [run_chain() for i in range(num_chains)]</code></pre>
+</div>
+<div id="sampling-results" class="section level3">
+<h3>Sampling Results</h3>
+<p>Let us visualize the samples and their distribution.</p>
+<pre class="python"><code># We store the samples in a pandas dataframe.
+chains_df = pd.DataFrame([t.numpy() for t in chains])
+chains_df = chains_df.T.melt(var_name=&#39;chain_id&#39;, value_name=&#39;sample&#39;)
+chains_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+chain_id
+</th>
+<th>
+sample
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+0
+</td>
+<td>
+1.867492
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+0
+</td>
+<td>
+1.883758
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+0
+</td>
+<td>
+1.917210
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+0
+</td>
+<td>
+1.920594
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+0
+</td>
+<td>
+1.920594
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We plot the samples for each chain and indicate their mean and plus/minus 2 standard deviations from the mean.</p>
+<pre class="python"><code>fig, ax = plt.subplots(2, 1, figsize=(10, 8))
+
+for i in range(5):
+    chain_samples = chains_df \
+        .query(f&#39;chain_id == {i}&#39;) \
+        .reset_index(drop=True) \
+        [&#39;sample&#39;]
+
+    chain_samples_mean = chain_samples.mean()
+    chain_samples_std = chain_samples.std()
+    chain_samples_plus = chain_samples_mean + 2*chain_samples_std
+    chain_samples_minus = chain_samples_mean - 2*chain_samples_std
+
+    sns.distplot(a=chain_samples, color=sns_c[i], hist_kws={&#39;alpha&#39;: 0.4}, label=f&#39;chain_{i}&#39;, ax=ax[0])
+    ax[0].axvline(x=chain_samples_plus, linestyle=&#39;--&#39;, color=sns_c[i], label=f&#39;chain_{i}_plus = {chain_samples_plus: 0.2f}&#39;)
+    ax[0].axvline(x=chain_samples_minus, linestyle=&#39;--&#39;, color=sns_c[i], label=f&#39;chain_{i}_minus = {chain_samples_minus: 0.2f}&#39;)
+    ax[1].plot(chain_samples, c=sns_c[i], alpha=0.4)
+    ax[1].axhline(y=chain_samples_mean, linestyle=&#39;--&#39;, color=sns_c[i], label=f&#39;chain_{i} mean = {chain_samples_mean: 0.2f}&#39;)
+
+ax[0].legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax[0].set(xlabel=&#39;rate&#39;, ylabel=&#39;&#39;)
+ax[1].legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax[1].set(xlabel=&#39;sample&#39;, ylabel=&#39;rate&#39;)
+plt.suptitle(&#39;Hamiltonian Monte Carlo Chains&#39;, y=0.92);</code></pre>
+<center>
+<img src="../images/tfp_mcmc_files/tfp_mcmc_26_0.svg" title="fig:" alt="svg" />
+</center>
+<p>The samples look convergent (more model diagnostics are out of the scope for this short-example, but they are key as part of the analysis).</p>
+</div>
+</div>
+<div id="predictions" class="section level2">
+<h2>Predictions</h2>
+<div id="posterior-distribution" class="section level3">
+<h3>Posterior Distribution</h3>
+<p>Similarly as above, we no plot the distribution for all the chains together.</p>
+<pre class="python"><code>fig, ax = plt.subplots(2, 1)
+
+chain_samples = chains_df[&#39;sample&#39;]
+chain_samples_mean = chain_samples.mean()
+chain_samples_std = chain_samples.std()
+chain_samples_plus = chain_samples_mean + 2*chain_samples_std
+chain_samples_minus = chain_samples_mean - 2*chain_samples_std
+
+sns.distplot(a=chain_samples, color=sns_c[9], label=f&#39;chains samples&#39;, ax=ax[0])
+ax[0].axvline(x=chain_samples_plus, linestyle=&#39;--&#39;, color=sns_c[4], label=f&#39;$\mu + 2\sigma$ = {chain_samples_plus: 0.2f}&#39;)
+ax[0].axvline(x=chain_samples_minus, linestyle=&#39;--&#39;, color=sns_c[4], label=f&#39;$\mu - 2\sigma$ = {chain_samples_minus: 0.2f}&#39;)
+ax[1].plot(chain_samples, c=sns_c[9], alpha=0.7)
+ax[1].axhline(y=chain_samples_mean, linestyle=&#39;--&#39;, color=sns_c[0], label=f&#39;$\mu$ = {chain_samples_mean: 0.2f}&#39;)
+
+ax[0].legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax[1].legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+plt.suptitle(f&#39;Posterior Distribution (Rate)&#39;, y=0.92);</code></pre>
+<center>
+<img src="../images/tfp_mcmc_files/tfp_mcmc_30_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="posterior-predictive-sampling" class="section level3">
+<h3>Posterior Predictive Sampling</h3>
+<p>Finally, let us sample from the posterior distribution of the rate parameter and then generate Poisson samples from them.</p>
+<pre class="python"><code>y_post_pred = tfd.Poisson(rate=chains_df[&#39;sample&#39;]).sample(1)
+y_post_pred  = tf.reshape(y_post_pred, [-1])
+
+y_range_prior, idy_prior, c_prior = tf.unique_with_counts(y_post_pred)
+
+fig, ax1 = plt.subplots()
+ax2 = ax1.twinx() 
+sns.barplot(
+    x=y_range.numpy(), 
+    y=c.numpy(), 
+    color=sns_c[0], 
+    edgecolor=sns_c[0], 
+    alpha=0.7, 
+    label=&#39;Sample Data Distribution&#39;, 
+    ax=ax2
+)
+sns.barplot(
+    x=y_range_prior.numpy(), 
+    y=c_prior.numpy(), 
+    color=sns_c[2], 
+    edgecolor=sns_c[2], 
+    label=&#39;Posterior Predictive Sample Data Distribution&#39;, 
+    alpha=0.7, 
+    ax=ax1
+)
+ax1.set(title=f&#39;Poisson Samples (Sample Data &amp; Prior Predictive Samples)&#39;)
+ax1.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[1])
+ax1.xaxis.set_major_formatter(FormatStrFormatter(&#39;%.0f&#39;))
+ax1.legend(loc=&#39;upper right&#39;)
+ax2.grid(None)
+ax2.legend(bbox_to_anchor=(0.8, 0.92))
+ax2.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[0])</code></pre>
+<center>
+<img src="../images/tfp_mcmc_files/tfp_mcmc_32_0.svg" title="fig:" alt="svg" />
+</center>
+<p>The initial samples and the predicted samples distributions look very similar.</p>
+</div>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p><a href="https://blog.tensorflow.org/2018/12/an-introduction-to-probabilistic.html">An introduction to probabilistic programming, now available in TensorFlow Probability</a><a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p><a href="https://www.tensorflow.org/probability/api_docs/python/tfp/mcmc/HamiltonianMonteCarlo">TFP: Hamiltonian Monte Carlo</a><a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
