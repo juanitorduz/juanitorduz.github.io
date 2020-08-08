@@ -103,10 +103,9 @@ plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
 <h2>Generate Data Samples</h2>
 <p>We consider de model <span class="math inline">\(y = f(x) + \varepsilon\)</span>, where <span class="math inline">\(\varepsilon \sim N(0, \sigma_n)\)</span>. Here <span class="math inline">\(f\)</span> does not need to be a linear function of <span class="math inline">\(x\)</span>. As a concrete example, let us consider (1-dim problem)</p>
 <p><span class="math display">\[
-f(x) = \sin(2\pi x) + \sin(4\pi x)
+f(x) = \sin(4\pi x) + \sin(7\pi x)
 \]</span></p>
-<pre class="python"><code>plt.rcParams[&#39;figure.figsize&#39;] = [12, 7]
-# Define dimension.
+<pre class="python"><code># Define dimension.
 d = 1
 # Number of samples (training set). 
 n = 500
