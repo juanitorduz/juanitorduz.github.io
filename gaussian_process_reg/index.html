@@ -89,8 +89,15 @@
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns; sns.set()
-%matplotlib inline</code></pre>
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+plt.rcParams[&#39;figure.figsize&#39;] = [12, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
 </div>
 <div id="generate-data-samples" class="section level2">
 <h2>Generate Data Samples</h2>
@@ -113,13 +120,11 @@ def f(x):
 f_x = f(x)
 
 fig, ax = plt.subplots()
-
 # Plot function f. 
 sns.lineplot(x=x, y=f_x, color=&#39;red&#39;, label = &#39;f(x)&#39;, ax=ax)
 # Plot function components.
-sns.lineplot(x=x, y=np.sin((2*np.pi)*x), color=&#39;orange&#39;, label=&#39;sin(2 pi x)&#39;, alpha=0.3, ax=ax)
-sns.lineplot(x=x, y=np.sin((4*np.pi)*x), color=&#39;purple&#39;, label=&#39;sin(4 pi x)&#39;, alpha=0.3, ax=ax)
-
+sns.lineplot(x=x, y=np.sin((4*np.pi)*x), color=&#39;orange&#39;, label=&#39;$\sin(4 \pi x)$&#39;, alpha=0.3, ax=ax)
+sns.lineplot(x=x, y=np.sin((7*np.pi)*x), color=&#39;purple&#39;, label=&#39;$\sin(7 \pi x)$&#39;, alpha=0.3, ax=ax)
 ax.legend(loc=&#39;upper right&#39;)
 ax.set_title(r&#39;Graph of $f(x) = \sin(4\pi x) + \sin(7\pi x)$&#39;);</code></pre>
 <center>
