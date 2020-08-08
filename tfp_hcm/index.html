@@ -324,7 +324,7 @@ num_results = int(1e4)
 # Burn-in steps.
 num_burnin_steps = int(1e3)
 # Hamiltonian Monte Carlo transition kernel. 
-# I TFP a TransitionKernel returns a new state given some old state.
+# In TFP a TransitionKernel returns a new state given some old state.
 hcm_kernel  = tfp.mcmc.HamiltonianMonteCarlo(
   target_log_prob_fn=target_log_prob_fn,
   step_size=1.0,
