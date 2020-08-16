@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">7 min read</span>
+    <span class="article-duration">10 min read</span>
     
 
     <h1 class="article-title">PyData Berlin 2019: Gaussian Processes for Timeseries Forecasting</h1>
@@ -78,8 +78,8 @@
       
 
 
-<p>In this notebook we run some experiments to demonstrate how we can use Gaussian Processes in the context of time series forecasting.</p>
-<p>This material is part of a talk on <a href="https://de.pycon.org/program/pydata-knlnbb-gaussian-process-for-time-series-analysis-dr-juan-orduz/">Gaussian Process for Time Series Analysis</a> presented at the <a href="https://de.pycon.org/">PyCon DE &amp; PyData 2019 Conference</a> in Berlin.</p>
+<p>In this notebook we run some experiments to demonstrate how we can use Gaussian Processes in the context of time series forecasting. This material is part of a talk on <a href="https://de.pycon.org/program/pydata-knlnbb-gaussian-process-for-time-series-analysis-dr-juan-orduz/">Gaussian Process for Time Series Analysis</a> presented at the <a href="https://de.pycon.org/">PyCon DE &amp; PyData 2019 Conference</a> in Berlin.</p>
+<p><strong>Update:</strong> Additional material and plots were included for the <a href="http://www.fields.utoronto.ca/activities/20-21/dynamical">Second Symposium on Machine Learning and Dynamical Systems</a> at <a href="http://www.fields.utoronto.ca/">The Fields Institute</a> (virtual event).</p>
 <strong>Video</strong>
 <center>
 <iframe width="500" height="300" src="https://www.youtube.com/embed/0p_6RzhSZEc?rel=0" frameborder="0" allowfullscreen>
@@ -93,8 +93,9 @@
 <li><a href="http://www.gaussianprocess.org/gpml/">Gaussian Processes for Machine Learning</a>, by Carl Edward Rasmussen and Christopher K. I. Williams.</li>
 <li><a href="http://www.robots.ox.ac.uk/~sjrob/Pubs/philTransA_2012.pdf">Gaussian Processes for Timeseries Modelling</a>, by S. Roberts, M. Osborne, M. Ebden, S. Reece, N. Gibson2 and S. Aigrain.</li>
 <li><a href="http://www.stat.columbia.edu/~gelman/book/">Bayesian Data Analysis</a>, by Andrew Gelman, John Carlin, Hal Stern, David Dunson, Aki Vehtari, and Donald Rubin.</li>
-<li><p><a href="https://scikit-learn.org/stable/modules/gaussian_process.html">scikit-learn docs: 1.7. Gaussian Processes</a>. In particular I recomend the example: <a href="https://scikit-learn.org/stable/auto_examples/gaussian_process/plot_gpr_co2.html#sphx-glr-auto-examples-gaussian-process-plot-gpr-co2-py">Gaussian process regression (GPR) on Mauna Loa CO2 data</a>.</p></li>
-<li><p>Blog Posts:</p>
+<li><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a>, by Richard McElreath.</li>
+<li><a href="https://scikit-learn.org/stable/modules/gaussian_process.html">scikit-learn docs: 1.7. Gaussian Processes</a>. In particular I recommend the example: <a href="https://scikit-learn.org/stable/auto_examples/gaussian_process/plot_gpr_co2.html#sphx-glr-auto-examples-gaussian-process-plot-gpr-co2-py">Gaussian process regression (GPR) on Mauna Loa CO2 data</a>.</li>
+<li>Blog Posts:
 <ul>
 <li><a href="https://juanitorduz.github.io/reg_bayesian_regression/">Bayesian Regression as a Gaussian Process</a></li>
 <li><a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a></li>
@@ -105,9 +106,17 @@
 <pre class="python"><code>import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
-sns.set()
-%matplotlib inline</code></pre>
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+plt.rcParams[&#39;figure.figsize&#39;] = [12, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
 </div>
 <div id="example-1" class="section level2">
 <h2>Example 1</h2>
@@ -122,6 +131,7 @@ sns.set()
 n = 1000
 # Generate &quot;time&quot; variable. 
 t = np.arange(n)
+
 data_df = pd.DataFrame({&#39;t&#39; : t})</code></pre>
 <ul>
 <li>Seasonal Component</li>
@@ -139,14 +149,12 @@ data_df[&#39;s1&#39;] = data_df[&#39;t&#39;].apply(lambda t : seasonal(t, amplit
 # Define target variable. 
 data_df[&#39;y1&#39;] = data_df[&#39;s1&#39;]</code></pre>
 <p>Let us plot this seasonal variable:</p>
-<pre class="python"><code>plt.rcParams[&#39;figure.figsize&#39;] = [13, 8]
-
-fig, ax = plt.subplots()
-sns.lineplot(x=&#39;t&#39;, y=&#39;s1&#39;, data=data_df, label=&#39;s1&#39;, ax=ax) 
-ax.set(title=&#39;Seasonal Component&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;lower left&#39;);</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&#39;t&#39;, y=&#39;s1&#39;, data=data_df, color=sns_c[0], label=&#39;s1&#39;, ax=ax) 
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Seasonal Component&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_9_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_9_0.svg" title="fig:" alt="svg" />
 </center>
 <ul>
 <li>Gaussian Noise</li>
@@ -154,21 +162,22 @@ ax.legend(loc=&#39;lower left&#39;);</code></pre>
 <p>Finally, we add some noise.</p>
 <pre class="python"><code># Set noise standard deviation. 
 sigma_n = 0.3
+
 data_df[&#39;epsilon&#39;] = np.random.normal(loc=0, scale=sigma_n, size=n)
 # Add noise to target variable. 
 data_df [&#39;y1&#39;] = data_df [&#39;y1&#39;] + data_df [&#39;epsilon&#39;]</code></pre>
 <p>Let us plot the resulting data:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-sns.lineplot(x=&#39;t&#39;, y=&#39;y1&#39;, data=data_df, label=&#39;y1&#39;, ax=ax) 
-ax.set(title=&#39;Sample Data 1&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;lower left&#39;);</code></pre>
+sns.lineplot(x=&#39;t&#39;, y=&#39;y1&#39;, data=data_df, color=sns_c[0], label=&#39;y1&#39;, ax=ax) 
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Sample Data 1&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_13_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_13_0.svg" title="fig:" alt="svg" />
 </center>
 </div>
 <div id="define-model" class="section level3">
 <h3>Define Model</h3>
-<p>Let us now define the kernel of the gaussian process model. We include the following kernel components (<a href="http://www.gaussianprocess.org/gpml/chapters/RW4.pdf">recall</a> that the sum of kernels is againi a kernel):</p>
+<p>Let us now define the kernel of the gaussian process model. We include the following kernel components (<a href="http://www.gaussianprocess.org/gpml/chapters/RW4.pdf">recall</a> that the sum of kernels is again a kernel):</p>
 <ul>
 <li><p><a href="https://scikit-learn.org/stable/modules/generated/sklearn.gaussian_process.kernels.WhiteKernel.html"><code>WhiteKernel</code></a> to account for noise.</p></li>
 <li><p><a href="https://scikit-learn.org/stable/modules/generated/sklearn.gaussian_process.kernels.ExpSineSquared.html"><code>ExpSineSquared</code></a> to model the periodic component.</p></li>
@@ -178,8 +187,8 @@ ax.legend(loc=&#39;lower left&#39;);</code></pre>
 
 k0 = WhiteKernel(noise_level=0.3**2, noise_level_bounds=(0.1**2, 0.5**2))
 
-k1 = ConstantKernel(constant_value=2) * \ 
-    ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
+k1 = ConstantKernel(constant_value=2) * \
+  ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
 
 kernel_1  = k0 + k1 </code></pre>
 <p>Next we initialize the <a href="https://scikit-learn.org/stable/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html#sklearn.gaussian_process.GaussianProcessRegressor"><code>GaussianProcessRegressor</code></a> object.</p>
@@ -195,11 +204,11 @@ gp1 = GaussianProcessRegressor(
 <div id="split-data" class="section level3">
 <h3>Split Data</h3>
 <p>We now prepare and split the data for the model.</p>
-<pre class="python"><code>X = data_df[&#39;t&#39;].values.reshape(n ,1)
-y = data_df[&#39;y1&#39;].values.reshape(n ,1)
+<pre class="python"><code>X = data_df[&#39;t&#39;].values.reshape(n, 1)
+y = data_df[&#39;y1&#39;].values.reshape(n, 1)
 
 prop_train = 0.7
-n_train = round(prop_train*n)
+n_train = round(prop_train * n)
 
 X_train = X[:n_train]
 y_train = y[:n_train]
@@ -207,21 +216,36 @@ y_train = y[:n_train]
 X_test = X[n_train:]
 y_test = y[n_train:]</code></pre>
 </div>
+<div id="prior-sampling" class="section level3">
+<h3>Prior Sampling</h3>
+<p>Let us sample from the prior distribution and compare it with our given data.</p>
+<pre class="python"><code>gp1_prior_samples = gp1.sample_y(X=X_train, n_samples=100)
+
+fig, ax = plt.subplots()
+for i in range(100):
+    sns.lineplot(x=X_train[...,0], y = gp1_prior_samples[:, i], color=sns_c[1], alpha=0.2, ax=ax)
+sns.lineplot(x=X_train[...,0], y=y_train[..., 0], color=sns_c[0], label=&#39;y1&#39;, ax=ax) 
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;GP1 Prior Samples&#39;, xlabel=&#39;t&#39;);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_22_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We indeed see the prior specification seems plausible for this model.</p>
+</div>
 <div id="model-fit-predictions" class="section level3">
 <h3>Model Fit + Predictions</h3>
 <p>Let us fit the model and generate predictions.</p>
 <pre class="python"><code>gp1.fit(X_train, y_train)</code></pre>
-<pre><code>GaussianProcessRegressor(alpha=0.0, copy_X_train=True,
+<pre><code>GaussianProcessRegressor(alpha=0.0,
                          kernel=WhiteKernel(noise_level=0.09) + 1.41**2 * ExpSineSquared(length_scale=1, periodicity=40),
-                         n_restarts_optimizer=10, normalize_y=True,
-                         optimizer=&#39;fmin_l_bfgs_b&#39;, random_state=None)</code></pre>
-<pre class="python"><code>#Generate predictions.
+                         n_restarts_optimizer=10, normalize_y=True)</code></pre>
+<pre class="python"><code># Generate predictions.
 y_pred, y_std = gp1.predict(X, return_std=True)
 
 data_df[&#39;y_pred&#39;] = y_pred
 data_df[&#39;y_std&#39;] = y_std
-data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - data_df[&#39;y_std&#39;]
-data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + data_df[&#39;y_std&#39;]</code></pre>
+data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - 2*data_df[&#39;y_std&#39;]
+data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + 2*data_df[&#39;y_std&#39;]</code></pre>
 <p>We plot the predictions.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 
@@ -229,23 +253,51 @@ ax.fill_between(
     x=data_df[&#39;t&#39;], 
     y1=data_df[&#39;y_pred_lwr&#39;], 
     y2=data_df[&#39;y_pred_upr&#39;], 
-    color=&#39;black&#39;, 
+    color=sns_c[2], 
     alpha=0.15, 
     label=&#39;credible_interval&#39;
 )
 
-sns.lineplot(x=&#39;t&#39;, y=&#39;y1&#39;, data=data_df, label = &#39;y1&#39;, ax=ax)
-sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, label=&#39;y_pred&#39;, color=&#39;black&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y1&#39;, data=data_df, color=sns_c[0], label = &#39;y1&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, color=sns_c[2], label=&#39;y_pred&#39;, ax=ax)
 
-ax.axvline(n_train, color=&#39;red&#39;, linestyle=&#39;--&#39;, label=&#39;train_test_split&#39;)
-ax.set(title=&#39;Prediction Sample 1&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;upper left&#39;);</code></pre>
+ax.axvline(n_train, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train-test split&#39;)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Prediction Sample 1&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_25_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_28_0.svg" title="fig:" alt="svg" />
 </center>
-<p>Let us compute the <span class="math inline">\(R^2\)</span> of the prediction on the test set.</p>
-<pre class="python"><code>gp1.score(X=X_test, y=y_test)</code></pre>
-<pre><code>0.9569549925482237</code></pre>
+<p>Let us compute the <span class="math inline">\(R^2\)</span> (coefficient of determination, which can be negative) and the Mean Absolute Error of the prediction on the train and test set.</p>
+<pre class="python"><code>from sklearn.metrics import mean_absolute_error
+print(f&#39;R2 Score Train = {gp1.score(X=X_train, y=y_train): 0.3f}&#39;)
+print(f&#39;R2 Score Test = {gp1.score(X=X_test, y=y_test): 0.3f}&#39;)
+print(f&#39;MAE Train = {mean_absolute_error(y_true=y_train, y_pred=gp1.predict(X_train)): 0.3f}&#39;)
+print(f&#39;MAE Test = {mean_absolute_error(y_true=y_test, y_pred=gp1.predict(X_test)): 0.3f}&#39;)</code></pre>
+<pre><code>R2 Score Train =  0.961
+R2 Score Test =  0.960
+MAE Train =  0.228
+MAE Test =  0.236</code></pre>
+</div>
+<div id="errors" class="section level3">
+<h3>Errors</h3>
+<pre class="python"><code>errors = gp1.predict(X_test) - y_test
+errors = errors.flatten()
+errors_mean = errors.mean()
+errors_std = errors.std()
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 6)) 
+sns.regplot(x=y_test.flatten(), y=gp1.predict(X_test).flatten(), ax=ax[0])
+sns.distplot(a=errors, ax=ax[1])
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;, label=f&#39;$\mu$&#39;)
+ax[1].axvline(x=errors_mean + 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;, label=f&#39;$\mu \pm 2\sigma$&#39;)
+ax[1].axvline(x=errors_mean - 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;)
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;)
+ax[1].legend()
+ax[0].set(title=&#39;Model 1 - Test vs Predictions (Test Set)&#39;, xlabel=&#39;y_test&#39;, ylabel=&#39;y_pred&#39;);
+ax[1].set(title=&#39;Model 1  - Errors&#39;, xlabel=&#39;error&#39;, ylabel=None);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_32_0.svg" title="fig:" alt="svg" />
+<center>
 </div>
 </div>
 <div id="example-2" class="section level2">
@@ -261,15 +313,16 @@ def linear_trend(beta, x):
     return trend_comp
 
 data_df[&#39;tr1&#39;] = data_df[&#39;t&#39;].apply(lambda x : linear_trend(0.01, x))
+
 # Add trend to target variable y_1. 
 data_df[&#39;y2&#39;] = data_df[&#39;y1&#39;] + data_df[&#39;tr1&#39;]</code></pre>
 <p>Let us see the trend plot:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-sns.lineplot(x=&#39;t&#39;, y=&#39;y2&#39;, data=data_df, label=&#39;y_2&#39;, ax=ax)
-ax.set(title=&#39;Sample Data 2&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;upper left&#39;);</code></pre>
+sns.lineplot(x=&#39;t&#39;, y=&#39;y2&#39;, data=data_df, color=sns_c[0], label=&#39;y2&#39;, ax=ax)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Sample Data 2&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_32_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_37_0.svg" title="fig:" alt="svg" />
 </center>
 <div id="define-model-1" class="section level3">
 <h3>Define Model</h3>
@@ -278,11 +331,11 @@ ax.legend(loc=&#39;upper left&#39;);</code></pre>
 
 k0 = WhiteKernel(noise_level=0.3**2, noise_level_bounds=(0.1**2, 0.5**2))
 
-k1 = ConstantKernel(constant_value=2) * \ 
-    ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
+k1 = ConstantKernel(constant_value=12) * \
+  ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
 
 k2 = ConstantKernel(constant_value=10, constant_value_bounds=(1e-2, 1e3)) * \
-    RBF(length_scale=100.0, length_scale_bounds=(1, 1e4)) 
+  RBF(length_scale=1e2, length_scale_bounds=(1, 1e3)) 
 
 kernel_2  = k0 + k1 + k2</code></pre>
 <pre class="python"><code># Define GaussianProcessRegressor object. 
@@ -296,24 +349,37 @@ gp2 = GaussianProcessRegressor(
 <div id="split-data-1" class="section level3">
 <h3>Split Data</h3>
 <p>We split the data as above.</p>
-<pre class="python"><code>y = data_df[&#39;y2&#39;].values.reshape(n ,1)
+<pre class="python"><code>y = data_df[&#39;y2&#39;].values.reshape(n, 1)
 y_train = y[:n_train]
 y_test = y[n_train:]</code></pre>
+</div>
+<div id="prior-sampling-1" class="section level3">
+<h3>Prior Sampling</h3>
+<pre class="python"><code>gp2_prior_samples = gp2.sample_y(X=X_train, n_samples=100)
+
+fig, ax = plt.subplots()
+for i in range(100):
+    sns.lineplot(x=X_train[...,0], y = gp2_prior_samples[:, i], color=sns_c[1], alpha=0.2, ax=ax)
+sns.lineplot(x=X_train[...,0], y=y_train[..., 0], color=sns_c[0], label=&#39;y2&#39;, ax=ax) 
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;GP2 Prior Samples&#39;, xlabel=&#39;t&#39;);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_44_0.svg" title="fig:" alt="svg" />
+</center>
 </div>
 <div id="model-fit-predictions-1" class="section level3">
 <h3>Model Fit + Predictions</h3>
 <pre class="python"><code>gp2.fit(X_train, y_train)</code></pre>
-<pre><code>GaussianProcessRegressor(alpha=0.0, copy_X_train=True,
-                         kernel=WhiteKernel(noise_level=0.09) + 1.41**2 * ExpSineSquared(length_scale=1, periodicity=40) + 3.16**2 * RBF(length_scale=100),
-                         n_restarts_optimizer=10, normalize_y=True,
-                         optimizer=&#39;fmin_l_bfgs_b&#39;, random_state=None)</code></pre>
+<pre><code>GaussianProcessRegressor(alpha=0.0,
+                         kernel=WhiteKernel(noise_level=0.09) + 3.46**2 * ExpSineSquared(length_scale=1, periodicity=40) + 3.16**2 * RBF(length_scale=100),
+                         n_restarts_optimizer=10, normalize_y=True)</code></pre>
 <pre class="python"><code># Generate predictions.
 y_pred, y_std = gp2.predict(X, return_std=True)
 
 data_df[&#39;y_pred&#39;] = y_pred
 data_df[&#39;y_std&#39;] = y_std
-data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - data_df[&#39;y_std&#39;]
-data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + data_df[&#39;y_std&#39;]</code></pre>
+data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - 2*data_df[&#39;y_std&#39;]
+data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + 2*data_df[&#39;y_std&#39;]</code></pre>
 <p>We plot the predictions.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 
@@ -321,23 +387,47 @@ ax.fill_between(
     x=data_df[&#39;t&#39;], 
     y1=data_df[&#39;y_pred_lwr&#39;], 
     y2=data_df[&#39;y_pred_upr&#39;], 
-    color=&#39;black&#39;, 
+    color=sns_c[2], 
     alpha=0.15, 
     label=&#39;credible_interval&#39;
 )
 
-sns.lineplot(x=&#39;t&#39;, y=&#39;y2&#39;, data=data_df, label = &#39;y2&#39;, ax=ax)
-sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, label=&#39;y_pred&#39;, color=&#39;black&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y2&#39;, data=data_df, color=sns_c[0], label = &#39;y2&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, color=sns_c[2], label=&#39;y_pred&#39;, ax=ax)
 
-ax.axvline(n_train, color=&#39;red&#39;, linestyle=&#39;--&#39;, label=&#39;train_test_split&#39;)
-ax.set(title=&#39;Prediction Sample 2&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;upper left&#39;);</code></pre>
+ax.axvline(n_train, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train-test split&#39;)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Prediction Sample 2&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_42_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_49_0.svg" title="fig:" alt="svg" />
 </center>
-<p>Let us compute the <span class="math inline">\(R^2\)</span> of the prediction on the test set for this second model.</p>
-<pre class="python"><code>gp2.score(X=X_test, y=y_test)</code></pre>
-<pre><code>0.9498746360272532</code></pre>
+<p>Let us compute the metrics:</p>
+<pre class="python"><code>print(f&#39;R2 Score Train = {gp2.score(X=X_train, y=y_train): 0.3f}&#39;)
+print(f&#39;R2 Score Test = {gp2.score(X=X_test, y=y_test): 0.3f}&#39;)
+print(f&#39;MAE Train = {mean_absolute_error(y_true=y_train, y_pred=gp2.predict(X_train)): 0.3f}&#39;)
+print(f&#39;MAE Test = {mean_absolute_error(y_true=y_test, y_pred=gp2.predict(X_test)): 0.3f}&#39;)</code></pre>
+<pre><code>R2 Score Train =  0.987
+R2 Score Test =  0.958
+MAE Train =  0.229
+MAE Test =  0.274</code></pre>
+<pre class="python"><code>errors = gp2.predict(X_test) - y_test
+errors = errors.flatten()
+errors_mean = errors.mean()
+errors_std = errors.std()
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 6)) 
+sns.regplot(x=y_test.flatten(), y=gp2.predict(X_test).flatten(), ax=ax[0])
+sns.distplot(a=errors, ax=ax[1])
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;, label=f&#39;$\mu$&#39;)
+ax[1].axvline(x=errors_mean + 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;, label=f&#39;$\mu \pm 2\sigma$&#39;)
+ax[1].axvline(x=errors_mean - 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;)
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;)
+ax[1].legend()
+ax[0].set(title=&#39;Model 2 - Test vs Predictions (Test Set)&#39;, xlabel=&#39;y_test&#39;, ylabel=&#39;y_pred&#39;);
+ax[1].set(title=&#39;Model 2  - Errors&#39;, xlabel=&#39;error&#39;, ylabel=None);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_52_0.svg" title="fig:" alt="svg" />
+</center>
 </div>
 </div>
 <div id="example-3" class="section level2">
@@ -351,11 +441,11 @@ data_df[&#39;s2&#39;] = data_df[&#39;t&#39;].apply(lambda t : seasonal(t, amplit
 # Add to y_2.
 data_df[&#39;y3&#39;] = data_df[&#39;y2&#39;] + data_df[&#39;s2&#39;] </code></pre>
 <pre class="python"><code>fig, ax = plt.subplots()
-sns.lineplot(x=&#39;t&#39;, y=&#39;y3&#39;, data=data_df, label=&#39;y3&#39;, ax=ax) 
-ax.set(title=&#39;Sample Data 3&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;upper left&#39;);</code></pre>
+sns.lineplot(x=&#39;t&#39;, y=&#39;y3&#39;, data=data_df, color=sns_c[0], label=&#39;y3&#39;, ax=ax) 
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Sample Data 3&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_48_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_56_0.svg" title="fig:" alt="svg" />
 </center>
 <div id="define-model-2" class="section level3">
 <h3>Define Model</h3>
@@ -363,13 +453,13 @@ ax.legend(loc=&#39;upper left&#39;);</code></pre>
 <pre class="python"><code>k0 = WhiteKernel(noise_level=0.3**2, noise_level_bounds=(0.1**2, 0.5**2))
 
 k1 = ConstantKernel(constant_value=2) * \
-    ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
+  ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
 
-k2 = ConstantKernel(constant_value=10, constant_value_bounds=(1e-2, 1e3)) * \ 
-    RBF(length_scale=100.0, length_scale_bounds=(1, 1e4)) 
+k2 = ConstantKernel(constant_value=25, constant_value_bounds=(1e-2, 1e3)) * \
+  RBF(length_scale=100.0, length_scale_bounds=(1, 1e4)) 
 
-k3 = ConstantKernel(constant_value=1) * \ 
-    ExpSineSquared(length_scale=1.0, periodicity=12, periodicity_bounds=(10, 15))
+k3 = ConstantKernel(constant_value=1) * \
+  ExpSineSquared(length_scale=1.0, periodicity=12, periodicity_bounds=(10, 15))
 
 kernel_3  = k0 + k1 + k2 + k3</code></pre>
 <pre class="python"><code># Define GaussianProcessRegressor object. 
@@ -382,23 +472,36 @@ gp3 = GaussianProcessRegressor(
 </div>
 <div id="split-data-2" class="section level3">
 <h3>Split Data</h3>
-<pre class="python"><code>y = data_df[&#39;y3&#39;].values.reshape(n ,1)
+<pre class="python"><code>y = data_df[&#39;y3&#39;].values.reshape(n, 1)
 y_train = y[:n_train]
 y_test = y[n_train:]</code></pre>
+</div>
+<div id="prior-sampling-2" class="section level3">
+<h3>Prior Sampling</h3>
+<pre class="python"><code>gp3_prior_samples = gp3.sample_y(X=X_train, n_samples=100)
+
+fig, ax = plt.subplots()
+for i in range(100):
+    sns.lineplot(x=X_train[...,0], y = gp3_prior_samples[:, i], color=sns_c[1], alpha=0.2, ax=ax)
+sns.lineplot(x=X_train[...,0], y=y_train[..., 0], color=sns_c[0], label=&#39;y3&#39;, ax=ax) 
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;GP3 Prior Samples&#39;, xlabel=&#39;t&#39;);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_63_0.svg" title="fig:" alt="svg" />
+</center>
 </div>
 <div id="model-fit-predictions-2" class="section level3">
 <h3>Model Fit + Predictions</h3>
 <pre class="python"><code>gp3.fit(X_train, y_train)</code></pre>
-<pre><code>GaussianProcessRegressor(alpha=0.0, copy_X_train=True,
-                         kernel=WhiteKernel(noise_level=0.09) + 1.41**2 * ExpSineSquared(length_scale=1, periodicity=40) + 3.16**2 * RBF(length_scale=100) + 1**2 * ExpSineSquared(length_scale=1, periodicity=12),
-                         n_restarts_optimizer=10, normalize_y=True,
-                         optimizer=&#39;fmin_l_bfgs_b&#39;, random_state=None)</code></pre>
+<pre><code>GaussianProcessRegressor(alpha=0.0,
+                         kernel=WhiteKernel(noise_level=0.09) + 1.41**2 * ExpSineSquared(length_scale=1, periodicity=40) + 5**2 * RBF(length_scale=100) + 1**2 * ExpSineSquared(length_scale=1, periodicity=12),
+                         n_restarts_optimizer=10, normalize_y=True)</code></pre>
 <pre class="python"><code>y_pred, y_std = gp3.predict(X, return_std=True)
 
 data_df[&#39;y_pred&#39;] = y_pred
 data_df[&#39;y_std&#39;] = y_std
-data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - data_df[&#39;y_std&#39;]
-data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + data_df[&#39;y_std&#39;]</code></pre>
+data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - 2*data_df[&#39;y_std&#39;]
+data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + 2*data_df[&#39;y_std&#39;]</code></pre>
 <p>We plot the predictions:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 
@@ -406,26 +509,49 @@ ax.fill_between(
     x=data_df[&#39;t&#39;], 
     y1=data_df[&#39;y_pred_lwr&#39;], 
     y2=data_df[&#39;y_pred_upr&#39;], 
-    color=&#39;black&#39;, 
+    color=sns_c[2], 
     alpha=0.15, 
     label=&#39;credible_interval&#39;
 )
 
-sns.lineplot(x=&#39;t&#39;, y=&#39;y3&#39;, data=data_df, label = &#39;y3&#39;, ax=ax)
-sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, label=&#39;y_pred&#39;, color=&#39;black&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y3&#39;, data=data_df, color=sns_c[0], label = &#39;y3&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, color=sns_c[2], label=&#39;y_pred&#39;, ax=ax)
 
-ax.axvline(n_train, color=&#39;red&#39;, linestyle=&#39;--&#39;, label=&#39;train_test_split&#39;)
-ax.set(title=&#39;Prediction Sample Data 3&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;upper left&#39;);</code></pre>
+ax.axvline(n_train, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train-test split&#39;)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Prediction Sample Data 3&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<div class="figure">
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_58_0.png" alt="png" />
-<p class="caption">png</p>
-</div>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_68_0.svg" title="fig:" alt="svg" />
 </center>
-<pre class="python"><code># Compute R-squared. 
-gp3.score(X=X_test, y=y_test)</code></pre>
-<pre><code>0.9270716869235976</code></pre>
+<pre class="python"><code>print(f&#39;R2 Score Train = {gp3.score(X=X_train, y=y_train): 0.3f}&#39;)
+print(f&#39;R2 Score Test = {gp3.score(X=X_test, y=y_test): 0.3f}&#39;)
+print(f&#39;MAE Train = {mean_absolute_error(y_true=y_train, y_pred=gp3.predict(X_train)): 0.3f}&#39;)
+print(f&#39;MAE Test = {mean_absolute_error(y_true=y_test, y_pred=gp3.predict(X_test)): 0.3f}&#39;)</code></pre>
+<pre><code>R2 Score Train =  0.989
+R2 Score Test =  0.960
+MAE Train =  0.211
+MAE Test =  0.293</code></pre>
+</div>
+<div id="errors-1" class="section level3">
+<h3>Errors</h3>
+<pre class="python"><code>errors = gp3.predict(X_test) - y_test
+errors = errors.flatten()
+errors_mean = errors.mean()
+errors_std = errors.std()
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 6)) 
+sns.regplot(x=y_test.flatten(), y=gp3.predict(X_test).flatten(), ax=ax[0])
+sns.distplot(a=errors, ax=ax[1])
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;, label=f&#39;$\mu$&#39;)
+ax[1].axvline(x=errors_mean + 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;, label=f&#39;$\mu \pm 2\sigma$&#39;)
+ax[1].axvline(x=errors_mean - 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;)
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;)
+ax[1].legend()
+ax[0].set(title=&#39;Model 3 - Test vs Predictions (Test Set)&#39;, xlabel=&#39;y_test&#39;, ylabel=&#39;y_pred&#39;);
+ax[1].set(title=&#39;Model 3  - Errors&#39;, xlabel=&#39;error&#39;, ylabel=None);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_71_0.svg" title="fig:" alt="svg" />
+</center>
 </div>
 <div id="example-4" class="section level3">
 <h3>Example 4</h3>
@@ -446,10 +572,11 @@ data_df [&#39;tr2&#39;] = data_df[&#39;t&#39;].apply(non_linear_trend)
 data_df [&#39;y4&#39;] = data_df [&#39;y3&#39;] + data_df [&#39;tr2&#39;]</code></pre>
 <p>Let us see the trend plot:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-sns.lineplot(x=&#39;t&#39;, y=&#39;y4&#39;, data=data_df, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y4&#39;, data=data_df, color=sns_c[0], label=&#39;y4&#39;, ax=ax)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&#39;Sample Data 4&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_64_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_76_0.svg" title="fig:" alt="svg" />
 </center>
 </div>
 <div id="define-model-3" class="section level3">
@@ -460,13 +587,13 @@ ax.set(title=&#39;Sample Data 4&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</c
 k0 = WhiteKernel(noise_level=0.3**2, noise_level_bounds=(0.1**2, 0.5**2))
 
 k1 = ConstantKernel(constant_value=2) * \
-    ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
+  ExpSineSquared(length_scale=1.0, periodicity=40, periodicity_bounds=(35, 45))
 
-k2 = ConstantKernel(constant_value=10) * \
-    RationalQuadratic(length_scale=500, alpha= 50.0, alpha_bounds=(1, 1e3))
+k2 = ConstantKernel(constant_value=100, constant_value_bounds=(1, 500)) * \
+  RationalQuadratic(length_scale=500, length_scale_bounds=(1, 1e4), alpha= 50.0, alpha_bounds=(1, 1e3))
 
 k3 = ConstantKernel(constant_value=1) * \
-    ExpSineSquared(length_scale=1.0, periodicity=12, periodicity_bounds=(10, 15))
+  ExpSineSquared(length_scale=1.0, periodicity=12, periodicity_bounds=(10, 15))
 
 kernel_4  = k0 + k1 + k2 + k3</code></pre>
 <pre class="python"><code># Define GaussianProcessRegressor object. 
@@ -483,19 +610,32 @@ gp4 = GaussianProcessRegressor(
 y_train = y[:n_train]
 y_test = y[n_train:]</code></pre>
 </div>
+<div id="prior-sampling-3" class="section level3">
+<h3>Prior Sampling</h3>
+<pre class="python"><code>gp4_prior_samples = gp4.sample_y(X=X_train, n_samples=100)
+
+fig, ax = plt.subplots()
+for i in range(100):
+    sns.lineplot(x=X_train[...,0], y = gp4_prior_samples[:, i], color=sns_c[1], alpha=0.2, ax=ax)
+sns.lineplot(x=X_train[...,0], y=y_train[..., 0], color=sns_c[0], label=&#39;y3&#39;, ax=ax) 
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;GP4 Prior Samples&#39;, xlabel=&#39;t&#39;);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_83_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
 <div id="model-fit-predictions-3" class="section level3">
 <h3>Model Fit + Predictions</h3>
 <pre class="python"><code>gp4.fit(X_train, y_train)</code></pre>
-<pre><code>GaussianProcessRegressor(alpha=0.0, copy_X_train=True,
-                         kernel=WhiteKernel(noise_level=0.09) + 1.41**2 * ExpSineSquared(length_scale=1, periodicity=40) + 3.16**2 * RationalQuadratic(alpha=50, length_scale=500) + 1**2 * ExpSineSquared(length_scale=1, periodicity=12),
-                         n_restarts_optimizer=10, normalize_y=True,
-                         optimizer=&#39;fmin_l_bfgs_b&#39;, random_state=None)</code></pre>
+<pre><code>GaussianProcessRegressor(alpha=0.0,
+                         kernel=WhiteKernel(noise_level=0.09) + 1.41**2 * ExpSineSquared(length_scale=1, periodicity=40) + 10**2 * RationalQuadratic(alpha=50, length_scale=500) + 1**2 * ExpSineSquared(length_scale=1, periodicity=12),
+                         n_restarts_optimizer=10, normalize_y=True)</code></pre>
 <pre class="python"><code>y_pred, y_std = gp4.predict(X, return_std=True)
 
 data_df[&#39;y_pred&#39;] = y_pred
 data_df[&#39;y_std&#39;] = y_std
-data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - data_df[&#39;y_std&#39;]
-data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + data_df[&#39;y_std&#39;]</code></pre>
+data_df[&#39;y_pred_lwr&#39;] = data_df[&#39;y_pred&#39;] - 2*data_df[&#39;y_std&#39;]
+data_df[&#39;y_pred_upr&#39;] = data_df[&#39;y_pred&#39;] + 2*data_df[&#39;y_std&#39;]</code></pre>
 <p>Finally, let us plot the prediction:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 
@@ -503,24 +643,50 @@ ax.fill_between(
     x=data_df[&#39;t&#39;], 
     y1=data_df[&#39;y_pred_lwr&#39;], 
     y2=data_df[&#39;y_pred_upr&#39;], 
-    color=&#39;black&#39;, 
+    color=sns_c[2], 
     alpha=0.15, 
     label=&#39;credible_interval&#39;
 )
 
-sns.lineplot(x=&#39;t&#39;, y=&#39;y4&#39;, data=data_df, label = &#39;y4&#39;, ax=ax)
-sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, label=&#39;y_pred&#39;, color=&#39;black&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y4&#39;, data=data_df, color=sns_c[0], label = &#39;y4&#39;, ax=ax)
+sns.lineplot(x=&#39;t&#39;, y=&#39;y_pred&#39;, data=data_df, color=sns_c[2], label=&#39;y_pred&#39;, ax=ax)
 
-ax.axvline(n_train, color=&#39;red&#39;, linestyle=&#39;--&#39;, label=&#39;train_test_split&#39;)
-ax.set(title=&#39;Prediction Sample Data 4&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;)
-ax.legend(loc=&#39;upper left&#39;);</code></pre>
+ax.axvline(n_train, color=sns_c[3], linestyle=&#39;--&#39;, label=&#39;train-test split&#39;)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Prediction Sample Data 4&#39;, xlabel=&#39;t&#39;, ylabel=&#39;&#39;);</code></pre>
 <center>
-<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_74_0.png" alt="png" />
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_88_0.svg" title="fig:" alt="svg" />
 </center>
-<pre class="python"><code># Compute R-squared. 
-gp4.score(X=X_test, y=y_test)</code></pre>
-<pre><code>0.9455375317908682</code></pre>
-<p>Again, the aim of this notebook was to give a flavour on how to use gausian processes for time series forecastiing. I strongly encourage you to go to the references presented above to get a deeper and muc more complete exposition of this subject.</p>
+<pre class="python"><code>print(f&#39;R2 Score Train = {gp4.score(X=X_train, y=y_train): 0.3f}&#39;)
+print(f&#39;R2 Score Test = {gp4.score(X=X_test, y=y_test): 0.3f}&#39;)
+print(f&#39;MAE Train = {mean_absolute_error(y_true=y_train, y_pred=gp4.predict(X_train)): 0.3f}&#39;)
+print(f&#39;MAE Test = {mean_absolute_error(y_true=y_test, y_pred=gp4.predict(X_test)): 0.3f}&#39;)</code></pre>
+<pre><code>R2 Score Train =  0.993
+R2 Score Test =  0.957
+MAE Train =  0.238
+MAE Test =  0.320</code></pre>
+</div>
+<div id="errors-2" class="section level3">
+<h3>Errors</h3>
+<pre class="python"><code>errors = gp4.predict(X_test) - y_test
+errors = errors.flatten()
+errors_mean = errors.mean()
+errors_std = errors.std()
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 6)) 
+sns.regplot(x=y_test.flatten(), y=gp4.predict(X_test).flatten(), ax=ax[0])
+sns.distplot(a=errors, ax=ax[1])
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;, label=f&#39;$\mu$&#39;)
+ax[1].axvline(x=errors_mean + 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;, label=f&#39;$\mu \pm 2\sigma$&#39;)
+ax[1].axvline(x=errors_mean - 2*errors_std, color=sns_c[4], linestyle=&#39;--&#39;)
+ax[1].axvline(x=errors_mean, color=sns_c[3], linestyle=&#39;--&#39;)
+ax[1].legend()
+ax[0].set(title=&#39;Model 4 - Test vs Predictions (Test Set)&#39;, xlabel=&#39;y_test&#39;, ylabel=&#39;y_pred&#39;);
+ax[1].set(title=&#39;Model 4  - Errors&#39;, xlabel=&#39;error&#39;, ylabel=None);</code></pre>
+<center>
+<img src="../images/gaussian_process_time_series_files/gaussian_process_time_series_91_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Again, the aim of this notebook was to give a flavor on how to use Gaussian processes for time series forecasting. I <strong>strongly encourage</strong> you to go to the references presented above to get a deeper and much more complete exposition of this subject.</p>
 </div>
 </div>
 
