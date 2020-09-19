@@ -1,0 +1,2984 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>Open Data: Berlin Kitas - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Open Data: Berlin Kitas - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">20 min read</span>
+    
+
+    <h1 class="article-title">Open Data: Berlin Kitas</h1>
+
+    
+    <span class="article-date">2020-09-19</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook I want to explore some data I found on the Berlin Open Data portal <a href="https://daten.berlin.de/"><strong>daten.berlin.de</strong></a>. The <a href="https://daten.berlin.de/datensaetze/kitas-berlin">data source</a> contains information of Kitas (Kindertagesstätte, i.e. kindergartens) in Berlin. This is a big topic as finding a spot in a Kita is extremely difficult. We first provide an initial exploratory data analysis of the data set, then we merge it with population data to create some geo-location maps. In our way we do not expect to answer on <em>how to find a Kita</em>, but rather simpler questions about their location distribution and sizes.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import geopandas as gpd
+import mplleaflet
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+%matplotlib inline
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
+
+plt.rcParams[&#39;figure.figsize&#39;] = [10, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>Let us load the data from the orignial Excel file (which I store locally).</p>
+<pre class="python"><code>kitas_raw_df = pd.read_excel(
+    io=&#39;../Data/kitaliste_aktuell.xlsx&#39;, 
+    skiprows=4, 
+    dtype={&#39;PLZ&#39;: str}
+)</code></pre>
+<pre class="python"><code>kitas_raw_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 2739 entries, 0 to 2738
+Data columns (total 13 columns):
+ #   Column               Non-Null Count  Dtype  
+---  ------               --------------  -----  
+ 0   Betreuungsbezirk Nr  2739 non-null   int64  
+ 1   Betreuungsbezirk     2739 non-null   object 
+ 2   Einrichtungsnummer   2739 non-null   int64  
+ 3   Einrichtungsname     2739 non-null   object 
+ 4   Einrichtungsadresse  2739 non-null   object 
+ 5   PLZ                  2739 non-null   object 
+ 6   Ort                  2739 non-null   object 
+ 7   Telefon              2708 non-null   object 
+ 8   Anzahl Plätze        2736 non-null   float64
+ 9   Einrichtungsart      2739 non-null   object 
+ 10  Trägernummer         2739 non-null   int64  
+ 11  Trägername           2739 non-null   object 
+ 12  Trägerart            2739 non-null   object 
+dtypes: float64(1), int64(3), object(9)
+memory usage: 278.3+ KB</code></pre>
+</div>
+<div id="format-data" class="section level2">
+<h2>Format Data</h2>
+<p>Next, we format the data and prepare it for the analysis.</p>
+<pre class="python"><code># We verify there is just one city.
+kitas_raw_df[&#39;Ort&#39;].unique()</code></pre>
+<pre><code>array([&#39;Berlin&#39;], dtype=object)</code></pre>
+<pre class="python"><code># There is a 1-1 correspondece between `Betreuungsbezirk Nr` and `Betreuungsbezirk`.
+kitas_raw_df[[&#39;Betreuungsbezirk Nr&#39;, &#39;Betreuungsbezirk&#39;]].drop_duplicates()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+Betreuungsbezirk Nr
+</th>
+<th>
+Betreuungsbezirk
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+1
+</td>
+<td>
+Mitte
+</td>
+</tr>
+<tr>
+<th>
+329
+</th>
+<td>
+2
+</td>
+<td>
+Friedrichshain-Kreuzberg
+</td>
+</tr>
+<tr>
+<th>
+620
+</th>
+<td>
+3
+</td>
+<td>
+Pankow
+</td>
+</tr>
+<tr>
+<th>
+994
+</th>
+<td>
+4
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+</tr>
+<tr>
+<th>
+1261
+</th>
+<td>
+5
+</td>
+<td>
+Spandau
+</td>
+</tr>
+<tr>
+<th>
+1403
+</th>
+<td>
+6
+</td>
+<td>
+Steglitz-Zehlendorf
+</td>
+</tr>
+<tr>
+<th>
+1602
+</th>
+<td>
+7
+</td>
+<td>
+Tempelhof-Schöneberg
+</td>
+</tr>
+<tr>
+<th>
+1863
+</th>
+<td>
+8
+</td>
+<td>
+Neukölln
+</td>
+</tr>
+<tr>
+<th>
+2096
+</th>
+<td>
+9
+</td>
+<td>
+Treptow-Köpenick
+</td>
+</tr>
+<tr>
+<th>
+2287
+</th>
+<td>
+10
+</td>
+<td>
+Marzahn-Hellersdorf
+</td>
+</tr>
+<tr>
+<th>
+2420
+</th>
+<td>
+11
+</td>
+<td>
+Lichtenberg
+</td>
+</tr>
+<tr>
+<th>
+2581
+</th>
+<td>
+12
+</td>
+<td>
+Reinickendorf
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code># Rename columns from German to English.
+rename_cols = {
+    &#39;Betreuungsbezirk&#39;: &#39;district&#39;,
+    &#39;Einrichtungsnummer&#39;: &#39;id&#39;,
+    &#39;Einrichtungsname&#39;: &#39;name&#39;,
+    &#39;Einrichtungsadresse&#39;: &#39;address&#39;,
+    &#39;PLZ&#39;: &#39;plz&#39;,                  
+    &#39;Telefon&#39;: &#39;telephone&#39;,       
+    &#39;Anzahl Plätze&#39;: &#39;spots&#39;  ,
+    &#39;Einrichtungsart&#39;: &#39;type&#39;,
+    &#39;Trägernummer&#39;: &#39;carrier_number&#39;,
+    &#39;Trägername&#39;: &#39;carrier_name&#39;,  
+    &#39;Trägerart&#39;: &#39;carrier_type&#39;,
+}
+
+columns_to_drop = [
+    &#39;Betreuungsbezirk Nr&#39;, 
+    &#39;Ort&#39;,
+]
+
+# Format data: remove redundat columns, rename columns and add new features.
+kitas_df = kitas_raw_df \
+    .copy() \
+    .drop(columns_to_drop, axis=1) \
+    .rename(columns=rename_cols) \
+    .assign(
+        num_kitas_plz=lambda x: x.groupby([&#39;district&#39;, &#39;plz&#39;])[&#39;id&#39;].transform(&#39;count&#39;),
+        spots_plz=lambda x: x.groupby([&#39;district&#39;, &#39;plz&#39;])[&#39;spots&#39;].transform(np.sum)
+    )
+    
+kitas_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+    
+    .dataframe thead th {
+        text-align: left;
+        font-size: 14px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 14px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 14px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+district
+</th>
+<th>
+id
+</th>
+<th>
+name
+</th>
+<th>
+address
+</th>
+<th>
+plz
+</th>
+<th>
+telephone
+</th>
+<th>
+spots
+</th>
+<th>
+type
+</th>
+<th>
+carrier_number
+</th>
+<th>
+carrier_name
+</th>
+<th>
+carrier_type
+</th>
+<th>
+num_kitas_plz
+</th>
+<th>
+spots_plz
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+Mitte
+</td>
+<td>
+1010010
+</td>
+<td>
+Kita F.A.I.R.play
+</td>
+<td>
+Albrechtstr. 020
+</td>
+<td>
+10117
+</td>
+<td>
+281 64 73
+</td>
+<td>
+69.0
+</td>
+<td>
+Kindertagesstätte
+</td>
+<td>
+1224
+</td>
+<td>
+GFJ - gemeinnützige Gesellschaft für Familien-…
+</td>
+<td>
+Sonstiger freier Träger
+</td>
+<td>
+21
+</td>
+<td>
+1550.0
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+Mitte
+</td>
+<td>
+1010020
+</td>
+<td>
+Kita Kinderwelt
+</td>
+<td>
+An der Kolonnade 003-5
+</td>
+<td>
+10117
+</td>
+<td>
+2291378
+</td>
+<td>
+155.0
+</td>
+<td>
+Kindertagesstätte
+</td>
+<td>
+1334
+</td>
+<td>
+Forum Soziale Dienste GmbH
+</td>
+<td>
+Sonstiger freier Träger
+</td>
+<td>
+21
+</td>
+<td>
+1550.0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+Mitte
+</td>
+<td>
+1010030
+</td>
+<td>
+FRÖBEL Kindergarten Casa Fantasia
+</td>
+<td>
+Anklamer Str. 038
+</td>
+<td>
+10115
+</td>
+<td>
+4498171
+</td>
+<td>
+69.0
+</td>
+<td>
+Kindertagesstätte
+</td>
+<td>
+1227
+</td>
+<td>
+Fröbel Bildung und Erziehung gGmbH
+</td>
+<td>
+Sonstiger freier Träger
+</td>
+<td>
+24
+</td>
+<td>
+1807.0
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+Mitte
+</td>
+<td>
+1010080
+</td>
+<td>
+Kita Regenbogen
+</td>
+<td>
+Fehrbelliner Str. 080
+</td>
+<td>
+10119
+</td>
+<td>
+449 32 38
+</td>
+<td>
+91.0
+</td>
+<td>
+Kindertagesstätte
+</td>
+<td>
+1202
+</td>
+<td>
+Pfefferwerk Stadtkultur gGmbH
+</td>
+<td>
+Sonstiger freier Träger
+</td>
+<td>
+11
+</td>
+<td>
+1150.0
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+Mitte
+</td>
+<td>
+1010100
+</td>
+<td>
+FRÖBEL Kindergarten “Schatzinsel”
+</td>
+<td>
+Fischerinsel 008
+</td>
+<td>
+10179
+</td>
+<td>
+201 37 88
+</td>
+<td>
+241.0
+</td>
+<td>
+Kindertagesstätte
+</td>
+<td>
+1227
+</td>
+<td>
+Fröbel Bildung und Erziehung gGmbH
+</td>
+<td>
+Sonstiger freier Träger
+</td>
+<td>
+10
+</td>
+<td>
+939.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="exploratory-data-analysis" class="section level2">
+<h2>Exploratory Data Analysis</h2>
+<p>One of the main objectives of this notebook is to do an exploratory data analysis to understand which questions this data set can answer. In addition, also determine its limitations. To begin, let us get the number of unique values per feature.</p>
+<pre class="python"><code>kitas_df.apply(lambda x: x.unique().size, axis=0)</code></pre>
+<pre><code>    district            12
+    id                2739
+    name              2597
+    address           2707
+    plz                190
+    telephone         2601
+    spots              200
+    type                 4
+    carrier_number    1224
+    carrier_name      1224
+    carrier_type         8
+    num_kitas_plz       37
+    spots_plz          194
+    dtype: int64</code></pre>
+<pre class="python"><code># Dimensions data set.
+kitas_df.shape</code></pre>
+<p>(2739, 13)</p>
+<p>We have 2739 Kitas in our data set and the <code>id</code> column is indeed an unique identifier of each Kita. The name, on the other hand, is not.</p>
+<pre class="python"><code>kitas_df \
+    .groupby([&#39;name&#39;]) \
+    .agg(num_kitas=(&#39;id&#39;, &#39;count&#39;)) \
+    .query(&#39;num_kitas &gt; 1&#39;) \
+    .sort_values(&#39;num_kitas&#39;, ascending=False) \
+    .head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+num_kitas
+</th>
+</tr>
+<tr>
+<th>
+name
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Kleiner Fratz
+</th>
+<td>
+18
+</td>
+</tr>
+<tr>
+<th>
+IB-Kita, Internationaler Bund
+</th>
+<td>
+8
+</td>
+</tr>
+<tr>
+<th>
+Kita/Kinder in Bewegung (KiB)
+</th>
+<td>
+6
+</td>
+</tr>
+<tr>
+<th>
+Kita Sonnenschein
+</th>
+<td>
+5
+</td>
+</tr>
+<tr>
+<th>
+Kita Kinder in Bewegung (KiB)
+</th>
+<td>
+5
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<div id="kitas-per-district" class="section level3">
+<h3>Kitas per District</h3>
+<p>We start by looking into the first layer of geo-location granularity: <code>district</code> (there are 12 districts in Berlin).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+kitas_df \
+    .groupby([&#39;district&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;n&#39;, ascending=False) \
+    .pipe((sns.barplot, &#39;data&#39;), 
+        x=&#39;n&#39;, 
+        y=&#39;district&#39;,
+        color=sns_c[0],
+        edgecolor=sns_c[0],
+        ax=ax
+    )
+ax.set(
+    title=&#39;Number of Kitas per District in Berlin&#39;, 
+    xlabel=&#39;number of kitas&#39;, 
+    ylabel=&#39;district&#39;
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_16_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We generate the same plot but showing the shares instead.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+kitas_df \
+    .groupby([&#39;district&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .assign(share= lambda x: x[&#39;n&#39;] / x[&#39;n&#39;].sum()) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;n&#39;, ascending=False) \
+    .pipe((sns.barplot, &#39;data&#39;), 
+        x=&#39;share&#39;, 
+        y=&#39;district&#39;,
+        color=sns_c[1],
+        edgecolor=sns_c[1],
+        ax=ax
+    )
+ax.xaxis.set_major_formatter(mtick.FuncFormatter(lambda y, _: &#39;{:0.0%}&#39;.format(y)))
+ax.set(
+    title=&#39;Share of Kitas per District in Berlin&#39;, 
+    xlabel=&#39;share of kitas&#39;, 
+    ylabel=&#39;district&#39;
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_18_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Pankow is a rather big district compared to Mitte and Friedrichshain-Kreuzberg area-wise. In order to run a fair comparison across districts, we need to control by size or population (which we will do bellow).</p>
+</div>
+<div id="kitas-per-plz" class="section level3">
+<h3>Kitas per PLZ</h3>
+<p>Now we dig deeper into <code>plz</code> level. A natural question is: <em>How many Kitas each <code>plz</code> has?</em> To answer it let us look into the distribution (again, in order to make a fair comparison we need to control by <code>plz</code> population or size).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+kitas_df \
+    .groupby([&#39;district&#39;, &#39;plz&#39;]) \
+    .agg(n=(&#39;name&#39;, &#39;count&#39;)) \
+    .pipe((sns.histplot, &#39;data&#39;),
+        x=&#39;n&#39;, 
+        bins=25, 
+        kde=True,
+        ax=ax
+    )
+ax.set(
+    title=&#39;Number of Kitas per PLZ&#39;, 
+     xlabel=&#39;number of kitas per plz&#39;,
+     xlim=(0, None)
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_21_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We see there is a long tail. Let us see the <code>plz</code> with more Kitas:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 6))
+kitas_df \
+    .groupby([&#39;district&#39;, &#39;plz&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .reset_index(drop=False) \
+    .assign(plz = lambda x: &#39;plz_&#39; + x[&#39;plz&#39;]) \
+    .sort_values(&#39;n&#39;, ascending=False) \
+    .head(40) \
+    .pipe((sns.barplot, &#39;data&#39;),  
+        x=&#39;plz&#39;,
+        y=&#39;n&#39;,
+        hue=&#39;district&#39;,
+        dodge=False,
+        ax=ax
+    )
+ax.tick_params(axis=&#39;x&#39;, labelrotation=90)
+ax.set(
+    title=&#39;Number of Kitas per PlZ in Berlin (Top 40)&#39;, 
+     xlabel=&#39;plz&#39;, 
+     ylabel=&#39;number of kitas&#39;, 
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_23_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Let us locate <code>plz</code> = 10437 using Google maps.</p>
+<center>
+<div style="width: 100%">
+<iframe width="100%" height="500" src="https://maps.google.com/maps?width=100%25&amp;height=600&amp;hl=en&amp;q=Berlin%2010437+(Berlin%2010437)&amp;t=&amp;z=14&amp;ie=UTF8&amp;iwloc=B&amp;output=embed" frameborder="0" scrolling="no" marginheight="0" marginwidth="0">
+<a href="https://www.maps.ie/create-google-map/">Google Maps iframe generator</a>
+</iframe>
+</div>
+<br/>
+</center>
+<p>This is a very trendy area in Berlin, specially for young families.</p>
+<p>Next, let us plot the distribution of the number of Kitas per <code>plz</code> split by <code>district</code>.</p>
+<pre class="python"><code>g = kitas_df \
+    .groupby([&#39;district&#39;, &#39;plz&#39;]) \
+    .agg(n=(&#39;name&#39;, &#39;count&#39;)) \
+    .pipe((sns.displot, &#39;data&#39;), 
+        x=&#39;n&#39;,
+        hue=&#39;district&#39;,
+        kind=&#39;kde&#39;,
+        rug=True, 
+        height=5,
+        aspect=1.3,
+        palette=&#39;Paired&#39;
+    )
+ax = g.axes.flatten()[0]
+ax.set(
+    title=&#39;Number of Kitas per PlZ&#39;, 
+     xlabel=&#39;number of kitas per plz&#39;,
+     xlim=(0, None)
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_28_0.svg" title="fig:" alt="svg" />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 6))
+kitas_df \
+    .groupby([&#39;district&#39;, &#39;plz&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;district&#39;) \
+    .pipe((sns.boxplot, &#39;data&#39;), 
+        x=&#39;district&#39;, 
+        y=&#39;n&#39;,
+        color=sns_c[0],
+        saturation=1.0,
+        ax=ax
+    )
+ax.tick_params(axis=&#39;x&#39;, labelrotation=90)
+ax.set(
+    title=&#39;Number of Kitas per PlZ in Berlin within each District&#39;, 
+     ylabel=&#39;number of kitas per plz&#39;, 
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_29_0.svg" title="fig:" alt="svg" />
+</center>
+<p>It seems that, on average, Friedrichshain-Kreuzberg have more Kitas per <code>plz</code> and Pankow has the highest variance (again, we need to control by <code>plz</code> size to be more precise).</p>
+</div>
+<div id="spots-per-kita" class="section level3">
+<h3>Spots per Kita</h3>
+<p>Let us now analyze the number of spots data.</p>
+<pre class="python"><code># Some descriptive stats.
+kitas_df[&#39;spots&#39;].describe()</code></pre>
+<p>count 2736.000000
+mean 67.617690
+std 55.624663
+min 0.000000
+25% 25.000000
+50% 45.000000
+75% 95.000000
+max 320.000000
+Name: spots, dtype: float64</p>
+<p>Note that there is a Kita wih <code>spots</code>=0. I am not sure about the reason behind this.</p>
+<pre class="python"><code>kitas_df.query(&#39;spots == 0&#39;)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+district
+</th>
+<th>
+id
+</th>
+<th>
+name
+</th>
+<th>
+address
+</th>
+<th>
+plz
+</th>
+<th>
+telephone
+</th>
+<th>
+spots
+</th>
+<th>
+type
+</th>
+<th>
+carrier_number
+</th>
+<th>
+carrier_name
+</th>
+<th>
+carrier_type
+</th>
+<th>
+num_kitas_plz
+</th>
+<th>
+spots_plz
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+1122
+</th>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+4073100
+</td>
+<td>
+Dickenskita
+</td>
+<td>
+Dickensweg 017-19
+</td>
+<td>
+14055
+</td>
+<td>
+35109330
+</td>
+<td>
+0.0
+</td>
+<td>
+Kindertagesstätte
+</td>
+<td>
+8435
+</td>
+<td>
+Berlin British School gGmbH
+</td>
+<td>
+Sonstiger freier Träger
+</td>
+<td>
+11
+</td>
+<td>
+500.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We plot the <code>spots</code> distribution:</p>
+<pre class="python"><code>spots_mean = kitas_df[&#39;spots&#39;].describe()[&#39;mean&#39;]
+spots_median = kitas_df[&#39;spots&#39;].describe()[&#39;50%&#39;]
+
+fig, ax = plt.subplots()
+sns.histplot(x=&#39;spots&#39;, data=kitas_df, kde=True, color=sns_c[3], ax=ax)
+ax.axvline(x=spots_mean, color=sns_c[1], linestyle=&#39;--&#39;, label=f&#39;mean = {spots_mean: 0.0f}&#39;)
+ax.axvline(x=spots_median, color=sns_c[4], linestyle=&#39;--&#39;, label=f&#39;median = {spots_median: 0.0f}&#39;)
+ax.legend(loc=&#39;upper right&#39;)
+ax.set(
+    title=&#39;Number of Spots per Kita&#39;, 
+     xlabel=&#39;number of spots per kita&#39;,
+     xlim=(0, None)
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_36_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Here is a list of the top 20 kitas with more spots:</p>
+<pre class="python"><code>kitas_df \
+    [[&#39;name&#39;, &#39;district&#39;, &#39;plz&#39;, &#39;spots&#39;]] \
+    .sort_values(&#39;spots&#39;, ascending=False) \
+    .head(20) </code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+name
+</th>
+<th>
+district
+</th>
+<th>
+plz
+</th>
+<th>
+spots
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+54
+</th>
+<td>
+BCS Kindergarten Preschool
+</td>
+<td>
+Mitte
+</td>
+<td>
+10115
+</td>
+<td>
+320.0
+</td>
+</tr>
+<tr>
+<th>
+2441
+</th>
+<td>
+Kita Lichtenzwerge
+</td>
+<td>
+Lichtenberg
+</td>
+<td>
+10315
+</td>
+<td>
+300.0
+</td>
+</tr>
+<tr>
+<th>
+2428
+</th>
+<td>
+Kita Bärenkinder
+</td>
+<td>
+Lichtenberg
+</td>
+<td>
+10319
+</td>
+<td>
+300.0
+</td>
+</tr>
+<tr>
+<th>
+2543
+</th>
+<td>
+Kita Neustrelitzer Str. 32-34/Kigä NordOst
+</td>
+<td>
+Lichtenberg
+</td>
+<td>
+13055
+</td>
+<td>
+285.0
+</td>
+</tr>
+<tr>
+<th>
+2113
+</th>
+<td>
+FRÖBEL Kindergarten-im-Grünen
+</td>
+<td>
+Treptow-Köpenick
+</td>
+<td>
+12487
+</td>
+<td>
+282.0
+</td>
+</tr>
+<tr>
+<th>
+647
+</th>
+<td>
+Klax Krippen Regentropfenhaus und Wolkenzwerge…
+</td>
+<td>
+Pankow
+</td>
+<td>
+10439
+</td>
+<td>
+280.0
+</td>
+</tr>
+<tr>
+<th>
+1885
+</th>
+<td>
+Kita Mini-Mix-International
+</td>
+<td>
+Neukölln
+</td>
+<td>
+12053
+</td>
+<td>
+280.0
+</td>
+</tr>
+<tr>
+<th>
+351
+</th>
+<td>
+FRÖBEL Kindergarten Am Ring
+</td>
+<td>
+Friedrichshain-Kreuzberg
+</td>
+<td>
+10247
+</td>
+<td>
+272.0
+</td>
+</tr>
+<tr>
+<th>
+14
+</th>
+<td>
+FRÖBEL Kindergarten “Traumzauberbaum”
+</td>
+<td>
+Mitte
+</td>
+<td>
+10178
+</td>
+<td>
+260.0
+</td>
+</tr>
+<tr>
+<th>
+2590
+</th>
+<td>
+Kita Treuenbrietzener Straße
+</td>
+<td>
+Reinickendorf
+</td>
+<td>
+13439
+</td>
+<td>
+252.0
+</td>
+</tr>
+<tr>
+<th>
+2541
+</th>
+<td>
+Kita Nido Piccolo
+</td>
+<td>
+Lichtenberg
+</td>
+<td>
+13059
+</td>
+<td>
+250.0
+</td>
+</tr>
+<tr>
+<th>
+2566
+</th>
+<td>
+Kita Tausendfüßler
+</td>
+<td>
+Lichtenberg
+</td>
+<td>
+13055
+</td>
+<td>
+250.0
+</td>
+</tr>
+<tr>
+<th>
+329
+</th>
+<td>
+Kita Spiel- und Erlebniswelt
+</td>
+<td>
+Friedrichshain-Kreuzberg
+</td>
+<td>
+10243
+</td>
+<td>
+248.0
+</td>
+</tr>
+<tr>
+<th>
+346
+</th>
+<td>
+FRÖBEL Kindergarten FRÖBELSPATZEN
+</td>
+<td>
+Friedrichshain-Kreuzberg
+</td>
+<td>
+10243
+</td>
+<td>
+246.0
+</td>
+</tr>
+<tr>
+<th>
+864
+</th>
+<td>
+Kita Am Brennerberg
+</td>
+<td>
+Pankow
+</td>
+<td>
+13187
+</td>
+<td>
+245.0
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+FRÖBEL Kindergarten “Schatzinsel”
+</td>
+<td>
+Mitte
+</td>
+<td>
+10179
+</td>
+<td>
+241.0
+</td>
+</tr>
+<tr>
+<th>
+2115
+</th>
+<td>
+FRÖBEL Kindergarten Wirbelwind
+</td>
+<td>
+Treptow-Köpenick
+</td>
+<td>
+12435
+</td>
+<td>
+240.0
+</td>
+</tr>
+<tr>
+<th>
+335
+</th>
+<td>
+Kita Gryphiusstr. 34-35
+</td>
+<td>
+Friedrichshain-Kreuzberg
+</td>
+<td>
+10245
+</td>
+<td>
+240.0
+</td>
+</tr>
+<tr>
+<th>
+2460
+</th>
+<td>
+Kita Bunte Plonzstifte
+</td>
+<td>
+Lichtenberg
+</td>
+<td>
+10365
+</td>
+<td>
+240.0
+</td>
+</tr>
+<tr>
+<th>
+901
+</th>
+<td>
+Klax Krippe Sonnenhaus,Klax Kindergarten Wolke…
+</td>
+<td>
+Pankow
+</td>
+<td>
+13189
+</td>
+<td>
+240.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us see the <code>spots</code> distributoin per district:</p>
+<pre class="python"><code>g = kitas_df \
+    .pipe((sns.displot, &#39;data&#39;), 
+        x=&#39;spots&#39;,
+        hue=&#39;district&#39;,
+        kind=&#39;kde&#39;,
+        rug=True, 
+        height=5,
+        aspect=1.3,
+        palette=&#39;Paired&#39;
+    )
+ax = g.axes.flatten()[0]
+ax.set(
+    title=&#39;Number of Spots per Kita&#39;, 
+    xlabel=&#39;number of spots&#39;, 
+    xlim=(0, None)
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_40_0.svg" title="fig:" alt="svg" />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 6))
+kitas_df \
+    .sort_values(&#39;district&#39;) \
+    .pipe((sns.boxplot, &#39;data&#39;), 
+        x=&#39;district&#39;, 
+        y=&#39;spots&#39;, 
+        color=sns_c[3],
+        saturation=1.0,
+        ax=ax
+    )
+ax.axhline(y=kitas_df[&#39;spots&#39;].describe()[&#39;mean&#39;], color=sns_c[1], linestyle=&#39;--&#39;, label=&#39;mean&#39;)
+ax.axhline(y=kitas_df[&#39;spots&#39;].describe()[&#39;50%&#39;], color=sns_c[4], linestyle=&#39;--&#39;, label=&#39;median&#39;)
+ax.tick_params(axis=&#39;x&#39;, labelrotation=90)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(
+    title=&#39;Number of Spots per Kita&#39;, 
+     ylabel=&#39;number of spots&#39;, 
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_41_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Note that Pankow, Mitte and Friedrichshain-Kreuzberg have a lowe number of spots per Kita (these are the top 3 districts with mote Kitas). We want to see if there is a linear relation between the number of Kitas per <code>plz</code> and the number (median) of spots per Kita.</p>
+<pre class="python"><code>g = kitas_df \
+    .groupby([&#39;district&#39;, &#39;plz&#39;]) \
+    .agg({&#39;num_kitas_plz&#39;: np.mean, &#39;spots&#39;: np.median}) \
+    .pipe((sns.jointplot, &#39;data&#39;), 
+        x=&#39;num_kitas_plz&#39;,  
+        y=&#39;spots&#39;,
+        kind=&#39;reg&#39;, 
+        order=1,
+        height=8,
+        ratio=3, 
+        marginal_kws=dict(color=sns_c[1])
+    )
+g.plot_joint(sns.kdeplot, zorder=0, levels=6, color=sns_c[3], alpha=0.7)
+g.set_axis_labels(xlabel=&#39;number of kitas per plz&#39;, ylabel=&#39;median spots per plz&#39;)
+g.fig.suptitle(&#39;Number of Kitas vs Spots per PLZ&#39;, y=1.03);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_43_0.svg" title="fig:" alt="png" />
+</center>
+<p>It seems there is a negative relation between them, i.e. <code>plz</code> with more Kitas seem to have less <code>spots</code> per Kita.</p>
+</div>
+<div id="carriers" class="section level3">
+<h3>Carriers</h3>
+<p>Now we want to study the <code>carrier</code> feature. First, let us count the number of kitas per <code>carrier_type</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+kitas_df \
+    .groupby([&#39;carrier_type&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .reset_index() \
+    .sort_values(&#39;n&#39;, ascending=False) \
+    .assign(share= lambda x: x[&#39;n&#39;] / x[&#39;n&#39;].sum()) \
+    .pipe((sns.barplot, &#39;data&#39;), 
+        x=&#39;share&#39;, 
+        y=&#39;carrier_type&#39;,
+        color=sns_c[2],
+        edgecolor=sns_c[2],
+        ax=ax
+    )
+fmt = lambda y, _: f&#39;{y :0.0%}&#39;
+ax.xaxis.set_major_formatter(mtick.FuncFormatter(fmt))
+ax.set(
+    title=&#39;Number of Kitas per Carrier Type&#39;, 
+    xlabel=&#39;number of kitas&#39;, 
+    ylabel=&#39;carrier type&#39;
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_46_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Here are some explanations on the <code>carrier_type</code>:</p>
+<ul>
+<li>Arbeiterwohlfahrt: Workers welfare</li>
+<li>Betriebskita: Company daycare</li>
+<li>Deutscher Caritasverband: German Caritas Association</li>
+<li>Eigenbetrieb: Own operation</li>
+<li>EKT (Eltern-Initiativ-Kindertagesstätte): Parents initiative.</li>
+<li>Diakonisches Werk: Diaconal work</li>
+<li>private Kita ohne Abschluss der Rahmenvereinbarung: private daycare without signing the framework agreement</li>
+<li>Sonstiger freier Träger: Other private carrier</li>
+</ul>
+<pre class="python"><code># Note that there is. a 1-1 correspondence between `carrier_number` and `carrier_name`.
+kitas_df \
+    .groupby(&#39;carrier_number&#39;)\
+    .agg({&#39;carrier_name&#39;: &#39;nunique&#39;}) \
+    .query(&#39;carrier_name &gt; 1&#39;) \
+    .shape</code></pre>
+<p>(0, 1)</p>
+<p>Now we plot the <code>carrier_type</code> distriibution per <code>district</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 6))
+kitas_df \
+    .groupby([&#39;district&#39;, &#39;carrier_type&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;n&#39;, ascending=False) \
+    .pipe((sns.barplot, &#39;data&#39;), 
+        y=&#39;n&#39;, 
+        x=&#39;district&#39;,
+        hue=&#39;carrier_type&#39;,
+        edgecolor=&#39;black&#39;,
+        dodge=True,
+        ax=ax
+    )
+ax.tick_params(axis=&#39;x&#39;, labelrotation=90)
+ax.set(
+    title=&#39;Number of Kitas per District in Berlin (per Carrier Type)&#39;, 
+    xlabel=&#39;district&#39;, 
+    ylabel=&#39;number of kitas&#39;
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_50_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>We can also compute <code>carrier_type</code> share per <code>district</code>:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+cmap = sns.light_palette(sns_c[0])
+fmt = lambda y, _: f&#39;{y :0.0%}&#39;
+kitas_df \
+    .groupby([&#39;district&#39;, &#39;carrier_type&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .reset_index(drop=False) \
+    .assign(
+        num_kitas_district = lambda x: x.groupby([&#39;district&#39;])[&#39;n&#39;].transform(np.sum),
+        share = lambda x: x[&#39;n&#39;].div(x[&#39;num_kitas_district&#39;])
+    ) \
+    .pivot(index=&#39;district&#39;, columns=&#39;carrier_type&#39;, values=&#39;share&#39;) \
+    .fillna(0.0) \
+    .pipe((sns.heatmap, &#39;data&#39;), 
+        vmin=0.0,
+        vmax=1.0,
+        cmap=cmap,
+        linewidths=0.2, 
+        linecolor=&#39;black&#39;,
+        annot=True, 
+        fmt=&#39;0.2%&#39;,
+        cbar_kws={&#39;format&#39;: mtick.FuncFormatter(fmt)},
+        ax=ax
+    )
+ax.set(title=&#39;Carrier Type Share per District&#39;);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_52_0.svg" title="fig:" alt="svg" />
+</center>
+<p>It is very interesting to see how high the share of <em>EKT</em> in Charlottenburg-Wilmersdorf and Friedrichshain-Kreuzberg.</p>
+<p>Now we want to investigate the carriers coverage on the number of kitas. The questions we want to answer are:</p>
+<ol style="list-style-type: decimal">
+<li><p>Do carriers with more than one Kita dominate the Kita distribution?</p></li>
+<li><p>Do we see a difference across districts?</p></li>
+</ol>
+<p>To answer both question we need to compute how many Kitas each carrier has. In addition,we sort them out by the number of Kitas calculate the (cumulative) share on the number of Kitas. This will allow us to answer the first question.</p>
+<pre class="python"><code>carrier_df = kitas_df \
+    .groupby([&#39;carrier_name&#39;]) \
+    .agg(num_kitas=(&#39;name&#39;, pd.Series.nunique)) \
+    .sort_values(&#39;num_kitas&#39;, ascending=False) \
+    .assign(
+        single_kita = lambda x: x[&#39;num_kitas&#39;] &lt; 2,
+        share = lambda x: x[&#39;num_kitas&#39;] / x[&#39;num_kitas&#39;].sum(),
+        cumsum_share = lambda x: x[&#39;share&#39;].cumsum(),
+        idx= lambda x: range(x.shape[0])
+    )
+
+carrier_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+num_kitas
+</th>
+<th>
+single_kita
+</th>
+<th>
+share
+</th>
+<th>
+cumsum_share
+</th>
+<th>
+idx
+</th>
+</tr>
+<tr>
+<th>
+carrier_name
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Kindergärten NordOst
+</th>
+<td>
+77
+</td>
+<td>
+False
+</td>
+<td>
+0.029079
+</td>
+<td>
+0.029079
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+Kindertagesstätten Nordwest Eigenbetrieb von Berlin
+</th>
+<td>
+63
+</td>
+<td>
+False
+</td>
+<td>
+0.023792
+</td>
+<td>
+0.052870
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+Kindergärten City
+</th>
+<td>
+56
+</td>
+<td>
+False
+</td>
+<td>
+0.021148
+</td>
+<td>
+0.074018
+</td>
+<td>
+2
+</td>
+</tr>
+<tr>
+<th>
+Kindertagesstätten SüdOst Eigenbetrieb von Berlin
+</th>
+<td>
+44
+</td>
+<td>
+False
+</td>
+<td>
+0.016616
+</td>
+<td>
+0.090634
+</td>
+<td>
+3
+</td>
+</tr>
+<tr>
+<th>
+Kindertagesstätten Berlin Süd-West
+</th>
+<td>
+37
+</td>
+<td>
+False
+</td>
+<td>
+0.013973
+</td>
+<td>
+0.104607
+</td>
+<td>
+4
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us compute the distribution of carriers with a single Kita vs carriers with more than one Kita.</p>
+<pre class="python"><code>carrier_df \
+    .groupby(&#39;single_kita&#39;)\
+    .agg(n=(&#39;idx&#39;, &#39;count&#39;)) \
+    .assign(share=lambda x: x[&#39;n&#39;].div(x[&#39;n&#39;].sum()))</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+n
+</th>
+<th>
+share
+</th>
+</tr>
+<tr>
+<th>
+single_kita
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+False
+</th>
+<td>
+365
+</td>
+<td>
+0.298203
+</td>
+</tr>
+<tr>
+<th>
+True
+</th>
+<td>
+859
+</td>
+<td>
+0.701797
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Next we plot the cumulative share data on the number of Kitas:</p>
+<pre class="python"><code>k = 200 
+k_cumsum_share = carrier_df.query(f&#39;idx == {k - 1}&#39;)[&#39;cumsum_share&#39;].values[0]
+idx_single_kita = carrier_df.query(&#39;single_kita&#39;).iloc[0][&#39;idx&#39;]
+cumsum_share_single_kita = carrier_df.query(&#39;single_kita&#39;).iloc[0][&#39;cumsum_share&#39;]
+
+fig, ax = plt.subplots()
+sns.lineplot(x=&#39;idx&#39;, y=&#39;cumsum_share&#39;, data=carrier_df, color=sns_c[0], label=&#39;cumulative sum share&#39;, ax=ax)
+ax.axvline(x=idx_single_kita, color=sns_c[4], linestyle=&#39;--&#39;, label=f&#39;{idx_single_kita} carriers have more than one Kita ({cumsum_share_single_kita: 0.2%})&#39;)
+ax.axhline(y=cumsum_share_single_kita, color=sns_c[4], linestyle=&#39;--&#39;)
+ax.axvline(x=k, color=sns_c[3], linestyle=&#39;--&#39;, label=f&#39;{k} carriers account for {k_cumsum_share: 0.2%} of the Kitas&#39;)
+ax.axhline(y=k_cumsum_share , color=sns_c[3], linestyle=&#39;--&#39;)
+ax.legend(loc=&#39;lower right&#39;)
+ax.set(
+    title=&#39;Cumulative Share of Top Kita Carriers&#39;, 
+    xlabel=&#39;carrier rank (based on number of Kitas)&#39;,
+    ylabel=&#39;cumsum share&#39;
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_59_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We have two main takeaways from this plot:</p>
+<ol style="list-style-type: decimal">
+<li><p>356 carriers, which are ~ 30% of the total number of carriers, cover ~ 67% of the number of Kitas.</p></li>
+<li><p>The top 200 carriers, which are ~ 16% of the total number of carriers, cover more than half (~ 55%) of the number of Kitas.</p></li>
+</ol>
+<p>Hence, the carriers. with more than one Kita have a very high coverage.</p>
+<pre class="python"><code># We merge the carriers data to. the Kitas data.
+kitas_df = pd.merge(
+    left=kitas_df, 
+    right=carrier_df[&#39;single_kita&#39;].reset_index(), 
+    on=&#39;carrier_name&#39;, 
+    how=&#39;left&#39;
+)</code></pre>
+<p>Now let us answer the second question by looking into the districts.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+kitas_df \
+    .groupby([&#39;district&#39;, &#39;single_kita&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;)) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;n&#39;, ascending=False) \
+    .pipe((sns.barplot, &#39;data&#39;), 
+        x=&#39;n&#39;, 
+        y=&#39;district&#39;,
+        hue=&#39;single_kita&#39;,
+        edgecolor=&#39;black&#39;,
+        palette=[sns_c[3], sns_c[0]],
+        ax=ax
+    )
+ax.set(
+    title=&#39;Number of Kitas per District in Berlin (Carrier with/without Single Kita)&#39;, 
+    xlabel=&#39;number of kitas&#39;, 
+    ylabel=&#39;district&#39;
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_63_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We now plot the relative share over districts of number of Kitas ans spots (which are of course correlated):</p>
+<pre class="python"><code>carrier_kitas_df = kitas_df \
+    .groupby([&#39;district&#39;, &#39;single_kita&#39;]) \
+    .agg(n=(&#39;id&#39;, &#39;count&#39;), spots=(&#39;spots&#39;, np.sum)) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;district&#39;) \
+    .assign(
+        total_n = lambda x: x.groupby(&#39;district&#39;)[&#39;n&#39;].transform(np.sum),
+        total_spots = lambda x: x.groupby(&#39;district&#39;)[&#39;spots&#39;].transform(np.sum),
+        share_n = lambda x: x[&#39;n&#39;].div(x[&#39;total_n&#39;]),
+        share_spots = lambda x: x[&#39;spots&#39;].div(x[&#39;total_spots&#39;]),
+    )</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(1, 2, constrained_layout=True)
+cmap0 = sns.light_palette(sns_c[1])
+cmap1 = sns.light_palette(sns_c[4])
+fmt = lambda y, _: f&#39;{y :0.0%}&#39;
+carrier_kitas_df \
+    .pivot(index=&#39;district&#39;, columns=&#39;single_kita&#39;, values=&#39;share_n&#39;) \
+    .pipe((sns.heatmap, &#39;data&#39;), 
+        vmin=0.0,
+        vmax=1.0,
+        cmap=cmap0,
+        linewidths=0.2, 
+        linecolor=&#39;black&#39;,
+        annot=True, 
+        fmt=&#39;0.2%&#39;,
+        cbar_kws={&#39;format&#39;: mtick.FuncFormatter(fmt)},
+        ax=ax[0]
+    )
+
+carrier_kitas_df \
+    .pivot(index=&#39;district&#39;, columns=&#39;single_kita&#39;, values=&#39;share_spots&#39;) \
+    .pipe((sns.heatmap, &#39;data&#39;), 
+        vmin=0.0,
+        vmax=1.0,
+        cmap=cmap1,
+        linewidths=0.2, 
+        linecolor=&#39;black&#39;,
+        annot=True, 
+        fmt=&#39;0.2%&#39;,
+        cbar_kws={&#39;format&#39;: mtick.FuncFormatter(fmt)},
+        ax=ax[1]
+    )
+
+ax[0].set(title=&#39;Number of Kitas Share&#39;, xlabel=&#39;carrier single kita&#39;)
+ax[1].set(title=&#39;Number of Spots Share&#39;, xlabel=&#39;carrier single kita&#39;, ylabel=&#39;&#39;);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_66_0.svg" title="fig:" alt="svg" />
+</center>
+<ul>
+<li>In Charlottenburg-Wilmersdorf the share of carriers with/without single Kitas is quite balanced whereas in Marzahn-Hellersdorf and Treptow-Köpenick is quite unbalanced.</li>
+</ul>
+<p>This ends the an initial exploratory data analysis of the Kitas data. There are still many interesting things to look, but we will leave them for a second iteration.</p>
+</div>
+</div>
+<div id="maps-population-data" class="section level2">
+<h2>Maps &amp; Population Data</h2>
+<p>Next we enrich out data set by including information about population per <code>plz</code>. In addition, we use maps to visualize some metrics. Please refer to the blog post <a href="https://juanitorduz.github.io/germany_plots/">Open Data: Germany Maps Viz</a> for the description of the data sources.</p>
+<ul>
+<li>Geo-location Data: geo-pandas dataframe with <code>plz</code> geometries.</li>
+</ul>
+<pre class="python"><code>plz_shape_df = gpd.read_file(&#39;../Data/plz-gebiete.shp&#39;, dtype={&#39;plz&#39;: str})
+
+plz_shape_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+note
+</th>
+<th>
+geometry
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+52538
+</td>
+<td>
+52538 Gangelt, Selfkant
+</td>
+<td>
+POLYGON ((5.86632 51.05110, 5.86692 51.05124, …
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+47559
+</td>
+<td>
+47559 Kranenburg
+</td>
+<td>
+POLYGON ((5.94504 51.82354, 5.94580 51.82409, …
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+52525
+</td>
+<td>
+52525 Waldfeucht, Heinsberg
+</td>
+<td>
+POLYGON ((5.96811 51.05556, 5.96951 51.05660, …
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+52074
+</td>
+<td>
+52074 Aachen
+</td>
+<td>
+POLYGON ((5.97486 50.79804, 5.97495 50.79809, …
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+52531
+</td>
+<td>
+52531 Ãbach-Palenberg
+</td>
+<td>
+POLYGON ((6.01507 50.94788, 6.03854 50.93561, …
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<ul>
+<li>Population Data</li>
+</ul>
+<pre class="python"><code>plz_einwohner_df = pd.read_csv(
+    &#39;../Data/plz_einwohner.csv&#39;,
+    sep=&#39;,&#39;,
+    dtype={&#39;plz&#39;: str, &#39;einwohner&#39;: int}
+)
+
+plz_einwohner_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+einwohner
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+01067
+</td>
+<td>
+11957
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+01069
+</td>
+<td>
+25491
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+01097
+</td>
+<td>
+14811
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+01099
+</td>
+<td>
+28021
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+01108
+</td>
+<td>
+5876
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<ul>
+<li>Merge Data</li>
+</ul>
+<p>We merge these data sets on <code>plz</code>.</p>
+<pre class="python"><code>plz_df = pd.merge(
+    left=plz_shape_df[[&#39;plz&#39;, &#39;geometry&#39;]],
+    right=plz_einwohner_df,
+    on=&#39;plz&#39;,
+    how=&#39;left&#39;
+)
+# Merge with Kitas data.
+plz_df = pd.merge(
+    left=plz_df,
+    right=kitas_df[[&#39;district&#39;, &#39;plz&#39;, &#39;num_kitas_plz&#39;, &#39;spots_plz&#39;]].drop_duplicates(),
+    on=&#39;plz&#39;,
+    how=&#39;inner&#39;
+)
+# Add features: number of kitas per plz per capita (and its log-transform).
+plz_df = plz_df.assign(
+    num_kitas_plz_pc = lambda x: x[&#39;num_kitas_plz&#39;].div(x[&#39;einwohner&#39;]), 
+    num_kitas_plz_pc_log = lambda x: np.log(x[&#39;num_kitas_plz_pc&#39;])
+)
+
+plz_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+geometry
+</th>
+<th>
+einwohner
+</th>
+<th>
+district
+</th>
+<th>
+num_kitas_plz
+</th>
+<th>
+spots_plz
+</th>
+<th>
+num_kitas_plz_pc
+</th>
+<th>
+num_kitas_plz_pc_log
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+14109
+</td>
+<td>
+POLYGON ((13.08835 52.41963, 13.09584 52.42198…
+</td>
+<td>
+10049
+</td>
+<td>
+Steglitz-Zehlendorf
+</td>
+<td>
+8
+</td>
+<td>
+357.0
+</td>
+<td>
+0.000796
+</td>
+<td>
+-7.135787
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+14089
+</td>
+<td>
+POLYGON ((13.10929 52.45063, 13.10956 52.45108…
+</td>
+<td>
+17734
+</td>
+<td>
+Spandau
+</td>
+<td>
+15
+</td>
+<td>
+1112.0
+</td>
+<td>
+0.000846
+</td>
+<td>
+-7.075189
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+13591
+</td>
+<td>
+POLYGON ((13.11738 52.51706, 13.11811 52.52010…
+</td>
+<td>
+26762
+</td>
+<td>
+Spandau
+</td>
+<td>
+16
+</td>
+<td>
+1595.0
+</td>
+<td>
+0.000598
+</td>
+<td>
+-7.422150
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+13587
+</td>
+<td>
+POLYGON ((13.12796 52.58313, 13.12934 52.58593…
+</td>
+<td>
+20108
+</td>
+<td>
+Spandau
+</td>
+<td>
+14
+</td>
+<td>
+1113.0
+</td>
+<td>
+0.000696
+</td>
+<td>
+-7.269816
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+13593
+</td>
+<td>
+POLYGON ((13.14288 52.52181, 13.14306 52.52179…
+</td>
+<td>
+20238
+</td>
+<td>
+Spandau
+</td>
+<td>
+9
+</td>
+<td>
+997.0
+</td>
+<td>
+0.000445
+</td>
+<td>
+-7.718093
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>First, let us visualize the <code>plz</code> per <code>district</code> in Berlin (we plot both static and dynamic maps).</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 9))
+plz_df.plot(
+    ax=ax,
+    column=&#39;district&#39;,
+    categorical=True,
+    cmap=&#39;Paired&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3,
+    legend=True,
+    legend_kwds={&#39;title&#39;:&#39;Districts&#39;, &#39;loc&#39;: &#39;center left&#39;, &#39;bbox_to_anchor&#39;: (1, 0.5)},
+)
+ax.set(
+    title=&#39;Berlin PLZ&#39;,
+    aspect=1.3
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_77_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 9))
+plz_df.plot(
+    ax=ax,
+    column=&#39;district&#39;,
+    categorical=True,
+    cmap=&#39;Paired&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3,
+)
+mplleaflet.display(fig=fig)</code></pre>
+<center>
+<iframe src="../html/kitas_berlin_files/berlin_map1.html" width="672" height="600">
+</iframe>
+</center>
+<p>We clearly see that the districts size in area are very different. Note for example how small Friedrichshain-Kreuzberg and Mitte (both in top 3 <code>districs</code> with more Kitas) are as compared with Treptow-Köpenick.</p>
+<p>Next we plot the number if inhabitants per <code>plz</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 10))
+plz_df.plot(
+    ax=ax,
+    column=&#39;einwohner&#39;,  
+    categorical=False, 
+    cmap=&#39;plasma_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3
+)
+ax.set(
+    title=&#39;Berlin - Population per PLZ&#39;,
+    aspect=1.3
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_80_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 10))
+plz_df.plot(
+    ax=ax,
+    column=&#39;einwohner&#39;,  
+    categorical=False, 
+    cmap=&#39;plasma_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3
+)
+mplleaflet.display(fig=fig)</code></pre>
+<center>
+<iframe src="../html/kitas_berlin_files/berlin_map2.html" width="672" height="600">
+</iframe>
+</center>
+<p>Now we plot the number of Kitas per <code>plz</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 10))
+plz_df.plot(
+    ax=ax,
+    column=&#39;num_kitas_plz&#39;,
+    categorical=False,
+    cmap=&#39;viridis_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3
+)
+ax.set(
+    title=&#39;Berlin - Number of Kitas per PLZ&#39;,
+    aspect=1.3
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_83_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 10))
+plz_df.plot(
+    ax=ax,
+    column=&#39;num_kitas_plz&#39;,
+    categorical=False,
+    cmap=&#39;viridis_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3
+)
+mplleaflet.display(fig=fig)</code></pre>
+<center>
+<iframe src="../html/kitas_berlin_files/berlin_map3.html" width="672" height="600">
+</iframe>
+</center>
+<p>As we see, comparing <code>plz</code> data without controlling for population can lead to misleading conclusions. Let us not compute the number of Kitas per capita per <code>district</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+plz_df \
+    .groupby([&#39;district&#39;], as_index=False) \
+    .agg({&#39;einwohner&#39;: np.sum, &#39;num_kitas_plz&#39;: np.sum}) \
+    .assign(num_kitas_district_pc = lambda x: x[&#39;num_kitas_plz&#39;].div(x[&#39;einwohner&#39;])) \
+    .sort_values(&#39;num_kitas_district_pc&#39;, ascending=False) \
+    .pipe((sns.barplot, &#39;data&#39;),
+        x=&#39;num_kitas_district_pc&#39;,
+        y=&#39;district&#39;,
+        color=sns_c[4],
+        edgecolor=sns_c[4],
+        ax=ax,
+    )
+ax.set(
+    title=&#39;Number of Kitas per District per Capita in Berlin&#39;,
+    xlabel=&#39;number of kitas per capita&#39;,
+    ylabel=&#39;district&#39;,
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_86_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We see that the top 3 districts remain, but now Friedrichshain-Kreuzberg and Mitte are at the top.</p>
+<p>Next, we plot the number of Kitas per capita per <code>plz</code> (log-transform).</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 10))
+plz_df.plot(
+    ax=ax,
+    column=&#39;num_kitas_plz_pc_log&#39;,
+    categorical=False,
+    cmap=&#39;viridis_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3
+)
+ax.set(
+    title=&#39;Berlin - (log) Number of Kitas per PLZ per Capita&#39;,
+    aspect=1.3
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_89_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>We immediately see that there is a rather small <code>plz</code> with a high (log) number of Kitas. Let us find which one it is:</p>
+<pre class="python"><code>plz_df.sort_values(&#39;num_kitas_plz_pc&#39;, ascending=False).drop(&#39;geometry&#39;, axis=1).head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+plz
+</th>
+<th>
+einwohner
+</th>
+<th>
+district
+</th>
+<th>
+num_kitas_plz
+</th>
+<th>
+spots_plz
+</th>
+<th>
+num_kitas_plz_pc
+</th>
+<th>
+num_kitas_plz_pc_log
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+18
+</th>
+<td>
+14053
+</td>
+<td>
+139
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+3
+</td>
+<td>
+70.0
+</td>
+<td>
+0.021583
+</td>
+<td>
+-3.835862
+</td>
+</tr>
+<tr>
+<th>
+44
+</th>
+<td>
+10709
+</td>
+<td>
+8771
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+18
+</td>
+<td>
+824.0
+</td>
+<td>
+0.002052
+</td>
+<td>
+-6.188834
+</td>
+</tr>
+<tr>
+<th>
+55
+</th>
+<td>
+12165
+</td>
+<td>
+4803
+</td>
+<td>
+Steglitz-Zehlendorf
+</td>
+<td>
+9
+</td>
+<td>
+508.0
+</td>
+<td>
+0.001874
+</td>
+<td>
+-6.279771
+</td>
+</tr>
+<tr>
+<th>
+146
+</th>
+<td>
+10997
+</td>
+<td>
+23800
+</td>
+<td>
+Friedrichshain-Kreuzberg
+</td>
+<td>
+42
+</td>
+<td>
+1707.0
+</td>
+<td>
+0.001765
+</td>
+<td>
+-6.339771
+</td>
+</tr>
+<tr>
+<th>
+68
+</th>
+<td>
+10715
+</td>
+<td>
+15464
+</td>
+<td>
+Charlottenburg-Wilmersdorf
+</td>
+<td>
+27
+</td>
+<td>
+1027.0
+</td>
+<td>
+0.001746
+</td>
+<td>
+-6.350433
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We not locate the <code>plz</code> = 14053.</p>
+<center>
+<div style="width: 100%">
+<iframe width="100%" height="500" src="https://maps.google.com/maps?width=100%25&amp;height=600&amp;hl=en&amp;q=Berlin%2014053+(Berlin%2014053)&amp;t=&amp;z=14&amp;ie=UTF8&amp;iwloc=B&amp;output=embed" frameborder="0" scrolling="no" marginheight="0" marginwidth="0">
+<a href="https://www.maps.ie/create-google-map/">Google Maps iframe generator</a>
+</iframe>
+</div>
+<br/>
+</center>
+<p>This <code>plz</code> does not have many inhabitants, as it mainly encloses the <a href="https://en.wikipedia.org/wiki/Olympiastadion_(Berlin)">Olympiastadion</a>. We simply remove this data point from the map inorder to see a more faithful picture of the number of Kitas per capita per <code>plz</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 10))
+plz_df.query(&#39;plz != &quot;14053&quot;&#39;).plot(
+    ax=ax,
+    column=&#39;num_kitas_plz_pc&#39;,
+    categorical=False,
+    cmap=&#39;viridis_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3
+)
+ax.set(
+    title=&#39;Berlin - Number of Kitas per PLZ per Capita&#39;,
+    aspect=1.3
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_95_1.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 10))
+plz_df.query(&#39;plz != &quot;14053&quot;&#39;).plot(
+    ax=ax,
+    column=&#39;num_kitas_plz_pc&#39;,
+    categorical=False,
+    cmap=&#39;viridis_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.3
+)
+mplleaflet.display(fig=fig)</code></pre>
+<center>
+<iframe src="../html/kitas_berlin_files/berlin_map4.html" width="672" height="600">
+</iframe>
+</center>
+</div>
+<div id="number-of-kitas-population-spots-and-districts-relations" class="section level2">
+<h2>Number of Kitas, Population, Spots and Districts Relations</h2>
+<p>Finally, let us study the relations between number of kitas, spots and population per <code>plz</code>. These variables are naturally correlated:</p>
+<pre class="python"><code>corr_mat = plz_df[[&#39;einwohner&#39;, &#39;num_kitas_plz&#39;, &#39;spots_plz&#39;]].corr()
+fig, ax = plt.subplots(figsize=(6, 6))
+cmap = sns.diverging_palette(10, 220, as_cmap=True)
+sns.heatmap(
+    data=corr_mat, 
+    vmin=-1.0, 
+    vmax=1.0, 
+    center=0, 
+    cmap=cmap, 
+    square=True,
+    linewidths=0.5, 
+    linecolor=&#39;k&#39;,
+    annot=True, 
+    fmt=&#39;.3f&#39;,
+    ax=ax
+)
+ax.set_yticklabels(ax.get_yticklabels(), rotation=0, horizontalalignment=&#39;right&#39;)
+ax.set_xticklabels(ax.get_yticklabels(), horizontalalignment=&#39;center&#39;)
+ax.set(title=&#39;Correlarion Matrix&#39;);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_98_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We can visualize them in a scatter plot.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 8))
+sns.scatterplot(
+    x=&#39;einwohner&#39;,
+    y=&#39;num_kitas_plz&#39;,
+    data=plz_df,
+    hue=&#39;spots_plz&#39;,
+    palette=&#39;viridis_r&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.5,
+    ax=ax
+)
+ax.legend(**{&#39;loc&#39;: &#39;center left&#39;, &#39;bbox_to_anchor&#39;: (1, 0.5)})
+ax.set(
+    title=&#39;Number of Kitas vs Inhabitants per PLZ&#39;,
+    xlabel=&#39;population&#39;,
+    ylabel=&#39;number of kitas&#39;
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_100_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Let us encode the <code>district</code> as color and <code>spots</code> as size.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 8))
+sns.scatterplot(
+    x=&#39;einwohner&#39;,
+    y=&#39;num_kitas_plz&#39;,
+    data=plz_df,
+    hue=&#39;district&#39;,
+    palette=&#39;Paired&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.5,
+    size=&#39;spots_plz&#39;,
+    ax=ax
+)
+ax.legend(**{&#39;loc&#39;: &#39;center left&#39;, &#39;bbox_to_anchor&#39;: (1, 0.5)})
+ax.set(
+    title=&#39;Number of Kitas vs Inhabitants per PLZ&#39;,
+    xlabel=&#39;population&#39;,
+    ylabel=&#39;number of kitas&#39;
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_102_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Another way to represent their relation is using a 3D-plot.</p>
+<pre class="python"><code>from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import to_hex
+
+fig = plt.figure(figsize=(8, 8))
+ax = fig.add_subplot(111, projection=&#39;3d&#39;)
+ax.scatter(
+    xs=plz_df[&#39;einwohner&#39;], 
+    ys=plz_df[&#39;num_kitas_plz&#39;], 
+    zs=plz_df[&#39;spots_plz&#39;], 
+    c=to_hex(sns_c[0])
+)
+ax.set_title(&#39;Population, Number of Kitas ans Spots per PLZ iin Berlin&#39;, y=1.1);
+ax.set(xlabel=&#39;population&#39;, ylabel=&#39;number of kitas&#39;, zlabel=&#39;spots&#39;);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_104_0.svg" title="fig:" alt="svg" />
+</center>
+<div id="linear-regression-model" class="section level3">
+<h3>Linear Regression Model</h3>
+<p>A natural question is: <em>How do the relations above depend on the district?</em> We of course expect different demographic distributions over different areas of the city. In this first iteration we run a simple linear regression model to estimate the variance explained of <code>num_kitas_plz</code> as a linear function of <code>einwohner</code> and <code>district</code>.</p>
+<pre class="python"><code>import statsmodels.formula.api as smf
+
+model = smf.ols(formula=&#39;num_kitas_plz ~ einwohner + C(district)&#39;, data=plz_df)
+result = model.fit()
+print(result.summary())</code></pre>
+<pre><code>    OLS Regression Results                            
+    ==============================================================================
+    Dep. Variable:          num_kitas_plz   R-squared:                       0.455
+    Model:                            OLS   Adj. R-squared:                  0.423
+    Method:                 Least Squares   F-statistic:                     14.00
+    Date:                Sat, 19 Sep 2020   Prob (F-statistic):           6.33e-21
+    Time:                        10:44:02   Log-Likelihood:                -696.16
+    No. Observations:                 214   AIC:                             1418.
+    Df Residuals:                     201   BIC:                             1462.
+    Df Model:                          12                                         
+    Covariance Type:            nonrobust                                         
+    ===========================================================================================================
+                                                  coef    std err          t      P&gt;|t|      [0.025      0.975]
+    -----------------------------------------------------------------------------------------------------------
+    Intercept                                   0.8849      1.529      0.579      0.563      -2.130       3.900
+    C(district)[T.Friedrichshain-Kreuzberg]     6.0192      2.399      2.509      0.013       1.289      10.750
+    C(district)[T.Lichtenberg]                 -3.8870      2.365     -1.644      0.102      -8.550       0.776
+    C(district)[T.Marzahn-Hellersdorf]         -6.0663      2.304     -2.633      0.009     -10.610      -1.523
+    C(district)[T.Mitte]                        2.2961      1.903      1.206      0.229      -1.457       6.049
+    C(district)[T.Neukölln]                    -1.1441      2.067     -0.554      0.581      -5.219       2.931
+    C(district)[T.Pankow]                       1.1004      2.062      0.534      0.594      -2.966       5.167
+    C(district)[T.Reinickendorf]               -3.6003      2.117     -1.700      0.091      -7.776       0.575
+    C(district)[T.Spandau]                     -3.0675      2.293     -1.338      0.183      -7.589       1.454
+    C(district)[T.Steglitz-Zehlendorf]         -3.5661      1.932     -1.846      0.066      -7.376       0.244
+    C(district)[T.Tempelhof-Schöneberg]        -2.4554      1.751     -1.402      0.162      -5.908       0.997
+    C(district)[T.Treptow-Köpenick]            -1.0303      2.120     -0.486      0.627      -5.210       3.149
+    einwohner                                   0.0008   8.15e-05      9.586      0.000       0.001       0.001
+    ==============================================================================
+    Omnibus:                       13.969   Durbin-Watson:                   1.951
+    Prob(Omnibus):                  0.001   Jarque-Bera (JB):               30.795
+    Skew:                           0.237   Prob(JB):                     2.06e-07
+    Kurtosis:                       4.797   Cond. No.                     2.02e+05
+    ==============================================================================
+    
+    Warnings:
+    [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+    [2] The condition number is large, 2.02e+05. This might indicate that there are
+    strong multicollinearity or other numerical problems.</code></pre>
+<p>We now look into the model predictions.</p>
+<pre class="python"><code># Collect predictions.
+plz_model_df = pd.concat([plz_df, result.get_prediction(plz_df).summary_frame()], axis=1)
+# Compute errors.
+plz_model_df = plz_model_df.assign(error = lambda x: x[&#39;mean&#39;] - x[&#39;num_kitas_plz&#39;])</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 8))
+sns.scatterplot(
+    x=&#39;num_kitas_plz&#39;,
+    y=&#39;mean&#39;,
+    data=plz_model_df,
+    hue=&#39;district&#39;,
+    palette=&#39;Paired&#39;,
+    edgecolor=&#39;black&#39;,
+    linewidth=0.5,
+    size=&#39;spots_plz&#39;,
+    ax=ax
+)
+ax.legend(**{&#39;loc&#39;: &#39;center left&#39;, &#39;bbox_to_anchor&#39;: (1, 0.5)})
+ax.set(
+    title=&#39;Number of Kitas Linear Model&#39;,
+    xlabel=&#39;number of kitas&#39;,
+    ylabel=&#39;prediction&#39;
+);</code></pre>
+<center>
+<img src="../images/kitas_berlin_files/kitas_berlin_109_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Finally, we plot the errors distribution:</p>
+<pre class="python"><code>error_mean = plz_model_df[&#39;error&#39;].mean()
+error_std = plz_model_df[&#39;error&#39;].std()
+
+fig, ax = plt.subplots(nrows=2, ncols=1, figsize=(12, 7), constrained_layout=True)
+sns.histplot(x=&#39;error&#39;, data=plz_model_df, color=sns_c[9], kde=True, ax=ax[0])
+ax[0].axvline(x=error_mean, color=&#39;black&#39;, linestyle=&#39;--&#39;, label=f&#39;$\mu$&#39;)
+ax[0].axvline(x=error_mean + 2*error_std, color=&#39;gray&#39;, linestyle=&#39;--&#39;, label=f&#39;$\mu\pm2\sigma$&#39;)
+ax[0].axvline(x=error_mean - 2*error_std, color=&#39;gray&#39;, linestyle=&#39;--&#39;)
+sns.scatterplot(x=&#39;einwohner&#39;, y=&#39;error&#39;, data=plz_model_df, hue=&#39;district&#39;, palette=&#39;Paired&#39;, edgecolor=&#39;black&#39;, ax=ax[1])
+ax[1].axhline(y=error_mean, color=&#39;black&#39;, linestyle=&#39;--&#39;, label=f&#39;$\mu$&#39;)
+ax[1].axhline(y=error_mean + 2*error_std, color=&#39;gray&#39;, linestyle=&#39;--&#39;, label=f&#39;$\mu\pm2\sigma$&#39;)
+ax[1].axhline(y=error_mean - 2*error_std, color=&#39;gray&#39;, linestyle=&#39;--&#39;)
+ax[0].legend()
+ax[1].legend(**{&#39;loc&#39;: &#39;center left&#39;, &#39;bbox_to_anchor&#39;: (1, 0.5)})
+ax[0].set(title=&#39;Model Erros Distribution&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_111_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>The model is not perfect, but is a good place to start for a deeper analysis: ideally more data about the district demographics will be added and Bayesian methods like the ones presented in <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a> by Richard McElreath.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
