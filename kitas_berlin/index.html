@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">20 min read</span>
+    <span class="article-duration">21 min read</span>
     
 
     <h1 class="article-title">Open Data: Berlin Kitas</h1>
@@ -325,7 +325,7 @@ columns_to_drop = [
     &#39;Ort&#39;,
 ]
 
-# Format data: remove redundat columns, rename columns and add new features.
+# Format data: remove redundant columns, rename columns and add new features.
 kitas_df = kitas_raw_df \
     .copy() \
     .drop(columns_to_drop, axis=1) \
@@ -1481,7 +1481,22 @@ g.fig.suptitle(&#39;Number of Kitas vs Spots per PLZ&#39;, y=1.03);</code></pre>
 <center>
 <img src="../images/kitas_berlin_files/kitas_berlin_43_0.svg" title="fig:" alt="png" />
 </center>
-<p>It seems there is a negative relation between them, i.e. <code>plz</code> with more Kitas seem to have less <code>spots</code> per Kita.</p>
+<p>It seems there is a negative relation between them, i.e. <code>plz</code> with more Kitas seem to have less <code>spots</code> per Kita. Let us plot this per <code>district</code>:</p>
+<pre class="python"><code>g = kitas_df \
+    .groupby([&#39;district&#39;, &#39;plz&#39;], as_index=False) \
+    .agg({&#39;num_kitas_plz&#39;: np.mean, &#39;spots&#39;: np.median}) \
+    .pipe((sns.FacetGrid, &#39;data&#39;),
+        col=&#39;district&#39;, 
+        col_wrap=4, 
+        height=3,
+    )
+g.map(sns.regplot, &#39;num_kitas_plz&#39;, &#39;spots&#39;)
+g.fig.suptitle(&#39;Number of Kitas vs Spots per PLZ&#39;, y=1.03);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/kitas_berlin_files/kitas_berlin_45_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
 </div>
 <div id="carriers" class="section level3">
 <h3>Carriers</h3>
