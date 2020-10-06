@@ -6,10 +6,19 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 19 Sep 2020 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Tue, 06 Oct 2020 00:00:00 +0000</lastBuildDate>
     
 	<atom:link href="/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Simple Linear Regression with TensorFlow Probability</title>
+      <link>/tfp_lm/</link>
+      <pubDate>Tue, 06 Oct 2020 00:00:00 +0000</pubDate>
+      
+      <guid>/tfp_lm/</guid>
+      <description>In this post we show how to fit a simple linear regression model using TensorFlow Probability by replicating the first example on the getting started guide for PyMC3. We are going to use Auto-Batched Joint Distributions as they simplify the model specification considerably. Moreover, there is a great resource to get deeper into this type of distribution: Auto-Batched Joint Distributions: A Gentle Tutorial, which I strongly recommend (see this post to get a brief introduction on TensorFlow probability distributions).</description>
+    </item>
     
     <item>
       <title>Open Data: Berlin Kitas</title>
