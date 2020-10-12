@@ -1,3 +1,4 @@
+![Build](https://github.com/juanitorduz/juanitorduz.github.io/workflows/URL%20Health/badge.svg)
 # Personal Website Dr. Juan Camilo Orduz
 
 Here you can find the source code of my personal website [juanitorduz.github.io](https://juanitorduz.github.io/). 
