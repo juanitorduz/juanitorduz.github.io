@@ -2,31 +2,31 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>python, machiine_learning, geometry on Dr. Juan Camilo Orduz</title>
-    <link>/tags/python-machiine_learning-geometry/</link>
+    <link>https://juanitorduz.github.io/tags/python-machiine_learning-geometry/</link>
     <description>Recent content in python, machiine_learning, geometry on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Sat, 04 Apr 2020 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="/tags/python-machiine_learning-geometry/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="https://juanitorduz.github.io/tags/python-machiine_learning-geometry/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Getting Started with Spectral Clustering</title>
-      <link>/spectral_clustering/</link>
+      <link>https://juanitorduz.github.io/spectral_clustering/</link>
       <pubDate>Sat, 04 Apr 2020 00:00:00 +0000</pubDate>
       
-      <guid>/spectral_clustering/</guid>
+      <guid>https://juanitorduz.github.io/spectral_clustering/</guid>
       <description>In this post I want to explore the ideas behind spectral clustering. I do not intend to develop the theory. Instead, I will unravel a practical example to illustrate and motivate the intuition behind each step of the spectral clustering algorithm. I particularly recommend two references:
  For an introduction/overview on the theory, see the lecture notes A Tutorial on Spectral Clustering by Prof. Dr. Ulrike von Luxburg. For a concrete application of this clustering method you can see the PyData’s talk: Extracting relevant Metrics with Spectral Clustering by Dr.</description>
     </item>
     
     <item>
       <title>The Graph Laplacian &amp; Semi-Supervised Clustering</title>
-      <link>/semi_supervised_clustering/</link>
+      <link>https://juanitorduz.github.io/semi_supervised_clustering/</link>
       <pubDate>Thu, 05 Dec 2019 00:00:00 +0000</pubDate>
       
-      <guid>/semi_supervised_clustering/</guid>
+      <guid>https://juanitorduz.github.io/semi_supervised_clustering/</guid>
       <description>In this post we want to explore the semi-supervided algorithm presented Eldad Haber in the BMS Summer School 2019: Mathematics of Deep Learning, during 19 - 30 August 2019, at the Zuse Institute Berlin. He developed an implementation in Matlab which you can find in this GitHub repository. In addition, please find the corresponding slides here.
 Prepare Notebook import numpy as np import pandas as pd import matplotlib.pyplot as plt import seaborn as sns; sns.</description>
     </item>

@@ -2,21 +2,21 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>shiny, docker on Dr. Juan Camilo Orduz</title>
-    <link>/tags/shiny-docker/</link>
+    <link>https://juanitorduz.github.io/tags/shiny-docker/</link>
     <description>Recent content in shiny, docker on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Sat, 02 Mar 2019 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="/tags/shiny-docker/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="https://juanitorduz.github.io/tags/shiny-docker/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Dockerize a ShinyApp</title>
-      <link>/dockerize-a-shinyapp/</link>
+      <link>https://juanitorduz.github.io/dockerize-a-shinyapp/</link>
       <pubDate>Sat, 02 Mar 2019 00:00:00 +0000</pubDate>
       
-      <guid>/dockerize-a-shinyapp/</guid>
+      <guid>https://juanitorduz.github.io/dockerize-a-shinyapp/</guid>
       <description>In this post I want to describe how to dockerize a simple Shiny App. Docker is a great way of sharing and deploying projects. You can download it here.
 I highly recommend the R Docker tutorial.
 Assume you have a project folder structure as follows:

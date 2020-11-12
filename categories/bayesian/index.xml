@@ -2,30 +2,30 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Bayesian on Dr. Juan Camilo Orduz</title>
-    <link>/categories/bayesian/</link>
+    <link>https://juanitorduz.github.io/categories/bayesian/</link>
     <description>Recent content in Bayesian on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Tue, 06 Oct 2020 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="/categories/bayesian/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="https://juanitorduz.github.io/categories/bayesian/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Simple Linear Regression with TensorFlow Probability</title>
-      <link>/tfp_lm/</link>
+      <link>https://juanitorduz.github.io/tfp_lm/</link>
       <pubDate>Tue, 06 Oct 2020 00:00:00 +0000</pubDate>
       
-      <guid>/tfp_lm/</guid>
+      <guid>https://juanitorduz.github.io/tfp_lm/</guid>
       <description>In this post we show how to fit a simple linear regression model using TensorFlow Probability by replicating the first example on the getting started guide for PyMC3. We are going to use Auto-Batched Joint Distributions as they simplify the model specification considerably. Moreover, there is a great resource to get deeper into this type of distribution: Auto-Batched Joint Distributions: A Gentle Tutorial, which I strongly recommend (see this post to get a brief introduction on TensorFlow probability distributions).</description>
     </item>
     
     <item>
       <title>A Simple Hamiltonian Monte Carlo Example with TensorFlow Probability</title>
-      <link>/tfp_hcm/</link>
+      <link>https://juanitorduz.github.io/tfp_hcm/</link>
       <pubDate>Fri, 24 Jul 2020 00:00:00 +0000</pubDate>
       
-      <guid>/tfp_hcm/</guid>
+      <guid>https://juanitorduz.github.io/tfp_hcm/</guid>
       <description>In this post we want to revisit a simple bayesian inference example worked out in this blog post. This time we want to use TensorFlow Probability (TFP) instead of PyMC3.
 References:
  Statistical Rethinking is an amazing reference for Bayesian analysis. It also has a sequence of online lectures freely available on YouTube.
@@ -35,10 +35,10 @@ References:
     
     <item>
       <title>Introduction to Bayesian Modeling with PyMC3</title>
-      <link>/intro_pymc3/</link>
+      <link>https://juanitorduz.github.io/intro_pymc3/</link>
       <pubDate>Sun, 13 Aug 2017 00:00:00 +0000</pubDate>
       
-      <guid>/intro_pymc3/</guid>
+      <guid>https://juanitorduz.github.io/intro_pymc3/</guid>
       <description>We give an introduction to PyMC3, a probabilistic programming framework written in Python. We revise the basic mahematical theory and present two concrete examples.</description>
     </item>
     

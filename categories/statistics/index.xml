@@ -2,31 +2,31 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Statistics on Dr. Juan Camilo Orduz</title>
-    <link>/categories/statistics/</link>
+    <link>https://juanitorduz.github.io/categories/statistics/</link>
     <description>Recent content in Statistics on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Thu, 10 Oct 2019 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="/categories/statistics/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="https://juanitorduz.github.io/categories/statistics/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>PyData Berlin 2019: Gaussian Processes for Timeseries Forecasting</title>
-      <link>/gaussian_process_time_series/</link>
+      <link>https://juanitorduz.github.io/gaussian_process_time_series/</link>
       <pubDate>Thu, 10 Oct 2019 00:00:00 +0000</pubDate>
       
-      <guid>/gaussian_process_time_series/</guid>
+      <guid>https://juanitorduz.github.io/gaussian_process_time_series/</guid>
       <description>In this notebook we run some experiments to demonstrate how we can use Gaussian Processes in the context of time series forecasting. This material is part of a talk on Gaussian Process for Time Series Analysis presented at the PyCon DE &amp;amp; PyData 2019 Conference in Berlin.
 Update: Additional material and plots were included for the Second Symposium on Machine Learning and Dynamical Systems at The Fields Institute (virtual event).</description>
     </item>
     
     <item>
       <title>An Introduction to Gaussian Process Regression</title>
-      <link>/gaussian_process_reg/</link>
+      <link>https://juanitorduz.github.io/gaussian_process_reg/</link>
       <pubDate>Mon, 08 Apr 2019 00:00:00 +0000</pubDate>
       
-      <guid>/gaussian_process_reg/</guid>
+      <guid>https://juanitorduz.github.io/gaussian_process_reg/</guid>
       <description>Updated Version: 2019/09/21 (Extension + Minor Corrections)
 After a sequence of preliminary posts (Sampling from a Multivariate Normal Distribution and Regularized Bayesian Regression as a Gaussian Process), I want to explore a concrete example of a gaussian process regression. We continue following Gaussian Processes for Machine Learning, Ch 2.
 Other recommended references are:
@@ -35,20 +35,20 @@ Other recommended references are:
     
     <item>
       <title>Bayesian Regression as a Gaussian Process</title>
-      <link>/reg_bayesian_regression/</link>
+      <link>https://juanitorduz.github.io/reg_bayesian_regression/</link>
       <pubDate>Mon, 01 Apr 2019 00:00:00 +0000</pubDate>
       
-      <guid>/reg_bayesian_regression/</guid>
+      <guid>https://juanitorduz.github.io/reg_bayesian_regression/</guid>
       <description>In this post we study the Bayesian Regression model to explore and compare the weight and function space and views of Gaussian Process Regression as described in the book Gaussian Processes for Machine Learning, Ch 2. We follow this reference very closely (and encourage to read it!). Our main objective is to illustrate the concepts and results through a concrete example. We use PyMC3 to run bayesian sampling.
 References:</description>
     </item>
     
     <item>
       <title>Sampling from a Multivariate Normal Distribution</title>
-      <link>/multivariate_normal/</link>
+      <link>https://juanitorduz.github.io/multivariate_normal/</link>
       <pubDate>Sat, 23 Mar 2019 00:00:00 +0000</pubDate>
       
-      <guid>/multivariate_normal/</guid>
+      <guid>https://juanitorduz.github.io/multivariate_normal/</guid>
       <description>In this post I want to describe how to sample from a multivariate normal distribution following section A.2 Gaussian Identities of the book Gaussian Processes for Machine Learning. This is a first step towards exploring and understanding Gaussian Processes methods in machine learning.
 Multivariate Normal Distribution Recall that a random vector \(X = (X_1, \cdots, X_d)\) has a multivariate normal (or Gaussian) distribution if every linear combination
 $$ \sum_{i=1}^{d} a_iX_i, \quad a_i\in\mathbb{R} $$ is normally distributed.</description>
