@@ -1261,8 +1261,8 @@ q^{*}(z)=\min_{q \in \mathfrak{D}} \text{KL}(q(z)||p(z|x)),
 <p><span class="math display">\[
 \begin{align}
 \text{KL}(q(z)||p(z|x)) =&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z|x))] \\
-=&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z,x))] - \text{E}[\log(p(x))] \\
-=&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z,x))] - \log(p(x))
+=&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z,x))] + \text{E}[\log(p(x))] \\
+=&amp; \text{E}[\log(q(z))] - \text{E}[\log(p(z,x))] + \log(p(x))
 \end{align}
 \]</span></p>
 <p>is the Kullback-Leibler (KL) divergence (the expected values are taken with respect to <span class="math inline">\(q(z)\)</span>). Note that this quantity contains a term <span class="math inline">\(\log(p(x))\)</span>, which is hard to compute. <em>Because we cannot compute the KL divergence, we optimize an alternative objective that is equivalent
