@@ -2,41 +2,41 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>machine_learning on Dr. Juan Camilo Orduz</title>
-    <link>https://juanitorduz.github.io/tags/machine_learning/</link>
+    <link>/tags/machine_learning/</link>
     <description>Recent content in machine_learning on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Sat, 15 Jun 2019 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="https://juanitorduz.github.io/tags/machine_learning/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="/tags/machine_learning/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>satRday Berlin 2019: Remedies for Severe Class Imbalance</title>
-      <link>https://juanitorduz.github.io/class_imbalance/</link>
+      <link>/class_imbalance/</link>
       <pubDate>Sat, 15 Jun 2019 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/class_imbalance/</guid>
+      <guid>/class_imbalance/</guid>
       <description>In this post I present a concrete case study illustrating some techniques to improve model performance in class-imbalanced classification problems. The methodologies described here are based on Chapter 16: Remedies for Severe Class Imbalance of the (great!) book Applied Predictive Modeling by Max Kuhn and Kjell Johnson. I absolutely recommend this reference to anyone interested in predictive modeling.
 This notebook should serve as an extension of my talk given at satRday Berlin 2019: A conference for R users in Berlin.</description>
     </item>
     
     <item>
       <title>Exploring the Curse of Dimensionality - Part II.</title>
-      <link>https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-ii./</link>
+      <link>/exploring-the-curse-of-dimensionality-part-ii./</link>
       <pubDate>Tue, 01 Jan 2019 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-ii./</guid>
+      <guid>/exploring-the-curse-of-dimensionality-part-ii./</guid>
       <description>I continue exploring the curse of dimensionality. Following the analysis form Part I., I want to discuss another consequence of sparse sampling in high dimensions: sample points are close to an edge of the sample. This post is based on The Elements of Statistical Learning, Section 2.5, which I encourage to read!
 Uniform Sampling Consider \(N\) data points uniformly distributed in a \(p\)-dimensional unit ball centered at the origin. Suppose we consider a nearest-neighbor estimate at the origin.</description>
     </item>
     
     <item>
       <title>Exploring the Curse of Dimensionality - Part I.</title>
-      <link>https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-i./</link>
+      <link>/exploring-the-curse-of-dimensionality-part-i./</link>
       <pubDate>Sun, 09 Dec 2018 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-i./</guid>
+      <guid>/exploring-the-curse-of-dimensionality-part-i./</guid>
       <description>In this post I want to present the notion of curse of dimensionality following a suggested exercise (Chapter 4 - Ex. 4) of the book An Introduction to Statistical Learning, written by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani.
 When the number of features \(p\) is large, there tends to be a deterioration in the performance of KNN and other local approaches that perform prediction using only observations that are near the test observation for which a prediction must be made.</description>
     </item>

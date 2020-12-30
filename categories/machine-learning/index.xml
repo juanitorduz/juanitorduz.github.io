@@ -2,21 +2,21 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Machine Learning on Dr. Juan Camilo Orduz</title>
-    <link>https://juanitorduz.github.io/categories/machine-learning/</link>
+    <link>/categories/machine-learning/</link>
     <description>Recent content in Machine Learning on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Thu, 11 Apr 2019 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="https://juanitorduz.github.io/categories/machine-learning/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="/categories/machine-learning/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Seasonal Bump Functions</title>
-      <link>https://juanitorduz.github.io/bump_func/</link>
+      <link>/bump_func/</link>
       <pubDate>Thu, 11 Apr 2019 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/bump_func/</guid>
+      <guid>/bump_func/</guid>
       <description>Motivated by the nice talk on Winning with Simple, even Linear, Models by Vincent D. Warmerdam, I briefly describe how to construct certain class of bump functions to encode seasonal variables in R.
 Prepare Notebook library(glue) library(lubridate) library(magrittr) library(tidyverse)  Generate Data Let us generate a time sequence variable stored in a tibble.
 # Define time sequence. t &amp;lt;- seq.Date(from = as.Date(&amp;quot;2017-07-01&amp;quot;), to = as.Date(&amp;quot;2019-04-01&amp;quot;), by = &amp;quot;day&amp;quot;) # Store it in a tibble.</description>
@@ -24,10 +24,10 @@ Prepare Notebook library(glue) library(lubridate) library(magrittr) library(tidy
     
     <item>
       <title>Probability that a given observation is part of a bootstrap sample?</title>
-      <link>https://juanitorduz.github.io/bootstrap/</link>
+      <link>/bootstrap/</link>
       <pubDate>Wed, 29 Nov 2017 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/bootstrap/</guid>
+      <guid>/bootstrap/</guid>
       <description>We study the problem of computing the probability that a given observation is part of a bootstrap sample. We include some numerical simulations.</description>
     </item>
     

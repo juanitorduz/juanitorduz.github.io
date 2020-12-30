@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Statistics, Forecasting, Bayes on Dr. Juan Camilo Orduz</title>
+    <link>/categories/statistics-forecasting-bayes/</link>
+    <description>Recent content in Statistics, Forecasting, Bayes on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sat, 02 Jan 2021 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="/categories/statistics-forecasting-bayes/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Gaussian Processes for Time Series Forecasting with PyMC3</title>
+      <link>/gp_ts_pymc3/</link>
+      <pubDate>Sat, 02 Jan 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/gp_ts_pymc3/</guid>
+      <description>In this notebook we translate the forecasting models developed for the post on Gaussian Processes for Time Series Forecasting with Scikit-Learn to the probabilistic Bayesian framework PyMC3. I strongly recommend looking into the following references for more details and examples:
+References:
+ An Introduction to Gaussian Process Regression PyMC3 Docs: Gaussian Processes PyMC3 Docs Example: CO2 at Mauna Loa Bayesian Analysis with Python (Second edition) - Chapter 7 Statistical Rethinking - Chapter 14  Prepare Notebook1 import numpy as np import pandas as pd import matplotlib.</description>
+    </item>
+    
+  </channel>
+</rss>
