@@ -2,21 +2,21 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>dataviz, python, geodata on Dr. Juan Camilo Orduz</title>
-    <link>https://juanitorduz.github.io/tags/dataviz-python-geodata/</link>
+    <link>/tags/dataviz-python-geodata/</link>
     <description>Recent content in dataviz, python, geodata on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <lastBuildDate>Tue, 07 Jan 2020 00:00:00 +0000</lastBuildDate>
     
-	<atom:link href="https://juanitorduz.github.io/tags/dataviz-python-geodata/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="/tags/dataviz-python-geodata/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
       <title>Open Data: Germany Maps Viz</title>
-      <link>https://juanitorduz.github.io/germany_plots/</link>
+      <link>/germany_plots/</link>
       <pubDate>Tue, 07 Jan 2020 00:00:00 +0000</pubDate>
       
-      <guid>https://juanitorduz.github.io/germany_plots/</guid>
+      <guid>/germany_plots/</guid>
       <description>In this post I want to show how to use public available (open) data to create geo visualizations in python. Maps are a great way to communicate and compare information when working with geolocation data. There are many frameworks to plot maps, here I focus on matplotlib and geopandas (and give a glimpse of mplleaflet).
 Reference: A very good introduction to matplotlib is the chapter on Visualization with Matplotlib from the Python Data Science Handbook by Jake VanderPlas.</description>
     </item>

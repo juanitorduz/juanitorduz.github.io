@@ -11,7 +11,7 @@
 <meta property="og:title" content="Probability that a given observation is part of a bootstrap sample? - Dr. Juan Camilo Orduz">
 
 
-  <link href='https://juanitorduz.github.io/images/favicon.ico' rel='icon' type='image/x-icon'/>
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
 
 
 
@@ -76,6 +76,7 @@
 
     <div class="article-content">
       
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p><em>“The bootstrap is a widely applicable and extremely powerful statistical tool that can be used to quantify the uncertainty associated with a given estimator or statistical learning method.”</em> This is how Section 5.2 of the book <a href="http://www-bcf.usc.edu/~gareth/ISL/">An Introduction to Statistical Learning</a>, written by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani, begins. Bootstrap can be used to estimate the standard errors of the coefficients from a linear regression and is the conceptual basis for some tree ensemble algorithms.</p>
@@ -84,7 +85,7 @@
 <p>What does this mean and why it is true?</p>
 <p>Recall that a bootstrap sample of \(n\) observations is just a to randomly choose \(n\) observations with repetition.</p>
 <p><strong>Aim:</strong> Derive the probability that a given observation is part of a bootstrap sample.</p>
-<p>To do this we are going to follow the lines of the Excercise 5.4.2 of the book <a href="http://www-bcf.usc.edu/~gareth/ISL/">An Introduction to Statistical Learning</a>. We are going to use Python despite the fact that this reference uses mainly R.</p>
+<p>To do this we are going to follow the lines of the Exercise 5.4.2 of the book <a href="http://www-bcf.usc.edu/~gareth/ISL/">An Introduction to Statistical Learning</a>. We are going to use Python despite the fact that this reference uses mainly R.</p>
 <div id="solution-of-excercise-5.4.2" class="section level2">
 <h2>Solution of Excercise 5.4.2</h2>
 <p>Suppose that we obtain a bootstrap sample from a set of \(n\) observations \(x_1, …, x_n\).</p>
