@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.58.3" />
+
+
+<title>GLM in PyMC3: Out-Of-Sample Predictions - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="GLM in PyMC3: Out-Of-Sample Predictions - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">6 min read</span>
+    
+
+    <h1 class="article-title">GLM in PyMC3: Out-Of-Sample Predictions</h1>
+
+    
+    <span class="article-date">2021-01-04</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook I explore the <a href="https://docs.pymc.io/api/glm.html">glm</a> module of <a href="https://docs.pymc.io/">PyMC3</a>. I am particularly interested in the model definition using <a href="https://patsy.readthedocs.io/en/latest/">pasty</a> formulas, as it makes the model evaluation loop faster (easier to include features and/or interactions). There are many good resources on this subject, but most of them evaluate the model in-sample. For many applications we require doing predictions on out-of-sample data. This experiment was motivated by the discussion of the thread <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">“Out of sample” predictions with the GLM sub-module</a> on the (great!) forum <a href="https://discourse.pymc.io/">discourse.pymc.io/</a>, thank you all for your input!</p>
+<p><strong>Resources</strong></p>
+<ul>
+<li><a href="https://docs.pymc.io/nb_examples/index.html">PyMC3 Docs: Example Notebooks</a></li>
+<li><a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a></li>
+<li><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a></li>
+</ul>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+
+import pymc3 as pm
+import arviz as az
+import patsy
+from pymc3 import glm
+from pymc3 import distributions as pm_dists
+
+plt.rcParams[&#39;figure.figsize&#39;] = [7, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+</div>
+<div id="generate-sample-data" class="section level2">
+<h2>Generate Sample Data</h2>
+<p>We want to fit a logistic regression model where there is a multiplicative interacton between twho numerical features.</p>
+<pre class="python"><code>SEED = 42
+np.random.seed(SEED)
+
+# Number of data points.
+n = 250
+# Create features.
+x1 = np.random.normal(loc=0.0, scale=2.0, size=n)
+x2 = np.random.normal(loc=0.0, scale=2.0, size=n)
+epsilon = np.random.normal(loc=0.0, scale=0.5, size=n)
+# Define target variable.
+z = x1 - x2 + 2*x1*x2 - 0.5 + epsilon
+p = 1 / (1 + np.exp(-z))
+y = (p &gt;= 0.5).astype(int)
+
+df = pd.DataFrame(dict(x1=x1, x2=x2, y=y))
+
+df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+x1
+</th>
+<th>
+x2
+</th>
+<th>
+y
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+0.993428
+</td>
+<td>
+-2.521768
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+-0.276529
+</td>
+<td>
+1.835724
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+1.295377
+</td>
+<td>
+4.244312
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+3.046060
+</td>
+<td>
+2.064931
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+-0.468307
+</td>
+<td>
+-3.038740
+</td>
+<td>
+1
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us do some exploration of the data:</p>
+<pre class="python"><code>sns.pairplot(data=df, height=2);</code></pre>
+<center>
+<img src="../images/glm_pymc3_files/glm_pymc3_6_0.svg" title="fig:" alt="svg" />
+</center>
+<ul>
+<li><span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span> are not correlated.</li>
+<li><span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span> do not seem to separate the <span class="math inline">\(y\)</span>-classes independently.</li>
+<li>The distribution of <span class="math inline">\(y\)</span> is not highly unbalanced.</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns_c_div = sns.diverging_palette(240, 10, n=2)
+sns.scatterplot(x=&#39;x1&#39;, y=&#39;x2&#39;, data=df, hue=&#39;y&#39;, palette=[sns_c_div[0], sns_c_div[-1]])
+ax.legend(title=&#39;y&#39;, loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&#39;Sample Data&#39;);</code></pre>
+<center>
+<img src="../images/glm_pymc3_files/glm_pymc3_8_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="prepare-data-for-modeling" class="section level2">
+<h2>Prepare Data for Modeling</h2>
+<p>I wanted to use the <em><code>classmethod</code></em> <code>from_formula</code> (see <a href="https://docs.pymc.io/api/glm.html">documentation</a>), but I was not able to generate out-of-sample predictions with this approach (if you find a way please let me know!). As a workaround, I created the features from a formula using <a href="https://patsy.readthedocs.io/en/latest/">pasty</a> directly and then use <em><code>class</code></em> <code>pymc3.glm.linear.GLM</code> (this was motivated by going into the <a href="https://github.com/pymc-devs/pymc3/blob/master/pymc3/glm/linear.py">source code</a>).</p>
+<pre class="python"><code># Defnie model formula.
+formula = &#39;y ~ x1 * x2&#39;
+# Create features.
+y, x = patsy.dmatrices(formula_like=formula, data=df)
+y = np.asarray(y).flatten()
+labels = x.design_info.column_names
+x = np.asarray(x)</code></pre>
+<p>As pointed out on the <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">thread</a> (thank you <span class="citation">@Nicky</span>!), we need to keep the lables of the features ni the design matrix.</p>
+<pre class="python"><code>print(f&#39;labels = {labels}&#39;)</code></pre>
+<pre><code>labels = [&#39;Intercept&#39;, &#39;x1&#39;, &#39;x2&#39;, &#39;x1:x2&#39;]</code></pre>
+<p><strong>Remark:</strong> One needs to be careful when generating these features as we do not want to leak information in our cross validation steps. This could be the case when one-hot-encodinig categorical variables.</p>
+<p>Now we do a train-test split.</p>
+<pre class="python"><code>from sklearn.model_selection import train_test_split
+
+x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.7, random_state=SEED)</code></pre>
+</div>
+<div id="define-and-fit-the-model" class="section level2">
+<h2>Define and Fit the Model</h2>
+<p>We now specify the model in PyMC3.</p>
+<pre class="python"><code>with pm.Model() as model:
+    # Set data container.
+    data = pm.Data(&#39;data&#39;, x_train)
+    # Define GLM family.
+    family = pm.glm.families.Binomial()
+    # Set priors.
+    priors = {
+        &#39;Intercept&#39;: pm.Normal.dist(mu=0, sd=10),
+        &#39;x1&#39;: pm.Normal.dist(mu=0, sd=10),
+        &#39;x2&#39;: pm.Normal.dist(mu=0, sd=10),
+        &#39;x1:x2&#39;: pm.Normal.dist(mu=0, sd=10),
+    }
+    # Specify model.
+    glm.GLM(
+        y=y_train,
+        x=data,
+        family=family, 
+        intercept=False,
+        labels=labels,
+        priors=priors
+    )
+    # Configure sampler.
+    trace = pm.sample(
+        3000, 
+        chains=5, 
+        tune=1000, 
+        target_accept=0.87, 
+        random_seed=SEED
+    ) </code></pre>
+<pre class="python"><code>az.plot_trace(trace);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/glm_pymc3_files/glm_pymc3_18_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>pm.summary(trace)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_mean
+</th>
+<th>
+ess_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+-2.997
+</td>
+<td>
+0.852
+</td>
+<td>
+-4.600
+</td>
+<td>
+-1.495
+</td>
+<td>
+0.019
+</td>
+<td>
+0.014
+</td>
+<td>
+1948.0
+</td>
+<td>
+1919.0
+</td>
+<td>
+1984.0
+</td>
+<td>
+2755.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+x1
+</th>
+<td>
+4.562
+</td>
+<td>
+1.122
+</td>
+<td>
+2.618
+</td>
+<td>
+6.698
+</td>
+<td>
+0.026
+</td>
+<td>
+0.019
+</td>
+<td>
+1859.0
+</td>
+<td>
+1812.0
+</td>
+<td>
+1919.0
+</td>
+<td>
+2494.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+x2
+</th>
+<td>
+-4.250
+</td>
+<td>
+1.052
+</td>
+<td>
+-6.148
+</td>
+<td>
+-2.304
+</td>
+<td>
+0.024
+</td>
+<td>
+0.017
+</td>
+<td>
+1846.0
+</td>
+<td>
+1813.0
+</td>
+<td>
+1893.0
+</td>
+<td>
+2510.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+x1:x2
+</th>
+<td>
+8.152
+</td>
+<td>
+1.956
+</td>
+<td>
+4.668
+</td>
+<td>
+11.778
+</td>
+<td>
+0.045
+</td>
+<td>
+0.032
+</td>
+<td>
+1901.0
+</td>
+<td>
+1850.0
+</td>
+<td>
+1962.0
+</td>
+<td>
+2617.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The chains look good.</p>
+</div>
+<div id="generate-out-of-sample-predictions" class="section level2">
+<h2>Generate Out-Of-Sample Predictions</h2>
+<p>Now we generate predictions on the test set.</p>
+<pre class="python"><code># Update data reference.
+pm.set_data({&#39;data&#39;: x_test}, model=model)
+# Generate posterior samples. 
+ppc_test = pm.sample_posterior_predictive(trace, model=model, samples=1000)</code></pre>
+<pre class="python"><code># Compute the point prediction by taking the mean
+# and defining the category via a threshold.
+p_test_pred = ppc_test[&#39;y&#39;].mean(axis=0)
+y_test_pred = (p_test_pred &gt;= 0.5).astype(&#39;int&#39;)</code></pre>
+</div>
+<div id="evaluate-model" class="section level2">
+<h2>Evaluate Model</h2>
+<p>First let us compute the accuracy on the test set.</p>
+<pre class="python"><code>from sklearn.metrics import accuracy_score
+
+print(f&#39;accuracy = {accuracy_score(y_true=y_test, y_pred=y_test_pred)}&#39;)</code></pre>
+<pre><code>accuracy = 0.92</code></pre>
+<p>Next, we plot the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic">roc curve</a> and compute the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic#Area_under_the_curve">auc</a>.</p>
+<pre class="python"><code>from sklearn.metrics import roc_curve, auc, RocCurveDisplay
+
+fpr, tpr, thresholds = roc_curve(y_true=y_test, y_score=y_test_pred, pos_label=1, drop_intermediate=False)
+roc_auc = auc(fpr, tpr)
+
+fig, ax  = plt.subplots()
+roc_display = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc)
+roc_display = roc_display.plot(ax=ax, marker=&#39;o&#39;)
+ax.set(title=&#39;ROC&#39;);</code></pre>
+<center>
+<img src="../images/glm_pymc3_files/glm_pymc3_27_0.svg" title="fig:" alt="svg" />
+</center>
+<p>The model is performing as expected (we ofcourse know the data generating process, which is almost never the case in practical applications).</p>
+</div>
+<div id="model-decision-boundary" class="section level2">
+<h2>Model Decision Boundary</h2>
+<p>Finally we will describe and plot the model decision boundary, which is the space defined as</p>
+<p><span class="math display">\[\mathcal{B} = \{(x_1, x_2) \in \mathbb{R}^2 \: | \: p(x_1, x_2) = 0.5\}\]</span></p>
+<p>where <span class="math inline">\(p\)</span> denotes the probability of belonging to the class <span class="math inline">\(y=1\)</span> output bu the model. To make this set explicit, we simply write the condition in terms of the model parametrization:</p>
+<p><span class="math display">\[0.5 = \frac{1}{1 + \exp(-(\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_{12} x_1x_2))}\]</span></p>
+<p>which implies</p>
+<p><span class="math display">\[0 = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_{12} x_1x_2\]</span></p>
+<p>Solving for <span class="math inline">\(x_2\)</span> we get the formula</p>
+<p><span class="math display">\[x_2 = - \frac{\beta_0 + \beta_1 x_1}{\beta_2 + \beta_{12}x_1}\]</span></p>
+<p>Observe that this curve is a hyperbola centered at the singularity point <span class="math inline">\(x_1 = - \beta_2 / \beta_{12}\)</span>.</p>
+<p>Let us not plot the model decision boundary using a grid:</p>
+<pre class="python"><code># Construct grid. 
+x1_grid = np.linspace(start=-9, stop=9, num=200)
+x2_grid = x1_grid
+
+x1_mesh, x2_mesh = np.meshgrid(x1_grid, x2_grid)
+
+x_grid = np.stack(arrays=[x1_mesh.flatten(), x2_mesh.flatten()], axis=1)
+
+# Create features on the grid.
+x_grid_ext = patsy.dmatrix(
+    formula_like=&#39;x1 * x2&#39;, 
+    data=dict(x1=x_grid[:, 0], x2=x_grid[:, 1])
+)
+
+x_grid_ext = np.asarray(x_grid_ext)
+
+# Generate model predictions on the grid.
+pm.set_data({&#39;data&#39;: x_grid_ext}, model=model)
+ppc_grid = pm.sample_posterior_predictive(trace, model=model, samples=1000)</code></pre>
+<p>Now we compute the model decision boundary on the grid for visualization purposes.</p>
+<pre class="python"><code>numerator = - (trace[&#39;Intercept&#39;].mean(axis=0) + trace[&#39;x1&#39;].mean(axis=0)*x1_grid)
+denominator = (trace[&#39;x2&#39;].mean(axis=0) + trace[&#39;x1:x2&#39;].mean(axis=0)*x1_grid)
+bd_grid =  numerator / denominator
+
+grid_df = pd.DataFrame(x_grid, columns=[&#39;x1&#39;, &#39;x2&#39;])
+grid_df[&#39;p&#39;] = ppc_grid[&#39;y&#39;].mean(axis=0)
+grid_df.sort_values(&#39;p&#39;, inplace=True)
+
+p_grid = grid_df \
+    .pivot(index=&#39;x2&#39;, columns=&#39;x1&#39;, values=&#39;p&#39;) \
+    .to_numpy()</code></pre>
+<p>We finally get the plot and the predictions on the test set:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+cmap = sns.diverging_palette(240, 10, n=50, as_cmap=True)
+sns.scatterplot(x=x_test[:, 1].flatten(), y=x_test[:, 2].flatten(), hue=y_test, palette=[sns_c_div[0], sns_c_div[-1]], ax=ax)
+sns.lineplot(x=x1_grid, y=bd_grid, color=&#39;black&#39;, ax=ax)
+ax.contourf(x1_grid, x2_grid, p_grid, cmap=cmap, alpha=0.3)
+ax.legend(title=&#39;y&#39;, loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.lines[0].set_linestyle(&#39;dotted&#39;)
+ax.set(title=&#39;Model Decision Boundary&#39;, ylim=(-9, 9));</code></pre>
+<center>
+<img src="../images/glm_pymc3_files/glm_pymc3_35_0.svg" title="fig:" alt="svg" />
+</center>
+<p><strong>Remark:</strong> Note that we have computed the model decision boundary by using the mean of the posterior samples. However, we can generate a better (and more informative!) plot if we use the complete distribution (similarly for other metrics like accuracy and auc). One way of doing this is by storing and computing it inside the model definition as a <a href="https://docs.pymc.io/api/model.html"><code>Deterministic</code></a> variable as in <a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a>.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
