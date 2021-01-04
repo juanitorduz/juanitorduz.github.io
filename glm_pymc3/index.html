@@ -256,7 +256,7 @@ ax.set(title=&#39;Sample Data&#39;);</code></pre>
 <div id="prepare-data-for-modeling" class="section level2">
 <h2>Prepare Data for Modeling</h2>
 <p>I wanted to use the <em><code>classmethod</code></em> <code>from_formula</code> (see <a href="https://docs.pymc.io/api/glm.html">documentation</a>), but I was not able to generate out-of-sample predictions with this approach (if you find a way please let me know!). As a workaround, I created the features from a formula using <a href="https://patsy.readthedocs.io/en/latest/">pasty</a> directly and then use <em><code>class</code></em> <code>pymc3.glm.linear.GLM</code> (this was motivated by going into the <a href="https://github.com/pymc-devs/pymc3/blob/master/pymc3/glm/linear.py">source code</a>).</p>
-<pre class="python"><code># Defnie model formula.
+<pre class="python"><code># Define model formula.
 formula = &#39;y ~ x1 * x2&#39;
 # Create features.
 y, x = patsy.dmatrices(formula_like=formula, data=df)
