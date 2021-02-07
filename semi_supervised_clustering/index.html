@@ -76,6 +76,7 @@
 
     <div class="article-content">
       
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p>In this post we want to explore the semi-supervided algorithm presented <a href="https://eldad-haber.webnode.com/">Eldad Haber</a> in the <a href="https://www.math-berlin.de/academics/summer-schools/2019">BMS Summer School 2019: Mathematics of Deep Learning</a>, during 19 - 30 August 2019, at the Zuse Institute Berlin. He developed an implementation in Matlab which you can find in <a href="https://github.com/eldadHaber/CompAI/">this</a> GitHub repository. In addition, please find the corresponding slides <a href="https://github.com/eldadHaber/CompAI/blob/master/02-SemiSup.pdf">here</a>.</p>
@@ -123,7 +124,7 @@ sns.scatterplot(x=x3, y=y3, ax=ax, color=&#39;k&#39;)
 
 ax.set(title=&#39;Raw Data&#39;);</code></pre>
 <center>
-<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_7_0.png" alt="png" />
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_7_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="add-labeled-data" class="section level2">
@@ -150,7 +151,7 @@ sns.scatterplot(x=q3, y=p3, ax=ax, color=&#39;g&#39;)
 
 ax.set(title=&#39;Raw Data + Labeled Data&#39;);</code></pre>
 <center>
-<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_11_0.png" alt="png" />
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_11_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code># Merge Data  
 x = np.concatenate([x1, x2, x3, q1, q2, q3]).reshape(-1, 1)
@@ -177,14 +178,14 @@ adjacency_matrix_s = kneighbors_graph(X=data_matrix,n_neighbors=nn)</code></pre>
 <p>Let us plot the adjacency matrix:</p>
 <pre class="python"><code>from scipy import sparse
 
-# Convert to numpy array&#39;
+# Convert to numpy array
 adjacency_matrix = adjacency_matrix_s.toarray()
 
 fig, ax = plt.subplots(figsize=(12, 10))
 sns.heatmap(adjacency_matrix, ax=ax, cmap=&#39;viridis_r&#39;)
 ax.set(title=&#39;Adjacency Matrix&#39;);</code></pre>
 <center>
-<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_19_0.png" alt="png" />
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_19_0.png" title="fig:" alt="png" />
 </center>
 <p>As the data was not not shuffled, we can see the “cluster” blocks. We also see the three small groups of labeled data on the right column.</p>
 </div>
@@ -200,7 +201,7 @@ fig, ax = plt.subplots(figsize=(12, 10))
 sns.heatmap(graph_laplacian, ax=ax, cmap=&#39;viridis_r&#39;)
 ax.set(title=&#39;Graph Laplacian&#39;);</code></pre>
 <center>
-<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_23_0.png" alt="png" />
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_23_0.png" title="fig:" alt="png" />
 </center>
 </div>
 <div id="learning-problem-description" class="section level2">
@@ -213,7 +214,7 @@ ax.set(title=&#39;Graph Laplacian&#39;);</code></pre>
 <ul>
 <li><p><span class="math inline">\(\text{loss}(U, U_{obs})\)</span> is the cost function associated with the labels (see details below).</p></li>
 <li><p><span class="math inline">\(\frac{\alpha}{2} \text{tr}(U^T L U)\)</span> encodes the locality property: <em>close points should be similar</em> (to see this go to <a href="https://juanitorduz.github.io/documents/orduz_pydata2018.pdf">The Algorithm</a> section of my PyData presentation). In Haber’s words: <em>Try to find the non-constant vector with the minimal energy. The solution should be “smooth” on the graph.</em></p></li>
-<li><p>The constant <span class="math inline">\(\alpha&gt;0\)</span> is controls the contriibution of these two components of the cost function.</p></li>
+<li><p>The constant <span class="math inline">\(\alpha&gt;0\)</span> is controls the contribution of these two components of the cost function.</p></li>
 </ul>
 </div>
 <div id="construct-loss-function" class="section level2">
@@ -252,13 +253,10 @@ def project_to_labeled(u, label_index):
 def sofmax_loss(c, c_obs):
     &quot;&quot;&quot;Computes the softmax loss function of two vectors.&quot;&quot;&quot;
     m = c.shape[0]
-    
     soft_max = np.apply_along_axis(softmax, axis=1, arr=c)
     # Add small epsilon for numerical stability.
     loss = - (1/m)*np.dot(c_obs.T, np.log(soft_max + 0.001))
-
     loss = np.trace(loss)
-    
     return loss</code></pre>
 <ul>
 <li>Laplacian Loss</li>
@@ -266,24 +264,20 @@ def sofmax_loss(c, c_obs):
 <pre class="python"><code>def laplacial_loss(c, graph_laplacian):
     &quot;&quot;&quot;Loss function associated to the graph Laplacian.&quot;&quot;&quot;
     loss = 0.5*np.dot(c.T, np.dot(graph_laplacian, c))
-    
     loss = np.trace(loss)
-    
     return loss</code></pre>
 <pre class="python"><code>def loss(u, u_obs, label_index, graph_laplacian, alpha):
     &quot;&quot;&quot;Loss function of the semi-supervised algorithm based 
     on the graph Laplacian. 
     &quot;&quot;&quot;
     u_proj = project_to_labeled(u, label_index)
-    
     loss = sofmax_loss(u_proj, u_obs) + (alpha/2)*laplacial_loss(u, graph_laplacian)
-    
     return loss</code></pre>
 </div>
 <div id="run-optimizer" class="section level2">
 <h2>Run Optimizer</h2>
 <p>Next, we simply run an optimizer to find a solution for out problem.</p>
-<p><strong>Warning:</strong> This is done just for illustration purposes. This step must not be overlooked in applications. For example, in <a href="https://github.com/eldadHaber/CompAI/blob/master/matlabCode/semiSuperLearn.m">this</a> Matlab code the solution is found using inexact Newton&quot;s method.</p>
+<p><strong>Warning:</strong> This is done just for illustration purposes. This step must not be overlooked in applications. For example, in <a href="https://github.com/eldadHaber/CompAI/blob/master/matlabCode/semiSuperLearn.m">this</a> Matlab code the solution is found using inexact Newton"s method.</p>
 <pre class="python"><code>from scipy.optimize import minimize
 
 # Define initial estimate.
@@ -430,7 +424,7 @@ sns.scatterplot(
 
 ax.set(title=&#39;Predicted Classes&#39;);</code></pre>
 <center>
-<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_41_0.png" alt="png" />
+<img src="../images/semi_supervised_clustering_files/semi_supervised_clustering_41_0.png" title="fig:" alt="png" />
 </center>
 <pre class="python"><code>fig, (ax1, ax2) = plt.subplots(ncols=2, sharey=True, figsize=(20, 10))
 
