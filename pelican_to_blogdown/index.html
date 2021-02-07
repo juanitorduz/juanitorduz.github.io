@@ -4,7 +4,7 @@
     <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Hugo 0.58.3" />
+<meta name="generator" content="Hugo 0.79.1" />
 
 
 <title>From Pelican to Blogdown - Dr. Juan Camilo Orduz</title>
@@ -70,46 +70,52 @@
     
 
     <div class="article-content">
-      
-
-<p>Here I want to discuss my transition from <a href="https://blog.getpelican.com">Pelican</a> to <a href="https://bookdown.org/yihui/blogdown/">Blogdown</a> and present some personal learnings. In June 2017 I decided to build a personal website/portafolio. I chose <a href="https://blog.getpelican.com">Pelican</a>, because:</p>
-
+      <p>Here I want to discuss my transition from <a href="https://blog.getpelican.com">Pelican</a> to <a href="https://bookdown.org/yihui/blogdown/">Blogdown</a> and present some personal learnings. In June 2017 I decided to build a personal website/portafolio. I chose <a href="https://blog.getpelican.com">Pelican</a>, because:</p>
 <ul>
-<li><p>It is written in <a href="https://www.python.org">Python</a>, which was the programing language I was mainly working on.</p></li>
-
-<li><p>I wanted to include some <a href="http://jupyter.org">Jupyter</a> notebook I had already written.</p></li>
-
-<li><p>A great post: <a href="https://www.dataquest.io/blog/how-to-setup-a-data-science-blog/">Building a data science portfolio: Making a data science blog</a> explaining the procedure and using <a href="https://pages.github.com">GitHub Pages</a> to publist it.</p></li>
+<li>
+<p>It is written in <a href="https://www.python.org">Python</a>, which was the programing language I was mainly working on.</p>
+</li>
+<li>
+<p>I wanted to include some <a href="http://jupyter.org">Jupyter</a> notebook I had already written.</p>
+</li>
+<li>
+<p>A great post: <a href="https://www.dataquest.io/blog/how-to-setup-a-data-science-blog/">Building a data science portfolio: Making a data science blog</a> explaining the procedure and using <a href="https://pages.github.com">GitHub Pages</a> to publist it.</p>
+</li>
 </ul>
-
 <p>Overall, it was easy getting started. Nevertheless, I encounter the following challenges with the <a href="https://github.com/nairobilug/pelican-alchemy">Alchemy template</a>:</p>
-
 <ul>
-<li><p>Including <a href="http://jupyter.org">Jupyter</a> notebooks: I had some guidance by <a href="http://drorata.github.io/">Dror Atariah</a> (go and check his nice blog!). I must admit that the integration of the <a href="https://github.com/getpelican/pelican-plugins/tree/master/liquid_tags">liquid_tags plugin</a> was somehow tricky. I had to include a <code>_nb_header.html</code> file.</p></li>
-
-<li><p>It was not straight forward to enable <a href="https://www.mathjax.org">Mathjax</a>. I had to include it myself following this <a href="https://github.com/jakevdp/jakevdp.github.io-source/blob/master/theme/templates/base.html">repository</a>.</p></li>
-
-<li><p>I also wanted to include <a href="https://bookdown.org/yihui/rmarkdown/notebook.html">R notebooks</a>. This was not straightforward. An initial attempt was following the ideas of this <a href="https://rjweiss.github.io/articles/2014_08_25/testing-rmarkdown-integration/">post</a> using the <code>rmd_reader</code> plugin, which needs <a href="https://pypi.org/project/rpy2/">rpy2</a> to work. The problem ist that this module is <a href="https://bitbucket.org/rpy2/rpy2/issues/450/installing-ryp2-with-python-27">not available anymore</a> for Python 3.X. As a work around, I found a <a href="http://michaeltoth.me/how-to-write-pelican-blog-posts-using-rmarkdown-knitr-20.html">post</a> where an R function is provided in order to render R Notebooks into Pelican format.</p></li>
+<li>
+<p>Including <a href="http://jupyter.org">Jupyter</a> notebooks: I had some guidance by <a href="http://drorata.github.io/">Dror Atariah</a> (go and check his nice blog!). I must admit that the integration of the <a href="https://github.com/getpelican/pelican-plugins/tree/master/liquid_tags">liquid_tags plugin</a> was somehow tricky. I had to include a <code>_nb_header.html</code> file.</p>
+</li>
+<li>
+<p>It was not straight forward to enable <a href="https://www.mathjax.org">Mathjax</a>. I had to include it myself following this <a href="https://github.com/jakevdp/jakevdp.github.io-source/blob/master/theme/templates/base.html">repository</a>.</p>
+</li>
+<li>
+<p>I also wanted to include <a href="https://bookdown.org/yihui/rmarkdown/notebook.html">R notebooks</a>. This was not straightforward. An initial attempt was following the ideas of this <a href="https://rjweiss.github.io/articles/2014_08_25/testing-rmarkdown-integration/">post</a> using the <code>rmd_reader</code> plugin, which needs <a href="https://pypi.org/project/rpy2/">rpy2</a> to work. The problem ist that this module is <a href="https://bitbucket.org/rpy2/rpy2/issues/450/installing-ryp2-with-python-27">not available anymore</a> for Python 3.X. As a work around, I found a <a href="http://michaeltoth.me/how-to-write-pelican-blog-posts-using-rmarkdown-knitr-20.html">post</a> where an R function is provided in order to render R Notebooks into Pelican format.</p>
+</li>
 </ul>
-
 <h3 id="why-did-i-decide-to-move-to-blogdown">Why did I decide to move to blogdown?</h3>
-
 <p>Last week I attended an R-Users <a href="https://www.meetup.com/Berlin-R-Users-Group/events/256343177/">meetup</a> in Berlin where one of the talks was about: <strong>Code-centric websites with Blogdown</strong>. I has a quite interesting introduction to Blogdown. Yo can find the content <a href="https://dadascience.design/post/r-demo-blogdown-madness-with-htmlwidgets/">here</a>. I decided to give it a go and within 2 days I was able to move, format and render all my posts! Here are some nice features which made me choose Blogdown:</p>
-
 <ul>
-<li><p>Everithing can be donde inside <a href="https://www.rstudio.com">RStudio</a>.</p></li>
-
-<li><p>Easy integration of R and Jupyter notebooks as well (see this <a href="https://www.timlrx.com/2018/03/25/uploading-jupyter-notebook-files-to-blogdown/">post</a>). One can directly convert a Jupyter notebook to markdown by running the command</p>
-
-<p><code>jupyter nbconvert --to markdown my_notebook.ipynb</code></p></li>
-
-<li><p>Great documentation.</p></li>
-
-<li><p>Good integration with GitHub Pages.</p></li>
-
-<li><p>Easy to use Google Analytics.</p></li>
-
-<li><p><a href="https://mikmart.rbind.io/2018/02/18/testing-font-awesome/#fnref:I-m-not-includin">Here</a> is a post on how include <a href="https://fontawesome.com/">Font Awesome icons</a>.</p></li>
+<li>
+<p>Everithing can be donde inside <a href="https://www.rstudio.com">RStudio</a>.</p>
+</li>
+<li>
+<p>Easy integration of R and Jupyter notebooks as well (see this <a href="https://www.timlrx.com/2018/03/25/uploading-jupyter-notebook-files-to-blogdown/">post</a>). One can directly convert a Jupyter notebook to markdown by running the command</p>
+<p><code>jupyter nbconvert --to markdown my_notebook.ipynb</code></p>
+</li>
+<li>
+<p>Great documentation.</p>
+</li>
+<li>
+<p>Good integration with GitHub Pages.</p>
+</li>
+<li>
+<p>Easy to use Google Analytics.</p>
+</li>
+<li>
+<p><a href="https://mikmart.rbind.io/2018/02/18/testing-font-awesome/#fnref:I-m-not-includin">Here</a> is a post on how include <a href="https://fontawesome.com/">Font Awesome icons</a>.</p>
+</li>
 </ul>
 
     </div>

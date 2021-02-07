@@ -4,7 +4,7 @@
     <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Hugo 0.58.3" />
+<meta name="generator" content="Hugo 0.79.1" />
 
 
 <title>Movie Plots Text Generation with Keras - Dr. Juan Camilo Orduz</title>
@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">15 min read</span>
+    <span class="article-duration">14 min read</span>
     
 
     <h1 class="article-title">Movie Plots Text Generation with Keras</h1>
@@ -75,244 +75,123 @@
     
 
     <div class="article-content">
-      
-
-<p>In this post I show some text generation experiments I ran using <a href="https://en.wikipedia.org/wiki/Long_short-term_memory">LSTM</a> with <a href="https://keras.io">Keras</a>. For the preprocessing and tokenization I used <a href="https://spacy.io">SpaCy</a>. The aim is not to present a completed project, but rather a first step which should be then iterated.</p>
-
+      <p>In this post I show some text generation experiments I ran using <a href="https://en.wikipedia.org/wiki/Long_short-term_memory">LSTM</a> with <a href="https://keras.io">Keras</a>. For the preprocessing and tokenization I used <a href="https://spacy.io">SpaCy</a>. The aim is not to present a completed project, but rather a first step which should be then iterated.</p>
 <h2 id="resources">Resources</h2>
-
 <p>There are many great resources and blog posts about the subject (and similar experiments). Here I mention the ones I found particularly useful for the general theory:</p>
-
 <ul>
-<li><p>Online Resources:</p>
-
+<li>Online Resources:
 <ul>
-<li><p><a href="https://www.deeplearning.ai">Deep Learning Specialization</a>, <a href="https://www.coursera.org">Coursera</a> by <a href="https://www.andrewng.org">Andrew Ng</a>.</p></li>
-
-<li><p><a href="https://www.udemy.com/nlp-natural-language-processing-with-python/">NLP with Python</a>, <a href="https://www.udemy.com/">Udemy</a> by <a href="https://www.linkedin.com/in/jmportilla/">Jose Portilla</a>.</p></li>
-</ul></li>
+<li>
+<p><a href="https://www.deeplearning.ai">Deep Learning Specialization</a>, <a href="https://www.coursera.org">Coursera</a> by <a href="https://www.andrewng.org">Andrew Ng</a>.</p>
+</li>
+<li>
+<p><a href="https://www.udemy.com/nlp-natural-language-processing-with-python/">NLP with Python</a>, <a href="https://www.udemy.com/">Udemy</a> by <a href="https://www.linkedin.com/in/jmportilla/">Jose Portilla</a>.</p>
+</li>
 </ul>
-
+</li>
+</ul>
 <p><strong>Remark:</strong> From this last course I took most of the code in this experiment (check out the complete series of videos!).</p>
-
 <ul>
-<li><p>Books:</p>
-
+<li>
+<p>Books:</p>
 <ul>
 <li><a href="https://www.manning.com/books/deep-learning-with-r">Deep Learning with R</a>, by <a href="https://www.linkedin.com/in/fchollet/">François Chollet</a> and <a href="https://www.linkedin.com/in/jjallaire/">J. J. Allaire</a>.</li>
-</ul></li>
 </ul>
-
+</li>
+</ul>
 <h2 id="the-data-set">The Data Set</h2>
-
 <p><a href="https://www.kaggle.com/jrobischon/wikipedia-movie-plots">Wikipedia Movie Plots</a></p>
-
 <ul>
-<li><p>Source: <a href="https://www.kaggle.com/">Kaggle</a>.</p></li>
-
-<li><p>Description: <em>Plot summary descriptions scraped from Wikipedia</em>.</p></li>
+<li>
+<p>Source: <a href="https://www.kaggle.com/">Kaggle</a>.</p>
+</li>
+<li>
+<p>Description: <em>Plot summary descriptions scraped from Wikipedia</em>.</p>
+</li>
 </ul>
-
 <p>Our aim is to train a text generator algorithm able to write plots for horror movies (why horror? no particular reason).</p>
-
 <h2 id="read-data">Read Data</h2>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">import</span> numpy <span style="color:#f92672">as</span> np
+<span style="color:#f92672">import</span> pandas <span style="color:#f92672">as</span> pd
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Read data. </span>
+movies_raw_df <span style="color:#f92672">=</span> pd<span style="color:#f92672">.</span>read_csv(<span style="color:#e6db74">&#39;wiki_movie_plots_deduped.csv&#39;</span>)
 
-<pre><code class="language-python">import numpy as np
-import pandas as pd
+movies_raw_df<span style="color:#f92672">.</span>head()
+</code></pre></div><!-- raw HTML omitted -->
+<pre><code> .dataframe thead th {
+    text-align: left;
+    font-size: 14px;
+}
+
+.dataframe tbody tr th {
+    vertical-align: top;
+    font-size: 14px;
+}
+
+.dataframe tbody tr td {
+    vertical-align: top;
+    font-size: 14px;
+}
 </code></pre>
-
-<pre><code class="language-python"># Read data. 
-movies_raw_df = pd.read_csv('wiki_movie_plots_deduped.csv')
-
-movies_raw_df.head()
-</code></pre>
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-     .dataframe thead th {
-        text-align: left;
-        font-size: 14px;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-        font-size: 14px;
-    }
-    
-    .dataframe tbody tr td {
-        vertical-align: top;
-        font-size: 14px;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Release Year</th>
-      <th>Title</th>
-      <th>Origin/Ethnicity</th>
-      <th>Director</th>
-      <th>Cast</th>
-      <th>Genre</th>
-      <th>Wiki Page</th>
-      <th>Plot</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1901</td>
-      <td>Kansas Saloon Smashers</td>
-      <td>American</td>
-      <td>Unknown</td>
-      <td>NaN</td>
-      <td>unknown</td>
-      <td>https://en.wikipedia.org/wiki/Kansas_Saloon_Sm...</td>
-      <td>A bartender is working at a saloon, serving dr...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1901</td>
-      <td>Love by the Light of the Moon</td>
-      <td>American</td>
-      <td>Unknown</td>
-      <td>NaN</td>
-      <td>unknown</td>
-      <td>https://en.wikipedia.org/wiki/Love_by_the_Ligh...</td>
-      <td>The moon, painted with a smiling face hangs ov...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1901</td>
-      <td>The Martyred Presidents</td>
-      <td>American</td>
-      <td>Unknown</td>
-      <td>NaN</td>
-      <td>unknown</td>
-      <td>https://en.wikipedia.org/wiki/The_Martyred_Pre...</td>
-      <td>The film, just over a minute long, is composed...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1901</td>
-      <td>Terrible Teddy, the Grizzly King</td>
-      <td>American</td>
-      <td>Unknown</td>
-      <td>NaN</td>
-      <td>unknown</td>
-      <td>https://en.wikipedia.org/wiki/Terrible_Teddy,_...</td>
-      <td>Lasting just 61 seconds and consisting of two ...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1902</td>
-      <td>Jack and the Beanstalk</td>
-      <td>American</td>
-      <td>George S. Fleming, Edwin S. Porter</td>
-      <td>NaN</td>
-      <td>unknown</td>
-      <td>https://en.wikipedia.org/wiki/Jack_and_the_Bea...</td>
-      <td>The earliest known adaptation of the classic f...</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
+<p><!-- raw HTML omitted --></p>
+<!-- raw HTML omitted -->
 <h2 id="filter-data">Filter Data</h2>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">movies_to_select <span style="color:#f92672">=</span> ((movies_raw_df[<span style="color:#e6db74">&#39;Genre&#39;</span>] <span style="color:#f92672">==</span> <span style="color:#e6db74">&#39;horror&#39;</span>) <span style="color:#f92672">&amp;</span>
+                    <span style="color:#75715e"># Restrict to Amerian movies. </span>
+                    (movies_raw_df[<span style="color:#e6db74">&#39;Origin/Ethnicity&#39;</span>] <span style="color:#f92672">==</span> <span style="color:#e6db74">&#39;American&#39;</span>) <span style="color:#f92672">&amp;</span>
+                    <span style="color:#75715e"># Only movies from 2000.</span>
+                    (movies_raw_df[<span style="color:#e6db74">&#39;Release Year&#39;</span>] <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">1999</span>))
+</code></pre></div><p>The last two conditions are just to make the data set smaller (as this is just an experiment).</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">horror_df <span style="color:#f92672">=</span> movies_raw_df[movies_to_select][<span style="color:#e6db74">&#39;Plot&#39;</span>]
 
-<pre><code class="language-python">movies_to_select = ((movies_raw_df['Genre'] == 'horror') &amp;
-                    # Restrict to Amerian movies. 
-                    (movies_raw_df['Origin/Ethnicity'] == 'American') &amp;
-                    # Only movies from 2000.
-                    (movies_raw_df['Release Year'] &gt; 1999))
-</code></pre>
-
-<p>The last two conditions are just to make the data set smaller (as this is just an experiment).</p>
-
-<pre><code class="language-python">horror_df = movies_raw_df[movies_to_select]['Plot']
-
-horror_df.head()
-</code></pre>
-
-<pre><code>13617    In November 1999, tourists and fans of The Bla...
+horror_df<span style="color:#f92672">.</span>head()
+</code></pre></div><pre><code>13617    In November 1999, tourists and fans of The Bla...
 13640    Matthew Van Helsing, the alleged descendant of...
 13681    A small group of fervent Roman Catholics belie...
 13731    Cotton Weary, now living in Los Angeles and th...
 13763    Amy Mayfield, a student at a prestigious film ...
 Name: Plot, dtype: object
 </code></pre>
-
-<pre><code class="language-python">horror_df.shape
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">horror_df<span style="color:#f92672">.</span>shape
+</code></pre></div><pre><code>(260,)
 </code></pre>
-
-<pre><code>(260,)
-</code></pre>
-
 <h2 id="preprocess-data">Preprocess Data</h2>
-
 <p>We are going to use <a href="https://spacy.io">SpaCy</a> for the tokenization.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Join all plots into a string.</span>
+horror_str <span style="color:#f92672">=</span> horror_df<span style="color:#f92672">.</span>str<span style="color:#f92672">.</span>cat(sep<span style="color:#f92672">=</span><span style="color:#e6db74">&#39; &#39;</span>)
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">import</span> spacy
 
-<pre><code class="language-python"># Join all plots into a string.
-horror_str = horror_df.str.cat(sep=' ')
-</code></pre>
-
-<pre><code class="language-python">import spacy
-
-# Load language model. 
-nlp = spacy.load('en', disable = ['parser', 'tagger', 'ner'])
-</code></pre>
-
-<p>If the data set is big, it might be necessary to increase <code>nlp.max_length</code>.</p>
-
+<span style="color:#75715e"># Load language model. </span>
+nlp <span style="color:#f92672">=</span> spacy<span style="color:#f92672">.</span>load(<span style="color:#e6db74">&#39;en&#39;</span>, disable <span style="color:#f92672">=</span> [<span style="color:#e6db74">&#39;parser&#39;</span>, <span style="color:#e6db74">&#39;tagger&#39;</span>, <span style="color:#e6db74">&#39;ner&#39;</span>])
+</code></pre></div><p>If the data set is big, it might be necessary to increase <code>nlp.max_length</code>.</p>
 <p>We write a function to extract the tokens (words).</p>
-
-<pre><code class="language-python">def get_tokens(doc_text):
-    # This pattern is a modification of the defaul filter from the
-    # Tokenizer() object in keras.preprocessing.text. 
-    # It just indicates which patters no skip.
-    skip_pattern = '\r\n \n\n \n\n\n!&quot;-#$%&amp;()--.*+,-./:;&lt;=&gt;?@[\\]^_`{|}~\t\n\r '
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#66d9ef">def</span> <span style="color:#a6e22e">get_tokens</span>(doc_text):
+    <span style="color:#75715e"># This pattern is a modification of the defaul filter from the</span>
+    <span style="color:#75715e"># Tokenizer() object in keras.preprocessing.text. </span>
+    <span style="color:#75715e"># It just indicates which patters no skip.</span>
+    skip_pattern <span style="color:#f92672">=</span> <span style="color:#e6db74">&#39;</span><span style="color:#ae81ff">\r\n</span><span style="color:#e6db74"> </span><span style="color:#ae81ff">\n\n</span><span style="color:#e6db74"> </span><span style="color:#ae81ff">\n\n\n</span><span style="color:#e6db74">!&#34;-#$%&amp;()--.*+,-./:;&lt;=&gt;?@[</span><span style="color:#ae81ff">\\</span><span style="color:#e6db74">]^_`{|}~</span><span style="color:#ae81ff">\t\n\r</span><span style="color:#e6db74"> &#39;</span>
     
-    tokens = [token.text.lower() for token in nlp(doc_text) if token.text not in skip_pattern]
+    tokens <span style="color:#f92672">=</span> [token<span style="color:#f92672">.</span>text<span style="color:#f92672">.</span>lower() <span style="color:#66d9ef">for</span> token <span style="color:#f92672">in</span> nlp(doc_text) <span style="color:#66d9ef">if</span> token<span style="color:#f92672">.</span>text <span style="color:#f92672">not</span> <span style="color:#f92672">in</span> skip_pattern]
     
-    return tokens
+    <span style="color:#66d9ef">return</span> tokens
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Get tokens.</span>
+tokens <span style="color:#f92672">=</span> get_tokens(horror_str)
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Let us see the first tokens.</span>
+tokens[<span style="color:#ae81ff">0</span>:<span style="color:#ae81ff">9</span>]
+</code></pre></div><pre><code>['in', 'november', '1999', 'tourists', 'and', 'fans', 'of', 'the', 'blair']
 </code></pre>
-
-<pre><code class="language-python"># Get tokens.
-tokens = get_tokens(horror_str)
-</code></pre>
-
-<pre><code class="language-python"># Let us see the first tokens.
-tokens[0:9]
-</code></pre>
-
-<pre><code>['in', 'november', '1999', 'tourists', 'and', 'fans', 'of', 'the', 'blair']
-</code></pre>
-
-<pre><code class="language-python"># Compute the number of tokens list.
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Compute the number of tokens list.</span>
 len(tokens) 
+</code></pre></div><pre><code>165870
 </code></pre>
-
-<pre><code>165870
-</code></pre>
-
 <h2 id="feature-extraction">Feature Extraction</h2>
-
 <p>The idea to construct the feature matrix for the model is to generate sequences of words of length <code>len_0</code> + 1, where the first <code>len_0</code> words define the features and the last word the target. That is, with a sequence of words of length <code>len_0</code> we predict the next word. The model is then set as a multi-class classification problem.</p>
-
 <p>For this use case, we are going to set <code>len_0</code> = 25.</p>
-
 <p>For example, the first observation is:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">len_0 <span style="color:#f92672">=</span> <span style="color:#ae81ff">25</span>
 
-<pre><code class="language-python">len_0 = 25
-
-tokens[0:len_0]
-</code></pre>
-
-<pre><code>['in',
+tokens[<span style="color:#ae81ff">0</span>:len_0]
+</code></pre></div><pre><code>['in',
  'november',
  '1999',
  'tourists',
@@ -338,49 +217,31 @@ tokens[0:len_0]
  'set',
  'local']
 </code></pre>
-
 <p>with target:</p>
-
-<pre><code class="language-python">tokens[len_0:len_0 + 1]
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">tokens[len_0:len_0 <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>]
+</code></pre></div><pre><code>['resident']
 </code></pre>
-
-<pre><code>['resident']
-</code></pre>
-
 <p>We now generate the sequences:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">train_len <span style="color:#f92672">=</span> len_0 <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>
 
-<pre><code class="language-python">train_len = len_0 + 1
+text_sequences <span style="color:#f92672">=</span> []
 
-text_sequences = []
-
-for i in range(train_len, len(tokens)):
-    # Construct sequence.
-    seq = tokens[i - train_len: i]
-    # Append.
-    text_sequences.append(seq)
+<span style="color:#66d9ef">for</span> i <span style="color:#f92672">in</span> range(train_len, len(tokens)):
+    <span style="color:#75715e"># Construct sequence.</span>
+    seq <span style="color:#f92672">=</span> tokens[i <span style="color:#f92672">-</span> train_len: i]
+    <span style="color:#75715e"># Append.</span>
+    text_sequences<span style="color:#f92672">.</span>append(seq)
+</code></pre></div><p>For instance, the first sequence is:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#e6db74">&#39; &#39;</span><span style="color:#f92672">.</span>join(text_sequences[<span style="color:#ae81ff">0</span>])
+</code></pre></div><p><em>in november 1999 tourists and fans of the blair witch project descend on the small town of burkittsville maryland where the film is set local resident</em></p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">len(text_sequences[<span style="color:#ae81ff">0</span>])
+</code></pre></div><pre><code>26
 </code></pre>
-
-<p>For instance, the first sequence is:</p>
-
-<pre><code class="language-python">' '.join(text_sequences[0])
-</code></pre>
-
-<p><em>in november 1999 tourists and fans of the blair witch project descend on the small town of burkittsville maryland where the film is set local resident</em></p>
-
-<pre><code class="language-python">len(text_sequences[0])
-</code></pre>
-
-<pre><code>26
-</code></pre>
-
 <p>Let us see the first five sequences:</p>
-
-<pre><code class="language-python">for i in range(0, 5):
-    print(' '.join(text_sequences[i]))
-    print('-----')
-</code></pre>
-
-<pre><code>in november 1999 tourists and fans of the blair witch project descend on the small town of burkittsville maryland where the film is set local resident
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#66d9ef">for</span> i <span style="color:#f92672">in</span> range(<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">5</span>):
+    <span style="color:#66d9ef">print</span>(<span style="color:#e6db74">&#39; &#39;</span><span style="color:#f92672">.</span>join(text_sequences[i]))
+    <span style="color:#66d9ef">print</span>(<span style="color:#e6db74">&#39;-----&#39;</span>)
+</code></pre></div><pre><code>in november 1999 tourists and fans of the blair witch project descend on the small town of burkittsville maryland where the film is set local resident
 -----
 november 1999 tourists and fans of the blair witch project descend on the small town of burkittsville maryland where the film is set local resident jeff
 -----
@@ -391,28 +252,18 @@ tourists and fans of the blair witch project descend on the small town of burkit
 and fans of the blair witch project descend on the small town of burkittsville maryland where the film is set local resident jeff a former psychiatric
 -----
 </code></pre>
-
 <h2 id="vectorization">Vectorization</h2>
-
 <p>The next step is to encode these character sequences as numerical features. We do this using the <a href="https://keras.io/preprocessing/text/"><code>Tokenizer</code></a> object from Keras.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">from</span> keras.preprocessing.text <span style="color:#f92672">import</span> Tokenizer
 
-<pre><code class="language-python">from keras.preprocessing.text import Tokenizer
+tokenizer <span style="color:#f92672">=</span> Tokenizer()
 
-tokenizer = Tokenizer()
-
-tokenizer.fit_on_texts(text_sequences)
-</code></pre>
-
-<pre><code class="language-python"># Get numeric sequences.
-sequences = tokenizer.texts_to_sequences(text_sequences)
-</code></pre>
-
-<p>For example, the first (numerical) sequence is</p>
-
-<pre><code class="language-python">sequences[0]
-</code></pre>
-
-<pre><code>[8,
+tokenizer<span style="color:#f92672">.</span>fit_on_texts(text_sequences)
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Get numeric sequences.</span>
+sequences <span style="color:#f92672">=</span> tokenizer<span style="color:#f92672">.</span>texts_to_sequences(text_sequences)
+</code></pre></div><p>For example, the first (numerical) sequence is</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">sequences[<span style="color:#ae81ff">0</span>]
+</code></pre></div><pre><code>[8,
  12586,
  12585,
  2397,
@@ -439,33 +290,20 @@ sequences = tokenizer.texts_to_sequences(text_sequences)
  231,
  2928]
 </code></pre>
-
 <p>Let us verify the first word of the sequence is indeed &ldquo;in&rdquo;.</p>
-
-<pre><code class="language-python">tokenizer.index_word[8]
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">tokenizer<span style="color:#f92672">.</span>index_word[<span style="color:#ae81ff">8</span>]
+</code></pre></div><pre><code>'in'
 </code></pre>
-
-<pre><code>'in'
-</code></pre>
-
 <p>Let us save the vocabulary size = # unique tokens.</p>
-
-<pre><code class="language-python">vocabulary_size = len(tokenizer.word_counts)
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">vocabulary_size <span style="color:#f92672">=</span> len(tokenizer<span style="color:#f92672">.</span>word_counts)
 
 vocabulary_size
+</code></pre></div><pre><code>12586
 </code></pre>
-
-<pre><code>12586
-</code></pre>
-
-<pre><code class="language-python"># We store the sequences in a numpy array.
-sequences = np.array(sequences)
-</code></pre>
-
-<pre><code class="language-python">sequences
-</code></pre>
-
-<pre><code>array([[    8, 12586, 12585, ...,   362,   231,  2928],
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># We store the sequences in a numpy array.</span>
+sequences <span style="color:#f92672">=</span> np<span style="color:#f92672">.</span>array(sequences)
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">sequences
+</code></pre></div><pre><code>array([[    8, 12586, 12585, ...,   362,   231,  2928],
        [12586, 12585,  2397, ...,   231,  2928,   297],
        [12585,  2397,     2, ...,  2928,   297,     4],
        ...,
@@ -473,19 +311,14 @@ sequences = np.array(sequences)
        [    4,  1551,  1684, ...,    59,     5,     6],
        [ 1551,  1684,    22, ...,     5,     6,   169]])
 </code></pre>
-
-<h2 id="x-y-split">X - y Split</h2>
-
+<h2 id="x---y-split">X - y Split</h2>
 <p>We now construct the observation matrix <code>X</code> and the label vector <code>y</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">from</span> keras.utils <span style="color:#f92672">import</span> to_categorical
 
-<pre><code class="language-python">from keras.utils import to_categorical
-
-# select all but last word indices.
-X = sequences[:, :-1]
+<span style="color:#75715e"># select all but last word indices.</span>
+X <span style="color:#f92672">=</span> sequences[:, :<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>]
 X
-</code></pre>
-
-<pre><code>array([[    8, 12586, 12585, ...,     7,   362,   231],
+</code></pre></div><pre><code>array([[    8, 12586, 12585, ...,     7,   362,   231],
        [12586, 12585,  2397, ...,   362,   231,  2928],
        [12585,  2397,     2, ...,   231,  2928,   297],
        ...,
@@ -493,30 +326,19 @@ X
        [    4,  1551,  1684, ...,     1,    59,     5],
        [ 1551,  1684,    22, ...,    59,     5,     6]])
 </code></pre>
-
-<pre><code class="language-python">X.shape
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">X<span style="color:#f92672">.</span>shape
+</code></pre></div><pre><code>(165844, 25)
 </code></pre>
-
-<pre><code>(165844, 25)
-</code></pre>
-
-<pre><code class="language-python">seq_len = X.shape[1]
-</code></pre>
-
-<pre><code class="language-python"># select all last word indices.
-y = sequences[:, -1]
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">seq_len <span style="color:#f92672">=</span> X<span style="color:#f92672">.</span>shape[<span style="color:#ae81ff">1</span>]
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># select all last word indices.</span>
+y <span style="color:#f92672">=</span> sequences[:, <span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>]
 y
+</code></pre></div><pre><code>array([2928,  297,    4, ...,    5,    6,  169])
 </code></pre>
-
-<pre><code>array([2928,  297,    4, ...,    5,    6,  169])
-</code></pre>
-
-<pre><code class="language-python"># Covert to categorical (we add + 1 because Keras needs a placeholder).
-y = to_categorical(y, num_classes=(vocabulary_size + 1))
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Covert to categorical (we add + 1 because Keras needs a placeholder).</span>
+y <span style="color:#f92672">=</span> to_categorical(y, num_classes<span style="color:#f92672">=</span>(vocabulary_size <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>))
 y
-</code></pre>
-
-<pre><code>array([[0., 0., 0., ..., 0., 0., 0.],
+</code></pre></div><pre><code>array([[0., 0., 0., ..., 0., 0., 0.],
        [0., 0., 0., ..., 0., 0., 0.],
        [0., 0., 0., ..., 0., 0., 0.],
        ...,
@@ -524,364 +346,264 @@ y
        [0., 0., 0., ..., 0., 0., 0.],
        [0., 0., 0., ..., 0., 0., 0.]], dtype=float32)
 </code></pre>
-
 <h2 id="model-definition">Model Definition</h2>
-
 <p>Next, we define the (Sequential) network architecture:</p>
-
 <ul>
 <li><a href="https://keras.io/layers/embeddings/">Embedding</a> layer.</li>
 <li>Two <a href="https://keras.io/layers/recurrent/#lstm">LSTM</a> layers.</li>
 <li>One Dense layer with <code>relu</code> activation function.</li>
 <li>One final Dense layer with <code>softmax</code> activation function to output class probabilities.</li>
 </ul>
-
 <p>As a reminder, here is a schema of an LSTM layer:</p>
-
-<p><center>
-  <figure>
-    <img src="../images/LSTM_Schema.png" height="350" alt="Alt text that describes the graphic" title="Title text"/>
-  </figure>
-</center></p>
-
+<!-- raw HTML omitted -->
 <p>Image Source: <a href="https://www.manning.com/books/deep-learning-with-r">Deep Learning with R</a>, page 188.</p>
-
 <p>For the optimization:</p>
-
 <ul>
 <li>loss =&lsquo;categorical_crossentropy&rsquo;</li>
 <li>optimizer = &lsquo;adam&rsquo;,</li>
-
-<li><p>metrics = [&lsquo;accuracy&rsquo;]</p>
-
-<pre><code class="language-python">from keras.models import Sequential
-from keras.layers import Dense, LSTM, Embedding
-
-def create_model(vocabulary_size, seq_len):
-    
-model = Sequential()
-    
-model.add(Embedding(input_dim=vocabulary_size, 
-                    output_dim=seq_len, 
-                    input_length=seq_len))
-    
-model.add(LSTM(units=50, return_sequences=True))
-    
-model.add(LSTM(units=50))
-    
-model.add(Dense(units=50, activation='relu'))
-    
-model.add(Dense(units=vocabulary_size, activation='softmax'))
-    
-model.compile(loss='categorical_crossentropy', 
-              optimizer='adam', 
-              metrics=['accuracy'])
-    
-model.summary()
-    
-return model
-</code></pre>
-
-<pre><code class="language-python"># Let us create the model and see summary.
-model = create_model(vocabulary_size=(vocabulary_size + 1), seq_len=seq_len)
-</code></pre>
-
-<pre><code>_________________________________________________________________
-Layer (type)                 Output Shape              Param #   
-=================================================================
-embedding_1 (Embedding)      (None, 25, 25)            314675    
-_________________________________________________________________
-lstm_1 (LSTM)                (None, 25, 50)            15200     
-_________________________________________________________________
-lstm_2 (LSTM)                (None, 50)                20200     
-_________________________________________________________________
-dense_1 (Dense)              (None, 50)                2550      
-_________________________________________________________________
-dense_2 (Dense)              (None, 12587)             641937    
-=================================================================
-Total params: 994,562
-Trainable params: 994,562
-Non-trainable params: 0
-_________________________________________________________________
-</code></pre></li>
+<li>metrics = [&lsquo;accuracy&rsquo;]</li>
 </ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">from</span> keras.models <span style="color:#f92672">import</span> Sequential
+<span style="color:#f92672">from</span> keras.layers <span style="color:#f92672">import</span> Dense, LSTM, Embedding
 
-<h2 id="model-fit">Model Fit</h2>
-
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">create_model</span>(vocabulary_size, seq_len):
+    
+    model <span style="color:#f92672">=</span> Sequential()
+    
+    model<span style="color:#f92672">.</span>add(Embedding(input_dim<span style="color:#f92672">=</span>vocabulary_size, 
+                        output_dim<span style="color:#f92672">=</span>seq_len, 
+                        input_length<span style="color:#f92672">=</span>seq_len))
+    
+    model<span style="color:#f92672">.</span>add(LSTM(units<span style="color:#f92672">=</span><span style="color:#ae81ff">50</span>, return_sequences<span style="color:#f92672">=</span>True))
+    
+    model<span style="color:#f92672">.</span>add(LSTM(units<span style="color:#f92672">=</span><span style="color:#ae81ff">50</span>))
+    
+    model<span style="color:#f92672">.</span>add(Dense(units<span style="color:#f92672">=</span><span style="color:#ae81ff">50</span>, activation<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;relu&#39;</span>))
+    
+    model<span style="color:#f92672">.</span>add(Dense(units<span style="color:#f92672">=</span>vocabulary_size, activation<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;softmax&#39;</span>))
+    
+    model<span style="color:#f92672">.</span>compile(loss<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;categorical_crossentropy&#39;</span>, 
+                  optimizer<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;adam&#39;</span>, 
+                  metrics<span style="color:#f92672">=</span>[<span style="color:#e6db74">&#39;accuracy&#39;</span>])
+    
+    model<span style="color:#f92672">.</span>summary()
+    
+    <span style="color:#66d9ef">return</span> model
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Let us create the model and see summary.</span>
+model <span style="color:#f92672">=</span> create_model(vocabulary_size<span style="color:#f92672">=</span>(vocabulary_size <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>), seq_len<span style="color:#f92672">=</span>seq_len)
+</code></pre></div><pre><code>    _________________________________________________________________
+    Layer (type)                 Output Shape              Param #   
+    =================================================================
+    embedding_1 (Embedding)      (None, 25, 25)            314675    
+    _________________________________________________________________
+    lstm_1 (LSTM)                (None, 25, 50)            15200     
+    _________________________________________________________________
+    lstm_2 (LSTM)                (None, 50)                20200     
+    _________________________________________________________________
+    dense_1 (Dense)              (None, 50)                2550      
+    _________________________________________________________________
+    dense_2 (Dense)              (None, 12587)             641937    
+    =================================================================
+    Total params: 994,562
+    Trainable params: 994,562
+    Non-trainable params: 0
+    _________________________________________________________________
+</code></pre><h2 id="model-fit">Model Fit</h2>
 <p>I fit the model in my local machine. With a <code>batch_size</code> of \(128\) it took \(700\) epochs to get an accuracy of around \(0.5\) (which is ok as our aim is not correcly classify all sequences) and it took around \(8\) hours.</p>
-
-<pre><code class="language-python">model.fit(x=X, y=y, batch_size=128, epochs=700, verbose=1)
-</code></pre>
-
-<pre><code class="language-python"># Get model metrics.
-loss, accuracy =  model.evaluate(x=X, y=y)
-</code></pre>
-
-<pre><code class="language-python">print(f'Loss: {loss}\nAccuracy: {accuracy}')
-</code></pre>
-
-<pre><code>Loss: 2.388542058993397
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">model<span style="color:#f92672">.</span>fit(x<span style="color:#f92672">=</span>X, y<span style="color:#f92672">=</span>y, batch_size<span style="color:#f92672">=</span><span style="color:#ae81ff">128</span>, epochs<span style="color:#f92672">=</span><span style="color:#ae81ff">700</span>, verbose<span style="color:#f92672">=</span><span style="color:#ae81ff">1</span>)
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#75715e"># Get model metrics.</span>
+loss, accuracy <span style="color:#f92672">=</span>  model<span style="color:#f92672">.</span>evaluate(x<span style="color:#f92672">=</span>X, y<span style="color:#f92672">=</span>y)
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#66d9ef">print</span>(f<span style="color:#e6db74">&#39;Loss: {loss}</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">Accuracy: {accuracy}&#39;</span>)
+</code></pre></div><pre><code>Loss: 2.388542058993397
 Accuracy: 0.4952485468285764
 </code></pre>
-
 <h2 id="save-model">Save Model</h2>
-
 <p>First we save the <code>tokenizer</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">from</span> pickle <span style="color:#f92672">import</span> dump
 
-<pre><code class="language-python">from pickle import dump
+dump(tokenizer, open(<span style="color:#e6db74">&#39;tokenizer&#39;</span>, <span style="color:#e6db74">&#39;wb&#39;</span>))
+</code></pre></div><p>Next we save the model.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">model<span style="color:#f92672">.</span>save(<span style="color:#e6db74">&#39;model.h5&#39;</span>)
+</code></pre></div><p>We can reload the model as:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">from</span> keras.models <span style="color:#f92672">import</span> load_model
 
-dump(tokenizer, open('tokenizer', 'wb'))
-</code></pre>
-
-<p>Next we save the model.</p>
-
-<pre><code class="language-python">model.save('model.h5')
-</code></pre>
-
-<p>We can reload the model as:</p>
-
-<pre><code class="language-python">from keras.models import load_model
-
-model = load_model('model.h5')
-</code></pre>
-
-<h2 id="generate-new-text">Generate New Text</h2>
-
+model <span style="color:#f92672">=</span> load_model(<span style="color:#e6db74">&#39;model.h5&#39;</span>)
+</code></pre></div><h2 id="generate-new-text">Generate New Text</h2>
 <p>Now we can use the model to generate new word sequences:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#f92672">from</span> keras.preprocessing.sequence <span style="color:#f92672">import</span> pad_sequences 
 
-<pre><code class="language-python">from keras.preprocessing.sequence import pad_sequences 
-
-def generate_text(model, tokenizer, seq_len, seed_text, num_gen_words):
-    # List to store the generated words. 
-    output_text = []
-    # Set seed_text as input_text. 
-    input_text = seed_text
+<span style="color:#66d9ef">def</span> <span style="color:#a6e22e">generate_text</span>(model, tokenizer, seq_len, seed_text, num_gen_words):
+    <span style="color:#75715e"># List to store the generated words. </span>
+    output_text <span style="color:#f92672">=</span> []
+    <span style="color:#75715e"># Set seed_text as input_text. </span>
+    input_text <span style="color:#f92672">=</span> seed_text
     
-    for i in range(num_gen_words):
-        # Encode input text. 
-        encoded_text = tokenizer.texts_to_sequences([input_text])[0]
-        # Add if the input tesxt does not have length len_0.
-        pad_encoded = pad_sequences([encoded_text], maxlen=seq_len, truncating='pre')
-        # Do the prediction. Here we automatically choose the word with highest probability. 
-        pred_word_ind = model.predict_classes(pad_encoded, verbose=0)[0]
-        # Convert from numeric to word. 
-        pred_word = tokenizer.index_word[pred_word_ind]
-        # Attach predicted word. 
-        input_text += ' ' + pred_word
-        # Append new word to the list. 
-        output_text.append(pred_word)
+    <span style="color:#66d9ef">for</span> i <span style="color:#f92672">in</span> range(num_gen_words):
+        <span style="color:#75715e"># Encode input text. </span>
+        encoded_text <span style="color:#f92672">=</span> tokenizer<span style="color:#f92672">.</span>texts_to_sequences([input_text])[<span style="color:#ae81ff">0</span>]
+        <span style="color:#75715e"># Add if the input tesxt does not have length len_0.</span>
+        pad_encoded <span style="color:#f92672">=</span> pad_sequences([encoded_text], maxlen<span style="color:#f92672">=</span>seq_len, truncating<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;pre&#39;</span>)
+        <span style="color:#75715e"># Do the prediction. Here we automatically choose the word with highest probability. </span>
+        pred_word_ind <span style="color:#f92672">=</span> model<span style="color:#f92672">.</span>predict_classes(pad_encoded, verbose<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>)[<span style="color:#ae81ff">0</span>]
+        <span style="color:#75715e"># Convert from numeric to word. </span>
+        pred_word <span style="color:#f92672">=</span> tokenizer<span style="color:#f92672">.</span>index_word[pred_word_ind]
+        <span style="color:#75715e"># Attach predicted word. </span>
+        input_text <span style="color:#f92672">+=</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> pred_word
+        <span style="color:#75715e"># Append new word to the list. </span>
+        output_text<span style="color:#f92672">.</span>append(pred_word)
         
-    return ' '.join(output_text)
-</code></pre>
-
-<p>Let us see how this works in practice.</p>
-
+    <span style="color:#66d9ef">return</span> <span style="color:#e6db74">&#39; &#39;</span><span style="color:#f92672">.</span>join(output_text)
+</code></pre></div><p>Let us see how this works in practice.</p>
 <h3 id="example-1">Example 1</h3>
-
 <p>Select a subset of out training set.</p>
-
-<pre><code class="language-python">sample_text = horror_df.iloc[100][:383]
-print(sample_text)
-</code></pre>
-
-<blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">sample_text <span style="color:#f92672">=</span> horror_df<span style="color:#f92672">.</span>iloc[<span style="color:#ae81ff">100</span>][:<span style="color:#ae81ff">383</span>]
+<span style="color:#66d9ef">print</span>(sample_text)
+</code></pre></div><blockquote>
 <p><em>Officer Frank Williams (Steven Vidler) and his partner Blaine investigate an abandoned house, where they find a young woman with her eyes ripped out. A large figure with an axe then murders Blaine and Frank has his arm chopped off before he is able to shoot the attacker in the head. Afterwards, detectives find seven bodies in the house, all of which have had their eyes ripped out.</em></p>
 </blockquote>
-
 <p>Set <code>seed_text</code> to be the start of the <code>sample test</code>.</p>
-
-<pre><code class="language-python">seed_text = sample_text[:190]
-print(seed_text)
-</code></pre>
-
-<blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">seed_text <span style="color:#f92672">=</span> sample_text[:<span style="color:#ae81ff">190</span>]
+<span style="color:#66d9ef">print</span>(seed_text)
+</code></pre></div><blockquote>
 <p><em>Officer Frank Williams (Steven Vidler) and his partner Blaine investigate an abandoned house, where they find a young woman with her eyes ripped out. A large figure with an axe then murders</em></p>
 </blockquote>
-
 <p>Generate text:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">generated_text <span style="color:#f92672">=</span> generate_text(model<span style="color:#f92672">=</span>model, 
+                               tokenizer<span style="color:#f92672">=</span>tokenizer,
+                               seq_len<span style="color:#f92672">=</span>seq_len, 
+                               seed_text<span style="color:#f92672">=</span>seed_text, 
+                               num_gen_words<span style="color:#f92672">=</span><span style="color:#ae81ff">40</span>)
 
-<pre><code class="language-python">generated_text = generate_text(model=model, 
-                               tokenizer=tokenizer,
-                               seq_len=seq_len, 
-                               seed_text=seed_text, 
-                               num_gen_words=40)
-
-print(seed_text + ' ' + generated_text + '...')
-</code></pre>
-
-<blockquote>
+<span style="color:#66d9ef">print</span>(seed_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> generated_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39;...&#39;</span>)
+</code></pre></div><blockquote>
 <p><em>Officer Frank Williams (Steven Vidler) and his partner Blaine investigate an abandoned house, where they find a young woman with her eyes ripped out. A large figure with an axe then murders  blaine and cyrus is a sapling jeff reveals that he is the group of the family &rsquo;s house in the process to lure arthur flee in the house and goes into the morning and hyenas is taken to the house&hellip;</em></p>
 </blockquote>
-
 <h3 id="example-2">Example 2</h3>
-
 <p>Let us give a &ldquo;horror-like&rdquo; seed text.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">seed_text <span style="color:#f92672">=</span> <span style="color:#e6db74">&#39;the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear&#39;</span>
+</code></pre></div><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">generated_text <span style="color:#f92672">=</span> generate_text(model<span style="color:#f92672">=</span>model, 
+                               tokenizer<span style="color:#f92672">=</span>tokenizer,
+                               seq_len<span style="color:#f92672">=</span>seq_len, 
+                               seed_text<span style="color:#f92672">=</span>seed_text, 
+                               num_gen_words<span style="color:#f92672">=</span><span style="color:#ae81ff">80</span>)
 
-<pre><code class="language-python">seed_text = 'the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear'
-</code></pre>
-
-<pre><code class="language-python">generated_text = generate_text(model=model, 
-                               tokenizer=tokenizer,
-                               seq_len=seq_len, 
-                               seed_text=seed_text, 
-                               num_gen_words=80)
-
-print(seed_text + ' ' + generated_text + '...')
-</code></pre>
-
-<blockquote>
+<span style="color:#66d9ef">print</span>(seed_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> generated_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39;...&#39;</span>)
+</code></pre></div><blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear voices he confronts john &rsquo;s mother and lina pull themselves into the morning because the group split her face towards the scene and attempts to shoot the supervision of the truth jessabelle &rsquo;s throat with regular injections of them and remains by itself blocks nazi isolating youths &rsquo;s grave and tortures him are inferior in coffins and a group of the entire bat acting in los angeles with the ghosts of the same time and lures her drugs in 1408&hellip;</em></p>
 </blockquote>
-
 <h3 id="example-3">Example 3</h3>
-
 <p>Now let us start with a &ldquo;comedy-type&rdquo; seed text.</p>
-
-<pre><code class="language-python">seed_text = movies_raw_df[movies_raw_df['Genre'] == 'comedy']['Plot'].iloc[330]
-print(seed_text)
-</code></pre>
-
-<blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">seed_text <span style="color:#f92672">=</span> movies_raw_df[movies_raw_df[<span style="color:#e6db74">&#39;Genre&#39;</span>] <span style="color:#f92672">==</span> <span style="color:#e6db74">&#39;comedy&#39;</span>][<span style="color:#e6db74">&#39;Plot&#39;</span>]<span style="color:#f92672">.</span>iloc[<span style="color:#ae81ff">330</span>]
+<span style="color:#66d9ef">print</span>(seed_text)
+</code></pre></div><blockquote>
 <p><em>Cocky college football star Francis Finnegan has his eye on the attractive Gloria van Dayham, as does his rival, Larry Stacey.
 Francis gets a job in a department store owned by Stacey&rsquo;s father, where salesgirl June Cort develops an attraction to him. Finnegan proposes that Stacey&rsquo;s store sponsor a football team, which causes rival shop owner Whimple to do likewise. The team&rsquo;s head cheerleader, Mimi, falls for team mascot Joe, meanwhile, and everybody pairs off with the perfect partner after the big game.</em></p>
 </blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">generated_text <span style="color:#f92672">=</span> generate_text(model<span style="color:#f92672">=</span>model, 
+                               tokenizer<span style="color:#f92672">=</span>tokenizer,
+                               seq_len<span style="color:#f92672">=</span>seq_len, 
+                               seed_text<span style="color:#f92672">=</span>seed_text, 
+                               num_gen_words<span style="color:#f92672">=</span><span style="color:#ae81ff">90</span>)
 
-<pre><code class="language-python">generated_text = generate_text(model=model, 
-                               tokenizer=tokenizer,
-                               seq_len=seq_len, 
-                               seed_text=seed_text, 
-                               num_gen_words=90)
-
-print(seed_text + ' ' + generated_text + '...')
-</code></pre>
-
-<blockquote>
+<span style="color:#66d9ef">print</span>(seed_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> generated_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39;...&#39;</span>)
+</code></pre></div><blockquote>
 <p><em>Cocky college football star Francis Finnegan has his eye on the attractive Gloria van Dayham, as does his rival, Larry Stacey.
 Francis gets a job in a department store owned by Stacey&rsquo;s father, where salesgirl June Cort develops an attraction to him. Finnegan proposes that Stacey&rsquo;s store sponsor a football team, which causes rival shop owner Whimple to do likewise. The team&rsquo;s head cheerleader, Mimi, falls for team mascot Joe, meanwhile, and everybody pairs off with the perfect partner after the big game. and kills ziko is eaten but jenna learn of thrill village on a punk couple of the house and puts her to the island and erin are instructed to get beside chaos ambrosia might can trust him he gone to be and those refusing to wake that he is the ancient wooden zombie afloat in mexico and awakens in the woods and enters the road into fright she inspects iris &rsquo;s corpse which is stripped and raped by fend into chains her to the remote wall is revealed of tamara&hellip;</em></p>
 </blockquote>
-
 <p>Overall, the generated text seem to have structure. Nevrtheless, somethimes these sentences do not make a lot of sense. Quoting from <a href="https://www.manning.com/books/deep-learning-with-r">Deep Learning with R</a>, page 260:</p>
-
 <p><strong>But, of course, don&rsquo;t expect to ever generate any meaningfull text, other than by random chance: all you&rsquo;re doing is sampling data from a statistical model of which <del>characters</del> words come after which <del>characters</del> words.</strong></p>
-
 <h3 id="adding-temperature-parameter">Adding Temperature Parameter</h3>
-
 <p>Actually, in the <code>generate_text</code> function we are not sampling, but rather selecting the word with highest probability. We can relax this by really sampling over the learned distribution. Moreover, we can introduce a parameter, known as <code>temperature</code> \(T\in[0,1]\), which spreads it to get more &ldquo;creative&rdquo; results. Concretely, let \(x\) be the vector distribution. Consider the transformation</p>
-
 <p>$$
 f_{T}(x) = C \exp(\log(x)/T),
 $$</p>
-
 <p>where \(C&gt;0\) is just a normalization constant. Note that for \(T=1\) we just get the identity transformation. Observe that we can simplify \(f_T\) using the relaton.</p>
-
 <p>$$
 \exp(\log(x)/T) = (\exp(\log(x)))^{1/T} = x^{1/T}
 $$</p>
-
 <p>Let us include these changes into a new text generation function.</p>
-
-<pre><code class="language-python">def generate_text2(model, tokenizer, seq_len, seed_text, num_gen_words, temperature):
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#66d9ef">def</span> <span style="color:#a6e22e">generate_text2</span>(model, tokenizer, seq_len, seed_text, num_gen_words, temperature):
     
-    output_text = []
+    output_text <span style="color:#f92672">=</span> []
     
-    input_text = seed_text
+    input_text <span style="color:#f92672">=</span> seed_text
     
-    for i in range(num_gen_words):
-        # Encode input text. 
-        encoded_text = tokenizer.texts_to_sequences([input_text])[0]
-         # Add if the input tesxt does not have length len_0.
-        pad_encoded = pad_sequences([encoded_text], maxlen=seq_len, truncating='pre')
-        # Get learned distribution.
-        pred_distribution = model.predict(pad_encoded, verbose=0)[0]
+    <span style="color:#66d9ef">for</span> i <span style="color:#f92672">in</span> range(num_gen_words):
+        <span style="color:#75715e"># Encode input text. </span>
+        encoded_text <span style="color:#f92672">=</span> tokenizer<span style="color:#f92672">.</span>texts_to_sequences([input_text])[<span style="color:#ae81ff">0</span>]
+         <span style="color:#75715e"># Add if the input tesxt does not have length len_0.</span>
+        pad_encoded <span style="color:#f92672">=</span> pad_sequences([encoded_text], maxlen<span style="color:#f92672">=</span>seq_len, truncating<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;pre&#39;</span>)
+        <span style="color:#75715e"># Get learned distribution.</span>
+        pred_distribution <span style="color:#f92672">=</span> model<span style="color:#f92672">.</span>predict(pad_encoded, verbose<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>)[<span style="color:#ae81ff">0</span>]
         
-        # Apply temperature transformation.
-        new_pred_distribution = np.power(pred_distribution, (1 / temperature)) 
-        new_pred_distribution = new_pred_distribution / new_pred_distribution.sum()
+        <span style="color:#75715e"># Apply temperature transformation.</span>
+        new_pred_distribution <span style="color:#f92672">=</span> np<span style="color:#f92672">.</span>power(pred_distribution, (<span style="color:#ae81ff">1</span> <span style="color:#f92672">/</span> temperature)) 
+        new_pred_distribution <span style="color:#f92672">=</span> new_pred_distribution <span style="color:#f92672">/</span> new_pred_distribution<span style="color:#f92672">.</span>sum()
         
-        # Sample from modified distribution.
-        choices = range(new_pred_distribution.size)
+        <span style="color:#75715e"># Sample from modified distribution.</span>
+        choices <span style="color:#f92672">=</span> range(new_pred_distribution<span style="color:#f92672">.</span>size)
  
-        pred_word_ind = np.random.choice(a=choices, p=new_pred_distribution)
+        pred_word_ind <span style="color:#f92672">=</span> np<span style="color:#f92672">.</span>random<span style="color:#f92672">.</span>choice(a<span style="color:#f92672">=</span>choices, p<span style="color:#f92672">=</span>new_pred_distribution)
         
-        # Convert from numeric to word. 
-        pred_word = tokenizer.index_word[pred_word_ind]
-        # Attach predicted word. 
-        input_text += ' ' + pred_word
-        # Append new word to the list. 
-        output_text.append(pred_word)
+        <span style="color:#75715e"># Convert from numeric to word. </span>
+        pred_word <span style="color:#f92672">=</span> tokenizer<span style="color:#f92672">.</span>index_word[pred_word_ind]
+        <span style="color:#75715e"># Attach predicted word. </span>
+        input_text <span style="color:#f92672">+=</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> pred_word
+        <span style="color:#75715e"># Append new word to the list. </span>
+        output_text<span style="color:#f92672">.</span>append(pred_word)
         
-    return ' '.join(output_text)
-</code></pre>
-
-<h3 id="example-2-revisited">Example 2 - Revisited</h3>
-
-<pre><code class="language-python">seed_text = 'the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear'
-</code></pre>
-
-<ul>
-<li><p><code>temperature</code> = \(0.9\)</p>
-
-<pre><code class="language-python">generated_text = generate_text2(model=model, 
-                            tokenizer=tokenizer,
-                            seq_len=seq_len, 
-                            seed_text=seed_text, 
-                            num_gen_words=80, 
-                            temperature=0.9)
-
-print(seed_text + ' ' + generated_text + ' ...')
-</code></pre></li>
+    <span style="color:#66d9ef">return</span> <span style="color:#e6db74">&#39; &#39;</span><span style="color:#f92672">.</span>join(output_text)
+</code></pre></div><h3 id="example-2---revisited">Example 2 - Revisited</h3>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">seed_text <span style="color:#f92672">=</span> <span style="color:#e6db74">&#39;the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear&#39;</span>
+</code></pre></div><ul>
+<li><code>temperature</code> = \(0.9\)</li>
 </ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">generated_text <span style="color:#f92672">=</span> generate_text2(model<span style="color:#f92672">=</span>model, 
+                                tokenizer<span style="color:#f92672">=</span>tokenizer,
+                                seq_len<span style="color:#f92672">=</span>seq_len, 
+                                seed_text<span style="color:#f92672">=</span>seed_text, 
+                                num_gen_words<span style="color:#f92672">=</span><span style="color:#ae81ff">80</span>, 
+                                temperature<span style="color:#f92672">=</span><span style="color:#ae81ff">0.9</span>)
 
-<blockquote>
+<span style="color:#66d9ef">print</span>(seed_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> generated_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; ...&#39;</span>)
+</code></pre></div><blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear noises the next day owen stabs his seventh when sophie shoots her in the search such he subdues him exist pulls her bloody late eliot then discover that he can do so of kristi so will be letting her that that he had some friends constantly slicing away by confronted by nikki who to the hospital anna is stuck in a switch who grip thomas drains a incident that he strikes justin from frustration and learn it do so that &hellip;</em></p>
 </blockquote>
-
 <ul>
-<li><p><code>temperature</code> = \(0.5\)</p>
-
-<pre><code class="language-python">generated_text = generate_text2(model=model, 
-                            tokenizer=tokenizer,
-                            seq_len=seq_len, 
-                            seed_text=seed_text, 
-                            num_gen_words=82, 
-                            temperature=0.5)
-
-print(seed_text + ' ' + generated_text + ' ...')
-</code></pre></li>
+<li><code>temperature</code> = \(0.5\)</li>
 </ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">generated_text <span style="color:#f92672">=</span> generate_text2(model<span style="color:#f92672">=</span>model, 
+                                tokenizer<span style="color:#f92672">=</span>tokenizer,
+                                seq_len<span style="color:#f92672">=</span>seq_len, 
+                                seed_text<span style="color:#f92672">=</span>seed_text, 
+                                num_gen_words<span style="color:#f92672">=</span><span style="color:#ae81ff">82</span>, 
+                                temperature<span style="color:#f92672">=</span><span style="color:#ae81ff">0.5</span>)
 
-<blockquote>
+<span style="color:#66d9ef">print</span>(seed_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> generated_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; ...&#39;</span>)
+</code></pre></div><blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear noises hunter and sarah descend the bodies and history of falburn the disappearance of vampires the killer learns that she did n&rsquo;t make a large pipe and return to the house and he distracts him dead the man enters the house and kills him on the cellar door by breaking into the house and points to their wounds but carrie runs into town and bearing time taggart becomes convinced that the united states light and convinces to the twelve treatment as well &hellip;.</em></p>
 </blockquote>
-
 <ul>
-<li><p><code>temperature</code> = \(0.1\)</p>
-
-<pre><code class="language-python">generated_text = generate_text2(model=model, 
-                            tokenizer=tokenizer,
-                            seq_len=seq_len, 
-                            seed_text=seed_text, 
-                            num_gen_words=82, 
-                            temperature = 0.1)
-
-print(seed_text + ' ' + generated_text + ' ...')
-</code></pre></li>
+<li><code>temperature</code> = \(0.1\)</li>
 </ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python">generated_text <span style="color:#f92672">=</span> generate_text2(model<span style="color:#f92672">=</span>model, 
+                                tokenizer<span style="color:#f92672">=</span>tokenizer,
+                                seq_len<span style="color:#f92672">=</span>seq_len, 
+                                seed_text<span style="color:#f92672">=</span>seed_text, 
+                                num_gen_words<span style="color:#f92672">=</span><span style="color:#ae81ff">82</span>, 
+                                temperature <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.1</span>)
 
-<blockquote>
+<span style="color:#66d9ef">print</span>(seed_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; &#39;</span> <span style="color:#f92672">+</span> generated_text <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39; ...&#39;</span>)
+</code></pre></div><blockquote>
 <p><em>the film starts in a dark house where a group of teenagers friends meet to spend the weekend when they suddenly hear voices he meets the old woman who is bitten by a large swarm of lunges likely of her farm for help he is captured and discovers their way out the operation is not a brief struggle with the parapsychologists in a field tubbs finds stones of the house and the group straps him to the hospital where he is attacked by a skinhead gang garret volunteers to reveal that the two and informs them that the film ends which is why is &hellip;</em></p>
 </blockquote>
-
-<h2 id="what-s-next">What&rsquo;s next?</h2>
-
+<h2 id="whats-next">What&rsquo;s next?</h2>
 <p>As mentioned in the introduction, this is just the first step in the model iteration. Next iterations can include (among many other things):</p>
-
 <ul>
 <li>Experiment with different number of neurons per layer.</li>
 <li>Try new network architectures, for example adding a 1D-convnet layer.</li>
 <li>Train on a bigger data set.</li>
 </ul>
-
 <p>Of course, training on GPU would allow us to iterate faster.</p>
 
     </div>
