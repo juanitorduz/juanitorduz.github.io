@@ -298,7 +298,7 @@ x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.7, random
     )
     # Configure sampler.
     trace = pm.sample(
-        3000, 
+        5000, 
         chains=5, 
         tune=1000, 
         target_accept=0.87, 
@@ -562,7 +562,7 @@ print(f&#39;accuracy = {accuracy_score(y_true=y_test, y_pred=y_test_pred)}&#39;)
 <p>Next, we plot the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic">roc curve</a> and compute the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic#Area_under_the_curve">auc</a>.</p>
 <pre class="python"><code>from sklearn.metrics import roc_curve, auc, RocCurveDisplay
 
-fpr, tpr, thresholds = roc_curve(y_true=y_test, y_score=y_test_pred, pos_label=1, drop_intermediate=False)
+fpr, tpr, thresholds = roc_curve(y_true=y_test, y_score=p_test_pred, pos_label=1, drop_intermediate=False)
 roc_auc = auc(fpr, tpr)
 
 fig, ax  = plt.subplots()
@@ -578,14 +578,14 @@ ax.set(title=&#39;ROC&#39;);</code></pre>
 <h2>Model Decision Boundary</h2>
 <p>Finally we will describe and plot the model decision boundary, which is the space defined as</p>
 <p><span class="math display">\[\mathcal{B} = \{(x_1, x_2) \in \mathbb{R}^2 \: | \: p(x_1, x_2) = 0.5\}\]</span></p>
-<p>where <span class="math inline">\(p\)</span> denotes the probability of belonging to the class <span class="math inline">\(y=1\)</span> output bu the model. To make this set explicit, we simply write the condition in terms of the model parametrization:</p>
+<p>where <span class="math inline">\(p\)</span> denotes the probability of belonging to the class <span class="math inline">\(y=1\)</span> output by the model. To make this set explicit, we simply write the condition in terms of the model parametrization:</p>
 <p><span class="math display">\[0.5 = \frac{1}{1 + \exp(-(\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_{12} x_1x_2))}\]</span></p>
 <p>which implies</p>
 <p><span class="math display">\[0 = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_{12} x_1x_2\]</span></p>
 <p>Solving for <span class="math inline">\(x_2\)</span> we get the formula</p>
 <p><span class="math display">\[x_2 = - \frac{\beta_0 + \beta_1 x_1}{\beta_2 + \beta_{12}x_1}\]</span></p>
 <p>Observe that this curve is a hyperbola centered at the singularity point <span class="math inline">\(x_1 = - \beta_2 / \beta_{12}\)</span>.</p>
-<p>Let us not plot the model decision boundary using a grid:</p>
+<p>Let us now plot the model decision boundary using a grid:</p>
 <pre class="python"><code># Construct grid. 
 x1_grid = np.linspace(start=-9, stop=9, num=200)
 x2_grid = x1_grid
