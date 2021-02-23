@@ -263,7 +263,7 @@ y, x = patsy.dmatrices(formula_like=formula, data=df)
 y = np.asarray(y).flatten()
 labels = x.design_info.column_names
 x = np.asarray(x)</code></pre>
-<p>As pointed out on the <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">thread</a> (thank you <span class="citation">@Nicky</span>!), we need to keep the labels of the features ni the design matrix.</p>
+<p>As pointed out on the <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">thread</a> (thank you <span class="citation">@Nicky</span>!), we need to keep the labels of the features in the design matrix.</p>
 <pre class="python"><code>print(f&#39;labels = {labels}&#39;)</code></pre>
 <pre><code>labels = [&#39;Intercept&#39;, &#39;x1&#39;, &#39;x2&#39;, &#39;x1:x2&#39;]</code></pre>
 <p><strong>Remark:</strong> One needs to be careful when generating these features as we do not want to leak information in our cross validation steps. This could be the case when one-hot-encoding categorical variables.</p>
