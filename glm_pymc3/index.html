@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">6 min read</span>
+    <span class="article-duration">8 min read</span>
     
 
     <h1 class="article-title">GLM in PyMC3: Out-Of-Sample Predictions</h1>
@@ -79,38 +79,40 @@
 <script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
-<p>In this notebook I explore the <a href="https://docs.pymc.io/api/glm.html">glm</a> module of <a href="https://docs.pymc.io/">PyMC3</a>. I am particularly interested in the model definition using <a href="https://patsy.readthedocs.io/en/latest/">pasty</a> formulas, as it makes the model evaluation loop faster (easier to include features and/or interactions). There are many good resources on this subject, but most of them evaluate the model in-sample. For many applications we require doing predictions on out-of-sample data. This experiment was motivated by the discussion of the thread <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">“Out of sample” predictions with the GLM sub-module</a> on the (great!) forum <a href="https://discourse.pymc.io/">discourse.pymc.io/</a>, thank you all for your input!</p>
+<p>In this notebook I explore the <a href="https://docs.pymc.io/api/glm.html">glm</a> module of <a href="https://docs.pymc.io/">PyMC3</a>. I am particularly interested in the model definition using <a href="https://patsy.readthedocs.io/en/latest/">patsy</a> formulas, as it makes the model evaluation loop faster (easier to include features and/or interactions). There are many good resources on this subject, but most of them evaluate the model in-sample. For many applications we require doing predictions on out-of-sample data. This experiment was motivated by the discussion of the thread <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">“Out of sample” predictions with the GLM sub-module</a> on the (great!) forum <a href="https://discourse.pymc.io/">discourse.pymc.io/</a>, thank you all for your input!</p>
 <p><strong>Resources</strong></p>
 <ul>
-<li><a href="https://docs.pymc.io/nb_examples/index.html">PyMC3 Docs: Example Notebooks</a></li>
-<li><a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a></li>
-<li><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a></li>
+<li><p><a href="https://docs.pymc.io/nb_examples/index.html">PyMC3 Docs: Example Notebooks</a>. In particular check <a href="https://docs.pymc.io/notebooks/GLM-logistic.html">GLM: Logistic Regression</a>.</p></li>
+<li><p><a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a></p></li>
+<li><p><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a></p></li>
 </ul>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
-<pre class="python"><code>import numpy as np
+<pre class="python"><code>import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-sns.set_style(
-    style=&#39;darkgrid&#39;, 
-    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
-)
-sns.set_palette(palette=&#39;deep&#39;)
-sns_c = sns.color_palette(palette=&#39;deep&#39;)
 
-import pymc3 as pm
+sns.set_style(
+  style=&quot;darkgrid&quot;,
+  rc={&quot;axes.facecolor&quot;: &quot;.9&quot;, &quot;grid.color&quot;: &quot;.8&quot;}
+)
+sns.set_palette(palette=&quot;deep&quot;)
+sns_c = sns.color_palette(palette=&quot;deep&quot;)
+
 import arviz as az
 import patsy
-from pymc3 import glm
-from pymc3 import distributions as pm_dists
+import pymc3 as pm
 
-plt.rcParams[&#39;figure.figsize&#39;] = [7, 6]
-plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+from pymc3 import distributions as pm_dists
+from pymc3 import glm
+
+plt.rcParams[&quot;figure.figsize&quot;] = [7, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100</code></pre>
 </div>
 <div id="generate-sample-data" class="section level2">
 <h2>Generate Sample Data</h2>
-<p>We want to fit a logistic regression model where there is a multiplicative interaction between two numerical features.</p>
+<p>We want to fit a logistic regression model where there is a multiplicative interacton between two numerical features.</p>
 <pre class="python"><code>SEED = 42
 np.random.seed(SEED)
 
@@ -121,7 +123,7 @@ x1 = np.random.normal(loc=0.0, scale=2.0, size=n)
 x2 = np.random.normal(loc=0.0, scale=2.0, size=n)
 epsilon = np.random.normal(loc=0.0, scale=0.5, size=n)
 # Define target variable.
-z = x1 - x2 + 2*x1*x2 - 0.5 + epsilon
+z = x1 - x2 + 2 * x1 * x2 - 0.5 + epsilon
 p = 1 / (1 + np.exp(-z))
 y = (p &gt;= 0.5).astype(int)
 
@@ -235,7 +237,13 @@ y
 </div>
 </center>
 <p>Let us do some exploration of the data:</p>
-<pre class="python"><code>sns.pairplot(data=df, height=2);</code></pre>
+<pre class="python"><code>sns.pairplot(
+    data=df,
+    kind=&quot;scatter&quot;,
+    height=2,
+    plot_kws={&quot;color&quot;: sns_c[1]},
+    diag_kws={&quot;color&quot;: sns_c[2]}
+);</code></pre>
 <center>
 <img src="../images/glm_pymc3_files/glm_pymc3_6_0.svg" title="fig:" alt="svg" />
 </center>
@@ -246,71 +254,149 @@ y
 </ul>
 <pre class="python"><code>fig, ax = plt.subplots()
 sns_c_div = sns.diverging_palette(240, 10, n=2)
-sns.scatterplot(x=&#39;x1&#39;, y=&#39;x2&#39;, data=df, hue=&#39;y&#39;, palette=[sns_c_div[0], sns_c_div[-1]])
-ax.legend(title=&#39;y&#39;, loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
-ax.set(title=&#39;Sample Data&#39;);</code></pre>
+sns.scatterplot(x=&quot;x1&quot;, y=&quot;x2&quot;, data=df, hue=&quot;y&quot;, palette=[sns_c_div[0], sns_c_div[-1]])
+ax.legend(title=&quot;y&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Sample Data&quot;);</code></pre>
 <center>
 <img src="../images/glm_pymc3_files/glm_pymc3_8_0.svg" title="fig:" alt="svg" />
 </center>
 </div>
 <div id="prepare-data-for-modeling" class="section level2">
 <h2>Prepare Data for Modeling</h2>
-<p>I wanted to use the <em><code>classmethod</code></em> <code>from_formula</code> (see <a href="https://docs.pymc.io/api/glm.html">documentation</a>), but I was not able to generate out-of-sample predictions with this approach (if you find a way please let me know!). As a workaround, I created the features from a formula using <a href="https://patsy.readthedocs.io/en/latest/">pasty</a> directly and then use <em><code>class</code></em> <code>pymc3.glm.linear.GLM</code> (this was motivated by going into the <a href="https://github.com/pymc-devs/pymc3/blob/master/pymc3/glm/linear.py">source code</a>).</p>
+<p>I wanted to use the <em><code>classmethod</code></em> <code>from_formula</code> (see <a href="https://docs.pymc.io/api/glm.html">documentation</a>), but I was not able to generate out-of-sample predictions with this approach (if you find a way please let me know!). As a workaround, I created the features from a formula using <a href="https://patsy.readthedocs.io/en/latest/">patsy</a> directly and then use <em><code>class</code></em> <code>pymc3.glm.linear.GLM</code> (this was motivated by going into the <a href="https://github.com/pymc-devs/pymc3/blob/master/pymc3/glm/linear.py">source code</a>).</p>
 <pre class="python"><code># Define model formula.
-formula = &#39;y ~ x1 * x2&#39;
+formula = &quot;y ~ x1 * x2&quot;
 # Create features.
 y, x = patsy.dmatrices(formula_like=formula, data=df)
 y = np.asarray(y).flatten()
 labels = x.design_info.column_names
 x = np.asarray(x)</code></pre>
-<p>As pointed out on the <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">thread</a> (thank you <span class="citation">@Nicky</span>!), we need to keep the labels of the features in the design matrix.</p>
-<pre class="python"><code>print(f&#39;labels = {labels}&#39;)</code></pre>
+<p>As pointed out on the <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">thread</a> (thank you <span class="citation">@Nicky</span>!), we need to keep the lables of the features ni the design matrix.</p>
+<pre class="python"><code>print(f&quot;labels = {labels}&quot;)</code></pre>
 <pre><code>labels = [&#39;Intercept&#39;, &#39;x1&#39;, &#39;x2&#39;, &#39;x1:x2&#39;]</code></pre>
 <p><strong>Remark:</strong> One needs to be careful when generating these features as we do not want to leak information in our cross validation steps. This could be the case when one-hot-encoding categorical variables.</p>
 <p>Now we do a train-test split.</p>
 <pre class="python"><code>from sklearn.model_selection import train_test_split
 
-x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.7, random_state=SEED)</code></pre>
+x_train, x_test, y_train, y_test = train_test_split(
+  x, y, train_size=0.7, random_state=SEED
+)</code></pre>
 </div>
-<div id="define-and-fit-the-model" class="section level2">
-<h2>Define and Fit the Model</h2>
+<div id="define-the-model" class="section level2">
+<h2>Define the Model</h2>
 <p>We now specify the model in PyMC3.</p>
 <pre class="python"><code>with pm.Model() as model:
     # Set data container.
-    data = pm.Data(&#39;data&#39;, x_train)
+    data = pm.Data(&quot;data&quot;, x_train)
     # Define GLM family.
     family = pm.glm.families.Binomial()
     # Set priors.
     priors = {
-        &#39;Intercept&#39;: pm.Normal.dist(mu=0, sd=10),
-        &#39;x1&#39;: pm.Normal.dist(mu=0, sd=10),
-        &#39;x2&#39;: pm.Normal.dist(mu=0, sd=10),
-        &#39;x1:x2&#39;: pm.Normal.dist(mu=0, sd=10),
+        &quot;Intercept&quot;: pm.Normal.dist(mu=0, sd=10),
+        &quot;x1&quot;: pm.Normal.dist(mu=0, sd=10),
+        &quot;x2&quot;: pm.Normal.dist(mu=0, sd=10),
+        &quot;x1:x2&quot;: pm.Normal.dist(mu=0, sd=10),
     }
     # Specify model.
     glm.GLM(
-        y=y_train,
-        x=data,
-        family=family, 
-        intercept=False,
-        labels=labels,
-        priors=priors
-    )
-    # Configure sampler.
-    trace = pm.sample(
-        5000, 
-        chains=5, 
-        tune=1000, 
-        target_accept=0.87, 
-        random_seed=SEED
-    ) </code></pre>
-<pre class="python"><code>az.plot_trace(trace);</code></pre>
+      y=y_train,
+      x=data,
+      family=family,
+      intercept=False,
+      labels=labels,
+      priors=priors
+    )</code></pre>
+</div>
+<div id="prior-checks" class="section level2">
+<h2>Prior Checks</h2>
+<p>Before fitting the model we run some prior predictive checks on the training data.</p>
+<pre class="python"><code># Sample from prior distribution.
+with model:
+    prior_checks = pm.sample_prior_predictive(samples=100, random_seed=SEED)</code></pre>
+<p>We get samples for all our variables and the output:</p>
+<pre class="python"><code>prior_checks.keys()</code></pre>
+<pre><code>dict_keys([&#39;x2&#39;, &#39;y&#39;, &#39;x1:x2&#39;, &#39;x1&#39;, &#39;Intercept&#39;])</code></pre>
+<p>Let us take a look into the samples. For the target variable <code>y</code> we have:</p>
+<pre class="python"><code>prior_checks[&quot;y&quot;]</code></pre>
+<pre><code>array([[0, 0, 1, ..., 0, 1, 1],
+       [1, 0, 0, ..., 0, 1, 0],
+       [1, 0, 1, ..., 0, 1, 1],
+       ...,
+       [1, 1, 1, ..., 1, 0, 1],
+       [1, 0, 0, ..., 0, 1, 0],
+       [1, 1, 1, ..., 1, 1, 1]])</code></pre>
+<p>So we can get summarize the model predictions (before seeing the data) by taking the mean over the samples. Let us store this in a dataframe to in order to generate some plots.</p>
+<pre class="python"><code>train_prior_df = pd.DataFrame(
+    data={
+        &quot;x1_train&quot;: x_train[:, 1],
+        &quot;x2_train&quot;: x_train[:, 2],
+        &quot;y_train&quot;: y_train,
+        &quot;y_train_prior_mean&quot;: prior_checks[&quot;y&quot;].mean(axis=0),
+    },
+)
+
+train_prior_df.sort_values(&quot;y_train&quot;, inplace=True)</code></pre>
+<p>First we plot the distribution of the means:</p>
+<pre class="python"><code># Plot means distribution.
+fig, ax = plt.subplots()
+sns.kdeplot(
+    x=&quot;y_train_prior_mean&quot;,
+    data=train_prior_df,
+    hue=&quot;y_train&quot;,
+    palette=[sns_c[0], sns_c[3]],
+    fill=True,
+    alpha=0.1,
+    ax=ax,
+)
+ax.axvline(x=0.5, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.set(title=&quot;Prior Means Distribution (train)&quot;, xlim=(0, 1));</code></pre>
 <center>
-<figure>
-<img alt="MyImage" src="../images/glm_pymc3_files/glm_pymc3_18_0.svg" align="middle" style="width: 950px;">
-</figure>
+<img src="../images/glm_pymc3_files/glm_pymc3_28_0.svg" title="fig:" alt="svg" />
 </center>
-<pre class="python"><code>pm.summary(trace)</code></pre>
+<p>We clearly see that the model can not distinguish between the two classes yet. This makes sense as we have non-informative priors for this synthetic data set. We can also confirm this if we plot each point separately:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+cmap = sns.diverging_palette(240, 10, n=50, as_cmap=True)
+sns.scatterplot(
+    x=&quot;x1_train&quot;,
+    y=&quot;x2_train&quot;,
+    data=train_prior_df,
+    hue=&quot;y_train_prior_mean&quot;,
+    hue_norm=(0, 1),
+    palette=cmap,
+    edgecolor=&quot;black&quot;,
+    style=&quot;y_train&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+  title=&quot;Prior Means (train)&quot;,
+  xlim=(-9, 9),
+  ylim=(-9, 9),
+  xlabel=&quot;x1&quot;,
+  ylabel=&quot;x2&quot;
+);</code></pre>
+<center>
+<img src="../images/glm_pymc3_files/glm_pymc3_30_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="fit-model" class="section level2">
+<h2>Fit Model</h2>
+<pre class="python"><code>with model:
+    # Configure sampler.
+    trace = pm.sample(5000, chains=5, tune=1000, target_accept=0.87, random_seed=SEED)</code></pre>
+<pre><code>Auto-assigning NUTS sampler...
+Initializing NUTS using jitter+adapt_diag...
+Multiprocess sampling (5 chains in 4 jobs)
+NUTS: [x1:x2, x2, x1, Intercept]
+
+Sampling 5 chains for 1_000 tune and 5_000 draw iterations (5_000 + 25_000 draws total) took 43 seconds.
+The number of effective samples is smaller than 25% for some parameters.</code></pre>
+<pre class="python"><code># Plot chains.
+az.plot_trace(data=trace);</code></pre>
+<center>
+<img src="../images/glm_pymc3_files/glm_pymc3_33_0.svg" alt="glue" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>az.summary(trace)</code></pre>
 <center>
 <div>
 <style scoped>
@@ -324,21 +410,6 @@ x_train, x_test, y_train, y_test = train_test_split(x, y, train_size=0.7, random
 
     .dataframe thead th {
         text-align: right;
-    }
-
-    .dataframe thead th {
-        text-align: left;
-        font-size: 16px;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-        font-size: 16px;
-    }
-    
-    .dataframe tbody tr td {
-        vertical-align: top;
-        font-size: 16px;
     }
 </style>
 <table border="1" class="dataframe">
@@ -365,12 +436,6 @@ mcse_mean
 mcse_sd
 </th>
 <th>
-ess_mean
-</th>
-<th>
-ess_sd
-</th>
-<th>
 ess_bulk
 </th>
 <th>
@@ -387,34 +452,28 @@ r_hat
 Intercept
 </th>
 <td>
--2.997
+-3.003
 </td>
 <td>
-0.852
+0.850
 </td>
 <td>
--4.600
+-4.576
 </td>
 <td>
--1.495
+-1.467
 </td>
 <td>
-0.019
+0.015
 </td>
 <td>
-0.014
+0.010
 </td>
 <td>
-1948.0
+3400.0
 </td>
 <td>
-1919.0
-</td>
-<td>
-1984.0
-</td>
-<td>
-2755.0
+5072.0
 </td>
 <td>
 1.0
@@ -425,34 +484,28 @@ Intercept
 x1
 </th>
 <td>
-4.562
+4.567
 </td>
 <td>
-1.122
+1.111
 </td>
 <td>
-2.618
+2.564
 </td>
 <td>
-6.698
+6.653
 </td>
 <td>
-0.026
+0.020
 </td>
 <td>
-0.019
+0.014
 </td>
 <td>
-1859.0
+3139.0
 </td>
 <td>
-1812.0
-</td>
-<td>
-1919.0
-</td>
-<td>
-2494.0
+4509.0
 </td>
 <td>
 1.0
@@ -463,34 +516,28 @@ x1
 x2
 </th>
 <td>
--4.250
+-4.257
 </td>
 <td>
-1.052
+1.044
 </td>
 <td>
--6.148
+-6.209
 </td>
 <td>
--2.304
+-2.376
 </td>
 <td>
-0.024
+0.019
 </td>
 <td>
-0.017
+0.013
 </td>
 <td>
-1846.0
+3123.0
 </td>
 <td>
-1813.0
-</td>
-<td>
-1893.0
-</td>
-<td>
-2510.0
+4455.0
 </td>
 <td>
 1.0
@@ -501,34 +548,28 @@ x2
 x1:x2
 </th>
 <td>
-8.152
+8.165
 </td>
 <td>
-1.956
+1.936
 </td>
 <td>
-4.668
+4.658
 </td>
 <td>
-11.778
+11.748
 </td>
 <td>
-0.045
+0.035
 </td>
 <td>
-0.032
+0.025
 </td>
 <td>
-1901.0
+3123.0
 </td>
 <td>
-1850.0
-</td>
-<td>
-1962.0
-</td>
-<td>
-2617.0
+4200.0
 </td>
 <td>
 1.0
@@ -544,33 +585,35 @@ x1:x2
 <h2>Generate Out-Of-Sample Predictions</h2>
 <p>Now we generate predictions on the test set.</p>
 <pre class="python"><code># Update data reference.
-pm.set_data({&#39;data&#39;: x_test}, model=model)
-# Generate posterior samples. 
+pm.set_data({&quot;data&quot;: x_test}, model=model)
+# Generate posterior samples.
 ppc_test = pm.sample_posterior_predictive(trace, model=model, samples=1000)</code></pre>
 <pre class="python"><code># Compute the point prediction by taking the mean
 # and defining the category via a threshold.
-p_test_pred = ppc_test[&#39;y&#39;].mean(axis=0)
-y_test_pred = (p_test_pred &gt;= 0.5).astype(&#39;int&#39;)</code></pre>
+p_test_pred = ppc_test[&quot;y&quot;].mean(axis=0)
+y_test_pred = (p_test_pred &gt;= 0.5).astype(&quot;int&quot;)</code></pre>
 </div>
 <div id="evaluate-model" class="section level2">
 <h2>Evaluate Model</h2>
 <p>First let us compute the accuracy on the test set.</p>
 <pre class="python"><code>from sklearn.metrics import accuracy_score
 
-print(f&#39;accuracy = {accuracy_score(y_true=y_test, y_pred=y_test_pred)}&#39;)</code></pre>
-<pre><code>accuracy = 0.92</code></pre>
+print(f&quot;accuracy = {accuracy_score(y_true=y_test, y_pred=y_test_pred)}&quot;)</code></pre>
+<pre><code>accuracy = 0.9333333333333333</code></pre>
 <p>Next, we plot the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic">roc curve</a> and compute the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic#Area_under_the_curve">auc</a>.</p>
-<pre class="python"><code>from sklearn.metrics import roc_curve, auc, RocCurveDisplay
+<pre class="python"><code>from sklearn.metrics import RocCurveDisplay, auc, roc_curve
 
-fpr, tpr, thresholds = roc_curve(y_true=y_test, y_score=p_test_pred, pos_label=1, drop_intermediate=False)
+fpr, tpr, thresholds = roc_curve(
+    y_true=y_test, y_score=p_test_pred, pos_label=1, drop_intermediate=False
+)
 roc_auc = auc(fpr, tpr)
 
-fig, ax  = plt.subplots()
+fig, ax = plt.subplots()
 roc_display = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc)
-roc_display = roc_display.plot(ax=ax, marker=&#39;o&#39;, markersize=4)
-ax.set(title=&#39;ROC&#39;);</code></pre>
+roc_display = roc_display.plot(ax=ax, marker=&quot;o&quot;, color=sns_c[4], markersize=4)
+ax.set(title=&quot;ROC&quot;);</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_27_0.svg" title="fig:" alt="svg" />
+<img src="../images/glm_pymc3_files/glm_pymc3_42_0.svg" title="fig:" alt="svg" />
 </center>
 <p>The model is performing as expected (we of course know the data generating process, which is almost never the case in practical applications).</p>
 </div>
@@ -586,7 +629,7 @@ ax.set(title=&#39;ROC&#39;);</code></pre>
 <p><span class="math display">\[x_2 = - \frac{\beta_0 + \beta_1 x_1}{\beta_2 + \beta_{12}x_1}\]</span></p>
 <p>Observe that this curve is a hyperbola centered at the singularity point <span class="math inline">\(x_1 = - \beta_2 / \beta_{12}\)</span>.</p>
 <p>Let us now plot the model decision boundary using a grid:</p>
-<pre class="python"><code># Construct grid. 
+<pre class="python"><code># Construct grid.
 x1_grid = np.linspace(start=-9, stop=9, num=200)
 x2_grid = x1_grid
 
@@ -596,40 +639,49 @@ x_grid = np.stack(arrays=[x1_mesh.flatten(), x2_mesh.flatten()], axis=1)
 
 # Create features on the grid.
 x_grid_ext = patsy.dmatrix(
-    formula_like=&#39;x1 * x2&#39;, 
-    data=dict(x1=x_grid[:, 0], x2=x_grid[:, 1])
+  formula_like=&quot;x1 * x2&quot;, data=dict(x1=x_grid[:, 0], x2=x_grid[:, 1])
 )
 
 x_grid_ext = np.asarray(x_grid_ext)
 
 # Generate model predictions on the grid.
-pm.set_data({&#39;data&#39;: x_grid_ext}, model=model)
+pm.set_data({&quot;data&quot;: x_grid_ext}, model=model)
 ppc_grid = pm.sample_posterior_predictive(trace, model=model, samples=1000)</code></pre>
 <p>Now we compute the model decision boundary on the grid for visualization purposes.</p>
-<pre class="python"><code>numerator = - (trace[&#39;Intercept&#39;].mean(axis=0) + trace[&#39;x1&#39;].mean(axis=0)*x1_grid)
-denominator = (trace[&#39;x2&#39;].mean(axis=0) + trace[&#39;x1:x2&#39;].mean(axis=0)*x1_grid)
-bd_grid =  numerator / denominator
+<pre class="python"><code>numerator = -(trace[&quot;Intercept&quot;].mean(axis=0) + trace[&quot;x1&quot;].mean(axis=0) * x1_grid)
+denominator = trace[&quot;x2&quot;].mean(axis=0) + trace[&quot;x1:x2&quot;].mean(axis=0) * x1_grid
+bd_grid = numerator / denominator
 
-grid_df = pd.DataFrame(x_grid, columns=[&#39;x1&#39;, &#39;x2&#39;])
-grid_df[&#39;p&#39;] = ppc_grid[&#39;y&#39;].mean(axis=0)
-grid_df.sort_values(&#39;p&#39;, inplace=True)
+grid_df = pd.DataFrame(x_grid, columns=[&quot;x1&quot;, &quot;x2&quot;])
+grid_df[&quot;p&quot;] = ppc_grid[&quot;y&quot;].mean(axis=0)
+grid_df.sort_values(&quot;p&quot;, inplace=True)
 
-p_grid = grid_df \
-    .pivot(index=&#39;x2&#39;, columns=&#39;x1&#39;, values=&#39;p&#39;) \
-    .to_numpy()</code></pre>
+p_grid = grid_df.pivot(index=&quot;x2&quot;, columns=&quot;x1&quot;, values=&quot;p&quot;).to_numpy()</code></pre>
 <p>We finally get the plot and the predictions on the test set:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 cmap = sns.diverging_palette(240, 10, n=50, as_cmap=True)
-sns.scatterplot(x=x_test[:, 1].flatten(), y=x_test[:, 2].flatten(), hue=y_test, palette=[sns_c_div[0], sns_c_div[-1]], ax=ax)
-sns.lineplot(x=x1_grid, y=bd_grid, color=&#39;black&#39;, ax=ax)
+sns.scatterplot(
+    x=x_test[:, 1].flatten(),
+    y=x_test[:, 2].flatten(),
+    hue=y_test,
+    palette=[sns_c_div[0], sns_c_div[-1]],
+    ax=ax,
+)
+sns.lineplot(x=x1_grid, y=bd_grid, color=&quot;black&quot;, ax=ax)
 ax.contourf(x1_grid, x2_grid, p_grid, cmap=cmap, alpha=0.3)
-ax.legend(title=&#39;y&#39;, loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
-ax.lines[0].set_linestyle(&#39;dotted&#39;)
-ax.set(title=&#39;Model Decision Boundary&#39;, ylim=(-9, 9));</code></pre>
+ax.legend(title=&quot;y&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.lines[0].set_linestyle(&quot;dotted&quot;)
+ax.set(
+  title=&quot;Model Decision Boundary&quot;,
+  xlim=(-9, 9),
+  ylim=(-9, 9),
+  xlabel=&quot;x1&quot;,
+  ylabel=&quot;x2&quot;
+);</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_35_0.svg" title="fig:" alt="svg" />
+<img src="../images/glm_pymc3_files/glm_pymc3_50_0.svg" title="fig:" alt="svg" />
 </center>
-<p><strong>Remark:</strong> Note that we have computed the model decision boundary by using the mean of the posterior samples. However, we can generate a better (and more informative!) plot if we use the complete distribution (similarly for other metrics like accuracy and auc). One way of doing this is by storing and computing it inside the model definition as a <a href="https://docs.pymc.io/api/model.html"><code>Deterministic</code></a> variable as in <a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a>.</p>
+<p><strong>Remark:</strong> Note that we have computed the model decision boundary by using the mean of the posterior samples. However, we can generate a better (and more informative!) plot if we use the complete distribution (similarly for other metrics like accuracy and auc). One way of doing this is by storing and computing it inside the model definition as a <code>Deterministic</code> variable as in <a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a>.</p>
 </div>
 
     </div>
