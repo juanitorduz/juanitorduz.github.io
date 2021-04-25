@@ -14,9 +14,8 @@
       
       <guid>/dockerize-a-shinyapp/</guid>
       <description>In this post I want to describe how to dockerize a simple Shiny App. Docker is a great way of sharing and deploying projects. You can download it here.
-I highly recommend the R Docker tutorial.
-Assume you have a project folder structure as follows:
-. +-- project.Rproj +-- app.R +-- R | +-- script_1.R | +-- script_2.R +-- data | +-- data_df.rds | +-- raw_data.csv  The script app.</description>
+Resources:
+ R Docker tutorial, recommended for Docker beginners. Running a shiny app in a docker container by Mark Sellors (which is an updated and more complete version of this post).  Assume you have a project folder structure as follows:</description>
     </item>
     
   </channel>

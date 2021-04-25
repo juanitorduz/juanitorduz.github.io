@@ -76,10 +76,15 @@
 
     <div class="article-content">
       
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p>In this post I want to describe how to dockerize a simple <a href="https://shiny.rstudio.com">Shiny App</a>. <a href="https://www.docker.com/">Docker</a> is a great way of sharing and deploying projects. You can download it <a href="https://www.docker.com/get-started">here</a>.</p>
-<p>I highly recommend the <a href="https://ropenscilabs.github.io/r-docker-tutorial/">R Docker tutorial</a>.</p>
+<p><strong>Resources:</strong></p>
+<ul>
+<li><a href="https://ropenscilabs.github.io/r-docker-tutorial/">R Docker tutorial</a>, recommended for Docker beginners.</li>
+<li><a href="https://blog.sellorm.com/2021/04/25/shiny-app-in-docker/">Running a shiny app in a docker container</a> by Mark Sellors (which is an updated and more complete version of this post).</li>
+</ul>
 <p>Assume you have a project folder structure as follows:</p>
 <pre><code>.
 +-- project.Rproj
@@ -98,7 +103,6 @@
 <p>To create a docker image you need to create a <a href="https://docs.docker.com/engine/reference/builder/">Dockerfile</a>, which is a simple text file located in the same directory as <code>app.R</code>. The name of the file must be <code>Dockerfile</code>. A common structure of this file is the following:</p>
 <pre class="dockerfile"><code># get shiny serves plus tidyverse packages image
 FROM rocker/shiny-verse:latest
-
 # system libraries of general use
 RUN apt-get update &amp;&amp; apt-get install -y \
     sudo \
@@ -109,8 +113,6 @@ RUN apt-get update &amp;&amp; apt-get install -y \
     libxt-dev \
     libssl-dev \
     libssh2-1-dev 
-  
-
 # install R packages required 
 # (change it dependeing on the packages you need)
 RUN R -e &quot;install.packages(&#39;shiny&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
@@ -121,20 +123,15 @@ RUN R -e &quot;install.packages(&#39;magrittr&#39;, repos=&#39;http://cran.rstud
 RUN R -e &quot;install.packages(&#39;glue&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
 RUN R -e &quot;install.packages(&#39;DT&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
 RUN R -e &quot;install.packages(&#39;plotly&#39;, repos=&#39;http://cran.rstudio.com/&#39;)&quot;
-
-
 # copy the app to the image
 COPY project.Rproj /srv/shiny-server/
 COPY app.R /srv/shiny-server/
 COPY R /srv/shiny-server/R
 COPY data /srv/shiny-server/data
-
 # select port
 EXPOSE 3838
-
 # allow permission
 RUN sudo chown -R shiny:shiny /srv/shiny-server
-
 # run app
 CMD [&quot;/usr/bin/shiny-server.sh&quot;]</code></pre>
 <p>To build the docker image you can run on the console (where the <code>Dockerfile</code> is located):</p>
