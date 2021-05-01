@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Feature Engineering: patsy as FormulaTransformer - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Feature Engineering: patsy as FormulaTransformer - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">5 min read</span>
+    
+
+    <h1 class="article-title">Feature Engineering: patsy as FormulaTransformer</h1>
+
+    
+    <span class="article-date">2021-05-01</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook I want to describe how to create features inside <a href="https://scikit-learn.org/stable/modules/compose.html">scikit-learn pipelines</a> using <a href="https://patsy.readthedocs.io/en/latest/formulas.html">patsy-like formulas</a>. I have used this approach to generate features in a previous post: <a href="https://juanitorduz.github.io/glm_pymc3/">GLM in PyMC3: Out-Of-Sample Predictions</a>, so I will consider the same data set here for the sake of comparison.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import patsy
+import seaborn as sns
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.compose import ColumnTransformer
+from sklearn.inspection import plot_partial_dependence
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import plot_confusion_matrix, RocCurveDisplay, auc, roc_curve
+from sklearn.preprocessing import StandardScaler
+
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;0.9&#39;, &#39;grid.color&#39;: &#39;0.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+
+plt.rcParams[&#39;figure.figsize&#39;] = [7, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+</div>
+<div id="generate-sample-data" class="section level2">
+<h2>Generate Sample Data</h2>
+<p>We want to fit a logistic regression model where there is a multiplicative interaction between two numerical features.</p>
+<pre class="python"><code>SEED = 42
+np.random.seed(SEED)
+
+# Number of data points.
+n = 250
+# Create features.
+x1 = np.random.normal(loc=0.0, scale=2.0, size=n)
+x2 = np.random.normal(loc=0.0, scale=2.0, size=n)
+epsilon = np.random.normal(loc=0.0, scale=0.5, size=n)
+# Define target variable.
+intercept = -0.5
+beta_x1 = 1
+beta_x2 = -1
+beta_interaction = 2
+z = intercept + beta_x1 * x1 + beta_x2 * x2 + beta_interaction * x1 * x2
+p = 1 / (1 + np.exp(-z))
+y = np.random.binomial(n=1, p=p, size=n)
+
+df = pd.DataFrame(dict(x1=x1, x2=x2, y=y))
+
+df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+x1
+</th>
+<th>
+x2
+</th>
+<th>
+y
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+0.993428
+</td>
+<td>
+-2.521768
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+-0.276529
+</td>
+<td>
+1.835724
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+1.295377
+</td>
+<td>
+4.244312
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+3.046060
+</td>
+<td>
+2.064931
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+-0.468307
+</td>
+<td>
+-3.038740
+</td>
+<td>
+1
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>This is data set is relatively well balanced:</p>
+<pre class="python"><code>df[&#39;y&#39;].value_counts() / df[&#39;y&#39;].shape[0]</code></pre>
+<pre><code>0    0.54
+1    0.46
+Name: y, dtype: float64</code></pre>
+<p>Let us now split the data into the given features and the target variable</p>
+<pre class="python"><code>numeric_features = [&#39;x1&#39;, &#39;x2&#39;]
+
+x = df[numeric_features]
+y = df[&#39;y&#39;]</code></pre>
+<p>Next, we do a random train-test split.</p>
+<pre class="python"><code>x_train, x_test, y_train, y_test = train_test_split(
+  x, y, train_size=0.7, random_state=SEED
+)</code></pre>
+</div>
+<div id="model-pipeline" class="section level2">
+<h2>Model Pipeline</h2>
+<div id="implement-formulatransformer" class="section level3">
+<h3>Implement <code>FormulaTransformer</code></h3>
+<p>We can follow <a href="https://scikit-learn.org/stable/developers/develop.html">scikit-learn’s guide</a> to implement custom transformations inside a pipeline. The following transformer creates features from a <code>formula</code> as described <a href="https://patsy.readthedocs.io/en/latest/formulas.html">here</a>. Please note that by default it will add an <code>Intercept</code> term (i.e. columns of ones). If we do not want this feature we can simply ad a <code>- 1</code> inside the formula.</p>
+<pre class="python"><code>class FormulaTransformer(BaseEstimator, TransformerMixin):
+
+    def __init__(self, formula):
+        self.formula = formula
+    
+    def fit(self, X, y=None):
+        return self
+    
+    def transform(self, X):
+        X_formula = patsy.dmatrix(formula_like=self.formula, data=X)
+        columns = X_formula.design_info.column_names
+        return pd.DataFrame(X_formula, columns=columns)</code></pre>
+</div>
+<div id="define-and-fit-the-model-pipeline" class="section level3">
+<h3>Define and Fit the Model Pipeline</h3>
+<p>Now we define and fit our model (see <a href="https://scikit-learn.org/stable/auto_examples/compose/plot_column_transformer_mixed_types.html">Column Transformer with Mixed Types guide</a>). We use a <span class="math inline">\(l_2\)</span>-regularized logistic regression on a multiplicative interaction of the features. Note that we are not including the intercept in the <code>formula</code> but rather in the <code>estimator</code> itself.</p>
+<pre class="python"><code>numeric_transformer = Pipeline(steps=[
+    (&#39;formula_transformer&#39;, FormulaTransformer(formula=&#39;x1 * x2 - 1&#39;)),
+    (&#39;scaler&#39;, StandardScaler())
+])
+
+preprocessor = ColumnTransformer(transformers=[
+        (&#39;numeric&#39;, numeric_transformer, numeric_features)
+])
+
+estimator = LogisticRegression(
+    fit_intercept=True,
+    penalty=&#39;l2&#39;,
+    class_weight=&#39;balanced&#39;
+)
+
+param_grid = {
+    &#39;C&#39; : np.logspace(start=-4, stop=4, num=20)
+}
+
+grid_search = GridSearchCV(
+    estimator=estimator,
+    param_grid=param_grid,
+    scoring=&#39;roc_auc&#39;,
+    cv=10
+)
+
+pipeline = Pipeline(steps=[
+    (&#39;preprocessor&#39;, preprocessor),
+    (&#39;gridsearch&#39;, grid_search)
+])
+
+pipeline = pipeline.fit(X=x_train, y=y_train)</code></pre>
+<p><strong>Remark:</strong> Note that one could have used the in-build <a href="https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.PolynomialFeatures.html">PolynomialFeatures</a> transformer for this particular example. Nevertheless, this <em>formula</em> approach can give additional flexibility to explore feature transformations. For example, look how easy is to include <em>numpy-transformations</em> (which can actually be encoded using a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.FunctionTransformer.html#sklearn.preprocessing.FunctionTransformer">FunctionTransformer</a> as well):</p>
+<pre class="python"><code>formula_transformer = FormulaTransformer(formula=&#39;x1 + x2 + np.sin(x1) + np.abs(x2) - 1&#39;)
+x_train_features = formula_transformer.fit_transform(X=x_train)
+x_train_features.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+x1
+</th>
+<th>
+x2
+</th>
+<th>
+np.sin(x1)
+</th>
+<th>
+np.abs(x2)
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2.955788
+</td>
+<td>
+0.151609
+</td>
+<td>
+0.184737
+</td>
+<td>
+0.151609
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+-0.583387
+</td>
+<td>
+-0.770627
+</td>
+<td>
+-0.550854
+</td>
+<td>
+0.770627
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+-1.981073
+</td>
+<td>
+1.744641
+</td>
+<td>
+-0.917011
+</td>
+<td>
+1.744641
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+-3.975138
+</td>
+<td>
+1.256691
+</td>
+<td>
+0.740319
+</td>
+<td>
+1.256691
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+1.830804
+</td>
+<td>
+-1.650994
+</td>
+<td>
+0.966388
+</td>
+<td>
+1.650994
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us visualize the transformed features:</p>
+<pre class="python"><code>fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10, 6)) 
+sns.lineplot(x=&#39;x1&#39;, y=&#39;np.sin(x1)&#39;, data=x_train_features, marker=&#39;o&#39;, color=sns_c[1], ax=ax[0])
+sns.lineplot(x=&#39;x2&#39;, y=&#39;np.abs(x2)&#39;, data=x_train_features, marker=&#39;o&#39;, color=sns_c[2], ax=ax[1])
+ax[0].set(title=r&#39;$x_1 \longmapsto \sin(x_1)$&#39;)
+ax[1].set(title=r&#39;$x_2 \longmapsto |x_2|$&#39;)
+fig.suptitle(&#39;Feature Transformations&#39;, y=0.93);</code></pre>
+<center>
+<img src="../images/formula_transformer_files/formula_transformer_19_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+</div>
+<div id="predictions-and-evaluation-metrics" class="section level2">
+<h2>Predictions and Evaluation Metrics</h2>
+<p>Now we simply evaluate the model by looking into its performance in out-of-sample data. The results are similar to the ones in the <a href="https://juanitorduz.github.io/glm_pymc3/">previous post</a>. First let us get generate predictions (both probabilities and predictions) and compute the accuracy:</p>
+<pre class="python"><code>p_test_pred = pipeline.predict_proba(X=x_test)[:, 1]
+y_test_pred = pipeline.predict(X=x_test)
+
+print(f&quot;accuracy = {accuracy_score(y_true=y_test, y_pred=y_test_pred): 0.3f}&quot;)</code></pre>
+<pre><code>accuracy =  0.827</code></pre>
+<p>Now let us plot the confusion matrix:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+plot_confusion_matrix(
+    estimator=pipeline, 
+    X=x_test,
+    y_true=y_test,
+    normalize=&#39;all&#39;,
+    cmap=&#39;viridis_r&#39;,
+    ax=ax
+)
+
+ax.set(title=&#39;Confusion Matrix&#39;);</code></pre>
+<center>
+<img src="../images/formula_transformer_files/formula_transformer_23_0.svg" title="fig:" alt="svg" />
+</center>
+<p>It seems the false positives and false negatives shares are balanced.</p>
+<p>Next we look into the <a href="https://en.wikipedia.org/wiki/Receiver_operating_characteristic">roc curve</a>:</p>
+<pre class="python"><code>fpr, tpr, thresholds = roc_curve(
+    y_true=y_test, y_score=p_test_pred, pos_label=1, drop_intermediate=False
+)
+roc_auc = auc(fpr, tpr)
+
+fig, ax = plt.subplots()
+roc_display = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc)
+roc_display = roc_display.plot(ax=ax, marker=&quot;o&quot;, color=sns_c[4], markersize=4)
+ax.set(title=&#39;ROC - Test Set&#39;);</code></pre>
+<center>
+<img src="../images/formula_transformer_files/formula_transformer_25_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="partial-dependency-plot" class="section level2">
+<h2>Partial Dependency Plot</h2>
+<p>Finally let us compute the <a href="https://christophm.github.io/interpretable-ml-book/pdp.html">partial dependency plot</a> for both features <code>x1</code> and <code>x2</code>. First we need to make sure the features are not highly correlated:</p>
+<pre class="python"><code>print(f&#39;Input features correlation: {x_test.corr().loc[&quot;x1&quot;, &quot;x2&quot;]: 0.3f}&#39;)</code></pre>
+<pre><code>Input features correlation:  0.086</code></pre>
+<p>Now let us visualize the plot:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+cmap = sns.color_palette(&#39;Spectral_r&#39;, as_cmap=True)
+
+plot_partial_dependence(
+    estimator=pipeline,
+    X=x_test,
+    features=[(&#39;x1&#39;, &#39;x2&#39;)],
+    contour_kw={&#39;cmap&#39;: cmap},
+    ax=ax
+)
+
+ax.set(title=&#39;Partial Dependency Plot&#39;);</code></pre>
+<center>
+<img src="../images/formula_transformer_files/formula_transformer_29_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Note how similar it looks as compared with the model decision boundary in the <a href="https://juanitorduz.github.io/glm_pymc3/">previous post</a>.</p>
+<p><strong>Remark:</strong> Note that we have computed the partial dependency plot using the test set. For a deeper analysis on the subject please see <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data">Section 5.5.2 Should I Compute Importance on Training or Test Data?</a> (great reference!). We are following the logic as in <a href="https://github.com/PacktPublishing/Interpretable-Machine-Learning-with-Python">Interpretable Machine Learning with Python</a>.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
