@@ -256,7 +256,7 @@ y = df[&#39;y&#39;]</code></pre>
 <h2>Model Pipeline</h2>
 <div id="implement-formulatransformer" class="section level3">
 <h3>Implement <code>FormulaTransformer</code></h3>
-<p>We can follow <a href="https://scikit-learn.org/stable/developers/develop.html">scikit-learn’s guide</a> to implement custom transformations inside a pipeline. The following transformer creates features from a <code>formula</code> as described <a href="https://patsy.readthedocs.io/en/latest/formulas.html">here</a>. Please note that by default it will add an <code>Intercept</code> term (i.e. columns of ones). If we do not want this feature we can simply ad a <code>- 1</code> inside the formula.</p>
+<p>We can follow <a href="https://scikit-learn.org/stable/developers/develop.html">scikit-learn’s guide</a> to implement custom transformations inside a pipeline. The following transformer creates features from a <code>formula</code> as described <a href="https://patsy.readthedocs.io/en/latest/formulas.html">here</a>. Please note that by default it will add an <code>Intercept</code> term (i.e. columns of ones). If we do not want this feature we can simply add a <code>- 1</code> inside the formula.</p>
 <pre class="python"><code>class FormulaTransformer(BaseEstimator, TransformerMixin):
 
     def __init__(self, formula):
@@ -288,23 +288,23 @@ estimator = LogisticRegression(
     class_weight=&#39;balanced&#39;
 )
 
+pipeline = Pipeline(steps=[
+    (&#39;preprocessor&#39;, preprocessor),
+    (&#39;logistic_regression&#39;, estimator)
+])
+
 param_grid = {
-    &#39;C&#39; : np.logspace(start=-4, stop=4, num=20)
+    &#39;logistic_regression__C&#39; : np.logspace(start=-2, stop=2, num=20)
 }
 
 grid_search = GridSearchCV(
-    estimator=estimator,
+    estimator=pipeline,
     param_grid=param_grid,
     scoring=&#39;roc_auc&#39;,
     cv=10
 )
 
-pipeline = Pipeline(steps=[
-    (&#39;preprocessor&#39;, preprocessor),
-    (&#39;gridsearch&#39;, grid_search)
-])
-
-pipeline = pipeline.fit(X=x_train, y=y_train)</code></pre>
+grid_search = grid_search.fit(X=x_train, y=y_train)</code></pre>
 <p><strong>Remark:</strong> Note that one could have used the in-build <a href="https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.PolynomialFeatures.html">PolynomialFeatures</a> transformer for this particular example. Nevertheless, this <em>formula</em> approach can give additional flexibility to explore feature transformations. For example, look how easy is to include <em>numpy-transformations</em> (which can actually be encoded using a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.FunctionTransformer.html#sklearn.preprocessing.FunctionTransformer">FunctionTransformer</a> as well):</p>
 <pre class="python"><code>formula_transformer = FormulaTransformer(formula=&#39;x1 + x2 + np.sin(x1) + np.abs(x2) - 1&#39;)
 x_train_features = formula_transformer.fit_transform(X=x_train)
@@ -448,23 +448,21 @@ fig.suptitle(&#39;Feature Transformations&#39;, y=0.93);</code></pre>
 <div id="predictions-and-evaluation-metrics" class="section level2">
 <h2>Predictions and Evaluation Metrics</h2>
 <p>Now we simply evaluate the model by looking into its performance in out-of-sample data. The results are similar to the ones in the <a href="https://juanitorduz.github.io/glm_pymc3/">previous post</a>. First let us get generate predictions (both probabilities and predictions) and compute the accuracy:</p>
-<pre class="python"><code>p_test_pred = pipeline.predict_proba(X=x_test)[:, 1]
-y_test_pred = pipeline.predict(X=x_test)
+<pre class="python"><code>p_test_pred = grid_search.predict_proba(X=x_test)[:, 1]
+y_test_pred = grid_search.predict(X=x_test)
 
 print(f&quot;accuracy = {accuracy_score(y_true=y_test, y_pred=y_test_pred): 0.3f}&quot;)</code></pre>
 <pre><code>accuracy =  0.827</code></pre>
 <p>Now let us plot the confusion matrix:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-
 plot_confusion_matrix(
-    estimator=pipeline, 
+    estimator=grid_search, 
     X=x_test,
     y_true=y_test,
     normalize=&#39;all&#39;,
     cmap=&#39;viridis_r&#39;,
     ax=ax
 )
-
 ax.set(title=&#39;Confusion Matrix&#39;);</code></pre>
 <center>
 <img src="../images/formula_transformer_files/formula_transformer_23_0.svg" title="fig:" alt="svg" />
@@ -491,17 +489,14 @@ ax.set(title=&#39;ROC - Test Set&#39;);</code></pre>
 <pre><code>Input features correlation:  0.086</code></pre>
 <p>Now let us visualize the plot:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-
 cmap = sns.color_palette(&#39;Spectral_r&#39;, as_cmap=True)
-
 plot_partial_dependence(
-    estimator=pipeline,
+    estimator=grid_search,
     X=x_test,
     features=[(&#39;x1&#39;, &#39;x2&#39;)],
     contour_kw={&#39;cmap&#39;: cmap},
     ax=ax
 )
-
 ax.set(title=&#39;Partial Dependency Plot&#39;);</code></pre>
 <center>
 <img src="../images/formula_transformer_files/formula_transformer_29_0.svg" title="fig:" alt="svg" />
