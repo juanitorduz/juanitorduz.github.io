@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Exploring Tools for Interpretable Machine Learning - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Exploring Tools for Interpretable Machine Learning - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">25 min read</span>
+    
+
+    <h1 class="article-title">Exploring Tools for Interpretable Machine Learning</h1>
+
+    
+    <span class="article-date">2021-07-01</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook we want to test various ways of getting a better understanding on how non-trivial machine learning models generate predictions and how features interact with each other. This is in general not straight forward and key components are (1) understanding on the input data and (2) domain knowledge on the problem. Two great references on the subject are:</p>
+<ul>
+<li><a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar</a></li>
+<li><a href="https://github.com/PacktPublishing/Interpretable-Machine-Learning-with-Python">Interpretable Machine Learning with Python by Serg Masís</a></li>
+</ul>
+<p>Note that the methods discussed in this notebook are not related with <em>causality</em>. I strongly recommend to refer to the article <a href="https://towardsdatascience.com/be-careful-when-interpreting-predictive-models-in-search-of-causal-insights-e68626e664b6">Be Careful When Interpreting Predictive Models in Search of Causal Insights</a> by <a href="https://scottlundberg.com/">Scott Lundberg</a> (one of the core developers of <a href="https://shap.readthedocs.io/en/latest/index.html">SHAP</a>). The following are two references I have found particularly useful as an introuduction to <em>causal inference</em>:</p>
+<ul>
+<li><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking, A Bayesian Course with Examples in R and Stan</a> by <a href="https://xcelab.net/rm/">Richard McElreath</a>.</li>
+<li><a href="https://mixtape.scunning.com/index.html">Causal Inference: The Mixtape</a> by <a href="https://www.scunning.com/">Scott Cunningham</a>.</li>
+</ul>
+<div id="data" class="section level2">
+<h2>Data</h2>
+<p>We are going to use the processed <em>Bike Sharing Dataset Data Set</em> described in <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">Section 3.1</a> in <a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar</a>. The prediction task is to predict daily counts of rented bicycles as a function of time and other external regressors like temperature and humidity. Note that the raw data can be downloaded from the <a href="http://archive.ics.uci.edu/ml/datasets/Bike+Sharing+Dataset">UCI Machine Learning Repository</a>. The preprocessing steps are described <a href="https://github.com/christophM/interpretable-ml-book/blob/master/R/get-bike-sharing-dataset.R">here</a>.</p>
+<hr />
+</div>
+<div id="part-i-model-development" class="section level1">
+<h1>Part I: Model Development</h1>
+<p>In this first part we work on the modeling step on which we fit two machine learning models (linear and tree ensembles) for the bike daily counts prediction task.
+The intention of this notebook is <strong>not</strong> to build the best machine learning model but have two model flavours and compare the interpretability tools and methods on both of them.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
+
+plt.rcParams[&#39;figure.figsize&#39;] = [10, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<pre class="python"><code>data_path = &#39;https://raw.githubusercontent.com/christophM/interpretable-ml-book/master/data/bike.csv&#39;
+
+raw_data_df = pd.read_csv(data_path)
+
+raw_data_df.head()</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/head.png" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>raw_data_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 731 entries, 0 to 730
+Data columns (total 12 columns):
+ #   Column           Non-Null Count  Dtype  
+---  ------           --------------  -----  
+ 0   season           731 non-null    object 
+ 1   yr               731 non-null    int64  
+ 2   mnth             731 non-null    object 
+ 3   holiday          731 non-null    object 
+ 4   weekday          731 non-null    object 
+ 5   workingday       731 non-null    object 
+ 6   weathersit       731 non-null    object 
+ 7   temp             731 non-null    float64
+ 8   hum              731 non-null    float64
+ 9   windspeed        731 non-null    float64
+ 10  cnt              731 non-null    int64  
+ 11  days_since_2011  731 non-null    int64  
+dtypes: float64(3), int64(3), object(6)
+memory usage: 68.7+ KB</code></pre>
+<p>Note that we do not have missing values (not representative of most real data sets).</p>
+<p>The prediction task is to generate a model to predict the target variable <code>cnt</code>, which represents the number of bikes will be rented. Please visit <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">the data description</a> to get more information about the features. Most of them are self-explanatory.</p>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>The first step in any modeling task (after problem definition and data collection) is an exploratory data analysis to understand the available data. Let us start by plotting the distribution and development over time of the target variable <code>cnt</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots(nrows=2, ncols=1)
+sns.kdeplot(x=&#39;cnt&#39;, data=raw_data_df, fill=True, color=&#39;black&#39;, ax=ax[0])
+sns.lineplot(x=&#39;days_since_2011&#39;, y=&#39;cnt&#39;, data=raw_data_df, color=&#39;black&#39;, ax=ax[1])
+fig.suptitle(&#39;cnt: Target Variable&#39;, y=0.95);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_10_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We have 2 years of data. We see a clear yearly seasonality and a slight positive trend.</p>
+<ul>
+<li>Numeric Features</li>
+</ul>
+<p>Let us look into the numeric features:</p>
+<pre class="python"><code>numeric_features = [
+    &#39;temp&#39;,
+    &#39;hum&#39;,
+    &#39;windspeed&#39;,
+    &#39;days_since_2011&#39;,
+    &#39;yr&#39;,
+]
+
+target = &#39;cnt&#39;
+
+fig, axes = plt.subplots(
+    nrows=len(numeric_features) + 1,
+    ncols=1,
+    figsize=(12, 13),
+    constrained_layout=True
+)
+sns.lineplot(
+        x=&#39;days_since_2011&#39;,
+        y=target,
+        data=raw_data_df,
+        color=&#39;black&#39;,
+        ax=axes[0]
+    )
+axes[0].set(title=target, ylabel=None)
+
+for i, feature in enumerate(numeric_features):
+    ax = axes[i + 1]
+    sns.lineplot(
+        x=&#39;days_since_2011&#39;,
+        y=feature,
+        data=raw_data_df,
+        color=sns_c[i],
+        ax=ax
+    )
+    ax.set(title=feature, ylabel=None)</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_13_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Let us compute the correlation:</p>
+<pre class="python"><code>corr_df = raw_data_df[numeric_features + [target]].corr()
+
+cmap = sns.diverging_palette(230, 20, as_cmap=True)
+mask = np.triu(np.ones_like(corr_df, dtype=bool))
+
+fig, ax = plt.subplots(figsize=(8, 7))
+sns.heatmap(
+    data=corr_df,
+    mask=mask,
+    cmap=cmap, 
+    vmax=1.0, 
+    vmin=-1.0,
+    center=0,
+    square=True, 
+    linewidths=0.5, 
+    linecolor=&#39;k&#39;,
+    annot=True, 
+    fmt=&#39;.3f&#39;,
+    ax=ax
+)
+
+ax.set(title=&#39;Correlation Numeric Features&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_15_0.svg" title="fig:" alt="svg" />
+</center>
+<p>The variables <code>temp</code> and <code>days_since_2011</code> have a high correlation with the target variable. The former is explaining the seasonality and the later the trend. This hints these could be good predictors. For completeness let us plot the joint distributions:</p>
+<pre class="python"><code>g = sns.pairplot(
+    data=raw_data_df,
+    diag_kind=&#39;kde&#39;,
+    height=2, 
+    corner=False,
+    plot_kws={&#39;alpha&#39;: 0.3}
+)
+g.map_lower(sns.kdeplot, levels=5, color=sns_c[3])
+g.map_upper(sns.regplot, color=sns_c[0], scatter_kws={&#39;alpha&#39;: 0.1})
+g.fig.suptitle(&#39;Pair Plot (Numeric Variables)&#39;, y=1.01);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_17_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<ul>
+<li>Categorical Features</li>
+</ul>
+<p>Let us compute the mean of <code>cnt</code> per each categorical variable:</p>
+<pre class="python"><code>categorical_features = [
+    &#39;season&#39;,
+    &#39;mnth&#39;,
+    &#39;holiday&#39;,
+    &#39;weekday&#39;,
+    &#39;workingday&#39;,
+    &#39;weathersit&#39;,
+]
+
+fig, axes = plt.subplots(
+    nrows=3,
+    ncols=2,
+    figsize=(12, 10),
+    constrained_layout=True
+)
+
+axes = axes.flatten()
+
+for i, feature in enumerate(categorical_features):
+    ax = axes[i]
+
+    feature_df = raw_data_df \
+        .groupby(feature, as_index=False) \
+        .agg({target: np.mean}) \
+        .sort_values(target)
+
+    sns.barplot(
+        x=feature,
+        y=target,
+        data=feature_df,
+        dodge=False,
+        ax=ax
+    )
+    ax.set(title=feature, ylabel=None)
+
+fig.suptitle(f&#39;Mean {target} over categorical_features&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_19_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Let us now take a look into the distributions:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=3,
+    ncols=2,
+    figsize=(12, 10),
+    constrained_layout=True
+)
+
+axes = axes.flatten()
+
+for i, feature in enumerate(categorical_features):
+    ax = axes[i]
+    sns.stripplot(
+        x=feature,
+        y=target,
+        data=raw_data_df,
+        dodge=False,
+        ax=ax
+    )
+    ax.set(title=feature, ylabel=None)
+fig.suptitle(f&#39;{target} distribution over categorical_features&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_21_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>This plot also hints that the categorical features could serve as predictors.</p>
+<p><strong>Remark:</strong> The variables <code>season</code> and <code>mnth</code> seem redundant. Still we want to include them both in the model to see how the tools to interpret the model react to it.</p>
+</div>
+<div id="train---test-split" class="section level2">
+<h2>Train - Test Split</h2>
+<p>As we have a time series problem we do a train test split without shuffle.</p>
+<pre class="python"><code>from sklearn.model_selection import train_test_split
+
+x = raw_data_df.copy().drop([target], axis=1)
+y = raw_data_df.copy()[target]
+
+x_train, x_test, y_train, y_test = train_test_split(
+    x, y, test_size=0.20, random_state=42, shuffle=False
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=y_train.index, y=y_train, color=&#39;black&#39;, label=&#39;y_train&#39;, ax=ax)
+sns.lineplot(x=y_test.index, y=y_test, color=sns_c[3], label=&#39;y_test&#39;, ax=ax)
+ax.axvline(x=365, color=sns_c[6], linestyle=&#39;--&#39;, label=r&#39;$2011 \rightarrow 2012$&#39;)
+ax.axvline(x=y_train.shape[0], color=&#39;gray&#39;, linestyle=&#39;--&#39;, label=&#39;train-test-split&#39;)
+ax.legend(loc=&#39;upper left&#39;)
+ax.set(title=&#39;Train - Test Split&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_25_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Note that there seems to be a difference between the variance and trend between 2011 and 2012. This hints that the variable <code>yr</code> could be important for the prediction task.</p>
+</div>
+<div id="model-development" class="section level2">
+<h2>Model Development</h2>
+<p>We want to train two kind of models: (1) a linear model (<a href="https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Lasso.html"><code>Lasso</code></a>) and (2) a tree based model (<a href="https://xgboost.readthedocs.io/en/latest/"><code>xgboost</code></a>). Our scoring metric is the <a href="https://scikit-learn.org/stable/modules/model_evaluation.html#mean-squared-error">mean-squared-error</a>.</p>
+<p>Let us now define some preprocessing steps: scaling and one-hot-encoding.</p>
+<pre class="python"><code>from sklearn.compose import ColumnTransformer
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.linear_model import Lasso
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, PolynomialFeatures
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
+from xgboost import XGBRegressor
+
+categorical_features = [
+    &#39;season&#39;,
+    &#39;mnth&#39;,
+    &#39;holiday&#39;,
+    &#39;weekday&#39;,
+    &#39;workingday&#39;,
+    &#39;weathersit&#39;,
+]
+numeric_features = [
+    &#39;temp&#39;,
+    &#39;hum&#39;,
+    &#39;windspeed&#39;,
+    &#39;days_since_2011&#39;,
+    &#39;yr&#39;,
+]
+
+features = categorical_features + numeric_features
+
+x_train = x_train[features]
+x_test = x_test[features]
+
+numeric_transformer = Pipeline(steps=[
+    (&#39;scaler&#39;, StandardScaler())
+])
+categorical_transformer = Pipeline(steps=[
+    (&#39;one_hot&#39;, OneHotEncoder(drop=&#39;first&#39;))
+])</code></pre>
+<p>For future reference, let us get the names of the model features after the preprocessing step:</p>
+<pre class="python"><code># Warning: One needs to be careful with the variables
+# ordering in view of the ColumnTransformer steps below.
+categorical_features_ext = list(
+        categorical_transformer[&#39;one_hot&#39;] \
+        .fit(x_train[categorical_features]) \
+        .get_feature_names(categorical_features)
+    ) 
+features_ext = categorical_features_ext + numeric_features
+
+print(f&#39;Number of features after pre-processing: {len(features_ext)}&#39;)</code></pre>
+<pre><code>Number of features after pre-processing: 29</code></pre>
+<pre class="python"><code>&#39;, &#39;.join(features_ext)</code></pre>
+<pre><code>&#39;season_SPRING, season_SUMMER, season_WINTER, mnth_AUG, mnth_DEZ, mnth_FEB, mnth_JAN, mnth_JUL, mnth_JUN, mnth_MAR, mnth_MAY, mnth_NOV, mnth_OKT, mnth_SEP, holiday_NO HOLIDAY, weekday_MON, weekday_SAT, weekday_SUN, weekday_THU, weekday_TUE, weekday_WED, workingday_WORKING DAY, weathersit_MISTY, weathersit_RAIN/SNOW/STORM, temp, hum, windspeed, days_since_2011, yr&#39;</code></pre>
+<div id="linear-model" class="section level3">
+<h3>Linear Model</h3>
+<p>The first model is a (<a href="https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Lasso.html"><code>Lasso</code></a>) regression with a second order multiplicative interaction between the input features (we actually remove the purely quadratic terms and just include the interactions). We use this type of model with <span class="math inline">\(L^1\)</span>-regularization in order to do a variable selection via time-slice-cross validation. We remove zero-variance features (comming for example as an interaction of orthogonal features) with a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.VarianceThreshold.html"><code>VarianceThreshold</code></a> transformer.</p>
+<pre class="python"><code>linear_preprocessor = ColumnTransformer(transformers=[
+    (&#39;cat&#39;, categorical_transformer, categorical_features),
+    (&#39;num&#39;, numeric_transformer, numeric_features),
+], remainder=&#39;passthrough&#39;)
+
+linear_feature_engineering = Pipeline(steps=[
+    (&#39;linear_preprocessor&#39;, linear_preprocessor),
+    (&#39;polynomial&#39;, PolynomialFeatures(
+        degree=2, interaction_only=True, include_bias=False
+    )),
+    (&#39;variance_threshold&#39;, VarianceThreshold()),
+])
+
+linear_pipeline = Pipeline(steps=[
+    (&#39;linear_feature_engineering&#39;, linear_feature_engineering),
+    (&#39;linear_regressor&#39;, Lasso(fit_intercept=True, normalize=False))
+])
+
+linear_param_grid = {
+    &#39;linear_regressor__alpha&#39;: np.logspace(start=-3, stop=2, num=20),
+}
+
+cv = TimeSeriesSplit(n_splits=5, test_size=(7 * 2), gap=0)
+
+linear_grid_search = GridSearchCV(
+    estimator=linear_pipeline,
+    param_grid=linear_param_grid,
+    scoring=&#39;neg_root_mean_squared_error&#39;,
+    cv=cv
+)</code></pre>
+<pre class="python"><code># Fit the linear model.
+linear_grid_search = linear_grid_search.fit(X=x_train, y=y_train)</code></pre>
+</div>
+<div id="tree-model" class="section level3">
+<h3>Tree Model</h3>
+<p>The second model is an <a href="https://xgboost.readthedocs.io/en/latest/"><code>xgboost</code></a> model.</p>
+<pre class="python"><code>tree_preprocessor = ColumnTransformer(transformers=[
+    (&#39;cat&#39;, categorical_transformer, categorical_features)
+], remainder=&#39;passthrough&#39;)
+
+tree_feature_engineering = Pipeline(steps=[
+    (&#39;tree_preprocessor&#39;, tree_preprocessor)
+])
+
+tree_pipeline = Pipeline(steps=[
+    (&#39;tree_feature_engineering&#39;, tree_feature_engineering),
+    (&#39;tree_regressor&#39;,  XGBRegressor())
+])
+
+tree_param_grid = {
+    &#39;tree_regressor__min_child_weight&#39;: [0.01, 0.5, 1, 10],
+    &#39;tree_regressor__max_depth&#39;: [3, 5, 8, 13]
+}
+
+tree_grid_search = GridSearchCV(
+    estimator=tree_pipeline,
+    param_grid=tree_param_grid,
+    scoring=&#39;neg_root_mean_squared_error&#39;,
+    cv=cv
+)</code></pre>
+<pre class="python"><code># Fit the model.
+tree_grid_search = tree_grid_search.fit(X=x_train, y=y_train)</code></pre>
+</div>
+</div>
+<div id="model-performance" class="section level2">
+<h2>Model Performance</h2>
+<p>Let us now compare the (in / out) sample performance of these models.</p>
+<p>First let us generate predictions on the train and test sets:</p>
+<pre class="python"><code>y_train_pred_linear = linear_grid_search.predict(X=x_train)
+y_test_pred_linear = linear_grid_search.predict(X=x_test)
+
+y_train_pred_tree = tree_grid_search.predict(X=x_train)
+y_test_pred_tree = tree_grid_search.predict(X=x_test)</code></pre>
+<pre class="python"><code>from sklearn.metrics import mean_squared_error
+
+print(f&#39;&#39;&#39;
+--------------------------------
+train mse (linear): {mean_squared_error(y_true=y_train, y_pred=y_train_pred_linear): 0.2f}
+test  mse (linear): {mean_squared_error(y_true=y_test, y_pred=y_test_pred_linear): 0.2f}
+--------------------------------
+train mse (tree)  : {mean_squared_error(y_true=y_train, y_pred=y_train_pred_tree): 0.2f}
+test  mse (tree)  : {mean_squared_error(y_true=y_test, y_pred=y_test_pred_tree): 0.2f}
+--------------------------------
+&#39;&#39;&#39;)</code></pre>
+<pre><code>--------------------------------
+train mse (linear):  191343.26
+test  mse (linear):  1275495.73
+--------------------------------
+train mse (tree)  :  22042.71
+test  mse (tree)  :  1209060.94
+--------------------------------</code></pre>
+<p>Both models have a similar out-sample performance (the tree one does a bit better). For in-sample performance the tree based model has less MSE.</p>
+<p><strong>Warning:</strong> One needs to be careful when using tee based model for time series forecasting as these models are not capable of capturing trend components. In this specific case the trend is no s strong and the overall range of the time series is bounded by the max / min of the training time series. This explains why the tree based model still performs well on the test set.</p>
+<p>Let us plot the predictions and error distributions on the training and test sets:</p>
+<pre class="python"><code># Compute errors.
+error_train_linear = y_train - y_train_pred_linear
+error_test_linear = y_test - y_test_pred_linear
+error_train_tree = y_train - y_train_pred_tree
+error_test_tree = y_test - y_test_pred_tree
+
+fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(10, 9), constrained_layout=True)
+
+ax = ax.flatten()
+
+sns.regplot(x=y_train, y=y_train_pred_linear, color=sns_c[0], label=&#39;linear&#39;, ax=ax[0])
+sns.regplot(x=y_train, y=y_train_pred_tree, color=sns_c[1], label=&#39;tree&#39;, ax=ax[0])
+ax[0].axline(xy1=(0,0), slope=1, color=&#39;gray&#39;, linestyle=&#39;--&#39;, label=&#39;diagonal&#39;)
+ax[0].legend(loc=&#39;upper left&#39;)
+ax[0].set(title=&#39;In-Sample Predictions&#39;, xlabel=&#39;y_test&#39;, ylabel=&#39;y_test_pred&#39;)
+
+sns.regplot(x=y_test, y=y_test_pred_linear, color=sns_c[0], label=&#39;linear&#39;, ax=ax[1])
+sns.regplot(x=y_test, y=y_test_pred_tree, color=sns_c[1], label=&#39;tree&#39;, ax=ax[1])
+ax[1].axline(xy1=(0,0), slope=1, color=&#39;gray&#39;, linestyle=&#39;--&#39;, label=&#39;diagonal&#39;)
+ax[1].legend(loc=&#39;upper left&#39;)
+ax[1].set(title=&#39;Out-Sample Predictions&#39;, xlabel=&#39;y_test&#39;, ylabel=&#39;y_test_pred&#39;)
+
+sns.kdeplot(x=error_train_linear, color=sns_c[0], label=&#39;linear&#39;, fill=True, alpha=0.1, ax=ax[2])
+sns.kdeplot(x=error_train_tree, color=sns_c[1], label=&#39;tree&#39;, fill=True, alpha=0.1, ax=ax[2])
+ax[2].axvline(x=error_train_linear.mean(), color=sns_c[0], linestyle=&#39;--&#39;, label=&#39;train_linear_mean&#39;)
+ax[2].axvline(x=error_train_tree.mean(), color=sns_c[1], linestyle=&#39;--&#39;, label=&#39;train_tree_mean&#39;)
+ax[2].legend(loc=&#39;upper left&#39;)
+ax[2].set(title=&#39;In-Sample Errors&#39;, xlabel=&#39;error&#39;)
+
+sns.kdeplot(x=error_test_linear, color=sns_c[0], label=&#39;linear&#39;, fill=True, alpha=0.1, ax=ax[3])
+sns.kdeplot(x=error_test_tree, color=sns_c[1], label=&#39;tree&#39;, fill=True, alpha=0.1, ax=ax[3])
+ax[3].axvline(x=error_test_linear.mean(), color=sns_c[0], linestyle=&#39;--&#39;, label=&#39;test_linear_mean&#39;)
+ax[3].axvline(x=error_test_tree.mean(), color=sns_c[1], linestyle=&#39;--&#39;, label=&#39;test_tree_mean&#39;)
+ax[3].legend(loc=&#39;upper left&#39;)
+ax[3].set(title=&#39;Out-Sample Errors&#39;, xlabel=&#39;error&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_44_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Now let us visualize the predictions as a time series:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(
+    x=range(y_train_pred_linear.shape[0]),
+    y=y_train_pred_linear,
+    color=sns_c[0],
+    label=&#39;linear&#39;,
+    alpha=0.8,
+    ax=ax
+)
+sns.lineplot(
+    x=range(y_train_pred_linear.shape[0]),
+    y=y_train_pred_tree,
+    color=sns_c[1],
+    label=&#39;tree&#39;,
+    alpha=0.8,
+    ax=ax
+)
+sns.lineplot(
+    x=range(y_train.shape[0]),
+    y=y_train,
+    color=&#39;black&#39;,
+    label=&#39;y_train&#39;,
+    ax=ax
+)
+ax.set(title=&#39;In-Sample Predictions&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_46_0.svg" title="fig:" alt="svg" />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(
+    x=range(y_test_pred_linear.shape[0]),
+    y=y_test_pred_linear,
+    color=sns_c[0],
+    marker=&#39;o&#39;,
+    markersize=4,
+    label=&#39;linear&#39;,
+    ax=ax
+)
+sns.lineplot(
+    x=range(y_test_pred_tree.shape[0]),
+    y=y_test_pred_tree,
+    color=sns_c[1],
+    marker=&#39;o&#39;,
+    markersize=4,
+    label=&#39;tree&#39;,
+    ax=ax
+)
+sns.lineplot(
+    x=range(y_test.shape[0]),
+    y=y_test,
+    color=&#39;black&#39;,
+    marker=&#39;o&#39;,
+    markersize=4,
+    label=&#39;y_test&#39;,
+    ax=ax
+)
+ax.set(title=&#39;Out-Sample Predictions&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_47_0.svg" title="fig:" alt="svg" />
+</center>
+<hr />
+</div>
+</div>
+<div id="part-ii-model-interpretation" class="section level1">
+<h1>Part II: Model Interpretation</h1>
+<p>Now that we have fitted two machine learning models, we would like to try to understand how these models make predictions, e.g. which features are important? are there any interaction effects? what is the effect on certain feature on the final outcome? We will start to answer these questions by looking into the individual model structure and extract some insights based on the algorithm behind the model. After that, we will deep dive into model-agnostic methods.</p>
+<div id="model-specific" class="section level2">
+<h2>Model Specific</h2>
+<p>Let us now dig deeper into model specific methods to understand the model predictions.</p>
+<div id="linear-model-1" class="section level3">
+<h3>Linear Model</h3>
+<p>Linear models are arguably the most interpretable ones as the parametrization is very transparent. For a given target variable <span class="math inline">\(y\)</span> and regressors <span class="math inline">\(x_{k}\)</span> a linear model has the form</p>
+<p><span class="math display">\[
+y = \beta_{0} + x_{1}\beta_{1} + \cdots + \beta_{k}x_{k} + \cdots \beta_{p}x_{p} + \varepsilon 
+\]</span></p>
+<p>where the weights (beta coefficients) <span class="math inline">\(\beta_{i}\)</span> are the parameters to be estimated from the data (<span class="math inline">\(\beta_{0}\)</span> denotes the model intercept) and <span class="math inline">\(\varepsilon \sim N(0, \sigma^{2})\)</span> is an error term. Still, one needs to be careful whenever there are highly correlated variables or multicollinearity. For details on interpretability of linear models see <a href="https://christophm.github.io/interpretable-ml-book/limo.html">Section 4.1, Interpretable Machine Learning</a>.</p>
+<p>We want to compare and understand the beta coefficient of our linear model. First let us extract the features feeding the model:</p>
+<pre class="python"><code>from itertools import compress
+
+# Polynomial feature names.
+polynomial_features = linear_grid_search \
+    .best_estimator_[&#39;linear_feature_engineering&#39;][&#39;polynomial&#39;] \
+    .get_feature_names(features_ext)
+
+# Mask for variables with zero-variance
+variance_threshold_support = linear_grid_search \
+    .best_estimator_[&#39;linear_feature_engineering&#39;][&#39;variance_threshold&#39;] \
+    .get_support()
+
+linear_features = list(
+    compress(data=polynomial_features, selectors=variance_threshold_support)
+)</code></pre>
+<p>Let us store the linear features after preprocessing in a dataframe.</p>
+<pre class="python"><code>linear_x_train = pd.DataFrame(
+    data=linear_grid_search.best_estimator_[&#39;linear_feature_engineering&#39;].transform(x_train),
+    columns=linear_features
+)</code></pre>
+<p>Next let us extract the model <span class="math inline">\(\beta\)</span> coefficients.</p>
+<pre class="python"><code>linear_model_coef_df = pd.DataFrame(data={
+    &#39;linear_features&#39;: linear_features,
+    &#39;coef_&#39;: linear_grid_search.best_estimator_[&#39;linear_regressor&#39;].coef_
+})
+
+linear_model_coef_df = linear_model_coef_df \
+    .assign(abs_coef_ = lambda x: x[&#39;coef_&#39;].abs()) \
+    .sort_values(&#39;abs_coef_&#39;, ascending=False) \
+    .reset_index(drop=True)
+
+# Get top (abs) beta coefficients.
+linear_model_coef_df \
+    .head(20) \
+    .style.background_gradient(
+        cmap=&#39;viridis_r&#39;,
+        axis=0,
+        subset=[&#39;abs_coef_&#39;]
+    )</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/lm_beta_table.png" align="middle" style="width: 500px;">
+</figure>
+</center>
+<pre class="python"><code># Let us get the model intercept.
+linear_model_intercept = linear_grid_search.best_estimator_[&#39;linear_regressor&#39;].intercept_</code></pre>
+<p>These coefficients depend on the scale of each variable (note that we normalized all the features in the pre-processing step). To get a scale-free weight effect we multiply these coefficients with each feature instance, so that the effect on the variable <span class="math inline">\(x_{k}\)</span> on the data instance <span class="math inline">\((y^{i}, x^{i})\)</span> is <span class="math inline">\(\beta_{k}x_{k}^{i}\)</span>.</p>
+<pre class="python"><code>linear_model_effects = np.multiply(
+    linear_grid_search.best_estimator_[&#39;linear_regressor&#39;].coef_,
+    linear_grid_search.best_estimator_[&#39;linear_feature_engineering&#39;].transform(x_train)
+)
+
+linear_model_effects_df = pd.DataFrame(
+    data=linear_model_effects,
+    columns=linear_features
+)</code></pre>
+<p>Let us plot top weight effects:</p>
+<pre class="python"><code>fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(15, 8), constrained_layout=True) 
+# Weight effects distribution of the all linear terms.
+sns.stripplot(
+    data=linear_model_effects_df[features_ext[::-1]],
+    orient=&#39;h&#39;,
+    color=sns_c[1],
+    alpha=0.2,
+    ax=ax[0]
+)
+ax[0].set(
+    title=&#39;Linear Features&#39;,
+    xlabel=&#39;weight effect&#39;
+)
+# Weight effects distribution of the terms 
+# (including intraction) with highest beta coefficients;
+sns.stripplot(
+    data=linear_model_effects_df[linear_model_coef_df.head(20)[&#39;linear_features&#39;]],
+    orient=&#39;h&#39;,
+    color=sns_c[2],
+    alpha=0.2,
+    ax=ax[1]
+)
+ax[1].set(
+    title=&#39;Features with Highest Beta Coefficients&#39;,
+    xlabel=&#39;weight effect&#39;
+)
+fig.suptitle(&#39;Effect Weight Distribution&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_61_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(5, 7))
+linear_model_effects_df \
+    .abs() \
+    .mean(axis=0) \
+    .sort_values() \
+    .tail(25) \
+    .plot(
+        kind=&#39;barh&#39;,
+        ax=ax
+    )
+ax.set(
+    title=&#39;Mean Absolute Weight Effect - Linear Model (Top 25)&#39;,
+    xlabel=&#39;weight effect&#39;
+);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_62_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Note that <code>temp</code>, and <code>days_since_2011</code> with the interaction with <code>yr</code> are the top 3 features. This can be seen as the main components explaining the trend, seasonality and increasing variance.</p>
+<p>Let us deep dive into some individual features. For example, lets see at which temperature the effect of this variable is negative:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 6))
+sns.scatterplot(
+    x=x_train[&#39;temp&#39;],
+    y=linear_model_effects_df[&#39;temp&#39;],
+    hue=linear_model_effects_df[&#39;temp&#39;].rename(&#39;weight_effect&#39;),
+    palette=&#39;coolwarm&#39;,
+    ax=ax
+)
+# Compute sign change point.
+cp = x_train[&#39;temp&#39;].iloc[linear_model_effects_df[&#39;temp&#39;].abs().argmin(), ]
+ax.axvline(
+    x=cp,
+    color=&#39;gray&#39;,
+    linestyle=&#39;--&#39;,
+    label=f&#39;weight effect sign change ({cp: 0.1f})&#39;
+)
+# Estimated line. We take the inverse z-transform of the estimated beta coefficient.
+beta_temp = linear_model_coef_df.query(&#39;linear_features == &quot;temp&quot;&#39;)[&#39;coef_&#39;].values[0]
+ax.axline(
+    xy1=(x_train[&#39;temp&#39;].mean(), 0),
+    slope= beta_temp / x_train[&#39;temp&#39;].std(),
+    color=&#39;black&#39;,
+    linestyle=&#39;--&#39;,
+    label=r&#39;estimated fit (z-transform $\beta_{temp}$)&#39;
+)
+ax.legend()
+ax.set(title=&#39;Weight Effect Linear Model&#39;, xlabel=&#39;temp&#39;, ylabel=&#39;weight_effect&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_65_0.svg" title="fig:" alt="svg" />
+</center>
+<p><strong>Warning:</strong> This plot just shows the effect of the linear term <code>temp</code> and not the interactions.</p>
+<p>We can do something similar to visualize the interaction of 2 features. For example for <code>temp</code> and <code>hum</code> we compute the total weight effect as
+<span class="math display">\[
+\beta_{temp}x_{temp} + \beta_{hum}x_{hum} + \beta_{temp \times hum}x_{temp} \times x_{hum}
+\]</span></p>
+<pre class="python"><code>import matplotlib.cm as cm
+
+fig, ax = plt.subplots()
+# Compute total weight effect.
+sns.kdeplot(
+    x=x_train[&#39;temp&#39;],
+    y=x_train[&#39;hum&#39;],
+    levels=10,
+    hue=(linear_model_effects_df[&#39;temp&#39;]
+         + linear_model_effects_df[&#39;hum&#39;]
+         + linear_model_effects_df[&#39;temp hum&#39;]
+    ) &gt; 0,
+    hue_order=[True, False],
+    palette=[
+        cm.get_cmap(&#39;coolwarm_r&#39;)(1),
+        cm.get_cmap(&#39;coolwarm&#39;)(1)
+    ],
+    alpha=0.2,
+    fill=True,
+    ax=ax
+)
+# Data Density.
+sns.scatterplot(
+    x=x_train[&#39;temp&#39;],
+    y=x_train[&#39;hum&#39;],
+    hue=(linear_model_effects_df[&#39;temp&#39;]
+         + linear_model_effects_df[&#39;hum&#39;]
+         + linear_model_effects_df[&#39;temp hum&#39;]
+    ),
+    palette=&#39;coolwarm&#39;,
+    edgecolor=&#39;black&#39;,
+    ax=ax
+)
+ax.legend(title=&#39;weight_effect&#39;, loc=&#39;lower left&#39;)
+ax.set(title=&#39;Temperature and Humidity Interaction Weight Effect Linear Model&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_68_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Similarly for <code>hum</code> and <code>windspeed</code>:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+# Compute total weight effect.
+sns.kdeplot(
+    x=x_train[&#39;hum&#39;],
+    y=x_train[&#39;windspeed&#39;],
+    levels=10,
+    hue=(linear_model_effects_df[&#39;windspeed&#39;]
+         + linear_model_effects_df[&#39;hum&#39;]
+        + linear_model_effects_df[&#39;hum windspeed&#39;]
+    ) &gt; 0,
+    hue_order=[True, False],
+    palette=[
+        cm.get_cmap(&#39;coolwarm_r&#39;)(1),
+        cm.get_cmap(&#39;coolwarm&#39;)(1)
+    ],
+    alpha=0.2,
+    fill=True,
+    ax=ax
+)
+# Data Density.
+sns.scatterplot(
+    x=x_train[&#39;hum&#39;],
+    y=x_train[&#39;windspeed&#39;],
+    hue=(linear_model_effects_df[&#39;windspeed&#39;]
+         + linear_model_effects_df[&#39;hum&#39;]
+         + linear_model_effects_df[&#39;hum windspeed&#39;]
+    ),
+    palette=&#39;coolwarm&#39;,
+    edgecolor=&#39;black&#39;,
+    ax=ax
+)
+ax.legend(title=&#39;weight_effect&#39;, loc=&#39;lower left&#39;)
+ax.set(title=&#39;Humidity and Wind Speed Interaction Weight Effect Linear Model&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_70_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We can also investigate how the model features affect individual predictions:</p>
+<pre class="python"><code># Compare with FIGURE 5.47 in https://christophm.github.io/interpretable-ml-book/shapley.html.
+obs_index = (285 - 1) # Python indexing starts in 0 and not 1 as in R.
+
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(15, 7), constrained_layout=True)
+# All features.
+linear_model_effects_df.iloc[obs_index, ] \
+    .to_frame() \
+    .rename(columns={obs_index: &#39;effect&#39;}) \
+    .query(&#39;effect != 0&#39;) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;effect&#39;, ascending=False) \
+    .pipe((sns.barplot, &#39;data&#39;), 
+        x=&#39;effect&#39;,
+        y=&#39;index&#39;,
+        color=sns_c[3],
+        ax=ax[0]
+    )
+ax[0].set(
+    title=f&#39;Weight Effects for Observation {obs_index}&#39;,
+    xlabel=&#39;weight effect&#39;,
+    ylabel=&#39;&#39;
+)
+# Linear features.
+linear_model_effects_df.iloc[obs_index, ] \
+    .to_frame() \
+    .rename(columns={obs_index: &#39;effect&#39;}) \
+    .query(&#39;effect != 0 and index in @features_ext&#39;) \
+    .reset_index(drop=False) \
+    .sort_values(&#39;effect&#39;, ascending=False) \
+    .pipe((sns.barplot, &#39;data&#39;), 
+    x=&#39;effect&#39;,
+    y=&#39;index&#39;,
+    color=sns_c[4],
+    ax=ax[1]
+)
+ax[1].set(
+    title=f&#39;Weight Effects for Observation {obs_index} (linear terms)&#39;,
+    xlabel=&#39;weight effect&#39;,
+    ylabel=&#39;&#39;
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_72_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code># Input Features for this observation.
+x_train.iloc[obs_index, ]</code></pre>
+<pre><code>season                      WINTER
+mnth                           OKT
+holiday                 NO HOLIDAY
+weekday                        WED
+workingday             WORKING DAY
+weathersit         RAIN/SNOW/STORM
+temp                       17.5367
+hum                         90.625
+windspeed                   16.626
+days_since_2011                284
+yr                            2011
+Name: 284, dtype: object</code></pre>
+<p>Let us verify that these weight effects add up to the model prediction (including the intercept term):</p>
+<pre class="python"><code>linear_model_effects_df.iloc[obs_index, ].sum()  \
+    + linear_model_intercept \
+    - (linear_grid_search.predict(x_train.iloc[obs_index, ].to_frame().T)[0])</code></pre>
+<pre><code>0.0</code></pre>
+</div>
+<div id="tree-model-1" class="section level3">
+<h3>Tree Model</h3>
+<p>Single decision trees are also quite explicit about their interpretation. Moving to ensembles can be a bit tricky, I recommend the section <a href="https://xgboost.readthedocs.io/en/latest/tutorials/model.html">Introduction to Boosted Trees</a> on <a href="https://xgboost.readthedocs.io/en/latest/index.html">XGBoost documentation</a>. One of the highest benefits of tree ensembles is the ability to learn complex and non-linear relations from the data.</p>
+<p>To begin, let us compute the preprocessing step output of the tree model:</p>
+<pre class="python"><code>tree_x_train = pd.DataFrame(
+    data=tree_grid_search.best_estimator_[&#39;tree_feature_engineering&#39;].transform(x_train),
+    columns=features_ext
+)
+
+tree_x_train.shape</code></pre>
+<pre><code>(584, 29)</code></pre>
+<p>XGBoost model provides various measures of importance, see <a href="https://xgboost.readthedocs.io/en/latest/R-package/discoverYourData.html">Understand your dataset with XGBoost</a>. From the XGBoost documentation:</p>
+<blockquote>
+<ul>
+<li><p><em><code>Gain</code> is the improvement in accuracy brought by a feature to the branches it is on.</em></p></li>
+<li><p><em><code>Cover</code> measures the relative quantity of observations concerned by a feature.</em></p></li>
+<li><p><em><code>Frequency</code> / <code>Weight</code> is a simpler way to measure the <code>Gain</code>. It just counts the number of times a feature is used in all generated trees.</em></p></li>
+</ul>
+</blockquote>
+<p>See also <a href="https://towardsdatascience.com/be-careful-when-interpreting-your-features-importance-in-xgboost-6e16132588e7">The Multiple faces of ‘Feature importance’ in XGBoost</a>. Let us compute all of them and compare their relative values:</p>
+<pre class="python"><code>importance_type = [
+    &#39;weight&#39;,
+    &#39;gain&#39;,
+    &#39;cover&#39;,
+    &#39;total_gain&#39;,
+    &#39;total_cover&#39;
+]
+# Compute and format variable importance metrics.
+tree_feature_importance_df = pd.concat(
+    [
+        pd.DataFrame.from_dict(
+            data=(
+                tree_grid_search
+                .best_estimator_[&#39;tree_regressor&#39;]
+                .get_booster()
+                .get_score(importance_type=t)
+            ), 
+            orient=&#39;index&#39;,
+            columns=[t]
+        ) 
+        for t in importance_type
+    ],
+    axis=1
+)
+
+tree_feature_importance_df = tree_feature_importance_df \
+    .reset_index(drop=False) \
+    .assign(
+        index = lambda x: x[&#39;index&#39;].str.replace(pat=&#39;f&#39;, repl=&#39;&#39;).astype(int)
+    )
+
+# Map genertic features of the form f&lt;NUMBER&gt; to the original feature names.
+tree_features_idx_map = tree_feature_importance_df[&#39;index&#39;].apply(lambda idx: features_ext[idx])
+
+# Relative feature importance.
+tree_feature_importance_rel_df = tree_feature_importance_df / tree_feature_importance_df.sum(axis=0)
+tree_feature_importance_rel_df = tree_feature_importance_rel_df \
+    .assign(feature = tree_features_idx_map) \
+    .drop(&#39;index&#39;, axis=1)</code></pre>
+<p>Let us plot the results:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(7, 15))
+sns.barplot(
+    x=&#39;value&#39;,
+    y=&#39;feature&#39;,
+    data=tree_feature_importance_rel_df.melt(id_vars=&#39;feature&#39;),
+    hue=&#39;variable&#39;,
+    dodge=True,
+    ax=ax
+)
+ax.legend(title=&#39;importance type&#39;)
+ax.xaxis.set_major_formatter(
+    mtick.FuncFormatter(lambda y, _: f&#39;{y: .0%}&#39;)
+)
+ax.set(
+    title=&#39;Relative Feature Importances of the Tree Model&#39;,
+    xlabel=&#39;relative importance&#39;,
+    ylabel=&#39;&#39;
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_81_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>It this tree model both <code>days_from_2011</code> and <code>temp</code> are important variables.</p>
+<p><strong>Waring:</strong> Zero-importance features are not included.</p>
+<pre class="python"><code>print(f&#39;&#39;&#39;
+Zero-importance features:
+{[x for x in features_ext if x not in tree_feature_importance_rel_df[&#39;feature&#39;].values]}
+&#39;&#39;&#39;)</code></pre>
+<pre><code>Zero-importance features:
+[&#39;mnth_FEB&#39;, &#39;mnth_OKT&#39;, &#39;yr&#39;]</code></pre>
+</div>
+</div>
+<div id="partial-dependence-plot-pdp-individual-conditional-expectation-ice" class="section level2">
+<h2>Partial Dependence Plot (PDP) &amp; Individual Conditional Expectation (ICE)</h2>
+<p>In this section we describe the first model-agnostic method to understand how features interact to generate predictions in a machine learning model. Some recommended references on the subject are:</p>
+<ul>
+<li><p>PDP</p>
+<ul>
+<li><p><a href="https://christophm.github.io/interpretable-ml-book/pdp.html">Section 5.1, Interpretable Machine Learning</a></p></li>
+<li><p><a href="https://scikit-learn.org/stable/modules/partial_dependence.html">4.1.1. Partial dependence plots, scikit-learn docs</a></p></li>
+</ul></li>
+<li><p>ICE</p>
+<ul>
+<li><p><a href="https://christophm.github.io/interpretable-ml-book/ice.html">Section 5.2, Interpretable Machine Learning</a></p></li>
+<li><p><a href="https://scikit-learn.org/stable/modules/partial_dependence.html#individual-conditional-expectation-ice-plot">4.1.2. Individual conditional expectation (ICE) plot, scikit-learn docs</a></p></li>
+</ul></li>
+</ul>
+<p>Let us start by quoting the description of partial dependency plots from the <a href="https://scikit-learn.org/stable/modules/partial_dependence.html">scikit-learn docs</a>:
+&gt; <em>Partial dependence plots (PDP) show the dependence between the target response and a set of input features of interest, marginalizing over the values of all other input features.</em></p>
+<p>Let us be more concrete. For a regression problem (like in this example) we can estimate the partial dependence function (which is the plot of interest) as follows: Let <span class="math inline">\(x_S\)</span> be the features for which the partial dependence function should be plotted (usually not more than 2 variables) and <span class="math inline">\(x_C\)</span> be other features used in the machine learning model. One can estimate the partial dependence function as</p>
+<p><span class="math display">\[
+\hat{f}_{x_{S}}(x_{s}) = 
+\frac{1}{n}
+\sum_{i=1}^{n}
+\hat{f}(x_{S}, x_{C}^{i})
+\]</span></p>
+<p>where <span class="math inline">\(\hat{f}\)</span> is the model prediction function, <span class="math inline">\(x_{C}^{i}\)</span> are actual feature values (not in <span class="math inline">\(S\)</span>) and <span class="math inline">\(n\)</span> is the number points. The following is one of the key assumptions of this method (see <a href="https://christophm.github.io/interpretable-ml-book/pdp.html">Section 5.1, Interpretable Machine Learning</a>)</p>
+<blockquote>
+<p><em>An assumption of the PDP is that the features in <span class="math inline">\(C\)</span> are not correlated with the features in <span class="math inline">\(S\)</span>. If this assumption is violated, the averages calculated for the partial dependence plot will include data points that are very unlikely or even impossible.</em></p>
+</blockquote>
+<p>In view of the correlation matrix computed above for the numeric features, we see that the assumption holds true. However, the categorical variables are not independent, e.g. <code>season</code> and <code>mnth</code>.</p>
+<p>Similar to a PDP, an individual conditional expectation (ICE) plot shows one line per instance. That is, for each instance in <span class="math inline">\(\{(x_{S}^{i}, x_{C}^{i})\}_{i=1}^{n}\)</span>, we plot <span class="math inline">\(\hat{f}_{S}\)</span> as a function of <span class="math inline">\(x_{S}^{i}\)</span> while leaving <span class="math inline">\(x_{C}^{i}\)</span> fixed. Note that the additional information provided by ICE plots are interaction effects between the features. In PDPs these interactions are untraceable after the aggregation.</p>
+<p>Let us plot these curves for the linear model:</p>
+<pre class="python"><code>from sklearn.inspection import plot_partial_dependence
+
+features_to_display = [&#39;temp&#39;, &#39;hum&#39;, &#39;windspeed&#39;]
+
+fig, ax = plt.subplots(figsize=(15, 7))
+display_linear = plot_partial_dependence(
+       estimator=linear_grid_search,
+       X=x_train,
+       features=features_to_display,
+       kind=&#39;both&#39;,
+       subsample=50,
+       n_jobs=3, 
+       grid_resolution=20,
+       random_state=42, 
+       ax=ax
+)
+fig.suptitle(
+       &#39;Single ICE Plot - Linear Model&#39;, y=0.95
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_85_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>As expected all the PDP curves are straight lines. Note however that there are light lines in the <code>temp</code> ICE plot, which indicate unseen interactions by aggregation in the PDP plot.</p>
+<p>Let us now compute the PDP for pairs of numeric features.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 7))
+features_to_display = [
+    (&#39;temp&#39;, &#39;hum&#39;),
+    (&#39;temp&#39;, &#39;windspeed&#39;),
+    (&#39;hum&#39;, &#39;windspeed&#39;)
+]
+display_linear = plot_partial_dependence(
+       estimator=linear_grid_search,
+       X=x_train,
+       features=features_to_display,
+       subsample=50,
+       n_jobs=3, 
+       grid_resolution=20,
+       random_state=42, 
+       contour_kw={&#39;cmap&#39;: &#39;viridis_r&#39;},
+       ax=ax
+)
+
+fig.suptitle(
+       &#39;Pair ICE Plot - Linear Model&#39;, y=0.95
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_87_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Note that for the <code>temp</code> plots the relation with the other features seem quite linear (also compare with the weight effects scatter plots of the linear model above). On the other hand the <code>hum</code> vs <code>windspeed</code> PDP is not completely linear. Let us try to understand this by looking into the <span class="math inline">\(\beta\)</span> coefficients:</p>
+<pre class="python"><code>linear_model_coef_df.query(
+    &#39;linear_features.isin([&quot;temp&quot;, &quot;hum&quot;, &quot;windspeed&quot;, &quot;temp hum&quot;, &quot;temp windspeed&quot;, &quot;hum windspeed&quot;])&#39;
+) \
+.style.background_gradient(
+        cmap=&#39;viridis_r&#39;,
+        axis=0,
+        subset=[&#39;abs_coef_&#39;]
+    )</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interaction_coef.png" align="middle" style="width: 500px;">
+</figure>
+</center>
+<p>The largest <span class="math inline">\(\beta\)</span> coefficient of the interactions is indeed the one corresponding to <code>hum windspeed</code>.</p>
+<p>Now let us generate the plots for the tree based model:</p>
+<pre class="python"><code>features_to_display = [&#39;temp&#39;, &#39;hum&#39;, &#39;windspeed&#39;]
+
+fig, ax = plt.subplots(figsize=(15, 7))
+display_tree = plot_partial_dependence(
+       estimator=tree_grid_search,
+       X=x_train,
+       features=features_to_display,
+       kind=&#39;both&#39;,
+       subsample=50,
+       n_jobs=3, 
+       grid_resolution=20,
+       random_state=42,
+       ax=ax
+)
+fig.suptitle(
+       &#39;Single ICE Plot - Tree Model&#39;, y=0.95
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_92_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>The plot above reproduces <a href="https://christophm.github.io/interpretable-ml-book/ice.html">Figure 5.7 in Section 5.2, Interpretable Machine Learning</a>:</p>
+<blockquote>
+<p><em>For warm but not too hot weather, the model predicts on average a high number of rented bicycles. Potential bikers are increasingly inhibited in renting a bike when humidity exceeds 60%. In addition, the more wind the fewer people like to cycle, which makes sense. Interestingly, the predicted number of bike rentals does not fall when wind speed increases from 25 to 35 km/h, but there is not much training data, so the machine learning model could probably not learn a meaningful prediction for this range. At least intuitively, I would expect the number of bicycles to decrease with increasing wind speed, especially when the wind speed is very high.</em></p>
+</blockquote>
+<p>Let us now plot the pair PDP:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 7))
+
+features_to_display = [
+    (&#39;temp&#39;, &#39;hum&#39;),
+    (&#39;temp&#39;, &#39;windspeed&#39;),
+    (&#39;hum&#39;, &#39;windspeed&#39;)
+]
+
+display_tree = plot_partial_dependence(
+       estimator=tree_grid_search,
+       X=x_train,
+       features=features_to_display,
+       subsample=50,
+       n_jobs=3, 
+       grid_resolution=20,
+       random_state=42, 
+       contour_kw={&#39;cmap&#39;: &#39;viridis_r&#39;},
+       ax=ax
+)
+fig.suptitle(
+       &#39;Pair ICE Plot - Tree Model&#39;, y=0.95
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_95_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Let us now plot the first plot above in 3-dimensions (see <a href="https://scikit-learn.org/stable/auto_examples/inspection/plot_partial_dependence.html#id7">scikit-learn: 3D interaction plots</a>):</p>
+<pre class="python"><code>from sklearn.inspection import partial_dependence
+from mpl_toolkits.mplot3d import Axes3D
+
+features_to_display = (&#39;temp&#39;, &#39;hum&#39;)
+
+pdp = partial_dependence(
+    estimator=tree_grid_search,
+    X=x_train,
+    features=features_to_display, 
+    kind=&#39;average&#39;,
+    grid_resolution=25
+)
+
+XX, YY = np.meshgrid(pdp[&#39;values&#39;][0], pdp[&#39;values&#39;][1])
+Z = pdp.average[0].T
+
+fig = plt.figure(figsize=(10, 6))
+ax = Axes3D(fig)
+surf = ax.plot_surface(
+    XX,
+    YY,
+    Z, 
+    rstride=1,
+    cstride=1,
+    cmap=&#39;viridis_r&#39;,
+    edgecolor=&#39;black&#39;
+)
+ax.view_init(elev=7, azim=-60)
+ax.set(
+    title=&#39;Patial Dependency Plot temp vs humidity - Tree Model&#39;,
+    xlabel=features_to_display[0], 
+    ylabel=features_to_display[1],
+    zlabel=&#39;partial dependence&#39;
+)
+fig.colorbar(surf);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_97_0.svg" align="middle" style="width: 800px;">
+</figure>
+</center>
+<p>Finally, let us compare the ICE plots of both models together:</p>
+<pre class="python"><code>features_to_display = [&#39;temp&#39;, &#39;hum&#39;, &#39;windspeed&#39;]
+
+fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(15, 7))
+
+display_tree = plot_partial_dependence(
+       estimator=tree_grid_search,
+       X=x_train,
+       features=features_to_display,
+       kind=&#39;both&#39;,
+       subsample=50,
+       n_jobs=3, 
+       grid_resolution=20,
+       random_state=42, 
+       line_kw={
+           &#39;color&#39;: sns_c[1],
+           &#39;label&#39;: &#39;tree_model(average)&#39;
+        },
+       ax=ax
+)
+
+display_linear = plot_partial_dependence(
+       estimator=linear_grid_search,
+       X=x_train,
+       features=features_to_display,
+       kind=&#39;both&#39;,
+       subsample=50,
+       n_jobs=3, 
+       grid_resolution=20,
+       random_state=42,
+       line_kw={
+           &#39;color&#39;: sns_c[0], &#39;label&#39;: 
+           &#39;linear_model (average)&#39;
+        },
+       ax=ax
+)
+fig.suptitle(&#39;Single ICE Plot&#39;, y=0.95);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_99_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Other useful inspection plots are <em>accumulated local effects</em> (ALE) plots, see <a href="https://christophm.github.io/interpretable-ml-book/ale.html">Section 5.3, Interpretable Machine Learning</a>.</p>
+</div>
+<div id="permutation-importance" class="section level2">
+<h2>Permutation Importance</h2>
+<p>Next, let us discuss <em>permutation feature importance</em>, see <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html">Section 5.5, Interpretable Machine Learning</a>:</p>
+<blockquote>
+<p><em>Permutation feature importance measures the increase in the prediction error of the model after we permuted the feature’s values, which breaks the relationship between the feature and the true outcome.</em></p>
+</blockquote>
+<p><strong>Remark</strong> I encourage you to read <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data">Section 5.5.2, Interpretable Machine Learning</a> where the author discuss whether we should evaluate the feature importances in the train or the test set. In <a href="https://github.com/PacktPublishing/Interpretable-Machine-Learning-with-Python">Interpretable Machine Learning with Python by Serg Masís</a>, the autor provides a smiliar discussion and decides to evaluate on the test set. In this notebook we do in on the training set in order to be able to reproduce the results in <a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar</a>.</p>
+<p>Let us compute the permutation feature importance for both models:</p>
+<pre class="python"><code>from sklearn.inspection import permutation_importance
+
+linear_pi = permutation_importance(
+    estimator=linear_grid_search,
+    X=x_train,
+    y=y_train,
+    n_repeats=10
+)
+
+tree_pi = permutation_importance(
+    estimator=tree_grid_search,
+    X=x_train,
+    y=y_train,
+    n_repeats=10
+)</code></pre>
+<p>Now lets plot them side-by-side:</p>
+<pre class="python"><code>linear_perm_sorted_idx = linear_pi.importances_mean.argsort()[::-1]
+tree_perm_sorted_idx = tree_pi.importances_mean.argsort()[::-1]
+
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10, 5), constrained_layout=True)
+
+sns.barplot(
+    x=linear_pi.importances_mean[linear_perm_sorted_idx],
+    y=x_train.columns[linear_perm_sorted_idx],
+    orient=&#39;h&#39;,
+    color=sns_c[0],
+    ax=ax[0]
+)
+ax[0].set(title=&#39;Linear Model&#39;);
+
+sns.barplot(
+    x=tree_pi.importances_mean[tree_perm_sorted_idx],
+    y=x_train.columns[tree_perm_sorted_idx],
+    orient=&#39;h&#39;,
+    color=sns_c[1],
+    ax=ax[1]
+)
+ax[1].set(title=&#39;Tree Model&#39;)
+
+fig.suptitle(&#39;Permutation Importance&#39;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_104_0.svg" title="fig:" alt="svg" />
+</center>
+<p>It is interesting to see that the permutation importance for these two models have <code>days_since_2021</code> and <code>temp</code> on their top 3 ranking, which partially explain the trend and seasonality components respectively (compare with <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html">FIGURE 5.30</a>). Also, these rankings mostly agree with the model-dependent feature importance metrics illustrated above, with the difference that these permutation importance rankings can be obtained at feature level and not per individual one-hot-instance.</p>
+<p><strong>Warning:</strong> Similarly as partial depende plots, permutation importance can also be biased by unlikely points in the input data distribution, see <a href="https://scikit-learn.org/stable/auto_examples/inspection/plot_permutation_importance_multicollinear.html#permutation-importance-with-multicollinear-or-correlated-features">Permutation Importance with Multicollinear or Correlated Features</a>.</p>
+<p>In order to analyze the permutation importance ranking while considering the correlation, it useful to have a hierarchical clustering diagram generated from a similarity metric. For example, we can use <a href="https://en.wikipedia.org/wiki/Spearman%27s_rank_correlation_coefficient">Spearman’s rank correlation coefficient</a> (to include categorical variables) as suggested in <a href="https://scikit-learn.org/stable/auto_examples/inspection/plot_permutation_importance_multicollinear.html#handling-multicollinear-features">scikit-learn: Handling Multicollinear Features</a></p>
+<pre class="python"><code>from scipy.stats import spearmanr
+from scipy.cluster import hierarchy
+
+corr = spearmanr(a=x_train).correlation
+corr_linkage = hierarchy.ward(y=corr)
+
+fig, ax = plt.subplots(figsize=(7, 6))
+dendro = hierarchy.dendrogram(
+    Z=corr_linkage,
+    labels=x_train.columns, 
+    orientation=&#39;right&#39;,
+    ax=ax
+)
+ax.set(title=&quot;Hierarchical Clustering (Ward) based on Spearman&#39;s correlation&quot;);</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_106_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Note for example how related features like <code>days_since_2011</code> and <code>yr</code> differ on their rankings for the tree model. Similarly for <code>mnth</code> and <code>season</code> in the linear model.</p>
+</div>
+<div id="shap" class="section level2">
+<h2>SHAP</h2>
+<p>SHAP (SHapley Additive exPlanations) (<a href="https://christophm.github.io/interpretable-ml-book/shap.html">Section 5.10, Interpretable Machine Learning</a>) are based on the concept of <a href="https://en.wikipedia.org/wiki/Shapley_value">Shapley Values</a> (see <a href="https://christophm.github.io/interpretable-ml-book/shapley.html">Section 5.9, Interpretable Machine Learning</a>), which have their origin in game theory. The main idea is to consider the model as a game (prediction task) and each model feature as a player. Features can be grouped in teams (colaitions) to play thr game, i.e. generate predictions. It is important to remark that the “gain” is the actual prediction for this for the coalition minus the average prediction for all instances, so that:</p>
+<blockquote>
+<p><em>The Shapley value is the average contribution of a feature value to the prediction in different coalitions.</em></p>
+<p><strong>Warning:</strong> <em>The Shapley value is NOT the difference in prediction when we would remove the feature from the model.</em></p>
+</blockquote>
+<p>Please visit the references provided for a detailed explanation on Shapley Values.</p>
+<p>How are SHAP values connected to Shapley Values? The idea is to compute SHAP values from local linear models (compare with <a href="https://christophm.github.io/interpretable-ml-book/lime.html">LIME</a>). Concretely (<a href="https://christophm.github.io/interpretable-ml-book/shap.html#kernelshap">KernelShap</a>), for each instance <span class="math inline">\(x\)</span></p>
+<blockquote>
+<ol style="list-style-type: decimal">
+<li><p>Sample coalitions <span class="math inline">\(z_{k}&#39;\in\{0, 1\}^{M}\)</span>, where <span class="math inline">\(M\)</span>, is the maximum coalition size.</p></li>
+<li><p>Get prediction for each <span class="math inline">\(z_{k}&#39;\)</span>. For features not in the colaition we replace their values with random samples from the dataset (background data).</p></li>
+<li><p>Compute the weight for each <span class="math inline">\(z_{k}&#39;\)</span>, with the SHAP kernel,</p></li>
+</ol>
+<p><span class="math display">\[\pi_{x}(z&#39;) = \frac{(M-1)}{\binom{M}{|z&#39;|}|z&#39;|(M-|z&#39;|)}\]</span></p>
+<ol start="4" style="list-style-type: decimal">
+<li><p>Fit weighted linear model.</p></li>
+<li><p>Return Shapley values, i.e. the coefficients from the linear model.</p></li>
+</ol>
+</blockquote>
+<p>We are going to use the python <a href="https://shap.readthedocs.io/en/latest/index.html">SHAP</a> package.</p>
+<div id="linear-model-2" class="section level3">
+<h3>Linear Model</h3>
+<p>We can use the general <a href="https://github.com/slundberg/shap/blob/master/shap/explainers/_kernel.py">KernelShap</a>, a generic way to compute the SHAP values as follows:</p>
+<pre class="python"><code>import shap
+
+# Get background data: to sample from whenever a feature is missing in a coalition. 
+linear_x_train_summary = shap.kmeans(X=linear_x_train, k=20)
+
+linear_shap_explainer = shap.KernelExplainer(
+  model=linear_grid_search.best_estimator_[&#39;linear_regressor&#39;].predict,
+  data=linear_x_train_summary,
+)</code></pre>
+<p>Nevertheless, we can also use optimized implementations for each model type.</p>
+<pre class="python"><code>linear_shap_explainer = shap.LinearExplainer(
+    model=linear_grid_search.best_estimator_[&#39;linear_regressor&#39;],
+    masker=shap.maskers.Independent(data=linear_x_train, max_samples=500) # Background data.
+)
+
+linear_shap_values = linear_shap_explainer(linear_x_train)</code></pre>
+<p>Let us plot the SHAP values for the linear model:</p>
+<pre class="python"><code>shap.summary_plot(
+    shap_values=linear_shap_values,
+    features=linear_x_train, 
+    show=False
+)
+plt.title(f&#39;Linear SHAP&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_114_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>We can also plot the mean of the absolute value of the SHAP values to get a summary:</p>
+<pre class="python"><code>shap.plots.bar(shap_values=linear_shap_values, max_display=20, show=False)
+plt.title(&#39;SHAP Values Aggregation Linear Model&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_116_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Here are some remarks on the results:
+- <code>temp mnth_JUL</code> interaction term is the one with highest SHAP values. This feature has the largest <span class="math inline">\(\beta\)</span> coefficient in absolute value.
+- The feature <code>weathersit_RAIN/SNOW/STORM</code> has a large beta coefficient (absolute value), but it is not on the top SHAP features.
+- The SHAP values ranking is similar to the one obtained using permutation importance.</p>
+<p>Let us now plot the SHAP values for as a function of <code>temp</code>:</p>
+<pre class="python"><code>idx_1 = np.argwhere(np.array(linear_features) == &#39;temp&#39;)[0][0]
+
+shap.plots.scatter(
+    shap_values=linear_shap_values[:, idx_1]
+)</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_119_0.svg" align="middle" style="width: 700px;">
+</figure>
+</center>
+<p>The plot is very similar to the weight effect plot above except we have now the scaled <code>tmp</code> on the x-axis. Note that this line passes through the origin (as expected).</p>
+<p>We can also plot the explanation for an individual data instance. For example:</p>
+<pre class="python"><code>shap.plots.waterfall(
+    shap_values=linear_shap_values[obs_index],
+    max_display=20,
+    show=False
+)
+plt.title(f&#39;Linear SHAP effects Observation {obs_index}&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_122_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Note that the top negative features are <code>weathersit_RAIN/SNOW/STORM</code> and <code>hum</code> as in the weight effect plot for the linear model above. Note however that the top positive feature is <code>mnth_JUL temp</code>, which is quite strange as the data instance is from <code>mnth=OKT</code>. Here is a way to get just the features with non-zero entries:</p>
+<pre class="python"><code>from shap._explanation import Explanation
+
+mask = linear_shap_values[obs_index].data != 0
+linear_shap_values_mask = linear_shap_values[obs_index][mask]
+
+explanation_mask = Explanation(
+        values=linear_shap_values_mask.values, 
+        base_values=linear_shap_values_mask.base_values,
+        data=linear_shap_values_mask.data,
+        feature_names=np.array(linear_shap_values[obs_index].feature_names)[mask]
+    )
+
+shap.plots.waterfall(
+    shap_values=explanation_mask,
+    max_display=20,
+    show=False
+)
+plt.title(f&#39;Linear SHAP effects Observation {obs_index} (non-zero features)&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_124_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+</div>
+<div id="tree-model-2" class="section level3">
+<h3>Tree Model</h3>
+<p>We can proceed similarly for the tree model:</p>
+<pre class="python"><code>tree_shap_explainer = shap.TreeExplainer(
+    model=tree_grid_search.best_estimator_[&#39;tree_regressor&#39;],
+    masker=shap.maskers.Independent(data=tree_x_train, max_samples=500)
+
+)
+
+tree_shap_values = tree_shap_explainer(tree_x_train)</code></pre>
+<pre><code>ntree_limit is deprecated, use `iteration_range` or model slicing instead.</code></pre>
+<pre class="python"><code>shap.summary_plot(
+    shap_values=tree_shap_values,
+    features=tree_x_train,
+    show=False
+)
+plt.title(f&#39;Tree SHAP&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_127_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>shap.plots.bar(
+    shap_values=tree_shap_values,
+    max_display=20,
+    show=False
+)
+plt.title(&#39;SHAP Values Aggregation Tree Model&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_128_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Here are some remarks on the results:
+- The SHAP ranking looks quite similar to the tree-native feature importance metrics.
+- Similarly, this SHAP ranking is quite similar to the one obtained via permutation importance.</p>
+<p>Let us now plot the SAHP values as a function of <code>temp</code> and <code>hum</code>.</p>
+<pre class="python"><code>idx_1 = np.argwhere(np.array(features_ext) == &#39;temp&#39;)[0][0]
+idx_2 = np.argwhere(np.array(features_ext) == &#39;hum&#39;)[0][0]
+
+shap.plots.scatter(
+    shap_values=tree_shap_values[:, idx_1],
+    color=tree_shap_values[:, idx_2]
+)</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_131_0.svg" align="middle" style="width: 700px;">
+</figure>
+</center>
+<p>This plot looks quite similar to the PDP above.</p>
+<p>Now let us take a look into the SHAP explanation for the single data instance:</p>
+<pre class="python"><code>shap.plots.waterfall(
+    shap_values=tree_shap_values[obs_index],
+    max_display=20,
+    show=False
+)
+plt.title(f&#39;Tree SHAP effects Observation {obs_index}&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_134_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>The explanation looks very similar to the linear model: <code>weathersit_RAIN/SNOW/STORM</code>, <code>hum</code>, <code>days_since_2011</code> and <code>windspeed</code> the highest negative weight effects and <code>temp</code> the main positive weight effect.</p>
+<p>There are many other plots available, see <a href="https://shap.readthedocs.io/en/latest/api_examples.html#plots">SHAP documentation</a>.</p>
+</div>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
