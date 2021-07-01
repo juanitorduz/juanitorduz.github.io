@@ -396,7 +396,11 @@ features_ext = categorical_features_ext + numeric_features
 print(f&#39;Number of features after pre-processing: {len(features_ext)}&#39;)</code></pre>
 <pre><code>Number of features after pre-processing: 29</code></pre>
 <pre class="python"><code>&#39;, &#39;.join(features_ext)</code></pre>
-<pre><code>&#39;season_SPRING, season_SUMMER, season_WINTER, mnth_AUG, mnth_DEZ, mnth_FEB, mnth_JAN, mnth_JUL, mnth_JUN, mnth_MAR, mnth_MAY, mnth_NOV, mnth_OKT, mnth_SEP, holiday_NO HOLIDAY, weekday_MON, weekday_SAT, weekday_SUN, weekday_THU, weekday_TUE, weekday_WED, workingday_WORKING DAY, weathersit_MISTY, weathersit_RAIN/SNOW/STORM, temp, hum, windspeed, days_since_2011, yr&#39;</code></pre>
+<pre><code>&#39;season_SPRING, season_SUMMER, season_WINTER, mnth_AUG, mnth_DEZ, mnth_FEB, mnth_JAN,
+mnth_JUL, mnth_JUN, mnth_MAR, mnth_MAY, mnth_NOV, mnth_OKT, mnth_SEP, holiday_NO HOLIDAY,
+weekday_MON, weekday_SAT, weekday_SUN, weekday_THU, weekday_TUE, weekday_WED,
+workingday_WORKING DAY, weathersit_MISTY, weathersit_RAIN/SNOW/STORM, temp, hum,
+windspeed, days_since_2011, yr&#39;</code></pre>
 <div id="linear-model" class="section level3">
 <h3>Linear Model</h3>
 <p>The first model is a (<a href="https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Lasso.html"><code>Lasso</code></a>) regression with a second order multiplicative interaction between the input features (we actually remove the purely quadratic terms and just include the interactions). We use this type of model with <span class="math inline">\(L^1\)</span>-regularization in order to do a variable selection via time-slice-cross validation. We remove zero-variance features (comming for example as an interaction of orthogonal features) with a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.VarianceThreshold.html"><code>VarianceThreshold</code></a> transformer.</p>
@@ -1422,7 +1426,6 @@ plt.title(f&#39;Linear SHAP effects Observation {obs_index} (non-zero features)&
 )
 
 tree_shap_values = tree_shap_explainer(tree_x_train)</code></pre>
-<pre><code>ntree_limit is deprecated, use `iteration_range` or model slicing instead.</code></pre>
 <pre class="python"><code>shap.summary_plot(
     shap_values=tree_shap_values,
     features=tree_x_train,
