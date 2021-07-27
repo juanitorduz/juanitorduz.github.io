@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">15 min read</span>
+    <span class="article-duration">19 min read</span>
     
 
     <h1 class="article-title">Introduction to Bayesian Modeling with PyMC3</h1>
@@ -76,6 +76,7 @@
 
     <div class="article-content">
       
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p>This post is devoted to give an introduction to Bayesian modeling using <a href="https://pymc-devs.github.io/pymc3/notebooks/getting_started.html">PyMC3</a>, an open source probabilistic programming framework written in Python. Part of this material was presented in the Python Users Berlin (PUB) meet up.</p>
@@ -83,189 +84,207 @@
 <img src="../images/PyMC3_banner.svg" alt="html" style="width: 400px;"/>
 </center>
 <p>Why PyMC3? As described in the documentation:</p>
+<blockquote>
 <ul>
-<li><p>PyMC3’s user-facing features are written in pure Python, it leverages <a href="http://deeplearning.net/software/theano/">Theano</a> to transparently transcode models to C and compile them to machine code, thereby boosting performance.</p></li>
-<li><p>Theano is a library that allows expressions to be defined using generalized vector data structures called tensors, which are tightly integrated with the popular <a href="http://www.numpy.org/">NumPy</a> ndarray data structure.</p></li>
+<li>PyMC3’s user-facing features are written in pure Python, it leverages <a href="http://deeplearning.net/software/theano/">Theano</a> to transparently transcode models to C and compile them to machine code, thereby boosting performance.</li>
 </ul>
+</blockquote>
+<blockquote>
+<ul>
+<li>Theano is a library that allows expressions to be defined using generalized vector data structures called tensors, which are tightly integrated with the popular <a href="http://www.numpy.org/">NumPy</a> <code>ndarray</code> data structure.</li>
+</ul>
+</blockquote>
 <p>In addition, from a practical point of view, PyMC3 syntax is very transparent from the mathematical point of view.</p>
-<p>This post is not aimed to give a full treatment of the <del>mathematical details</del>, as there are many good (complete and detailed) references around these topics. Also, we are not going to dive deep into PyMC3 as all the details can be found in the documentation. Instead, we are interested in giving an overview of the basic mathematical concepts combined with examples (written in Python code) which should make clear why <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Monte Carlo</a> simulations are useful in Bayesian modeling.</p>
-<div id="mathematical-background" class="section level1">
-<h1>1. Mathematical Background</h1>
-</div>
-<div id="bayes-theorem" class="section level1">
-<h1>1.1 Bayes Theorem</h1>
-<div id="frequentist-vs-bayesian" class="section level2">
-<h2>Frequentist vs Bayesian</h2>
+<p>This post does not aim to give a full treatment of the <del>mathematical details</del>, as there are many good (complete and detailed) references around these topics (some of them collected at the end of the post). Also, we are not going to dive deep into PyMC3 as all the details can be found in the documentation. Instead, we are interested in giving an overview of the basic mathematical consepts combined with examples (written in Python code). Still, we briefly describe the main idea behind <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Markov Chain Monte Carlo</a>, a sampling method from which other methods are inspired from.</p>
+<p><strong>Remark:</strong> Among he rich literature in bayesian statistics I particularly recommend <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a> by, Richard McElreath. It is an excellent conceptual and practical introduction to the subject. Moreover, the PyMC3 dev team translated all of the <a href="https://github.com/pymc-devs/resources/tree/master/Rethinking_2">code into PyMC3</a>.</p>
+<p><strong>Update:</strong> This post has been updated to include better integration with <a href="https://arviz-devs.github.io/arviz/">arviz</a> and <a href="http://xarray.pydata.org/en/stable/">xarray</a> plus to update PyMC3 syntax.</p>
+<div id="mathematical-background" class="section level2">
+<h2>Mathematical Background</h2>
+<div id="bayes-theorem" class="section level3">
+<h3>Bayes Theorem</h3>
+<div id="frequentist-vs-bayesian" class="section level4">
+<h4>Frequentist vs Bayesian</h4>
+<blockquote>
 <p><em>The essential difference between frequentist inference and Bayesian inference is the same as the difference between the two interpretations of what a “probability” means</em>.</p>
+</blockquote>
 <p><strong>Frequentist inference</strong> is a method of statistical inference in which conclusions from data is obtained by emphasizing the frequency or proportion of the data.</p>
 <p><strong>Bayesian inference</strong> is a method of statistical inference in which Bayes’ theorem is used to update the probability for a hypothesis as more evidence or information becomes available.</p>
 </div>
-<div id="conditional-probability" class="section level2">
-<h2>Conditional Probability</h2>
+<div id="conditional-probability" class="section level4">
+<h4>Conditional Probability</h4>
 <p>Let <span class="math inline">\(A\)</span> and <span class="math inline">\(B\)</span> be two events, then the <em>conditional probability</em> of <span class="math inline">\(A\)</span> given <span class="math inline">\(B\)</span> is defined as the ratio</p>
-<p><span class="math display">\[\begin{equation}
+<p><span class="math display">\[
 P(A|B):=\frac{P(A\cap B)}{P(B)}
-\end{equation}\]</span></p>
+\]</span></p>
 <p><em>Remark:</em> Formally we have a <a href="https://en.wikipedia.org/wiki/Probability_space">probability space</a> <span class="math inline">\((\Omega, \mathcal{F}, P)\)</span>, where <span class="math inline">\(\Omega\)</span> is the sample space, <span class="math inline">\(\mathcal{F}\)</span> is a <span class="math inline">\(\sigma\)</span>-algebra on <span class="math inline">\(\Omega\)</span> and <span class="math inline">\(P\)</span> is a probability measure. The events <span class="math inline">\(A\)</span>, and <span class="math inline">\(B\)</span> are elements of <span class="math inline">\(\mathcal{F}\)</span> and we assume that <span class="math inline">\(P(B)\neq 0\)</span>.</p>
 <p>Observe in particular</p>
-<p><span class="math display">\[\begin{equation}
+<p><span class="math display">\[
 P(A|B)P(B)=P(A\cap B)=P(B\cap A) = P(B|A)P(A)
-\end{equation}\]</span></p>
+\]</span></p>
 </div>
-<div id="bayes-theorem-1" class="section level2">
-<h2>Bayes Theorem</h2>
+<div id="bayes-theorem-1" class="section level4">
+<h4>Bayes Theorem</h4>
 <p>From the last formula we obtain the relation</p>
 <p><span class="math display">\[\begin{equation}
 P(A|B)=\frac{P(B|A)P(A)}{P(B)}
 \end{equation}\]</span></p>
 <p>which is known as <a href="https://en.wikipedia.org/wiki/Bayes%27_theorem">Bayes Theorem</a>.</p>
-<p><strong>Example:</strong> Suppose you are in the U-Bahn and you see a person with long hair. You want to know the probablity that this person is a woman. Consider the events <span class="math inline">\(A=\)</span> woman <span class="math inline">\(B=\)</span> long hair. You want to compute <span class="math inline">\(P(A|B)\)</span>. Suppose that you estimate <span class="math inline">\(P(A)=0.5\)</span>, <span class="math inline">\(P(B)=0.4\)</span> and <span class="math inline">\(P(B|A)=0.7\)</span> (the probability that a woman has long hair). Then, given these prior estimated probabilities, Bayes theorem gives</p>
+<p><strong>Example:</strong> Suppose you are in the U-Bahn and you see a person with long hair. You want to know the probablity that this person is a woman. Consider the events <span class="math inline">\(A=\text{woman}\)</span> and <span class="math inline">\(B= \text{long hair}\)</span>. You want to compute <span class="math inline">\(P(A|B)\)</span>. Suppose that you estimate <span class="math inline">\(P(A)=0.5\)</span>, <span class="math inline">\(P(B)=0.4\)</span> and <span class="math inline">\(P(B|A)=0.7\)</span> (the probability that a woman has long hair). Then, given these prior estimated probabilities, Bayes theorem gives</p>
 <p><span class="math display">\[\begin{equation}
 P(A|B)=\frac{P(B|A)P(A)}{P(B)} = \frac{0.7\times 0.5}{0.4} = 0.875.
 \end{equation}\]</span></p>
 </div>
-<div id="bayesian-approach-to-data-analysis" class="section level2">
-<h2>Bayesian Approach to Data Analysis</h2>
-<p>Assume that you have a sample of observations <span class="math inline">\(y_1,..., y_n\)</span> of a random variable <span class="math inline">\(Y\sim f(y|\theta)\)</span>, where <span class="math inline">\(\theta\)</span> is a parameter for the distribution. Here we consider <span class="math inline">\(\theta\)</span> as a random variable as well. Following Bayes Theorem (its continuous version) we can write:</p>
-<p><span class="math display">\[\begin{equation}
+<div id="bayesian-approach-to-data-analysis" class="section level4">
+<h4>Bayesian Approach to Data Analysis</h4>
+<p>Assume that you have a sample of observations <span class="math inline">\(y_1,..., y_n\)</span> of a random variable <span class="math inline">\(Y\sim f(y|\theta)\)</span>, where <span class="math inline">\(\theta\)</span> is a parameter for the distribution. Here we consider <span class="math inline">\(\theta\)</span> as a random variable as well. Following Bayes Theorem (its continuous version) we can write.</p>
+<p><span class="math display">\[
 f(\theta|y)=\frac{f(y|\theta)f(\theta)}{f(y)} = 
 \displaystyle{\frac{f(y|\theta)f(\theta)}{\int f(y|\theta)f(\theta)d\theta}}
-\end{equation}\]</span></p>
+\]</span></p>
 <ul>
 <li><p>The function <span class="math inline">\(f(y|\theta)\)</span> is called the <em>likelihood</em>.</p></li>
 <li><p><span class="math inline">\(f(\theta)\)</span> is the <em>prior</em> distribution of <span class="math inline">\(\theta\)</span>.</p></li>
 </ul>
 <p>Note that <span class="math inline">\(f(y)\)</span> <em>does not</em> depend on <span class="math inline">\(\theta\)</span> (just on the data), thus it can be considered as a “normalizing constant”. In addition, it is often the case that the integral above is not easy to compute. Nevertheless, it is enough to consider the relation:</p>
-<p><span class="math display">\[\begin{equation}
+<p><span class="math display">\[
 f(\theta|y)  \propto \text{likelihood} \times \text{prior}.
-\end{equation}\]</span></p>
+\]</span></p>
 <p>(Here <span class="math inline">\(\propto\)</span> denotes the proportionality relation)</p>
+</div>
+</div>
 </div>
 <div id="example-poisson-data" class="section level2">
 <h2>Example: Poisson Data</h2>
-<p>In order to give a better sense of the relation above we are going to study a concrete example. Consider <span class="math inline">\(n\)</span> samples of <span class="math inline">\(Y\sim \text{Poiss}(\lambda)\)</span>. Recall that the <a href="https://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a> is given by:</p>
+<p>In order to give a better sense of the relation above we are going to study a concrete example. Consider <span class="math inline">\(n\)</span> samples of <span class="math inline">\(Y\sim \text{Pois}(\lambda)\)</span>. Recall that the <a href="https://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a> is given by:</p>
 <p><span class="math display">\[
-\displaystyle{
 f(y_i|\lambda)=\frac{e^{-\lambda}\lambda^{y_i}}{y_i!}
-}
 \]</span></p>
-<p>where <span class="math inline">\(\lambda&gt;0\)</span>. It is easy to verify that the <em>expected value</em> and <em>variance</em> are <span class="math inline">\(\text{E}(Y)=\lambda\)</span> and <span class="math inline">\(\text{Var}(Y)=\lambda\)</span> respectively. Parallel to the formal discussion, we are going to implement a numerical simulation:</p>
+<p>where <span class="math inline">\(\lambda&gt;0\)</span>. It is easy to verify that <span class="math inline">\(E(Y)=\lambda\)</span> and <span class="math inline">\(Var(Y)=\lambda\)</span>. Parallel to the formal discussion, we are going to implement a numerical simulation:</p>
+<div id="prepare-notebook" class="section level3">
+<h3>Prepare Notebook</h3>
 <pre class="python"><code>import numpy as np
+import pandas as pd
+import scipy.special as sp
 import scipy.stats as ss
+import pymc3 as pm
+import arviz as az
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+sns_c = sns.color_palette(palette=&#39;deep&#39;)
 
-# We set a seed so that the results are reproducible.
-np.random.seed(5)
-
+plt.rcParams[&#39;figure.figsize&#39;] = [10, 7]</code></pre>
+</div>
+<div id="generate-sample-data" class="section level3">
+<h3>Generate Sample Data</h3>
+<p>Let us generate some sample data (for we of course know the true parameter <span class="math inline">\(\lambda\)</span>):</p>
+<pre class="python"><code># We set a seed so that the results are reproducible.
+SEED = 5
+np.random.seed(SEED)
 # number of samples.
 n = 100
-
 # true parameter.
 lam_true = 2
-
 # sample array.
 y = np.random.poisson(lam=lam_true, size=n)
-
 y</code></pre>
 <pre><code>array([2, 4, 1, 0, 2, 2, 2, 2, 1, 1, 3, 2, 0, 1, 3, 3, 4, 2, 0, 0, 3, 6,
        1, 2, 1, 2, 5, 2, 3, 0, 1, 3, 1, 4, 1, 2, 4, 0, 6, 4, 1, 2, 2, 0,
        1, 2, 4, 4, 1, 3, 0, 3, 3, 2, 4, 2, 2, 1, 1, 2, 5, 2, 3, 0, 1, 1,
        1, 3, 4, 1, 3, 4, 2, 1, 2, 4, 2, 2, 1, 0, 2, 2, 3, 0, 3, 3, 4, 2,
        2, 1, 2, 1, 3, 0, 1, 0, 3, 3, 1, 2])</code></pre>
-<pre class="python"><code># mean of the sample.
-y.mean()</code></pre>
-<pre><code>2.06</code></pre>
-<pre class="python"><code>import matplotlib.pyplot as plt
-import seaborn as sns; sns.set()
-%matplotlib inline
-
-# Histogram of the sample.
-plt.figure(figsize=(8, 6))
-plt.hist(y, bins=15)
-plt.title(&#39;Histogram of Simulated Data&#39;);</code></pre>
+<p>Let us plot the sample distribution:</p>
+<pre class="python"><code># Histogram of the sample.
+fig, ax = plt.subplots()
+sns.countplot(x=y, color=sns_c[0], label=f&#39;mean = {y.mean(): 0.3f}&#39;, ax=ax)
+ax.legend(loc=&#39;upper right&#39;)
+ax.set(title=&#39;Sample Distribution&#39;, xlabel=&#39;y&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_8_0.png" title="fig:" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_11_0.svg" title="fig:" alt="svg" />
 </center>
+</div>
 <div id="prior-gamma-distribution" class="section level3">
 <h3>Prior: Gamma Distribution</h3>
 <p>Let us consider a <a href="https://en.wikipedia.org/wiki/Gamma_distribution">gamma</a> prior distribution for the parameter <span class="math inline">\(\lambda \sim \Gamma(a,b)\)</span>. Recall that the density function for the gamma distribution is</p>
-<p><span class="math display">\[\begin{equation}
-f(\lambda)=\frac{b^a}{\Gamma(a)}\lambda^{a-1} e^{-b\lambda}
-\end{equation}\]</span></p>
-<p>where <span class="math inline">\(a&gt;0\)</span> is the <em>shape</em> parameter and <span class="math inline">\(b&gt;0\)</span> is the <em>rate parameter</em>. One verifies that</p>
 <p><span class="math display">\[
-\text{E}(\lambda)=\frac{a}{b}
+f(\lambda)=\frac{b^a}{\Gamma(a)}\lambda^{a-1} e^{-b\lambda}
+\]</span></p>
+<p>where <span class="math inline">\(a&gt;0\)</span> is the <em>shape</em> parameter and <span class="math inline">\(b&gt;0\)</span> is the <em>rate parameter</em>.</p>
+<p>The <em>expected value</em> and <em>variance</em> of the gamma distribution is</p>
+<p><span class="math display">\[
+E(\lambda)=\frac{a}{b}
 \quad
 \text{and}
 \quad
-\text{Var}(\lambda)=\frac{a}{b^2}
+Var(\lambda)=\frac{a}{b^2}
 \]</span></p>
-<p>Let us plot a gamma distribution for parameters <span class="math inline">\(a=3.5\)</span> and <span class="math inline">\(b=2\)</span>.</p>
 <pre class="python"><code># Parameters of the prior gamma distribution.
-a = 3.5 # shape
-b = 2 # rate = 1/scale
+a = 3 # shape
+b = 1 # rate = 1/scale
 
-x = np.linspace(start=0, stop=10, num=100)
+x = np.linspace(start=0,stop=10, num=300)
 
-plt.figure(figsize=(8, 6))
-plt.plot(x, ss.gamma.pdf(x,a=a,scale=1/b), &#39;r-&#39;)
-plt.title(&#39;Gamma Density Function for a={} and b={}&#39;.format(a,b))
-
-# Define the prior distribution.
-prior = lambda x: ss.gamma.pdf(x, a=a, scale=1/b)</code></pre>
+fig, ax = plt.subplots()
+ax.plot(x, ss.gamma.pdf(x, a=a, scale=1/b), color=sns_c[3])
+ax.axvline(x= a /b, color=sns_c[4], linestyle=&#39;--&#39;, label=&#39;gamma mean&#39;)
+ax.axvline(x= y.mean(), color=sns_c[1], linestyle=&#39;--&#39;, label=&#39;sample mean&#39;)
+ax.legend()
+ax.set(title=f&#39;Gamma Density Function for a={a} and b={b}&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_10_0.png" title="fig:" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_13_0.svg" title="fig:" alt="svg" />
 </center>
+<pre class="python"><code># Define the prior distribution.
+prior = lambda x: ss.gamma.pdf(x, a=a, scale=1/b)</code></pre>
 </div>
 <div id="likelihood" class="section level3">
 <h3>Likelihood</h3>
 <p>As the observations are independent the <a href="https://en.wikipedia.org/wiki/Likelihood_function">likelihood</a> function is</p>
-<p><span class="math display">\[\begin{align}
-f(y|\lambda)=&amp;\prod_{i=1}^{n} \frac{e^{-\lambda}\lambda^{y_i}}{y_i!}
+<p><span class="math display">\[
+f(y|\lambda)=\prod_{i=1}^{n} \frac{e^{-\lambda}\lambda^{y_i}}{y_i!}
 =\frac{e^{-n\lambda}\lambda^{\sum_{i=1}^n y_i}}{\prod_{i=1}^{n}y_i!}
-\end{align}\]</span></p>
-<pre class="python"><code>import scipy.special as sp
-
-# Define the likelihood function.
-def likelihood(lam,y):
+\]</span></p>
+<pre class="python"><code># Define the likelihood function.
+def likelihood(lam, y):
     
     factorials = np.apply_along_axis(
-        lambda x: sp.gamma(x+1),
+        lambda x: sp.gamma(x + 1),
         axis=0,
         arr=y
     )
     
-    numerator = np.exp(-lam*y.size)*(lam**y.sum())
+    numerator = np.exp(- lam * y.size) * (lam ** (y.sum()))
     
     denominator = np.multiply.reduce(factorials)
     
-    return numerator/denominator  </code></pre>
+    return numerator / denominator  </code></pre>
 </div>
 <div id="posterior-distribution-for-lambda-up-to-a-constant" class="section level3">
 <h3>Posterior distribution for <span class="math inline">\(\lambda\)</span> up to a constant</h3>
 <p>As we are just interested in the structure of the posterior distribution, up to a constant, we see</p>
 <p><span class="math display">\[\begin{align}
-f(\lambda|y)\propto &amp; \text{likelihood} \times \text{prior}\\
+f(\lambda|y)\propto &amp; \: \text{likelihood} \times \text{prior}\\
 \propto &amp; \quad f(y|\lambda)f(\lambda)\\
 \propto &amp; \quad e^{-n\lambda}\lambda^{\sum_{i=1}^n y_i} \lambda^{a-1} e^{-b\lambda}\\
 \propto &amp; \quad \lambda^{\left(\sum_{i=1}^n y_i+a\right)-1} e^{-(n+b)\lambda}\\
 \end{align}\]</span></p>
 <pre class="python"><code># Define the posterior distribution.
 # (up to a constant)
-def posterior_up_to_constant(lam,y):
-    return likelihood(lam,y)*prior(lam)
-
-# Plot of the prior and (scaled) posterior distribution
-# for the parameter lambda.
-#
-# We multiply the posterior distrubution function
-# by the amplitude factor 2.5e74 to make it comparable
-# with the prior gamma distribution.
-plt.figure(figsize=(8, 6))
-plt.plot(x, 2.0e74*posterior_up_to_constant(x,y), label=&#39;posterior&#39;)
-plt.plot(x, ss.gamma.pdf(x,a=a,scale=1/b), &#39;r-&#39;, label=&#39;prior&#39;)
-plt.legend();</code></pre>
+def posterior_up_to_constant(lam, y):
+    return likelihood(lam=lam, y=y) * prior(lam)</code></pre>
+<p>Now we plot of the prior and (scaled) posterior distributionfor the parameter lambda. We multiply the posterior distribution function by the amplitude factor <span class="math inline">\(2.5\times 10^{74}\)</span> to make it visually comparable with the prior gamma distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(x, ss.gamma.pdf(x, a=a, scale=1/b), color=sns_c[3], label=&#39;prior&#39;)
+ax.plot(
+  x, 2.0e74 * posterior_up_to_constant(x,y), color=sns_c[2], label=&#39;posterior_up_to_constant&#39;
+)
+ax.legend()
+ax.set(xlabel=&#39;$\lambda$&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_14_0.png" title="fig:" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_20_0.svg" title="fig:" alt="svg" />
 </center>
 </div>
 <div id="true-posterior-distribution-for-lambda" class="section level3">
@@ -275,19 +294,18 @@ plt.legend();</code></pre>
 f(\lambda|y) = \Gamma\left(\sum_{i=1}^n y_i+a, n+b\right)
 \end{align}\]</span></p>
 <p>This means that the gamma and Poisson distribution form a <a href="https://en.wikipedia.org/wiki/Conjugate_prior">conjugate pair</a>.</p>
-<pre class="python"><code>def posterior(lam,y):
-    
+<pre class="python"><code>def posterior(lam, y):
     shape = a + y.sum()
     rate = b + y.size
-    
     return ss.gamma.pdf(lam, shape, scale=1/rate)
 
-plt.figure(figsize=(8, 6))
-plt.plot(x, posterior(x,y))
-plt.plot(x, ss.gamma.pdf(x,a=a,scale=1/b), &#39;r-&#39;)
-plt.title(&#39;Prior and Posterior Distributions&#39;);</code></pre>
+fig, ax = plt.subplots()
+ax.plot(x, ss.gamma.pdf(x, a=a, scale=1/b), color=sns_c[3], label=&#39;prior&#39;)
+ax.plot(x, posterior(x,y), color=sns_c[2], label=&#39;posterior&#39;)
+ax.legend()
+ax.set(title=&#39;Prior and Posterior Distributions&#39;, xlabel=&#39;$\lambda$&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_16_0.png" title="fig:" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_22_0.svg" title="fig:" alt="svg" />
 </center>
 <p>We indeed see how the posterior distribution is concentrated around the true parameter <span class="math inline">\(\lambda=2\)</span>.</p>
 <p>Note that the posterior mean is</p>
@@ -303,16 +321,15 @@ shape = a + y.sum()
 rate = b + y.size
 
 # Posterior mean.
-shape/rate</code></pre>
-<pre><code>2.053921568627451</code></pre>
+print(f&#39;Posterior Mean = {shape / rate: 0.3f}&#39;)</code></pre>
+<pre><code>Posterior Mean =  2.069</code></pre>
 </div>
 </div>
-</div>
-<div id="markov-chain-monte-carlo-mcmc-approach" class="section level1">
-<h1>1.2 Markov Chain Monte Carlo (MCMC) Approach</h1>
-<p>In the last example the posterior distribution was easy to identify. However, in paractice this is not usually the case and therefore, via Bayes Theorem, we would only know the posterior distribution up to a constant. This motivates the idea of using Monte Carlo simulation methods. How can we sample from a distribution that we do not know? The Metropolis–Hastings algorithm, explained next, is one approach to tackle this problem.</p>
-<div id="metropolishastings-algorithm" class="section level2">
-<h2>Metropolis–Hastings algorithm</h2>
+<div id="markov-chain-monte-carlo-mcmc-approach" class="section level2">
+<h2>Markov Chain Monte Carlo (MCMC) Approach</h2>
+<p>In the last example the posterior distribution was easy to identify. However, in paractice this is not usually the case and therefore, via Bayes Theorem, we would only know the posterior distribution up to a constant. This motivates the idea of using Monte Carlo simulation methods. How can we sample from a distribution that we do not know? The Metropolis–Hastings algorithm, explaned next, is one approach to tackle this problem.</p>
+<div id="metropolishastings-algorithm" class="section level3">
+<h3>Metropolis–Hastings algorithm</h3>
 <p>Let <span class="math inline">\(\phi\)</span> be a function that is proportional to the desired probability distribution <span class="math inline">\(f\)</span>.</p>
 <p><strong>Initialization:</strong></p>
 <p>Pick <span class="math inline">\(x_{0}\)</span> to be the first sample, and choose an arbitrary probability density</p>
@@ -335,12 +352,12 @@ x_{n+1} = x_{n}.
 \end{equation}\]</span></p>
 <p>Why does this algorithm solve the initial problem? The full explanation is beyond the scope of this post (some references are provided at the end). It relies in the in the following result.</p>
 </div>
-<div id="ergodic-theorem-for-markov-chains" class="section level2">
-<h2>Ergodic Theorem for Markov Chains</h2>
+<div id="ergodic-theorem-for-markov-chains" class="section level3">
+<h3>Ergodic Theorem for Markov Chains</h3>
 <p><strong>Theorem (Ergodic Theorem for Markov Chains)</strong> If <span class="math inline">\(\{x^{(1)} , x^{(2)} , . . .\}\)</span> is an <em>irreducible</em>, <em>aperiodic</em> and <em>recurrent</em> <a href="https://en.wikipedia.org/wiki/Markov_chain">Markov chain</a>, then there is a unique probability distribution <span class="math inline">\(\pi\)</span> such that as <span class="math inline">\(N\longrightarrow\infty\)</span>,</p>
 <ul>
 <li><span class="math inline">\(P(x^{(N)} ∈ A) \longrightarrow \pi(A)\)</span>.</li>
-<li><span class="math inline">\(\displaystyle{\frac{1}{N}\sum_{n=1}^{N} g(x^{(n)}) \longrightarrow \int g(x)\pi(x) dx }\)</span>.</li>
+<li><span class="math inline">\(\displaystyle{\frac{1}{N}\sum_{n=1}^{N} g(x^{(n)})) \longrightarrow \int g(x)\pi(x) dx }\)</span>.</li>
 </ul>
 <p><em>Recall:</em></p>
 <ul>
@@ -350,281 +367,36 @@ x_{n+1} = x_{n}.
 <li><p>A state <span class="math inline">\(n\)</span> is said to be <strong>transient</strong> if, given that we start in state <span class="math inline">\(n\)</span>, there is a non-zero probability that we will never return to <span class="math inline">\(i\)</span>.</p></li>
 <li><p>A state <span class="math inline">\(n\)</span> is <strong>recurrent</strong> if it is not transient.</p></li>
 </ul>
+<p><strong>Remark:</strong> PyMC3 has many modern samplers which are in general better that MCMC, like <a href="https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo">Hamiltonian Monte Carlo (HMC)</a> and <a href="https://arxiv.org/abs/1111.4246">No-U-Turn Sampler</a>. For more details I recommend checking <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking - Chapter 9</a> and <a href="https://betanalpha.github.io/writing/">Michael Betancourt’s blog</a>.</p>
 </div>
 </div>
-<div id="pymc3-syntax" class="section level1">
-<h1>2. PyMC3 Syntax</h1>
-<p>Now we perform a MCMC simulation for the data described above. Note how easy is to write the model from the mathematical description.</p>
-<pre class="python"><code>import pymc3 as pm
-
-model = pm.Model()
-
-with model:
-    
+<div id="pymc3-syntax" class="section level2">
+<h2>PyMC3 Syntax</h2>
+<p>Now we perform a variant of MCMC simulation for the data described above. Note how easy is to write the model from the mathematical description.</p>
+<pre class="python"><code>with pm.Model() as toy_model:
     # Define the prior of the parameter lambda.
     lam = pm.Gamma(&#39;lambda&#39;, alpha=a, beta=b)
-    
     # Define the likelihood function.
     y_obs = pm.Poisson(&#39;y_obs&#39;, mu=lam, observed=y)
-    
-    # Consider 2000 draws and 3 chains.
-    trace = pm.sample(draws=2000, chains=3)</code></pre>
-<pre><code>Auto-assigning NUTS sampler...
-Initializing NUTS using jitter+adapt_diag...
-Multiprocess sampling (3 chains in 4 jobs)
-NUTS: [lambda]
-Sampling 3 chains: 100%|██████████| 7500/7500 [00:01&lt;00:00, 5660.80draws/s]</code></pre>
-<p>If we do a trace plot we can see two results:</p>
-<ul>
-<li><p>We see the simulated posterior distribution for 3 independent Markov Chains (so that, when combined, avoid the dependence on the initial point). The 3 different chains correspond to the color blue, green and orange.</p></li>
-<li><p>The sample value of lambda for each iteration.</p></li>
-</ul>
-<pre class="python"><code>pm.traceplot(trace);</code></pre>
-<center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_26_1.png" title="fig:" alt="png" />
-</center>
-<p>We can also see the mean and quantile information for the posterior distribution.</p>
-<pre class="python"><code>pm.plot_posterior(trace);</code></pre>
-<center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_28_0.png" title="fig:" alt="png" />
-</center>
-</div>
-<div id="bayesian-hierarchical-modeling-a-chocolate-cookies-example" class="section level1">
-<h1>3. Bayesian Hierarchical Modeling: A Chocolate Cookies Example</h1>
-<center>
-<img src="../images/monster.jpg" alt="html" style="width: 400px;"/>
-</center>
-<p>Now we are going to treat a more complicated example which illustrated a hierarchical mdel.
-This case of study is taken from the (strongly recomended!) online course:</p>
-<p><strong>Bayesian Statistics: Techniques and Models:</strong></p>
-<p><a href="https://www.coursera.org/learn/mcmc-bayesian-statistics" class="uri">https://www.coursera.org/learn/mcmc-bayesian-statistics</a></p>
-<p>There, the MCMC simulations are done with <a href="http://mcmc-jags.sourceforge.net/">JAGS</a> in <a href="https://www.r-project.org/">R</a>. As a matter of fact, this course motivated me to explore an analogous tool for Python.</p>
-<div id="the-data" class="section level2">
-<h2>3.1 The data</h2>
-<p>Assume there is a big factory producing chocolate cookies around the world. The cookies follow a unique recipe, but you want to study the chocolate chips distribution for cookies produced in 5 different locations.</p>
-<ul>
-<li><p>On the one hand side you would assume that the distribution across the locations is similar, as they all come from a unique recipe. This is why you may not want to model each location separately.</p></li>
-<li><p>On the other hand, in reality, as the locations are not exacly the same you might expect some differences between each location. This is why you may not want to model all locations at once.</p></li>
-</ul>
-<p>To overcome these restrictions, a hierarchical can be a feasible approach.</p>
-<pre class="python"><code>import pandas as pd
 
-# We begin reading the data into a pandas dataframe.
-cookies = pd.read_csv(&#39;data/cookies.dat&#39;, sep=&#39; &#39;)
-
-cookies.head()</code></pre>
+pm.model_to_graphviz(toy_model)</code></pre>
 <center>
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-<thead>
-<tr style="text-align: right;">
-<th>
-</th>
-<th>
-chips
-</th>
-<th>
-location
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<th>
-0
-</th>
-<td>
-12
-</td>
-<td>
-1
-</td>
-</tr>
-<tr>
-<th>
-1
-</th>
-<td>
-12
-</td>
-<td>
-1
-</td>
-</tr>
-<tr>
-<th>
-2
-</th>
-<td>
-6
-</td>
-<td>
-1
-</td>
-</tr>
-<tr>
-<th>
-3
-</th>
-<td>
-13
-</td>
-<td>
-1
-</td>
-</tr>
-<tr>
-<th>
-4
-</th>
-<td>
-12
-</td>
-<td>
-1
-</td>
-</tr>
-</tbody>
-</table>
-</div>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_31_0.svg" title="fig:" alt="svg" />
 </center>
-<pre class="python"><code># Verify the number of unique locations.
-cookies[&#39;location&#39;].unique()</code></pre>
-<p>array([1, 2, 3, 4, 5])</p>
-<p>Let us start with some visualization of the data.</p>
-<pre class="python"><code># Histogram distribution of chocolate chips
-# for all cookies.
-fig, ax = plt.subplots(figsize=(8, 6))
-sns.distplot(cookies[&#39;chips&#39;], bins=15, ax=ax);
-ax.set(title=&#39;Chips Distribution (All Locations)&#39;);</code></pre>
+<pre class="python"><code>with toy_model:
+    # Consider 2000 draws and 4 chains.
+    trace = pm.sample(
+        draws=2000, chains=4, return_inferencedata=True
+    )</code></pre>
+<p>Let us plot the <em>trace</em> of the posterior distribution. We see 4 independent chains which do not seem correlated.</p>
+<pre class="python"><code>az.plot_trace(data=trace);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_34_0.png" title="fig:" alt="png" />
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_34_0.svg" align="middle" style="width: 950px;">
+</figure>
 </center>
-<pre class="python"><code># Histogram distribution of chocolate chips
-# for cookies in each location.
-g = sns.FacetGrid(data=cookies, col=&#39;location&#39;, col_wrap=2, height=3, aspect=2)
-g = g.map(sns.distplot, &#39;chips&#39;)</code></pre>
-<center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_35_0.png" title="fig:" alt="png" />
-</center>
-<pre class="python"><code># Box plot for different locations.
-fig, ax = plt.subplots(figsize=(10,6))
-cookies.boxplot(column=&#39;chips&#39;, by=&#39;location&#39;, ax=ax);</code></pre>
-<center>
-<p><img src="../images/intro_PyMC3_files/intro_PyMC3_36_0.png" alt="png" />
-<c/enter></p>
-</div>
-<div id="the-model-hierarchical-approach" class="section level2">
-<h2>3.2 The model: Hierarchical Approach</h2>
-<ul>
-<li>Hierarchical Model:</li>
-</ul>
-<p>We model the chocolate chip counts by a Poisson distribution with parameter <span class="math inline">\(\lambda\)</span>. Motivated by the example above, we choose a gamma prior.</p>
-<p><span class="math display">\[\begin{align}
-\text{chips} \sim  \text{Poiss}(\lambda)
-\quad\quad\quad
-\lambda \sim  \Gamma(a,b)
-\end{align}\]</span></p>
-<ul>
-<li>Parametrization:</li>
-</ul>
-<p>We parametrize the shape and scale of the gamma prior with the mean <span class="math inline">\(\mu\)</span> and variance <span class="math inline">\(\sigma^2\)</span>.</p>
-<p><span class="math display">\[\begin{align}
-a=\frac{\mu^2}{\sigma^2}
-\quad\quad\quad
-b=\frac{\mu}{\sigma^2}
-\end{align}\]</span></p>
-<ul>
-<li>Prior Distributions:</li>
-</ul>
-<p>We further impose prior for these parameters</p>
-<p><span class="math display">\[\begin{align}
-\mu  \sim  \Gamma(2,1/5)
-\quad\quad\quad
-\sigma  \sim  \text{Exp}(1)
-\end{align}\]</span></p>
-<pre class="python"><code>x = np.linspace(start=0, stop=50, num=100)
-
-fig = plt.figure(figsize=(15, 5))
-plt.subplot(1, 2, 1)
-plt.plot(x, ss.gamma.pdf(x,a=2,scale=5), &#39;r-&#39;)
-plt.title(&#39;Prior Distribution for mu \n Gamma Density Function for a={} and b={}&#39;.format(2, 1/5))
-
-plt.subplot(1, 2, 2)
-x = np.linspace(0,10)
-plt.plot(x, ss.expon.pdf(x,1), &#39;r-&#39;)
-plt.title(&#39;Prior Distribution for sigma2 \n Exponential Density Function&#39;)
-plt.xlim(1,10);</code></pre>
-<center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_38_1.png" title="fig:" alt="png" />
-</center>
-<p>Let us write the model in PyMC3. Note how the syntax mimics the mathematical formulation.</p>
-<pre class="python"><code>model = pm.Model()
-
-with model:
-    
-    # Prior distribution for mu.
-    mu = pm.Gamma(&#39;mu&#39;, alpha=2.0, beta=1.0/5)
-    
-    # Prior distribution for sigma2.
-    sigma = pm.Exponential(&#39;sigma&#39;, 1.0)
-    
-    # Parametrization for the shape parameter.
-    alpha =  mu**2/sigma**2
-    
-    # Parametrization for the scale parameter.
-    beta = mu/sigma**2
-    
-    # Prior distribution for lambda.
-    lam = pm.Gamma(
-        &#39;lam&#39;, 
-        alpha=alpha, 
-        beta=beta, 
-        shape=cookies.location.values.max()
-    )
-    
-    # Likelihood function for the data.
-    chips = [
-        pm.Poisson(&#39;chips_{}&#39;.format(i),lam[i], 
-        observed=cookies[cookies.location==i+1].chips.values) 
-        for i in range(cookies.location.values.max())
-    ] 
-    
-    # Parameters of the simulation:
-    # Number of iterations and independent chains.
-    n_draws, n_chains = 1000, 3
-    
-    n_sim = n_draws*n_chains
-    
-    trace = pm.sample(draws=n_draws, chains=n_chains)  </code></pre>
-<pre><code>Auto-assigning NUTS sampler...
-Initializing NUTS using jitter+adapt_diag...
-Multiprocess sampling (3 chains in 4 jobs)
-NUTS: [lam, sigma, mu]
-Sampling 3 chains: 100%|██████████| 4500/4500 [00:02&lt;00:00, 1815.91draws/s]</code></pre>
-</div>
-<div id="diagnostics" class="section level2">
-<h2>3.3 Diagnostics</h2>
-<p>Many <a href="https://pymc-devs.github.io/pymc3/api/diagnostics.html">diagnostic</a> options are described in the PyMC3 documentation.</p>
-<pre class="python"><code>pm.traceplot(trace);</code></pre>
-<center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_42_1.png" title="fig:" alt="png" />
-</center>
-<p>From the traceplot we see that the chains have converged. We can also have a detailed summary of the posterior distribution for each parameter:</p>
-<pre class="python"><code>pm.summary(trace)</code></pre>
+<p>Let us get some diagnostics of the sampling:</p>
+<pre class="python"><code>az.summary(trace)</code></pre>
 <center>
 <div>
 <style scoped>
@@ -652,251 +424,107 @@ mean
 sd
 </th>
 <th>
-mc_error
+hdi_3%
 </th>
 <th>
-hpd_2.5
+hdi_97%
 </th>
 <th>
-hpd_97.5
+mcse_mean
 </th>
 <th>
-n_eff
+mcse_sd
 </th>
 <th>
-Rhat
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
 </th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <th>
-mu
+lambda
 </th>
 <td>
-9.104871
+2.071
 </td>
 <td>
-0.952266
+0.144
 </td>
 <td>
-0.019789
+1.804
 </td>
 <td>
-7.285942
+2.343
 </td>
 <td>
-11.142347
+0.002
 </td>
 <td>
-2522.978566
+0.002
 </td>
 <td>
-1.001637
-</td>
-</tr>
-<tr>
-<th>
-sigma
-</th>
-<td>
-2.075416
+3357.0
 </td>
 <td>
-0.716848
+5453.0
 </td>
 <td>
-0.013315
-</td>
-<td>
-0.988354
-</td>
-<td>
-3.541359
-</td>
-<td>
-2510.182129
-</td>
-<td>
-0.999958
-</td>
-</tr>
-<tr>
-<th>
-lam__0
-</th>
-<td>
-9.277816
-</td>
-<td>
-0.529706
-</td>
-<td>
-0.008511
-</td>
-<td>
-8.353204
-</td>
-<td>
-10.406595
-</td>
-<td>
-4050.792217
-</td>
-<td>
-0.999807
-</td>
-</tr>
-<tr>
-<th>
-lam__1
-</th>
-<td>
-6.221088
-</td>
-<td>
-0.461659
-</td>
-<td>
-0.007158
-</td>
-<td>
-5.306228
-</td>
-<td>
-7.100886
-</td>
-<td>
-3812.117511
-</td>
-<td>
-0.999808
-</td>
-</tr>
-<tr>
-<th>
-lam__2
-</th>
-<td>
-9.520956
-</td>
-<td>
-0.544345
-</td>
-<td>
-0.008374
-</td>
-<td>
-8.516351
-</td>
-<td>
-10.607144
-</td>
-<td>
-3723.180815
-</td>
-<td>
-0.999935
-</td>
-</tr>
-<tr>
-<th>
-lam__3
-</th>
-<td>
-8.932577
-</td>
-<td>
-0.531530
-</td>
-<td>
-0.009103
-</td>
-<td>
-7.861659
-</td>
-<td>
-9.922982
-</td>
-<td>
-3353.991802
-</td>
-<td>
-0.999881
-</td>
-</tr>
-<tr>
-<th>
-lam__4
-</th>
-<td>
-11.753710
-</td>
-<td>
-0.639027
-</td>
-<td>
-0.010974
-</td>
-<td>
-10.547972
-</td>
-<td>
-13.023027
-</td>
-<td>
-3529.810115
-</td>
-<td>
-0.999560
+1.0
 </td>
 </tr>
 </tbody>
 </table>
 </div>
 </center>
-<p>We can also see this visually.</p>
-<pre class="python"><code>pm.plot_posterior(trace);</code></pre>
+<ul>
+<li>The inferred mean of the <span class="math inline">\(\lambda\)</span> parameter is very close to the true value <span class="math inline">\(2\)</span>.</li>
+<li>The <code>r_hat</code> denotes the <a href="https://bookdown.org/rdpeng/advstatcomp/monitoring-convergence.html#gelman-rubin-statistic">Gelman-Rubin test</a>, which indicates convergence of the chains. Values close to 1.0 mean convergence.</li>
+</ul>
+<p>We can plot the mean and <a href="https://en.wikipedia.org/wiki/Credible_interval">highest density interval</a> of the posterior distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(data=trace, ax=ax);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_46_0.png" alt="html" style="width: 1000px;"/>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_39_0.svg" title="fig:" alt="svg" />
 </center>
-<p>We can verify the convergence of the chains formally using the <a href="http://ugrad.stat.ubc.ca/R/library/coda/html/gelman.diag.html">Gelman Rubin test</a>. Values close to 1.0 mean convergence.</p>
-<pre class="python"><code>pm.gelman_rubin(trace)</code></pre>
-<p>{‘mu’: 1.0016372262426347,
-‘sigma’: 0.9999579325854048,
-‘lam’: array([0.9998075 , 0.99980835, 0.99993469, 0.99988124, 0.99956018])}</p>
-<p>We can also test for correlation between samples in the chains. We are aiming for zero auto-correlation to get “random” samples from the posterior distribution.</p>
-<pre class="python"><code># Auto-correlation of the parameter sigma for the 3 chains.
-pm.autocorrplot(trace, var_names=[&#39;sigma&#39;], max_lag=20);</code></pre>
+<p>Let us now do some posterior predictive checks, i.e. sample observations using the distribution of the parameter <span class="math inline">\(\lambda\)</span>.</p>
+<pre class="python"><code>with toy_model:
+    
+    forecast_1 = az.from_pymc3(
+        posterior_predictive=pm.sample_posterior_predictive(trace=trace)
+    )
+
+posterior_sampels = forecast_1.posterior_predictive[&#39;y_obs&#39;].values.flatten()</code></pre>
+<p>We can now compare the distributions:</p>
+<pre class="python"><code>fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(15, 7))
+sns.countplot(x=y, color=sns_c[0], ax=ax[0])
+ax[0].set(title=&#39;Sample Distribution&#39;, xlabel=&#39;y&#39;, xlim=(-1, 10))
+sns.countplot(x=posterior_sampels, color=sns_c[2], ax=ax[1])
+ax[1].set(title=&#39;Posterior Predictive Distribution&#39;, xlabel=&#39;y&#39;, xlim=(-1, 10));</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_50_0.png" alt="html" style="width: 1000px;"/>
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_43_0.svg" align="middle" style="width: 950px;">
+</figure>
 </center>
-<pre class="python"><code># We can also consider all the variables simultaneously. 
-pm.autocorrplot(trace, max_lag=20);</code></pre>
-<center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_51_0.png" alt="html" style="width: 1000px;"/>
-</center>
-<p>From these plots we see that the auto-correlation is not problematic. Indeed, we can test this through the <em>effective sample size</em>, which sould be close to the total sumber of samples <code>n_sim</code>.</p>
-<pre class="python"><code>pm.diagnostics.effective_n(trace)</code></pre>
-<p>{‘mu’: 2522.9785658157243,
-‘sigma’: 2510.182129406361,
-‘lam’: array([4050.79221675, 3812.11751115, 3723.18081493, 3353.99180192,
-3529.81011549])}</p>
-<p>Finally, we can compute the <a href="https://en.wikipedia.org/wiki/Watanabe–Akaike_information_criterion">Watanabe–Akaike information criterion</a>.</p>
-<pre class="python"><code>pm.waic(trace, model)</code></pre>
-<p>WAIC_r(WAIC=789.764634126058, WAIC_se=21.395864846123082, p_WAIC=5.844326163346711, var_warn=1)</p>
+<p>The shape of the distributions look very similar!</p>
 </div>
-<div id="residual-analysis" class="section level2">
-<h2>3.4 Residual analysis</h2>
-<p>In order to evaluate the model results we analyze the behaviour of the residuals.</p>
-<pre class="python"><code># Compute the mean of the simulation.
-lambda_mean = np.apply_along_axis(np.mean, axis=0, trace[&#39;lam&#39;])
-
-# Compute for each sample the posterior mean.
-cookies[&#39;yhat&#39;] = cookies.location.apply(lambda x: lambda_mean[x-1])
-
-# Compute the residuals.
-cookies[&#39;resid&#39;] = cookies.apply(lambda x: x.chips - x.yhat, axis=1)
+<div id="bayesian-hierarchical-modeling-a-chocolate-cookies-example." class="section level2">
+<h2>Bayesian Hierarchical Modeling: A Chocolate Cookies Example.</h2>
+<center>
+<img src="../images/monster.jpg" alt="html" style="width: 400px;"/>
+</center>
+<p>Now we are going to treat a more complicated example which illustrates a hierarchical model, which is one of the most frequent use cases for Bayesian models.</p>
+<p>This case of study is taken from the (strongly recommended!) online course <a href="https://www.coursera.org/learn/mcmc-bayesian-statistics"><strong>Bayesian Statistics: Techniques and Models</strong></a>. In the course content, the MCMC simulations are done with <a href="http://mcmc-jags.sourceforge.net/">JAGS</a> in <a href="https://www.r-project.org/">R</a>. As a matter of fact, this course motivated me to explore an analogous tool for Python.</p>
+<div id="data" class="section level3">
+<h3>Data</h3>
+<p>Assume there is a big factory producing chocolate cookies around the world. The cookies follow a unique recipe. You want to study the chocolate chips distribution for cookies produced in <span class="math inline">\(5\)</span> different locations. Let us read the data into a pandas dataframe.</p>
+<pre class="python"><code>cookies = pd.read_csv(&#39;../data/cookies.dat&#39;, sep = &#39; &#39;)
 
 cookies.head()</code></pre>
 <center>
@@ -925,12 +553,6 @@ chips
 <th>
 location
 </th>
-<th>
-yhat
-</th>
-<th>
-resid
-</th>
 </tr>
 </thead>
 <tbody>
@@ -944,12 +566,6 @@ resid
 <td>
 1
 </td>
-<td>
-9.277816
-</td>
-<td>
-2.722184
-</td>
 </tr>
 <tr>
 <th>
@@ -960,12 +576,6 @@ resid
 </td>
 <td>
 1
-</td>
-<td>
-9.277816
-</td>
-<td>
-2.722184
 </td>
 </tr>
 <tr>
@@ -978,12 +588,6 @@ resid
 <td>
 1
 </td>
-<td>
-9.277816
-</td>
-<td>
--3.277816
-</td>
 </tr>
 <tr>
 <th>
@@ -994,12 +598,6 @@ resid
 </td>
 <td>
 1
-</td>
-<td>
-9.277816
-</td>
-<td>
-3.722184
 </td>
 </tr>
 <tr>
@@ -1012,107 +610,956 @@ resid
 <td>
 1
 </td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>In data set we have <span class="math inline">\(5\)</span> different locations with <span class="math inline">\(30\)</span> observations each.</p>
+<pre class="python"><code>cookies.value_counts(&#39;location&#39;)</code></pre>
+<pre><code>location
+1    30
+2    30
+3    30
+4    30
+5    30
+dtype: int64</code></pre>
+<p>Let us start by plotting the sample data distribution:</p>
+<pre class="python"><code># Histogram distribution of chocolate chips for all cookies.
+fig, ax = plt.subplots()
+sns.countplot(x=&#39;chips&#39;, data=cookies, color=&#39;black&#39;, ax=ax);
+ax.set(title=&#39;Chips Count(All Locations)&#39;);</code></pre>
+<center>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_51_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Now let us plot the distribution per location:</p>
+<pre class="python"><code>g = sns.catplot(
+    x=&#39;chips&#39;,
+    data=cookies,
+    col=&#39;location&#39;,
+    hue=&#39;location&#39;,
+    kind=&#39;count&#39;,
+    dodge=False,
+    col_wrap=3
+)
+g.fig.suptitle(&#39;Chips Count per Location&#39;, y=1.02);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_53_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 8), constrained_layout=True
+)
+sns.kdeplot(
+    x=&#39;chips&#39;,
+    data=cookies,
+    hue=&#39;location&#39;,
+    palette=sns_c[:5],ax=ax[0]
+)
+sns.boxplot(
+    x=&#39;location&#39;,
+    y=&#39;chips&#39;,
+    data=cookies,
+    hue=&#39;location&#39;,
+    palette=sns_c[:5],
+    dodge=False,
+    ax=ax[1]
+)
+ax[1].legend(title=&#39;location&#39;, loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+fig.suptitle(&#39;Chips Distribution per Location&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_54_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>In view of these plots and the problem statement, one would consider the following aspects to model the data:</p>
+<ul>
+<li><p>On the one hand side you would imagine that the distribution across the locations is similar, as they all come from a unique recipe. This is why you may not want to model each location separately (pooled model).</p></li>
+<li><p>On the other hand, in reality, as the locations are not exactly the same you might expect some differences between each location. This is why you may not want to model all locations at once (un-pooled model).</p></li>
+</ul>
+<p>Hence, we would like to have a mix of the two settings described above (partiall pooling). Hierarchical models are a great way of doing this. How? Well, we can assume <span class="math inline">\(5\)</span> different parameters for each location, but all of them comming from a common global (hyper) prior distribution.</p>
+</div>
+<div id="the-model-hierarchical-approach" class="section level3">
+<h3>The Model: Hierarchical Approach</h3>
+<ul>
+<li>Hierarchical Model:</li>
+</ul>
+<p>We model the chocolate chip counts by a Poisson distribution with parameter <span class="math inline">\(\lambda\)</span>. Motivated by the example above, we choose a gamma prior.</p>
+<p><span class="math display">\[\begin{align}
+\text{chips} \sim  \text{Pois}(\lambda)
+\quad\quad\quad
+\lambda \sim  \Gamma(\alpha, \beta)
+\end{align}\]</span></p>
+<ul>
+<li>Parametrization:</li>
+</ul>
+<p>We parametrize the shape and scale of the gamma prior with the mean <span class="math inline">\(\mu\)</span> and variance <span class="math inline">\(\sigma^2\)</span>.</p>
+<p><span class="math display">\[\begin{align}
+\alpha =\frac{\mu^2}{\sigma^2}
+\quad\quad\quad
+\beta=\frac{\mu}{\sigma^2}
+\end{align}\]</span></p>
+<ul>
+<li>Prior Distributions:</li>
+</ul>
+<p>We further impose prior for these parameters</p>
+<p><span class="math display">\[\begin{align}
+\mu  \sim  \Gamma(2,1/5)
+\quad\quad\quad
+\sigma  \sim  \text{Exp}(1)
+\end{align}\]</span></p>
+<p>Let us generate the plots of the prior distributions:</p>
+<pre class="python"><code>x = np.linspace(start=0, stop=50, num=500)
+
+fig, ax = plt.subplots(
+    nrows=1, ncols=2, figsize=(12, 6), constrained_layout=True
+)
+ax[0].plot(x, ss.gamma.pdf(x, a=2, scale=5), color=sns_c[3])
+ax[0].set(
+    title=f&#39;Prior Distribution for $\mu$ \n Gamma Density Function for a={2} and b={1/5}&#39;
+)
+ax[1].plot(x, ss.expon.pdf(x,1), color=sns_c[3])
+ax[1].set(
+    title=&#39;Prior Distribution for sigma \n Exponential Density Function for $\lambda=1$&#39;,
+    xlim=(1, 10)
+);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_58_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>We will do some prior predictive sampling to understand the choice of these priors.</p>
+<p>Let us write the model in PyMC3. Note how the syntax mimics the mathematical formulation.</p>
+<pre class="python"><code># Define useful variables and coordinates in order to 
+# specify shapes of the distributions.
+chips = cookies[&#39;chips&#39;].values
+location_idx, locations = cookies[&#39;location&#39;].factorize(sort=True)
+
+COORDS = {
+    &#39;obs&#39;: cookies.index,
+    &#39;location&#39;: locations
+}</code></pre>
+<pre class="python"><code>with pm.Model(coords=COORDS) as cookies_model:
+    # Hyperpriors:
+    # Prior distribution for mu.
+    mu = pm.Gamma(&#39;mu&#39;, alpha=2.0, beta=1.0/5)
+    # Prior distribution for sigma2.
+    sigma = pm.Exponential(&#39;sigma&#39;, 1.0)
+    # Parametrization for the shape parameter.
+    alpha =  pm.Deterministic(&#39;alpha&#39;, mu**2 / sigma**2)
+    # Parametrization for the scale parameter.
+    beta = pm.Deterministic(&#39;beta&#39;, mu / sigma**2)
+    # Prior distribution for lambda.
+    lam = pm.Gamma(
+        &#39;lam&#39;, 
+        alpha=alpha, 
+        beta=beta, 
+        dims=&#39;location&#39;
+    )
+    # Likehood function.
+    rate = lam[location_idx]
+    likelihood = pm.Poisson(
+        &#39;likelihood&#39;,
+        mu=rate,
+        observed=chips,
+        dims=&#39;obs&#39;
+    )
+    # Sample prior distribution.
+    prior_predictive = pm.sample_prior_predictive()
+
+pm.model_to_graphviz(cookies_model)</code></pre>
+<center>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_62_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Let us what the model predicts using the prior before seeing the data:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 8))
+sns.countplot(
+    x=prior_predictive[&#39;likelihood&#39;].flatten(), 
+    color=sns_c[5],
+    ax=ax
+)
+ax.set(
+    title=&#39;Prior Predictive Sampling (all $\lambda$s)&#39;, 
+    xlim=(None, 50)
+);</code></pre>
+<center>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_64_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Now let us pass the data trough the model and sample from the posterior distribution.</p>
+<pre class="python"><code>with cookies_model:
+
+    cookies_trace = pm.sample(
+        draws=2000, chains=4, return_inferencedata=True
+    )
+
+    posterior_predictive = az.from_pymc3(
+        posterior_predictive=pm.sample_posterior_predictive(trace=cookies_trace)
+    )</code></pre>
+<p>Let us plot the traces:</p>
+<pre class="python"><code>az.plot_trace(cookies_trace);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_68_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>From the traceplot we see that the chains have converged. Let us compute the mean and hdi for each posterior component.</p>
+<pre class="python"><code>az.plot_posterior(cookies_trace);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_70_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>We can also have a detailed summary of the posterior distribution for each parameter:</p>
+<pre class="python"><code>az.summary(cookies_trace)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+mu
+</th>
 <td>
-9.277816
+9.114
 </td>
 <td>
-2.722184
+0.959
+</td>
+<td>
+7.469
+</td>
+<td>
+11.095
+</td>
+<td>
+0.013
+</td>
+<td>
+0.009
+</td>
+<td>
+5614.0
+</td>
+<td>
+4547.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+2.072
+</td>
+<td>
+0.710
+</td>
+<td>
+0.969
+</td>
+<td>
+3.412
+</td>
+<td>
+0.011
+</td>
+<td>
+0.008
+</td>
+<td>
+4570.0
+</td>
+<td>
+4473.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+25.948
+</td>
+<td>
+17.252
+</td>
+<td>
+2.789
+</td>
+<td>
+55.881
+</td>
+<td>
+0.269
+</td>
+<td>
+0.232
+</td>
+<td>
+4600.0
+</td>
+<td>
+4362.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta
+</th>
+<td>
+2.857
+</td>
+<td>
+1.892
+</td>
+<td>
+0.377
+</td>
+<td>
+6.206
+</td>
+<td>
+0.029
+</td>
+<td>
+0.025
+</td>
+<td>
+4494.0
+</td>
+<td>
+4525.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[0]
+</th>
+<td>
+9.281
+</td>
+<td>
+0.540
+</td>
+<td>
+8.290
+</td>
+<td>
+10.310
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+7964.0
+</td>
+<td>
+5892.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[1]
+</th>
+<td>
+6.240
+</td>
+<td>
+0.462
+</td>
+<td>
+5.415
+</td>
+<td>
+7.152
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+6221.0
+</td>
+<td>
+4753.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[2]
+</th>
+<td>
+9.532
+</td>
+<td>
+0.551
+</td>
+<td>
+8.514
+</td>
+<td>
+10.574
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+7970.0
+</td>
+<td>
+6172.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[3]
+</th>
+<td>
+8.942
+</td>
+<td>
+0.520
+</td>
+<td>
+8.016
+</td>
+<td>
+9.975
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+7568.0
+</td>
+<td>
+5857.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[4]
+</th>
+<td>
+11.751
+</td>
+<td>
+0.620
+</td>
+<td>
+10.602
+</td>
+<td>
+12.914
+</td>
+<td>
+0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+6835.0
+</td>
+<td>
+5691.0
+</td>
+<td>
+1.0
 </td>
 </tr>
 </tbody>
 </table>
 </div>
 </center>
-<pre class="python"><code># Cookies Residuals
-fig, ax = plt.subplots(figsize=(8, 6))
-cookies.reset_index().plot.scatter(x=&#39;index&#39;, y=&#39;resid&#39;, ax=ax)
-ax.axhline(y=0.0, color=&#39;r&#39;, linestyle=&#39;--&#39;)
-ax.set(title=&#39;Cookies Residuals&#39;, xlabel=&#39;Observation&#39;);</code></pre>
+<p>The <code>r_hat</code> are all very close to <span class="math inline">\(1.0\)</span> which is what we want. There are many other <a href="https://arviz-devs.github.io/arviz/api/diagnostics.html">diagnostics</a> available in <a href="https://arviz-devs.github.io/arviz/index.html">arviz</a>.</p>
+<p>We can also test for correlation between samples in the chains. We are aiming for zero auto-correlation to get “random” samples from the posterior distribution.</p>
+<pre class="python"><code># Auto-correlation of the parameter sigma for the 3 chains.
+az.plot_autocorr(data=cookies_trace, combined=True, max_lag=10);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_58_1.png" title="fig:" alt="png" />
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_75_0.svg" align="middle" style="width: 950px;">
+</figure>
 </center>
-<p>We do not see a particular partern in the scatter plot of the residuals against the observation.</p>
-<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 6))
-cookies.plot.scatter(x=&#39;yhat&#39;, y=&#39;resid&#39;, ax=ax)
-ax.axhline(y=0.0, color=&#39;red&#39;, linestyle=&#39;--&#39;)
-ax.set(title=&#39;Cookies Residuals&#39;);</code></pre>
+<p>From these plots we see that the auto-correlation is not problematic. Moreover, one can get an estimate of the effective sample size of the chains from the columns <code>ess_</code> in the summary table above, see <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.ess.html">arviz.ess</a>.</p>
+<p>Finally, we can compute the <a href="https://en.wikipedia.org/wiki/Watanabe–Akaike_information_criterion">Watanabe–Akaike information</a> (see <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.waic.html">arviz.waic</a>) and the <a href="https://arxiv.org/abs/1507.04544">Pareto-smoothed importance sampling leave-one-out cross-validation</a> (see <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.loo.html">arviz.loo</a>), which are metrics to estimate out-of-sample performance.</p>
+<pre class="python"><code>stats_df = pd.concat([
+    pd.DataFrame(az.loo(data=cookies_trace)),
+    pd.DataFrame(az.waic(data=cookies_trace))
+])
+stats_df.columns = [&#39;values&#39;]
+
+stats_df </code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_60_1.png" title="fig:" alt="png" />
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+values
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+loo
+</th>
+<td>
+-394.831515
+</td>
+</tr>
+<tr>
+<th>
+loo_se
+</th>
+<td>
+10.674036
+</td>
+</tr>
+<tr>
+<th>
+p_loo
+</th>
+<td>
+5.756556
+</td>
+</tr>
+<tr>
+<th>
+n_samples
+</th>
+<td>
+8000
+</td>
+</tr>
+<tr>
+<th>
+n_data_points
+</th>
+<td>
+150
+</td>
+</tr>
+<tr>
+<th>
+warning
+</th>
+<td>
+False
+</td>
+</tr>
+<tr>
+<th>
+loo_scale
+</th>
+<td>
+log
+</td>
+</tr>
+<tr>
+<th>
+waic
+</th>
+<td>
+-394.82533
+</td>
+</tr>
+<tr>
+<th>
+waic_se
+</th>
+<td>
+10.673582
+</td>
+</tr>
+<tr>
+<th>
+p_waic
+</th>
+<td>
+5.750371
+</td>
+</tr>
+<tr>
+<th>
+n_samples
+</th>
+<td>
+8000
+</td>
+</tr>
+<tr>
+<th>
+n_data_points
+</th>
+<td>
+150
+</td>
+</tr>
+<tr>
+<th>
+warning
+</th>
+<td>
+True
+</td>
+</tr>
+<tr>
+<th>
+waic_scale
+</th>
+<td>
+log
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Another useful diagnostic for HCM algorithms is an energy plot, see <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.plot_energy.html">arviz.plot_energy</a>. These algorithms can me seen as a dynamical system of a physical particle where the total energy is conserved (see <a href="https://arxiv.org/abs/1410.5110">The Geometric Foundations of Hamiltonian Monte Carlo</a>). In this plot we want the <em>marginal and energy transition plots</em> to overlap as much as possible.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+az.plot_energy(
+    data=cookies_trace,
+    fill_color=(&#39;C0&#39;, &#39;C3&#39;),
+    fill_alpha=(0.5, 0.5),
+    ax=ax
+)
+ax.set(
+    title=&#39;Energy transition distribution and marginal energy distribution&#39;
+);</code></pre>
+<center>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_80_0.svg" title="fig:" alt="svg" />
 </center>
 </div>
-<div id="predictions" class="section level2">
-<h2>3.5 Predictions</h2>
+<div id="posterior-predictive-distribution" class="section level3">
+<h3>Posterior Predictive Distribution</h3>
 <p>Finally, we are going to illustrate how to use the simulation results to derive predictions.</p>
-<div id="for-a-known-location" class="section level3">
-<h3>3.5.1 For a known location</h3>
-<p>Let us consider Location 1. We want, for example, to compute the posterior probability the next cookie in this location has less than 7 chips.</p>
-<pre class="python"><code># We generate n_sim samples of a Poisson distribution for 
-# each value for lam_0 (location 1) simulation..
-y_pred_location_1 = np.random.poisson(lam=trace[&#39;lam&#39;][:,0] , size=n_sim)
+<div id="existing-locations" class="section level4">
+<h4>Existing Locations</h4>
+<p>Let us generate posterior prediction checks for existing locations.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=3,
+    ncols=2,
+    figsize=(12, 12),
+    constrained_layout=True
+)
 
-fig, ax = plt.subplots(figsize=(8, 6))
-sns.distplot(y_pred_location_1, bins=30, ax=ax)
-ax.set(title=&#39;Chocolate Chips Distribution for Location 1&#39;);</code></pre>
+axes = axes.flatten()
+
+for i, location in enumerate(locations):
+    ax = axes[i]
+    az.plot_ppc(
+        data=posterior_predictive,
+        coords={
+            &#39;obs&#39;: np.where(locations[location_idx] == location)
+        },
+        ax=ax
+    )
+    ax.legend(loc=&#39;upper left&#39;)
+    ax.set(
+        title=f&#39;Location = {location}&#39;,
+        xlabel=&#39;chips&#39;,
+        xlim=(0, 30)
+    )</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_62_0.png" title="fig:" alt="png" />
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_82_0.svg" align="middle" style="width: 950px;">
+</figure>
 </center>
-<pre class="python"><code># Probability the next cookie in location has less than 7 chips.
-(y_pred_location_1 &lt; 7).astype(int).mean()</code></pre>
-<p>0.17866666666666667</p>
-</div>
-<div id="for-a-new-location" class="section level3">
-<h3>3.5.1 For a new location</h3>
-<p>Now assume we want to open a new location. First, we want to compute the posterior probability that this new location has <span class="math inline">\(\lambda &gt; 15\)</span>.</p>
-<pre class="python"><code># Posterior distribution of for a an b 
-# from the simulated values of mu and sigma2.
-post_a = trace[&#39;mu&#39;]**2/trace[&#39;sigma&#39;]**2
-post_b = trace[&#39;mu&#39;]/trace[&#39;sigma&#39;]**2
-
-# We now generate samples of a gamma distribution 
-# with these generated parameters of a and b.
-lambda_pred_dist = np.random.gamma(post_a, 1/post_b, n_sim) 
-
-fig, ax = plt.subplots(figsize=(8, 6))
-sns.distplot(lambda_pred_dist, bins=30, ax=ax)
-ax.set(title=&#39;Lambda Predicted Distribution&#39;);</code></pre>
+<p>The plots look very reasonable.</p>
+<p>Let us deep dive in<code>location = 1</code>. We want, for example, to compute the posterior probability that the next cookie generated in this location will have less that <span class="math inline">\(7\)</span> chips. First let us start by looking into the posterior distribution of <span class="math inline">\(\lambda\)</span> for this location.</p>
+<pre class="python"><code># Set location.
+loc = 1
+# Get posterior samples.
+lambda_loc = cookies_trace \
+    .posterior \
+    .stack(sample=(&#39;chain&#39;, &#39;draw&#39;)) \
+    [&#39;lam&#39;][loc - 1, :].values
+# Plot distribution.
+fig, ax = plt.subplots()
+sns.histplot(
+    x=lambda_loc,
+    stat=&#39;density&#39;,
+    color=sns_c[0],
+    alpha=0.5,
+    label=f&#39;mean = {lambda_loc.mean(): 0.3f}&#39;,
+    ax=ax
+)
+sns.kdeplot(
+    x=lambda_loc,
+    color=sns_c[0],
+    ax=ax
+)
+ax.legend()
+ax.set(title=f&#39;Lambda = {loc} Distribution&#39;, xlabel=&#39;$\lambda$&#39;);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_65_0.png" title="fig:" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_85_0.svg" title="fig:" alt="svg" />
 </center>
-<pre class="python"><code># Posterior probability a new location has lambda &gt; 15.
-(lambda_pred_dist &gt; 15).astype(int).mean()</code></pre>
-<p>0.019333333333333334</p>
-<p>Now we answer a question at the next level of the hierarchical model. We want to calculate the posterior probability for a cookie produced in a new location to have more than 15 chocolate chips.</p>
-<pre class="python"><code># Posterior distribution of the chips.
-# Here we use the values of lambda obtained above.
-cookies_pred_dist = np.random.poisson(lam=lambda_pred_dist, size=n_sim)
-
-fig, ax = plt.subplots(figsize=(8, 6))
-sns.distplot(cookies_pred_dist, bins=30, ax=ax)
-ax.set(title=&#39;Chocolate Chips Distribution New Location&#39;);</code></pre>
+<p>Next, let us use these values and sample from a Poisson distribution to get the chips distribution.</p>
+<pre class="python"><code>SEED = 5
+np.random.seed(SEED)
+# Sample from Poisson distribution using posterior samples from lambda.
+samples_loc = np.random.poisson(lam=lambda_loc)
+# Plot samples vs posterior distribution.
+fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 10), constrained_layout=True
+)
+sns.countplot(
+    x=&#39;chips&#39;,
+    data=cookies.query(f&#39;location == {loc}&#39;),
+    color=&#39;black&#39;,
+    label=f&#39;mean = {cookies.query(f&quot;location == {loc}&quot;)[&quot;chips&quot;].mean(): 0.3f}&#39;,
+    ax=ax[0]
+)
+ax[0].legend(loc=&#39;upper right&#39;)
+ax[0].set(
+    title=f&#39;sample distribution location {loc: 0.3f}&#39;,
+    xlim=(-3, 17)
+)
+sns.countplot(
+    x=samples_loc,
+    color=sns_c[2],
+    label=f&#39;mean = {samples_loc.mean()}&#39;,
+    ax=ax[1]
+)
+ax[1].legend(loc=&#39;upper right&#39;)
+ax[1].set(
+    title=f&#39;posterior distribution location {loc}&#39;,
+    xlim=(0, 20)
+);</code></pre>
 <center>
-<img src="../images/intro_PyMC3_files/intro_PyMC3_68_0.png" title="fig:" alt="png" />
+<img src="../images/intro_PyMC3_files/intro_PyMC3_87_0.svg" title="fig:" alt="svg" />
 </center>
-<pre class="python"><code># Posterior probability that a cookie produced 
-# in a new location has more than 15 chocolate chips.
-(cookies_pred_dist&gt;15).astype(int).mean()</code></pre>
-<p>0.054</p>
+<p>Let us now compute the desired probability:</p>
+<pre class="python"><code>(samples_loc &lt; 7).astype(float).mean()</code></pre>
+<pre><code>0.180125</code></pre>
+<p><strong>Remark:</strong> We can also compute this probability using the <code>posterior_predictive</code> object directly.</p>
+<pre class="python"><code>samples_loc = posterior_predictive \
+    .posterior_predictive \
+    .stack(sample=(&#39;chain&#39;, &#39;draw&#39;)) \
+    [&#39;likelihood&#39;][locations[location_idx] == loc] \
+    .values \
+    .flatten()
+
+(samples_loc &lt; 7).astype(float).mean()</code></pre>
+<pre><code>0.186375</code></pre>
+</div>
+<div id="for-a-new-location" class="section level4">
+<h4>For a new location</h4>
+<p>Now assume we want to open a new location. First, we want to compute the posterior probability that this new location has <span class="math inline">\(\lambda_{new} &gt; 15\)</span>. To do so, as we do not have data from new locations, we can start by sampling from the (hyper)-prior distribution:</p>
+<pre class="python"><code>alpha_samples = cookies_trace \
+    .posterior \
+    .stack(sample=(&#39;chain&#39;, &#39;draw&#39;)) \
+    [&#39;alpha&#39;].values
+
+beta_samples = cookies_trace \
+    .posterior \
+    .stack(sample=(&#39;chain&#39;, &#39;draw&#39;)) \
+    [&#39;beta&#39;].values</code></pre>
+<p>Let us plot the samples:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1, ncols=2, figsize=(12, 6), constrained_layout=True
+)
+sns.histplot(
+    x=alpha_samples,
+    stat=&#39;density&#39;,
+    alpha=0.5,
+    color=sns_c[6],
+    label=f&#39;mean = {alpha_samples.mean(): 0.3f}&#39;,
+    ax=ax[0]
+)
+sns.kdeplot(
+    x=alpha_samples,
+    color=sns_c[6],
+    ax=ax[0]
+)
+ax[0].legend()
+ax[0].set(title=r&#39;Posterior Distribution $\alpha$&#39;)
+sns.histplot(
+    x=beta_samples,
+    stat=&#39;density&#39;,
+    alpha=0.5,
+    color=sns_c[8],
+    label=f&#39;mean = {beta_samples.mean(): 0.3f}&#39;,
+    ax=ax[1]
+)
+sns.kdeplot(
+    x=beta_samples ,
+    color=sns_c[8],
+    ax=ax[1]
+)
+ax[1].legend()
+ax[0].set(title=r&#39;Posterior Distribution $\beta$&#39;);</code></pre>
+<center>
+<figure>
+<img alt="MyImage" src="../images/intro_PyMC3_files/intro_PyMC3_95_0.svg" align="middle" style="width: 950px;">
+</figure>
+</center>
+<p>Next we sample to the the distribution of <span class="math inline">\(\lambda_{new}\)</span>.</p>
+<pre class="python"><code>lambda_new_samples = np.random.gamma(alpha_samples, 1/beta_samples)
+
+fig, ax = plt.subplots()
+sns.histplot(
+    x=lambda_new_samples,
+    stat=&#39;density&#39;,
+    alpha=0.5,
+    color=sns_c[9],
+    label=f&#39;mean = {lambda_new_samples.mean(): 0.3f}&#39;,
+    ax=ax
+)
+sns.kdeplot(
+    x=lambda_new_samples,
+    color=sns_c[9],
+    ax=ax
+)
+ax.legend()
+ax.set(title=f&#39;Lambda New - Distribution&#39;, xlabel=&#39;$\lambda_{new}$&#39;);</code></pre>
+<center>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_97_0.svg" title="fig:" alt="svg" />
+</center>
+<p>To compute the desired probability we can simply do:</p>
+<pre class="python"><code>(lambda_new_samples &gt; 15).astype(float).mean()</code></pre>
+<pre><code>0.015875</code></pre>
+<p>Finally, for this new location, we wan to estimate the probability for a cookie to have more than 15 chocolate chips. To do so we move to the next level in our hierarchical model. We sample from a Poisson distribution using the samples obtained for <span class="math inline">\(\lambda_{new}\)</span>.</p>
+<pre class="python"><code>chips_new_location = np.random.poisson(lam=lambda_new_samples)
+
+fig, ax = plt.subplots()
+sns.countplot(
+    x=chips_new_location,
+    color=sns_c[7],
+    edgecolor=&#39;black&#39;,
+    label=f&#39;mean = {chips_new_location.mean(): 0.3f}&#39;,
+    ax=ax
+)
+ax.legend()
+ax.set(title=f&#39;Chips Distribution New Location&#39;, xlabel=&#39;chips&#39;);</code></pre>
+<center>
+<img src="../images/intro_PyMC3_files/intro_PyMC3_101_0.svg" title="fig:" alt="svg" />
+</center>
+<p>We now can estimate the required probability:</p>
+<pre class="python"><code>(chips_new_location &gt; 15).astype(float).mean()</code></pre>
+<pre><code>0.054</code></pre>
+<hr />
 </div>
 </div>
 </div>
-<div id="references-and-further-reading" class="section level1">
-<h1>4 References and Further Reading</h1>
+<div id="references-and-further-reading" class="section level2">
+<h2>References and Further Reading</h2>
 <p>Here we provide some suggested references used in this post and also to go deeper in the subject.</p>
-<div id="bayesian-probability" class="section level2">
-<h2>4.1 Bayesian Probability</h2>
+<div id="bayesian-statistics" class="section level3">
+<h3>Bayesian Statistics</h3>
 <ul>
+<li><p><a href="https://github.com/aloctavodia/BAP">Bayesian Analysis with Python (Second edition),</a></p></li>
+<li><p><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a></p></li>
 <li><p><a href="https://www.coursera.org/learn/bayesian-statistics">Coursera: Bayesian Statistics: From Concept to Data Analysis</a></p></li>
 <li><p><a href="https://www.coursera.org/learn/mcmc-bayesian-statistics">Coursera: Bayesian Statistics: Techniques and Models</a></p></li>
 <li><p><a href="http://www.springer.com/us/book/9780387922997">A First Course in Bayesian Statistical Methods, Peter D. Hoff</a></p></li>
 <li><p><a href="http://www.springer.com/la/book/9780387400846">An Introduction to Bayesian Analysis: Theory and Methods, Ghosh, Jayanta K., Delampady, Mohan, Samanta, Tapas</a></p></li>
+<li><p><a href="https://betanalpha.github.io/writing/">Michael Betancourt’s blog</a></p></li>
+<li><p><a href="https://arxiv.org/abs/1410.5110">The Geometric Foundations of Hamiltonian Monte Carlo</a></p></li>
 </ul>
 </div>
-<div id="pymc3" class="section level2">
-<h2>4.2 PyMC3</h2>
+<div id="pymc3" class="section level3">
+<h3>PyMC3</h3>
 <ul>
 <li><p><a href="https://pymc-devs.github.io/pymc3/index.html">Documentation</a></p></li>
 <li><p><a href="https://arxiv.org/abs/1507.08050">Probabilistic Programming in Python using PyMC, John Salvatier, Thomas Wiecki, Christopher Fonnesbeck</a></p></li>
