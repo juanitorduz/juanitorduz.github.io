@@ -1,4 +1,6 @@
 ![Build](https://github.com/juanitorduz/juanitorduz.github.io/workflows/URL%20Health/badge.svg)
+[![Open in Visual Studio Code](https://open.vscode.dev/badges/open-in-vscode.svg)](https://open.vscode.dev/juanitorduz/juanitorduz.github.io)
+
 # Personal Website Dr. Juan Camilo Orduz
 
 Here you can find the source code of my personal website [juanitorduz.github.io](https://juanitorduz.github.io/). 
