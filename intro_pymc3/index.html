@@ -675,8 +675,8 @@ fig.suptitle(&#39;Chips Distribution per Location&#39;);</code></pre>
 </center>
 <p>In view of these plots and the problem statement, one would consider the following aspects to model the data:</p>
 <ul>
-<li><p>On the one hand side you would imagine that the distribution across the locations is similar, as they all come from a unique recipe. This is why you may want to model all locations together (pooling.</p></li>
-<li><p>On the other hand, in reality, as the locations are not exactly the same you might expect some differences between each location. This is why you may want to model all locations separatelly (no pooling).</p></li>
+<li><p>On the one hand side you would imagine that the distribution across the locations is similar, as they all come from a unique recipe. This is why you may want to model all locations together (pooling).</p></li>
+<li><p>On the other hand, in reality, as the locations are not exactly the same you might expect some differences between each location. This is why you may want to model all locations separately (no pooling).</p></li>
 </ul>
 <p>Hence, we would like to have a mix of the two settings described above (partial pooling). Hierarchical models are a great way of doing this. How? Well, we can assume <span class="math inline">\(5\)</span> different parameters for each location, but all of them coming from a common global (hyper) prior distribution.</p>
 </div>

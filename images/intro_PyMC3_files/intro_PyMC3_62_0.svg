@@ -18,41 +18,13 @@
 <path fill="none" stroke="black" d="M71.4,-8C71.4,-8 167.4,-8 167.4,-8 173.4,-8 179.4,-14 179.4,-20 179.4,-20 179.4,-109.95 179.4,-109.95 179.4,-115.95 173.4,-121.95 167.4,-121.95 167.4,-121.95 71.4,-121.95 71.4,-121.95 65.4,-121.95 59.4,-115.95 59.4,-109.95 59.4,-109.95 59.4,-20 59.4,-20 59.4,-14 65.4,-8 71.4,-8"/>
 <text text-anchor="middle" x="160.9" y="-15.8" font-family="Times,serif" font-size="14.00">150</text>
 </g>
-<!-- sigma -->
+<!-- alpha -->
 <g id="node1" class="node">
-<title>sigma</title>
-<ellipse fill="none" stroke="black" cx="59.4" cy="-398.38" rx="59.29" ry="37.45"/>
-<text text-anchor="middle" x="59.4" y="-409.68" font-family="Times,serif" font-size="14.00">sigma</text>
-<text text-anchor="middle" x="59.4" y="-394.68" font-family="Times,serif" font-size="14.00">~</text>
-<text text-anchor="middle" x="59.4" y="-379.68" font-family="Times,serif" font-size="14.00">Exponential</text>
-</g>
-<!-- beta -->
-<g id="node2" class="node">
-<title>beta</title>
+<title>alpha</title>
 <polygon fill="none" stroke="black" points="110.9,-324.91 17.9,-324.91 17.9,-271.91 110.9,-271.91 110.9,-324.91"/>
-<text text-anchor="middle" x="64.4" y="-309.71" font-family="Times,serif" font-size="14.00">beta</text>
+<text text-anchor="middle" x="64.4" y="-309.71" font-family="Times,serif" font-size="14.00">alpha</text>
 <text text-anchor="middle" x="64.4" y="-294.71" font-family="Times,serif" font-size="14.00">~</text>
 <text text-anchor="middle" x="64.4" y="-279.71" font-family="Times,serif" font-size="14.00">Deterministic</text>
-</g>
-<!-- sigma&#45;&gt;beta -->
-<g id="edge3" class="edge">
-<title>sigma&#45;&gt;beta</title>
-<path fill="none" stroke="black" d="M61.26,-360.9C61.69,-352.48 62.14,-343.54 62.57,-335.16"/>
-<polygon fill="black" stroke="black" points="66.08,-335.08 63.1,-324.92 59.09,-334.73 66.08,-335.08"/>
-</g>
-<!-- alpha -->
-<g id="node4" class="node">
-<title>alpha</title>
-<polygon fill="none" stroke="black" points="221.9,-324.91 128.9,-324.91 128.9,-271.91 221.9,-271.91 221.9,-324.91"/>
-<text text-anchor="middle" x="175.4" y="-309.71" font-family="Times,serif" font-size="14.00">alpha</text>
-<text text-anchor="middle" x="175.4" y="-294.71" font-family="Times,serif" font-size="14.00">~</text>
-<text text-anchor="middle" x="175.4" y="-279.71" font-family="Times,serif" font-size="14.00">Deterministic</text>
-</g>
-<!-- sigma&#45;&gt;alpha -->
-<g id="edge1" class="edge">
-<title>sigma&#45;&gt;alpha</title>
-<path fill="none" stroke="black" d="M94.2,-367.99C107.7,-356.58 123.21,-343.49 137.03,-331.81"/>
-<polygon fill="black" stroke="black" points="139.56,-334.25 144.95,-325.13 135.05,-328.91 139.56,-334.25"/>
 </g>
 <!-- lam -->
 <g id="node5" class="node">
@@ -62,37 +34,65 @@
 <text text-anchor="middle" x="119.4" y="-194.73" font-family="Times,serif" font-size="14.00">~</text>
 <text text-anchor="middle" x="119.4" y="-179.73" font-family="Times,serif" font-size="14.00">Gamma</text>
 </g>
-<!-- beta&#45;&gt;lam -->
-<g id="edge5" class="edge">
-<title>beta&#45;&gt;lam</title>
+<!-- alpha&#45;&gt;lam -->
+<g id="edge6" class="edge">
+<title>alpha&#45;&gt;lam</title>
 <path fill="none" stroke="black" d="M78.85,-271.66C84.07,-262.37 90.1,-251.62 95.89,-241.3"/>
 <polygon fill="black" stroke="black" points="99.05,-242.82 100.9,-232.39 92.95,-239.39 99.05,-242.82"/>
 </g>
-<!-- mu -->
+<!-- beta -->
+<g id="node2" class="node">
+<title>beta</title>
+<polygon fill="none" stroke="black" points="221.9,-324.91 128.9,-324.91 128.9,-271.91 221.9,-271.91 221.9,-324.91"/>
+<text text-anchor="middle" x="175.4" y="-309.71" font-family="Times,serif" font-size="14.00">beta</text>
+<text text-anchor="middle" x="175.4" y="-294.71" font-family="Times,serif" font-size="14.00">~</text>
+<text text-anchor="middle" x="175.4" y="-279.71" font-family="Times,serif" font-size="14.00">Deterministic</text>
+</g>
+<!-- beta&#45;&gt;lam -->
+<g id="edge5" class="edge">
+<title>beta&#45;&gt;lam</title>
+<path fill="none" stroke="black" d="M160.68,-271.66C155.37,-262.37 149.23,-251.62 143.33,-241.3"/>
+<polygon fill="black" stroke="black" points="146.24,-239.33 138.23,-232.39 140.16,-242.81 146.24,-239.33"/>
+</g>
+<!-- sigma -->
 <g id="node3" class="node">
+<title>sigma</title>
+<ellipse fill="none" stroke="black" cx="59.4" cy="-398.38" rx="59.29" ry="37.45"/>
+<text text-anchor="middle" x="59.4" y="-409.68" font-family="Times,serif" font-size="14.00">sigma</text>
+<text text-anchor="middle" x="59.4" y="-394.68" font-family="Times,serif" font-size="14.00">~</text>
+<text text-anchor="middle" x="59.4" y="-379.68" font-family="Times,serif" font-size="14.00">Exponential</text>
+</g>
+<!-- sigma&#45;&gt;alpha -->
+<g id="edge1" class="edge">
+<title>sigma&#45;&gt;alpha</title>
+<path fill="none" stroke="black" d="M61.26,-360.9C61.69,-352.48 62.14,-343.54 62.57,-335.16"/>
+<polygon fill="black" stroke="black" points="66.08,-335.08 63.1,-324.92 59.09,-334.73 66.08,-335.08"/>
+</g>
+<!-- sigma&#45;&gt;beta -->
+<g id="edge3" class="edge">
+<title>sigma&#45;&gt;beta</title>
+<path fill="none" stroke="black" d="M94.2,-367.99C107.7,-356.58 123.21,-343.49 137.03,-331.81"/>
+<polygon fill="black" stroke="black" points="139.56,-334.25 144.95,-325.13 135.05,-328.91 139.56,-334.25"/>
+</g>
+<!-- mu -->
+<g id="node4" class="node">
 <title>mu</title>
 <ellipse fill="none" stroke="black" cx="180.4" cy="-398.38" rx="43.27" ry="37.45"/>
 <text text-anchor="middle" x="180.4" y="-409.68" font-family="Times,serif" font-size="14.00">mu</text>
 <text text-anchor="middle" x="180.4" y="-394.68" font-family="Times,serif" font-size="14.00">~</text>
 <text text-anchor="middle" x="180.4" y="-379.68" font-family="Times,serif" font-size="14.00">Gamma</text>
 </g>
-<!-- mu&#45;&gt;beta -->
-<g id="edge4" class="edge">
-<title>mu&#45;&gt;beta</title>
-<path fill="none" stroke="black" d="M149.92,-371.64C135.4,-359.38 117.89,-344.58 102.5,-331.59"/>
-<polygon fill="black" stroke="black" points="104.57,-328.76 94.67,-324.98 100.05,-334.1 104.57,-328.76"/>
-</g>
 <!-- mu&#45;&gt;alpha -->
 <g id="edge2" class="edge">
 <title>mu&#45;&gt;alpha</title>
+<path fill="none" stroke="black" d="M149.92,-371.64C135.4,-359.38 117.89,-344.58 102.5,-331.59"/>
+<polygon fill="black" stroke="black" points="104.57,-328.76 94.67,-324.98 100.05,-334.1 104.57,-328.76"/>
+</g>
+<!-- mu&#45;&gt;beta -->
+<g id="edge4" class="edge">
+<title>mu&#45;&gt;beta</title>
 <path fill="none" stroke="black" d="M178.54,-360.9C178.11,-352.48 177.65,-343.54 177.22,-335.16"/>
 <polygon fill="black" stroke="black" points="180.7,-334.73 176.7,-324.92 173.71,-335.08 180.7,-334.73"/>
-</g>
-<!-- alpha&#45;&gt;lam -->
-<g id="edge6" class="edge">
-<title>alpha&#45;&gt;lam</title>
-<path fill="none" stroke="black" d="M160.68,-271.66C155.37,-262.37 149.23,-251.62 143.33,-241.3"/>
-<polygon fill="black" stroke="black" points="146.24,-239.33 138.23,-232.39 140.16,-242.81 146.24,-239.33"/>
 </g>
 <!-- likelihood -->
 <g id="node6" class="node">
