@@ -95,7 +95,7 @@
 </ul>
 </blockquote>
 <p>In addition, from a practical point of view, PyMC3 syntax is very transparent from the mathematical point of view.</p>
-<p>This post does not aim to give a full treatment of the <del>mathematical details</del>, as there are many good (complete and detailed) references around these topics (some of them collected at the end of the post). Also, we are not going to dive deep into PyMC3 as all the details can be found in the documentation. Instead, we are interested in giving an overview of the basic mathematical consepts combined with examples (written in Python code). Still, we briefly describe the main idea behind <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Markov Chain Monte Carlo</a>, a sampling method from which other methods are inspired from.</p>
+<p>This post does not aim to give a full treatment of the <del>mathematical details</del>, as there are many good (complete and detailed) references around these topics (some of them collected at the end of the post). Also, we are not going to dive deep into PyMC3 as all the details can be found in the documentation. Instead, we are interested in giving an overview of the basic mathematical concepts combined with examples (written in Python code). Still, we briefly describe the main idea behind <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Markov Chain Monte Carlo</a>, a sampling method from which other methods are inspired from.</p>
 <p><strong>Remark:</strong> Among he rich literature in bayesian statistics I particularly recommend <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a> by, Richard McElreath. It is an excellent conceptual and practical introduction to the subject. Moreover, the PyMC3 dev team translated all of the <a href="https://github.com/pymc-devs/resources/tree/master/Rethinking_2">code into PyMC3</a>.</p>
 <p><strong>Update:</strong> This post has been updated to include better integration with <a href="https://arviz-devs.github.io/arviz/">arviz</a> and <a href="http://xarray.pydata.org/en/stable/">xarray</a> plus to update PyMC3 syntax.</p>
 <div id="mathematical-background" class="section level2">
@@ -675,10 +675,10 @@ fig.suptitle(&#39;Chips Distribution per Location&#39;);</code></pre>
 </center>
 <p>In view of these plots and the problem statement, one would consider the following aspects to model the data:</p>
 <ul>
-<li><p>On the one hand side you would imagine that the distribution across the locations is similar, as they all come from a unique recipe. This is why you may not want to model each location separately (pooled model).</p></li>
-<li><p>On the other hand, in reality, as the locations are not exactly the same you might expect some differences between each location. This is why you may not want to model all locations at once (un-pooled model).</p></li>
+<li><p>On the one hand side you would imagine that the distribution across the locations is similar, as they all come from a unique recipe. This is why you may want to model all locations together (pooling.</p></li>
+<li><p>On the other hand, in reality, as the locations are not exactly the same you might expect some differences between each location. This is why you may want to model all locations separatelly (no pooling).</p></li>
 </ul>
-<p>Hence, we would like to have a mix of the two settings described above (partiall pooling). Hierarchical models are a great way of doing this. How? Well, we can assume <span class="math inline">\(5\)</span> different parameters for each location, but all of them comming from a common global (hyper) prior distribution.</p>
+<p>Hence, we would like to have a mix of the two settings described above (partial pooling). Hierarchical models are a great way of doing this. How? Well, we can assume <span class="math inline">\(5\)</span> different parameters for each location, but all of them coming from a common global (hyper) prior distribution.</p>
 </div>
 <div id="the-model-hierarchical-approach" class="section level3">
 <h3>The Model: Hierarchical Approach</h3>
