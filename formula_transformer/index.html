@@ -80,6 +80,7 @@
 
 
 <p>In this notebook I want to describe how to create features inside <a href="https://scikit-learn.org/stable/modules/compose.html">scikit-learn pipelines</a> using <a href="https://patsy.readthedocs.io/en/latest/formulas.html">patsy-like formulas</a>. I have used this approach to generate features in a previous post: <a href="https://juanitorduz.github.io/glm_pymc3/">GLM in PyMC3: Out-Of-Sample Predictions</a>, so I will consider the same data set here for the sake of comparison.</p>
+<p><strong>Remark:</strong> Very recently I discovered there is an implementation of this transformer in <a href="https://github.com/koaning/scikit-lego">scikit-lego</a>, see <a href="https://scikit-lego.readthedocs.io/en/latest/preprocessing.html#Patsy-Formulas"><code>PatsyTransformer</code></a>. In addition, please refer to the great <a href="https://calmcode.io/patsy/introduction.html">tutorial on patsy</a> in <a href="https://calmcode.io">calmcode.io</a>.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import matplotlib.pyplot as plt
