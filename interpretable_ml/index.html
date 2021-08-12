@@ -1448,9 +1448,11 @@ plt.title(&#39;SHAP Values Aggregation Tree Model&#39;);</code></pre>
 <img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_128_0.svg" align="middle" style="width: 950px;">
 </figure>
 </center>
-<p>Here are some remarks on the results:
-- The SHAP ranking looks quite similar to the tree-native feature importance metrics.
-- Similarly, this SHAP ranking is quite similar to the one obtained via permutation importance.</p>
+<p>Here are some remarks on the results:</p>
+<ul>
+<li>The SHAP ranking looks quite similar to the tree-native feature importance metrics.</li>
+<li>Similarly, this SHAP ranking is quite similar to the one obtained via permutation importance.</li>
+</ul>
 <p>Let us now plot the SAHP values as a function of <code>temp</code> and <code>hum</code>.</p>
 <pre class="python"><code>idx_1 = np.argwhere(np.array(features_ext) == &#39;temp&#39;)[0][0]
 idx_2 = np.argwhere(np.array(features_ext) == &#39;hum&#39;)[0][0]
