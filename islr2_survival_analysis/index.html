@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>ISLR2 - Survival Analysis Lab (lifelines) - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="ISLR2 - Survival Analysis Lab (lifelines) - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">6 min read</span>
+    
+
+    <h1 class="article-title">ISLR2 - Survival Analysis Lab (lifelines)</h1>
+
+    
+    <span class="article-date">2021-09-01</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook we provide a python implementation of the lab from the <em>Survival Analysis - Chapter 11</em> of the second edition of the book <a href="https://www.statlearning.com/">An Introduction to Statistical
+Learning (Second Edition)</a>. You can find a free pdf version of the book <a href="https://web.stanford.edu/~hastie/ISLRv2_website.pdf">here</a>. We will use the <a href="https://lifelines.readthedocs.io/en/latest/"><code>lifelines</code></a> python package, which you can find in <a href="https://github.com/CamDavidsonPilon/lifelines">this repository</a>. There is a nice introduction into survival analysis on the <a href="https://lifelines.readthedocs.io/en/latest/Survival%20Analysis%20intro.html">documentation</a>. There are also many concrete examples and guidelines to use the package.</p>
+<p>Please refer to the book for more details and explanations on the concepts. We focus on the lab implementation.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(
+    style=&#39;darkgrid&#39;, 
+    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
+)
+sns.set_palette(palette=&#39;deep&#39;)
+plt.rcParams[&#39;figure.figsize&#39;] = [10, 6]
+plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>In this lab we want to analyze the <em>BrainCancer</em> data set. The data for the lab is provided as <code>.rda</code> <a href="https://github.com/cran/ISLR2/blob/master/data/BrainCancer.rda">here</a>. To read it as a <a href="https://pandas.pydata.org/">pandas</a> data frame, I read it in <a href="https://www.r-project.org/">R</a> and exported it in <a href="https://arrow.apache.org/docs/python/feather.html#:~:text=Feather%20is%20a%20portable%20file,Python%20(pandas)%20and%20R.">feather</a> format.</p>
+<pre class="python"><code>bc_df = pd.read_feather(&#39;../Data/brain_cancer.feather&#39;)
+
+bc_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+sex
+</th>
+<th>
+diagnosis
+</th>
+<th>
+loc
+</th>
+<th>
+ki
+</th>
+<th>
+gtv
+</th>
+<th>
+stereo
+</th>
+<th>
+status
+</th>
+<th>
+time
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+Female
+</td>
+<td>
+Meningioma
+</td>
+<td>
+Infratentorial
+</td>
+<td>
+90
+</td>
+<td>
+6.11
+</td>
+<td>
+SRS
+</td>
+<td>
+0
+</td>
+<td>
+57.64
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+Male
+</td>
+<td>
+HG glioma
+</td>
+<td>
+Supratentorial
+</td>
+<td>
+90
+</td>
+<td>
+19.35
+</td>
+<td>
+SRT
+</td>
+<td>
+1
+</td>
+<td>
+8.98
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+Female
+</td>
+<td>
+Meningioma
+</td>
+<td>
+Infratentorial
+</td>
+<td>
+70
+</td>
+<td>
+7.95
+</td>
+<td>
+SRS
+</td>
+<td>
+0
+</td>
+<td>
+26.46
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+Female
+</td>
+<td>
+LG glioma
+</td>
+<td>
+Supratentorial
+</td>
+<td>
+80
+</td>
+<td>
+7.61
+</td>
+<td>
+SRT
+</td>
+<td>
+1
+</td>
+<td>
+47.80
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+Male
+</td>
+<td>
+HG glioma
+</td>
+<td>
+Supratentorial
+</td>
+<td>
+90
+</td>
+<td>
+5.06
+</td>
+<td>
+SRT
+</td>
+<td>
+1
+</td>
+<td>
+6.30
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The column of interest is <code>time</code> (survival time). The variable <code>status</code> indicates whether the observation is <em>censored</em>. The other variables are additional covariates.</p>
+<pre class="python"><code>bc_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 88 entries, 0 to 87
+Data columns (total 8 columns):
+ #   Column     Non-Null Count  Dtype   
+---  ------     --------------  -----   
+ 0   sex        88 non-null     category
+ 1   diagnosis  87 non-null     category
+ 2   loc        88 non-null     category
+ 3   ki         88 non-null     int32   
+ 4   gtv        88 non-null     float64 
+ 5   stereo     88 non-null     category
+ 6   status     88 non-null     int32   
+ 7   time       88 non-null     float64 
+dtypes: category(4), float64(2), int32(2)
+memory usage: 3.1 KB</code></pre>
+<p>Note that we have column <code>diagnosis</code> is missing one value.</p>
+<p>Let us plot the <code>time</code> distribution split by <code>status</code>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.histplot(x=&#39;time&#39;, data=bc_df, hue=&#39;status&#39;, stat=&#39;density&#39;, ax=ax)
+sns.kdeplot(x=&#39;time&#39;, data=bc_df, hue=&#39;status&#39;, fill=False, ax=ax)
+ax.set(title=&#39;Time Distribution&#39;);</code></pre>
+<center>
+<img src="../images/islr2_survival_analysis_files/islr2_survival_analysis_9_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="the-kaplan-meier-survival-curve" class="section level2">
+<h2>The Kaplan-Meier Survival Curve</h2>
+<p>Recall from <em>Chapter 11.5</em> that the <a href="https://en.wikipedia.org/wiki/Kaplan%E2%80%93Meier_estimator">Kaplan-Meier estimator</a> of the survival curve <span class="math inline">\(S(T)\)</span> is</p>
+<p><span class="math display">\[
+\hat{S}(t) = \prod_{i : \: t_{i} \leq t} \left(1 - \frac{d_{i}}{n_{i}} \right)
+\]</span></p>
+<p>where with <span class="math inline">\(t_{i}\)</span> is a time when at least one event happened, <span class="math inline">\(d_{i}\)</span> is the number of events that happened at time <span class="math inline">\(t_{i}\)</span>, and <span class="math inline">\(n_{i}\)</span> is the number of individuals known to have survived up to time <span class="math inline">\(t_{i}\)</span>. We can use the <a href="https://lifelines.readthedocs.io/en/latest/fitters/univariate/KaplanMeierFitter.html"><code>KaplanMeierFitter</code></a> to compute this estimator.</p>
+<pre class="python"><code>from lifelines import KaplanMeierFitter
+
+kmf = KaplanMeierFitter()
+
+kmf.fit(durations=bc_df[&#39;time&#39;], event_observed=bc_df[&#39;status&#39;])
+
+fig, ax =  plt.subplots()
+kmf.plot_survival_function(color=&#39;C0&#39;,ax=ax)
+ax.set(
+    title=&#39;Kaplan-Meier survival curve&#39;,
+    xlabel=&#39;Months&#39;,
+    ylabel=&#39;Estimated Probability of Survival&#39;
+);</code></pre>
+<center>
+<img src="../images/islr2_survival_analysis_files/islr2_survival_analysis_11_0.svg" title="fig:" alt="svg" />
+</center>
+<p>Compare with <em>FIGURE 11.2</em> in the book.</p>
+<p>Let us now compute this estimator for each of the classes of the <code>sex</code> column.</p>
+<pre class="python"><code>fig, ax =  plt.subplots()
+
+for i, sex in enumerate(bc_df[&#39;sex&#39;].unique()):
+    # Mask category
+    mask = f&#39;sex == &quot;{sex}&quot;&#39;
+    # Fit model
+    kmf = KaplanMeierFitter()
+    kmf.fit(
+        durations=bc_df.query(mask)[&#39;time&#39;],
+        event_observed=bc_df.query(mask)[&#39;status&#39;]
+    )
+    # Plot survival curves
+    kmf.plot_survival_function(
+        color=f&#39;C{i + 1}&#39;,
+        label=sex,
+        ax=ax
+    )
+
+ax.set(
+    title=&#39;Kaplan-Meier survival curves formales and females&#39;,
+    xlabel=&#39;Months&#39;,
+    ylabel=&#39;Estimated Probability of Survival&#39;
+);</code></pre>
+<center>
+<img src="../images/islr2_survival_analysis_files/islr2_survival_analysis_14_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="the-log-rank-test" class="section level2">
+<h2>The Log-Rank Test</h2>
+<p>Let us now compute the <a href="https://en.wikipedia.org/wiki/Logrank_test">log-rank test</a> to compare
+the survival of males to females.</p>
+<pre class="python"><code>from lifelines.statistics import logrank_test
+
+mask_female = f&#39;sex == &quot;Female&quot;&#39;
+mask_male = f&#39;sex == &quot;Male&quot;&#39;
+
+logrank_test_result = logrank_test(
+    durations_A=bc_df.query(mask_female)[&#39;time&#39;],
+    durations_B=bc_df.query(mask_male)[&#39;time&#39;],
+    event_observed_A=bc_df.query(mask_female)[&#39;status&#39;],
+    event_observed_B=bc_df.query(mask_male)[&#39;status&#39;]
+)
+
+logrank_test_result.print_summary()</code></pre>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<tbody>
+<tr>
+<th>
+t_0
+</th>
+<td>
+-1
+</td>
+</tr>
+<tr>
+<th>
+null_distribution
+</th>
+<td>
+chi squared
+</td>
+</tr>
+<tr>
+<th>
+degrees_of_freedom
+</th>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+test_name
+</th>
+<td>
+logrank_test
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+test_statistic
+</th>
+<th>
+p
+</th>
+<th>
+-log2(p)
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+1.44
+</td>
+<td>
+0.23
+</td>
+<td>
+2.12
+</td>
+</tr>
+</tbody>
+</table>
+<p>As mentioned in the book: <em>The resulting p-value is 0.23, indicating no evidence of a difference in survival between the two sexes.</em></p>
+</div>
+<div id="regression-models-with-a-survival-response" class="section level2">
+<h2>Regression Models With a Survival Response</h2>
+<p>Next, we move into regression analysis. We will focus in the <a href="https://en.wikipedia.org/wiki/Proportional_hazards_model"><em>The Proportional Hazards model</em></a>, specifically the <em>Cox’s Proportional Hazards Model</em>. The main idea of this model is to assume the following form for the <a href="https://en.wikipedia.org/wiki/Survival_analysis#Hazard_function_and_cumulative_hazard_function">Hazard function</a></p>
+<p><span class="math display">\[
+h(t|x_i) = h_0(t) \exp \left( \sum_{j=1}^{p} \beta_jx_{ij}\right)
+\]</span></p>
+<p>where <span class="math inline">\(h_0(t) \geq 0\)</span> is the <em>baseline hazard</em> and <span class="math inline">\(x_{i}\)</span> are the covariates. Recall that the relation between the Hazard function and the survival curve is</p>
+<p><span class="math display">\[
+S(t) = \exp \left( - \int_{0}^{t} h(\tau) d\tau\right)
+\]</span></p>
+<p>We can use the <a href="https://lifelines.readthedocs.io/en/latest/fitters/regression/CoxPHFitter.html"><code>CoxPHFitter</code></a> to estimate these type of models. The model features can be specified by R-like formulas, see <a href="https://patsy.readthedocs.io/en/latest/">patsy</a>.</p>
+<div id="model-1" class="section level3">
+<h3>Model 1</h3>
+<p>Let us start by using just the <code>sex</code> feature.</p>
+<pre class="python"><code>from lifelines import CoxPHFitter
+
+cph = CoxPHFitter()
+
+cph.fit(df=bc_df, duration_col=&#39;time&#39;, event_col=&#39;status&#39;, formula=&#39;sex&#39;)
+
+cph.print_summary()</code></pre>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<tbody>
+<tr>
+<th>
+model
+</th>
+<td>
+lifelines.CoxPHFitter
+</td>
+</tr>
+<tr>
+<th>
+duration col
+</th>
+<td>
+‘time’
+</td>
+</tr>
+<tr>
+<th>
+event col
+</th>
+<td>
+‘status’
+</td>
+</tr>
+<tr>
+<th>
+baseline estimation
+</th>
+<td>
+breslow
+</td>
+</tr>
+<tr>
+<th>
+number of observations
+</th>
+<td>
+88
+</td>
+</tr>
+<tr>
+<th>
+number of events observed
+</th>
+<td>
+35
+</td>
+</tr>
+<tr>
+<th>
+partial log-likelihood
+</th>
+<td>
+-137.43
+</td>
+</tr>
+<tr>
+<th>
+time fit was run
+</th>
+<td>
+2021-08-31 09:52:08 UTC
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th style="min-width: 12px;">
+</th>
+<th style="min-width: 12px;">
+coef
+</th>
+<th style="min-width: 12px;">
+exp(coef)
+</th>
+<th style="min-width: 12px;">
+se(coef)
+</th>
+<th style="min-width: 12px;">
+coef lower 95%
+</th>
+<th style="min-width: 12px;">
+coef upper 95%
+</th>
+<th style="min-width: 12px;">
+exp(coef) lower 95%
+</th>
+<th style="min-width: 12px;">
+exp(coef) upper 95%
+</th>
+<th style="min-width: 12px;">
+z
+</th>
+<th style="min-width: 12px;">
+p
+</th>
+<th style="min-width: 12px;">
+-log2(p)
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+sex[T.Male]
+</th>
+<td>
+0.41
+</td>
+<td>
+1.50
+</td>
+<td>
+0.34
+</td>
+<td>
+-0.26
+</td>
+<td>
+1.08
+</td>
+<td>
+0.77
+</td>
+<td>
+2.94
+</td>
+<td>
+1.19
+</td>
+<td>
+0.23
+</td>
+<td>
+2.10
+</td>
+</tr>
+</tbody>
+</table>
+<br>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<tbody>
+<tr>
+<th>
+Concordance
+</th>
+<td>
+0.56
+</td>
+</tr>
+<tr>
+<th>
+Partial AIC
+</th>
+<td>
+276.86
+</td>
+</tr>
+<tr>
+<th>
+log-likelihood ratio test
+</th>
+<td>
+1.44 on 1 df
+</td>
+</tr>
+<tr>
+<th>
+-log2(p) of ll-ratio test
+</th>
+<td>
+2.12
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Recall that <em>the score test from the Cox model is exactly equal to the log rank test statistic</em>. We indeed see that <em>there is no clear evidence for
+a difference in survival between males and females</em>.</p>
+</div>
+<div id="model-2" class="section level3">
+<h3>Model 2</h3>
+<p>For the final model we add all the features available (note that we need to remove the row with missing values).</p>
+<pre class="python"><code>cph.fit(
+    df=bc_df.dropna(axis=0),
+    duration_col=&#39;time&#39;,
+    event_col=&#39;status&#39;,
+    formula=&#39;sex + diagnosis + loc + ki + gtv + stereo&#39;
+)
+
+cph.print_summary()</code></pre>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<tbody>
+<tr>
+<th>
+model
+</th>
+<td>
+lifelines.CoxPHFitter
+</td>
+</tr>
+<tr>
+<th>
+duration col
+</th>
+<td>
+‘time’
+</td>
+</tr>
+<tr>
+<th>
+event col
+</th>
+<td>
+‘status’
+</td>
+</tr>
+<tr>
+<th>
+baseline estimation
+</th>
+<td>
+breslow
+</td>
+</tr>
+<tr>
+<th>
+number of observations
+</th>
+<td>
+87
+</td>
+</tr>
+<tr>
+<th>
+number of events observed
+</th>
+<td>
+35
+</td>
+</tr>
+<tr>
+<th>
+partial log-likelihood
+</th>
+<td>
+-116.75
+</td>
+</tr>
+<tr>
+<th>
+time fit was run
+</th>
+<td>
+2021-08-31 09:52:09 UTC
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th style="min-width: 12px;">
+</th>
+<th style="min-width: 12px;">
+coef
+</th>
+<th style="min-width: 12px;">
+exp(coef)
+</th>
+<th style="min-width: 12px;">
+se(coef)
+</th>
+<th style="min-width: 12px;">
+coef lower 95%
+</th>
+<th style="min-width: 12px;">
+coef upper 95%
+</th>
+<th style="min-width: 12px;">
+exp(coef) lower 95%
+</th>
+<th style="min-width: 12px;">
+exp(coef) upper 95%
+</th>
+<th style="min-width: 12px;">
+z
+</th>
+<th style="min-width: 12px;">
+p
+</th>
+<th style="min-width: 12px;">
+-log2(p)
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+diagnosis[T.LG glioma]
+</th>
+<td>
+0.92
+</td>
+<td>
+2.50
+</td>
+<td>
+0.64
+</td>
+<td>
+-0.34
+</td>
+<td>
+2.17
+</td>
+<td>
+0.71
+</td>
+<td>
+8.72
+</td>
+<td>
+1.43
+</td>
+<td>
+0.15
+</td>
+<td>
+2.72
+</td>
+</tr>
+<tr>
+<th>
+diagnosis[T.HG glioma]
+</th>
+<td>
+2.15
+</td>
+<td>
+8.62
+</td>
+<td>
+0.45
+</td>
+<td>
+1.27
+</td>
+<td>
+3.04
+</td>
+<td>
+3.57
+</td>
+<td>
+20.85
+</td>
+<td>
+4.78
+</td>
+<td>
+&lt;0.005
+</td>
+<td>
+19.14
+</td>
+</tr>
+<tr>
+<th>
+diagnosis[T.Other]
+</th>
+<td>
+0.89
+</td>
+<td>
+2.42
+</td>
+<td>
+0.66
+</td>
+<td>
+-0.40
+</td>
+<td>
+2.18
+</td>
+<td>
+0.67
+</td>
+<td>
+8.80
+</td>
+<td>
+1.35
+</td>
+<td>
+0.18
+</td>
+<td>
+2.49
+</td>
+</tr>
+<tr>
+<th>
+gtv
+</th>
+<td>
+0.03
+</td>
+<td>
+1.03
+</td>
+<td>
+0.02
+</td>
+<td>
+-0.01
+</td>
+<td>
+0.08
+</td>
+<td>
+0.99
+</td>
+<td>
+1.08
+</td>
+<td>
+1.54
+</td>
+<td>
+0.12
+</td>
+<td>
+3.00
+</td>
+</tr>
+<tr>
+<th>
+ki
+</th>
+<td>
+-0.05
+</td>
+<td>
+0.95
+</td>
+<td>
+0.02
+</td>
+<td>
+-0.09
+</td>
+<td>
+-0.02
+</td>
+<td>
+0.91
+</td>
+<td>
+0.98
+</td>
+<td>
+-3.00
+</td>
+<td>
+&lt;0.005
+</td>
+<td>
+8.54
+</td>
+</tr>
+<tr>
+<th>
+loc[T.Supratentorial]
+</th>
+<td>
+0.44
+</td>
+<td>
+1.55
+</td>
+<td>
+0.70
+</td>
+<td>
+-0.94
+</td>
+<td>
+1.82
+</td>
+<td>
+0.39
+</td>
+<td>
+6.17
+</td>
+<td>
+0.63
+</td>
+<td>
+0.53
+</td>
+<td>
+0.91
+</td>
+</tr>
+<tr>
+<th>
+sex[T.Male]
+</th>
+<td>
+0.18
+</td>
+<td>
+1.20
+</td>
+<td>
+0.36
+</td>
+<td>
+-0.52
+</td>
+<td>
+0.89
+</td>
+<td>
+0.59
+</td>
+<td>
+2.44
+</td>
+<td>
+0.51
+</td>
+<td>
+0.61
+</td>
+<td>
+0.71
+</td>
+</tr>
+<tr>
+<th>
+stereo[T.SRT]
+</th>
+<td>
+0.18
+</td>
+<td>
+1.19
+</td>
+<td>
+0.60
+</td>
+<td>
+-1.00
+</td>
+<td>
+1.36
+</td>
+<td>
+0.37
+</td>
+<td>
+3.88
+</td>
+<td>
+0.30
+</td>
+<td>
+0.77
+</td>
+<td>
+0.38
+</td>
+</tr>
+</tbody>
+</table>
+<br>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<tbody>
+<tr>
+<th>
+Concordance
+</th>
+<td>
+0.79
+</td>
+</tr>
+<tr>
+<th>
+Partial AIC
+</th>
+<td>
+249.50
+</td>
+</tr>
+<tr>
+<th>
+log-likelihood ratio test
+</th>
+<td>
+41.37 on 8 df
+</td>
+</tr>
+<tr>
+<th>
+-log2(p) of ll-ratio test
+</th>
+<td>
+19.10
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Finally we plot the survival curves for the <code>diagnosis</code> variable. Here the baseline corresponds to meningioma.</p>
+<pre class="python"><code>cph.plot_partial_effects_on_outcome(
+    covariates=&#39;diagnosis&#39;,
+    values=bc_df.dropna(axis=0)[&#39;diagnosis&#39;].unique()[1:]
+);</code></pre>
+<center>
+<img src="../images/islr2_survival_analysis_files/islr2_survival_analysis_25_1.svg" title="fig:" alt="svg" />
+</center>
+<p>All of the results and plots coincide with the R implementation. The remaining labs can be done in a very similar way.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
