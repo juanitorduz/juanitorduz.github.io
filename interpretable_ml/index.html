@@ -834,7 +834,7 @@ ax.set(title=&#39;Humidity and Wind Speed Interaction Weight Effect Linear Model
 <img src="../images/interpretable_ml_files/interpretable_ml_70_0.svg" title="fig:" alt="svg" />
 </center>
 <p>We can also investigate how the model features affect individual predictions:</p>
-<pre class="python"><code># Compare with FIGURE 5.47 in https://christophm.github.io/interpretable-ml-book/shapley.html.
+<pre class="python"><code># Compare with FIGURE 5.49 in https://christophm.github.io/interpretable-ml-book/shapley.html.
 obs_index = (285 - 1) # Python indexing starts in 0 and not 1 as in R.
 
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(15, 7), constrained_layout=True)
@@ -1232,11 +1232,11 @@ fig.suptitle(&#39;Single ICE Plot&#39;, y=0.95);</code></pre>
 </div>
 <div id="permutation-importance" class="section level2">
 <h2>Permutation Importance</h2>
-<p>Next, let us discuss <em>permutation feature importance</em>, see <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html">Section 5.5, Interpretable Machine Learning</a>:</p>
+<p>Next, let us discuss <em>permutation feature importance</em>, see <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html">Section 5.6, Interpretable Machine Learning</a>:</p>
 <blockquote>
 <p><em>Permutation feature importance measures the increase in the prediction error of the model after we permuted the feature’s values, which breaks the relationship between the feature and the true outcome.</em></p>
 </blockquote>
-<p><strong>Remark</strong> I encourage you to read <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data">Section 5.5.2, Interpretable Machine Learning</a> where the author discuss whether we should evaluate the feature importances in the train or the test set. In <a href="https://github.com/PacktPublishing/Interpretable-Machine-Learning-with-Python">Interpretable Machine Learning with Python by Serg Masís</a>, the autor provides a smiliar discussion and decides to evaluate on the test set. In this notebook we do in on the training set in order to be able to reproduce the results in <a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar</a>.</p>
+<p><strong>Remark</strong> I encourage you to read <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html#feature-importance-data">Section 5.5.2, Interpretable Machine Learning</a> where the author discuss whether we should evaluate the feature importance in the train or the test set. In <a href="https://github.com/PacktPublishing/Interpretable-Machine-Learning-with-Python">Interpretable Machine Learning with Python by Serg Masís</a>, the author provides a similar discussion and decides to evaluate on the test set. In this notebook we do in on the training set in order to be able to reproduce the results in <a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar</a>.</p>
 <p>Let us compute the permutation feature importance for both models:</p>
 <pre class="python"><code>from sklearn.inspection import permutation_importance
 
@@ -1281,8 +1281,8 @@ fig.suptitle(&#39;Permutation Importance&#39;);</code></pre>
 <center>
 <img src="../images/interpretable_ml_files/interpretable_ml_104_0.svg" title="fig:" alt="svg" />
 </center>
-<p>It is interesting to see that the permutation importance for these two models have <code>days_since_2021</code> and <code>temp</code> on their top 3 ranking, which partially explain the trend and seasonality components respectively (compare with <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html">FIGURE 5.30</a>). Also, these rankings mostly agree with the model-dependent feature importance metrics illustrated above, with the difference that these permutation importance rankings can be obtained at feature level and not per individual one-hot-instance.</p>
-<p><strong>Warning:</strong> Similarly as partial depende plots, permutation importance can also be biased by unlikely points in the input data distribution, see <a href="https://scikit-learn.org/stable/auto_examples/inspection/plot_permutation_importance_multicollinear.html#permutation-importance-with-multicollinear-or-correlated-features">Permutation Importance with Multicollinear or Correlated Features</a>.</p>
+<p>It is interesting to see that the permutation importance for these two models have <code>days_since_2021</code> and <code>temp</code> on their top 3 ranking, which partially explain the trend and seasonality components respectively (compare with <a href="https://christophm.github.io/interpretable-ml-book/feature-importance.html">FIGURE 5.32</a>). Also, these rankings mostly agree with the model-dependent feature importance metrics illustrated above, with the difference that these permutation importance rankings can be obtained at feature level and not per individual one-hot-instance.</p>
+<p><strong>Warning:</strong> Similarly as partial dependency plots, permutation importance can also be biased by unlikely points in the input data distribution, see <a href="https://scikit-learn.org/stable/auto_examples/inspection/plot_permutation_importance_multicollinear.html#permutation-importance-with-multicollinear-or-correlated-features">Permutation Importance with Multicollinear or Correlated Features</a>.</p>
 <p>In order to analyze the permutation importance ranking while considering the correlation, it useful to have a hierarchical clustering diagram generated from a similarity metric. For example, we can use <a href="https://en.wikipedia.org/wiki/Spearman%27s_rank_correlation_coefficient">Spearman’s rank correlation coefficient</a> (to include categorical variables) as suggested in <a href="https://scikit-learn.org/stable/auto_examples/inspection/plot_permutation_importance_multicollinear.html#handling-multicollinear-features">scikit-learn: Handling Multicollinear Features</a></p>
 <pre class="python"><code>from scipy.stats import spearmanr
 from scipy.cluster import hierarchy
@@ -1305,7 +1305,7 @@ ax.set(title=&quot;Hierarchical Clustering (Ward) based on Spearman&#39;s correl
 </div>
 <div id="shap" class="section level2">
 <h2>SHAP</h2>
-<p>SHAP (SHapley Additive exPlanations) (<a href="https://christophm.github.io/interpretable-ml-book/shap.html">Section 5.10, Interpretable Machine Learning</a>) are based on the concept of <a href="https://en.wikipedia.org/wiki/Shapley_value">Shapley Values</a> (see <a href="https://christophm.github.io/interpretable-ml-book/shapley.html">Section 5.9, Interpretable Machine Learning</a>), which have their origin in game theory. The main idea is to consider the model as a game (prediction task) and each model feature as a player. Features can be grouped in teams (colaitions) to play thr game, i.e. generate predictions. It is important to remark that the “gain” is the actual prediction for this for the coalition minus the average prediction for all instances, so that:</p>
+<p>SHAP (SHapley Additive exPlanations) (<a href="https://christophm.github.io/interpretable-ml-book/shap.html">Section 5.11, Interpretable Machine Learning</a>) are based on the concept of <a href="https://en.wikipedia.org/wiki/Shapley_value">Shapley Values</a> (see <a href="https://christophm.github.io/interpretable-ml-book/shapley.html">Section 5.9, Interpretable Machine Learning</a>), which have their origin in game theory. The main idea is to consider the model as a game (prediction task) and each model feature as a player. Features can be grouped in teams (colaitions) to play thr game, i.e. generate predictions. It is important to remark that the “gain” is the actual prediction for this for the coalition minus the average prediction for all instances, so that:</p>
 <blockquote>
 <p><em>The Shapley value is the average contribution of a feature value to the prediction in different coalitions.</em></p>
 <p><strong>Warning:</strong> <em>The Shapley value is NOT the difference in prediction when we would remove the feature from the model.</em></p>

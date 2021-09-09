@@ -24,7 +24,7 @@
       
       <guid>/formula_transformer/</guid>
       <description>In this notebook I want to describe how to create features inside scikit-learn pipelines using patsy-like formulas. I have used this approach to generate features in a previous post: GLM in PyMC3: Out-Of-Sample Predictions, so I will consider the same data set here for the sake of comparison.
-Remark: Very recently I discovered there is an implementation of this transformer in scikit-lego, see PatsyTransformer. In addition, please refer to the great tutorial on patsy in calmcode.</description>
+Remark: Very recently (2021-09-01) I discovered there is an implementation of this transformer in scikit-lego, see PatsyTransformer. In addition, please refer to the great tutorial on patsy in calmcode.</description>
     </item>
     
     <item>
