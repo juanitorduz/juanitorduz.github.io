@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">25 min read</span>
+    <span class="article-duration">19 min read</span>
     
 
     <h1 class="article-title">Exploring Tools for Interpretable Machine Learning</h1>
@@ -93,413 +93,47 @@
 <div id="data" class="section level2">
 <h2>Data</h2>
 <p>We are going to use the processed <em>Bike Sharing Dataset Data Set</em> described in <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">Section 3.1</a> in <a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar</a>. The prediction task is to predict daily counts of rented bicycles as a function of time and other external regressors like temperature and humidity. Note that the raw data can be downloaded from the <a href="http://archive.ics.uci.edu/ml/datasets/Bike+Sharing+Dataset">UCI Machine Learning Repository</a>. The preprocessing steps are described <a href="https://github.com/christophM/interpretable-ml-book/blob/master/R/get-bike-sharing-dataset.R">here</a>.</p>
-<hr />
-</div>
-<div id="part-i-model-development" class="section level1">
-<h1>Part I: Model Development</h1>
-<p>In this first part we work on the modeling step on which we fit two machine learning models (linear and tree ensembles) for the bike daily counts prediction task.
-The intention of this notebook is <strong>not</strong> to build the best machine learning model but have two model flavours and compare the interpretability tools and methods on both of them.</p>
-<div id="prepare-notebook" class="section level2">
-<h2>Prepare Notebook</h2>
-<pre class="python"><code>import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
-import seaborn as sns
-sns.set_style(
-    style=&#39;darkgrid&#39;, 
-    rc={&#39;axes.facecolor&#39;: &#39;.9&#39;, &#39;grid.color&#39;: &#39;.8&#39;}
-)
-sns.set_palette(palette=&#39;deep&#39;)
-sns_c = sns.color_palette(palette=&#39;deep&#39;)
+<table style="width:46%;">
+<colgroup>
+<col width="45%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left"># Part I: Model Development</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">train mse (linear): {mean_squared_error(y_true=y_train, y_pred=y_train_pred_linear): 0.2f}
+test mse (linear): {mean_squared_error(y_true=y_test, y_pred=y_test_pred_linear): 0.2f}</td>
+</tr>
+</tbody>
+</table>
+<p>train mse (tree) : {mean_squared_error(y_true=y_train, y_pred=y_train_pred_tree): 0.2f}
+test mse (tree) : {mean_squared_error(y_true=y_test, y_pred=y_test_pred_tree): 0.2f}
+——————————–
+’’’)</p>
+<pre><code>
+    
+    --------------------------------
+    train mse (linear):  191343.26
+    test  mse (linear):  1275495.73
+    --------------------------------
+    train mse (tree)  :  22042.71
+    test  mse (tree)  :  1209060.94
+    --------------------------------
+    
 
-plt.rcParams[&#39;figure.figsize&#39;] = [10, 6]
-plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
-</div>
-<div id="read-data" class="section level2">
-<h2>Read Data</h2>
-<pre class="python"><code>data_path = &#39;https://raw.githubusercontent.com/christophM/interpretable-ml-book/master/data/bike.csv&#39;
 
-raw_data_df = pd.read_csv(data_path)
+Both models have a similar out-sample performance (the tree one does a bit better). For in-sample performance the tree based model has less MSE.
 
-raw_data_df.head()</code></pre>
-<center>
-<figure>
-<img alt="MyImage" src="../images/interpretable_ml_files/head.png" align="middle" style="width: 950px;">
-</figure>
-</center>
-<pre class="python"><code>raw_data_df.info()</code></pre>
-<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
-RangeIndex: 731 entries, 0 to 730
-Data columns (total 12 columns):
- #   Column           Non-Null Count  Dtype  
----  ------           --------------  -----  
- 0   season           731 non-null    object 
- 1   yr               731 non-null    int64  
- 2   mnth             731 non-null    object 
- 3   holiday          731 non-null    object 
- 4   weekday          731 non-null    object 
- 5   workingday       731 non-null    object 
- 6   weathersit       731 non-null    object 
- 7   temp             731 non-null    float64
- 8   hum              731 non-null    float64
- 9   windspeed        731 non-null    float64
- 10  cnt              731 non-null    int64  
- 11  days_since_2011  731 non-null    int64  
-dtypes: float64(3), int64(3), object(6)
-memory usage: 68.7+ KB</code></pre>
-<p>Note that we do not have missing values (not representative of most real data sets).</p>
-<p>The prediction task is to generate a model to predict the target variable <code>cnt</code>, which represents the number of bikes will be rented. Please visit <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">the data description</a> to get more information about the features. Most of them are self-explanatory.</p>
-</div>
-<div id="eda" class="section level2">
-<h2>EDA</h2>
-<p>The first step in any modeling task (after problem definition and data collection) is an exploratory data analysis to understand the available data. Let us start by plotting the distribution and development over time of the target variable <code>cnt</code>.</p>
-<pre class="python"><code>fig, ax = plt.subplots(nrows=2, ncols=1)
-sns.kdeplot(x=&#39;cnt&#39;, data=raw_data_df, fill=True, color=&#39;black&#39;, ax=ax[0])
-sns.lineplot(x=&#39;days_since_2011&#39;, y=&#39;cnt&#39;, data=raw_data_df, color=&#39;black&#39;, ax=ax[1])
-fig.suptitle(&#39;cnt: Target Variable&#39;, y=0.95);</code></pre>
-<center>
-<img src="../images/interpretable_ml_files/interpretable_ml_10_0.svg" title="fig:" alt="svg" />
-</center>
-<p>We have 2 years of data. We see a clear yearly seasonality and a slight positive trend.</p>
-<ul>
-<li>Numeric Features</li>
-</ul>
-<p>Let us look into the numeric features:</p>
-<pre class="python"><code>numeric_features = [
-    &#39;temp&#39;,
-    &#39;hum&#39;,
-    &#39;windspeed&#39;,
-    &#39;days_since_2011&#39;,
-    &#39;yr&#39;,
-]
+**Warning:** One needs to be careful when using tee based model for time series forecasting as these models are not capable of capturing trend components. In this specific case the trend is no s strong and the overall range of the time series is bounded by the max / min of the training time series. This explains why the tree based model still performs well on the test set.
 
-target = &#39;cnt&#39;
+Let us plot the predictions and error distributions on the training and test sets:
 
-fig, axes = plt.subplots(
-    nrows=len(numeric_features) + 1,
-    ncols=1,
-    figsize=(12, 13),
-    constrained_layout=True
-)
-sns.lineplot(
-        x=&#39;days_since_2011&#39;,
-        y=target,
-        data=raw_data_df,
-        color=&#39;black&#39;,
-        ax=axes[0]
-    )
-axes[0].set(title=target, ylabel=None)
 
-for i, feature in enumerate(numeric_features):
-    ax = axes[i + 1]
-    sns.lineplot(
-        x=&#39;days_since_2011&#39;,
-        y=feature,
-        data=raw_data_df,
-        color=sns_c[i],
-        ax=ax
-    )
-    ax.set(title=feature, ylabel=None)</code></pre>
-<center>
-<figure>
-<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_13_0.svg" align="middle" style="width: 950px;">
-</figure>
-</center>
-<p>Let us compute the correlation:</p>
-<pre class="python"><code>corr_df = raw_data_df[numeric_features + [target]].corr()
-
-cmap = sns.diverging_palette(230, 20, as_cmap=True)
-mask = np.triu(np.ones_like(corr_df, dtype=bool))
-
-fig, ax = plt.subplots(figsize=(8, 7))
-sns.heatmap(
-    data=corr_df,
-    mask=mask,
-    cmap=cmap, 
-    vmax=1.0, 
-    vmin=-1.0,
-    center=0,
-    square=True, 
-    linewidths=0.5, 
-    linecolor=&#39;k&#39;,
-    annot=True, 
-    fmt=&#39;.3f&#39;,
-    ax=ax
-)
-
-ax.set(title=&#39;Correlation Numeric Features&#39;);</code></pre>
-<center>
-<img src="../images/interpretable_ml_files/interpretable_ml_15_0.svg" title="fig:" alt="svg" />
-</center>
-<p>The variables <code>temp</code> and <code>days_since_2011</code> have a high correlation with the target variable. The former is explaining the seasonality and the later the trend. This hints these could be good predictors. For completeness let us plot the joint distributions:</p>
-<pre class="python"><code>g = sns.pairplot(
-    data=raw_data_df,
-    diag_kind=&#39;kde&#39;,
-    height=2, 
-    corner=False,
-    plot_kws={&#39;alpha&#39;: 0.3}
-)
-g.map_lower(sns.kdeplot, levels=5, color=sns_c[3])
-g.map_upper(sns.regplot, color=sns_c[0], scatter_kws={&#39;alpha&#39;: 0.1})
-g.fig.suptitle(&#39;Pair Plot (Numeric Variables)&#39;, y=1.01);</code></pre>
-<center>
-<figure>
-<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_17_0.svg" align="middle" style="width: 950px;">
-</figure>
-</center>
-<ul>
-<li>Categorical Features</li>
-</ul>
-<p>Let us compute the mean of <code>cnt</code> per each categorical variable:</p>
-<pre class="python"><code>categorical_features = [
-    &#39;season&#39;,
-    &#39;mnth&#39;,
-    &#39;holiday&#39;,
-    &#39;weekday&#39;,
-    &#39;workingday&#39;,
-    &#39;weathersit&#39;,
-]
-
-fig, axes = plt.subplots(
-    nrows=3,
-    ncols=2,
-    figsize=(12, 10),
-    constrained_layout=True
-)
-
-axes = axes.flatten()
-
-for i, feature in enumerate(categorical_features):
-    ax = axes[i]
-
-    feature_df = raw_data_df \
-        .groupby(feature, as_index=False) \
-        .agg({target: np.mean}) \
-        .sort_values(target)
-
-    sns.barplot(
-        x=feature,
-        y=target,
-        data=feature_df,
-        dodge=False,
-        ax=ax
-    )
-    ax.set(title=feature, ylabel=None)
-
-fig.suptitle(f&#39;Mean {target} over categorical_features&#39;);</code></pre>
-<center>
-<figure>
-<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_19_0.svg" align="middle" style="width: 950px;">
-</figure>
-</center>
-<p>Let us now take a look into the distributions:</p>
-<pre class="python"><code>fig, axes = plt.subplots(
-    nrows=3,
-    ncols=2,
-    figsize=(12, 10),
-    constrained_layout=True
-)
-
-axes = axes.flatten()
-
-for i, feature in enumerate(categorical_features):
-    ax = axes[i]
-    sns.stripplot(
-        x=feature,
-        y=target,
-        data=raw_data_df,
-        dodge=False,
-        ax=ax
-    )
-    ax.set(title=feature, ylabel=None)
-fig.suptitle(f&#39;{target} distribution over categorical_features&#39;);</code></pre>
-<center>
-<figure>
-<img alt="MyImage" src="../images/interpretable_ml_files/interpretable_ml_21_0.svg" align="middle" style="width: 950px;">
-</figure>
-</center>
-<p>This plot also hints that the categorical features could serve as predictors.</p>
-<p><strong>Remark:</strong> The variables <code>season</code> and <code>mnth</code> seem redundant. Still we want to include them both in the model to see how the tools to interpret the model react to it.</p>
-</div>
-<div id="train---test-split" class="section level2">
-<h2>Train - Test Split</h2>
-<p>As we have a time series problem we do a train test split without shuffle.</p>
-<pre class="python"><code>from sklearn.model_selection import train_test_split
-
-x = raw_data_df.copy().drop([target], axis=1)
-y = raw_data_df.copy()[target]
-
-x_train, x_test, y_train, y_test = train_test_split(
-    x, y, test_size=0.20, random_state=42, shuffle=False
-)</code></pre>
-<pre class="python"><code>fig, ax = plt.subplots()
-sns.lineplot(x=y_train.index, y=y_train, color=&#39;black&#39;, label=&#39;y_train&#39;, ax=ax)
-sns.lineplot(x=y_test.index, y=y_test, color=sns_c[3], label=&#39;y_test&#39;, ax=ax)
-ax.axvline(x=365, color=sns_c[6], linestyle=&#39;--&#39;, label=r&#39;$2011 \rightarrow 2012$&#39;)
-ax.axvline(x=y_train.shape[0], color=&#39;gray&#39;, linestyle=&#39;--&#39;, label=&#39;train-test-split&#39;)
-ax.legend(loc=&#39;upper left&#39;)
-ax.set(title=&#39;Train - Test Split&#39;);</code></pre>
-<center>
-<img src="../images/interpretable_ml_files/interpretable_ml_25_0.svg" title="fig:" alt="svg" />
-</center>
-<p>Note that there seems to be a difference between the variance and trend between 2011 and 2012. This hints that the variable <code>yr</code> could be important for the prediction task.</p>
-</div>
-<div id="model-development" class="section level2">
-<h2>Model Development</h2>
-<p>We want to train two kind of models: (1) a linear model (<a href="https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Lasso.html"><code>Lasso</code></a>) and (2) a tree based model (<a href="https://xgboost.readthedocs.io/en/latest/"><code>xgboost</code></a>). Our scoring metric is the <a href="https://scikit-learn.org/stable/modules/model_evaluation.html#mean-squared-error">mean-squared-error</a>.</p>
-<p>Let us now define some preprocessing steps: scaling and one-hot-encoding.</p>
-<pre class="python"><code>from sklearn.compose import ColumnTransformer
-from sklearn.feature_selection import VarianceThreshold
-from sklearn.linear_model import Lasso
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, PolynomialFeatures
-from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
-from xgboost import XGBRegressor
-
-categorical_features = [
-    &#39;season&#39;,
-    &#39;mnth&#39;,
-    &#39;holiday&#39;,
-    &#39;weekday&#39;,
-    &#39;workingday&#39;,
-    &#39;weathersit&#39;,
-]
-numeric_features = [
-    &#39;temp&#39;,
-    &#39;hum&#39;,
-    &#39;windspeed&#39;,
-    &#39;days_since_2011&#39;,
-    &#39;yr&#39;,
-]
-
-features = categorical_features + numeric_features
-
-x_train = x_train[features]
-x_test = x_test[features]
-
-numeric_transformer = Pipeline(steps=[
-    (&#39;scaler&#39;, StandardScaler())
-])
-categorical_transformer = Pipeline(steps=[
-    (&#39;one_hot&#39;, OneHotEncoder(drop=&#39;first&#39;))
-])</code></pre>
-<p>For future reference, let us get the names of the model features after the preprocessing step:</p>
-<pre class="python"><code># Warning: One needs to be careful with the variables
-# ordering in view of the ColumnTransformer steps below.
-categorical_features_ext = list(
-        categorical_transformer[&#39;one_hot&#39;] \
-        .fit(x_train[categorical_features]) \
-        .get_feature_names(categorical_features)
-    ) 
-features_ext = categorical_features_ext + numeric_features
-
-print(f&#39;Number of features after pre-processing: {len(features_ext)}&#39;)</code></pre>
-<pre><code>Number of features after pre-processing: 29</code></pre>
-<pre class="python"><code>&#39;, &#39;.join(features_ext)</code></pre>
-<pre><code>&#39;season_SPRING, season_SUMMER, season_WINTER, mnth_AUG, mnth_DEZ, mnth_FEB, mnth_JAN,
-mnth_JUL, mnth_JUN, mnth_MAR, mnth_MAY, mnth_NOV, mnth_OKT, mnth_SEP, holiday_NO HOLIDAY,
-weekday_MON, weekday_SAT, weekday_SUN, weekday_THU, weekday_TUE, weekday_WED,
-workingday_WORKING DAY, weathersit_MISTY, weathersit_RAIN/SNOW/STORM, temp, hum,
-windspeed, days_since_2011, yr&#39;</code></pre>
-<div id="linear-model" class="section level3">
-<h3>Linear Model</h3>
-<p>The first model is a (<a href="https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Lasso.html"><code>Lasso</code></a>) regression with a second order multiplicative interaction between the input features (we actually remove the purely quadratic terms and just include the interactions). We use this type of model with <span class="math inline">\(L^1\)</span>-regularization in order to do a variable selection via time-slice-cross validation. We remove zero-variance features (comming for example as an interaction of orthogonal features) with a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.VarianceThreshold.html"><code>VarianceThreshold</code></a> transformer.</p>
-<pre class="python"><code>linear_preprocessor = ColumnTransformer(transformers=[
-    (&#39;cat&#39;, categorical_transformer, categorical_features),
-    (&#39;num&#39;, numeric_transformer, numeric_features),
-], remainder=&#39;passthrough&#39;)
-
-linear_feature_engineering = Pipeline(steps=[
-    (&#39;linear_preprocessor&#39;, linear_preprocessor),
-    (&#39;polynomial&#39;, PolynomialFeatures(
-        degree=2, interaction_only=True, include_bias=False
-    )),
-    (&#39;variance_threshold&#39;, VarianceThreshold()),
-])
-
-linear_pipeline = Pipeline(steps=[
-    (&#39;linear_feature_engineering&#39;, linear_feature_engineering),
-    (&#39;linear_regressor&#39;, Lasso(fit_intercept=True, normalize=False))
-])
-
-linear_param_grid = {
-    &#39;linear_regressor__alpha&#39;: np.logspace(start=-3, stop=2, num=20),
-}
-
-cv = TimeSeriesSplit(n_splits=5, test_size=(7 * 2), gap=0)
-
-linear_grid_search = GridSearchCV(
-    estimator=linear_pipeline,
-    param_grid=linear_param_grid,
-    scoring=&#39;neg_root_mean_squared_error&#39;,
-    cv=cv
-)</code></pre>
-<pre class="python"><code># Fit the linear model.
-linear_grid_search = linear_grid_search.fit(X=x_train, y=y_train)</code></pre>
-</div>
-<div id="tree-model" class="section level3">
-<h3>Tree Model</h3>
-<p>The second model is an <a href="https://xgboost.readthedocs.io/en/latest/"><code>xgboost</code></a> model.</p>
-<pre class="python"><code>tree_preprocessor = ColumnTransformer(transformers=[
-    (&#39;cat&#39;, categorical_transformer, categorical_features)
-], remainder=&#39;passthrough&#39;)
-
-tree_feature_engineering = Pipeline(steps=[
-    (&#39;tree_preprocessor&#39;, tree_preprocessor)
-])
-
-tree_pipeline = Pipeline(steps=[
-    (&#39;tree_feature_engineering&#39;, tree_feature_engineering),
-    (&#39;tree_regressor&#39;,  XGBRegressor())
-])
-
-tree_param_grid = {
-    &#39;tree_regressor__min_child_weight&#39;: [0.01, 0.5, 1, 10],
-    &#39;tree_regressor__max_depth&#39;: [3, 5, 8, 13]
-}
-
-tree_grid_search = GridSearchCV(
-    estimator=tree_pipeline,
-    param_grid=tree_param_grid,
-    scoring=&#39;neg_root_mean_squared_error&#39;,
-    cv=cv
-)</code></pre>
-<pre class="python"><code># Fit the model.
-tree_grid_search = tree_grid_search.fit(X=x_train, y=y_train)</code></pre>
-</div>
-</div>
-<div id="model-performance" class="section level2">
-<h2>Model Performance</h2>
-<p>Let us now compare the (in / out) sample performance of these models.</p>
-<p>First let us generate predictions on the train and test sets:</p>
-<pre class="python"><code>y_train_pred_linear = linear_grid_search.predict(X=x_train)
-y_test_pred_linear = linear_grid_search.predict(X=x_test)
-
-y_train_pred_tree = tree_grid_search.predict(X=x_train)
-y_test_pred_tree = tree_grid_search.predict(X=x_test)</code></pre>
-<pre class="python"><code>from sklearn.metrics import mean_squared_error
-
-print(f&#39;&#39;&#39;
---------------------------------
-train mse (linear): {mean_squared_error(y_true=y_train, y_pred=y_train_pred_linear): 0.2f}
-test  mse (linear): {mean_squared_error(y_true=y_test, y_pred=y_test_pred_linear): 0.2f}
---------------------------------
-train mse (tree)  : {mean_squared_error(y_true=y_train, y_pred=y_train_pred_tree): 0.2f}
-test  mse (tree)  : {mean_squared_error(y_true=y_test, y_pred=y_test_pred_tree): 0.2f}
---------------------------------
-&#39;&#39;&#39;)</code></pre>
-<pre><code>--------------------------------
-train mse (linear):  191343.26
-test  mse (linear):  1275495.73
---------------------------------
-train mse (tree)  :  22042.71
-test  mse (tree)  :  1209060.94
---------------------------------</code></pre>
-<p>Both models have a similar out-sample performance (the tree one does a bit better). For in-sample performance the tree based model has less MSE.</p>
-<p><strong>Warning:</strong> One needs to be careful when using tee based model for time series forecasting as these models are not capable of capturing trend components. In this specific case the trend is no s strong and the overall range of the time series is bounded by the max / min of the training time series. This explains why the tree based model still performs well on the test set.</p>
-<p>Let us plot the predictions and error distributions on the training and test sets:</p>
-<pre class="python"><code># Compute errors.
+```python
+# Compute errors.
 error_train_linear = y_train - y_train_pred_linear
 error_test_linear = y_test - y_test_pred_linear
 error_train_tree = y_train - y_train_pred_tree
@@ -600,14 +234,13 @@ ax.set(title=&#39;Out-Sample Predictions&#39;);</code></pre>
 </center>
 <hr />
 </div>
-</div>
 <div id="part-ii-model-interpretation" class="section level1">
 <h1>Part II: Model Interpretation</h1>
 <p>Now that we have fitted two machine learning models, we would like to try to understand how these models make predictions, e.g. which features are important? are there any interaction effects? what is the effect on certain feature on the final outcome? We will start to answer these questions by looking into the individual model structure and extract some insights based on the algorithm behind the model. After that, we will deep dive into model-agnostic methods.</p>
 <div id="model-specific" class="section level2">
 <h2>Model Specific</h2>
 <p>Let us now dig deeper into model specific methods to understand the model predictions.</p>
-<div id="linear-model-1" class="section level3">
+<div id="linear-model" class="section level3">
 <h3>Linear Model</h3>
 <p>Linear models are arguably the most interpretable ones as the parametrization is very transparent. For a given target variable <span class="math inline">\(y\)</span> and regressors <span class="math inline">\(x_{k}\)</span> a linear model has the form</p>
 <p><span class="math display">\[
@@ -899,7 +532,7 @@ Name: 284, dtype: object</code></pre>
     - (linear_grid_search.predict(x_train.iloc[obs_index, ].to_frame().T)[0])</code></pre>
 <pre><code>0.0</code></pre>
 </div>
-<div id="tree-model-1" class="section level3">
+<div id="tree-model" class="section level3">
 <h3>Tree Model</h3>
 <p>Single decision trees are also quite explicit about their interpretation. Moving to ensembles can be a bit tricky, I recommend the section <a href="https://xgboost.readthedocs.io/en/latest/tutorials/model.html">Introduction to Boosted Trees</a> on <a href="https://xgboost.readthedocs.io/en/latest/index.html">XGBoost documentation</a>. One of the highest benefits of tree ensembles is the ability to learn complex and non-linear relations from the data.</p>
 <p>To begin, let us compute the preprocessing step output of the tree model:</p>
@@ -1305,7 +938,7 @@ ax.set(title=&quot;Hierarchical Clustering (Ward) based on Spearman&#39;s correl
 </div>
 <div id="shap" class="section level2">
 <h2>SHAP</h2>
-<p>SHAP (SHapley Additive exPlanations) (<a href="https://christophm.github.io/interpretable-ml-book/shap.html">Section 5.11, Interpretable Machine Learning</a>) are based on the concept of <a href="https://en.wikipedia.org/wiki/Shapley_value">Shapley Values</a> (see <a href="https://christophm.github.io/interpretable-ml-book/shapley.html">Section 5.9, Interpretable Machine Learning</a>), which have their origin in game theory. The main idea is to consider the model as a game (prediction task) and each model feature as a player. Features can be grouped in teams (colaitions) to play thr game, i.e. generate predictions. It is important to remark that the “gain” is the actual prediction for this for the coalition minus the average prediction for all instances, so that:</p>
+<p>SHAP (SHapley Additive exPlanations) (<a href="https://christophm.github.io/interpretable-ml-book/shap.html">Section 5.11, Interpretable Machine Learning</a>) are based on the concept of <a href="https://en.wikipedia.org/wiki/Shapley_value">Shapley Values</a> (see <a href="https://christophm.github.io/interpretable-ml-book/shapley.html">Section 5.9, Interpretable Machine Learning</a>), which have their origin in game theory. The main idea is to consider the model as a game (prediction task) and each model feature as a player. Features can be grouped in teams (coalitions) to play thr game, i.e. generate predictions. It is important to remark that the “gain” is the actual prediction for this for the coalition minus the average prediction for all instances, so that:</p>
 <blockquote>
 <p><em>The Shapley value is the average contribution of a feature value to the prediction in different coalitions.</em></p>
 <p><strong>Warning:</strong> <em>The Shapley value is NOT the difference in prediction when we would remove the feature from the model.</em></p>
@@ -1315,7 +948,7 @@ ax.set(title=&quot;Hierarchical Clustering (Ward) based on Spearman&#39;s correl
 <blockquote>
 <ol style="list-style-type: decimal">
 <li><p>Sample coalitions <span class="math inline">\(z_{k}&#39;\in\{0, 1\}^{M}\)</span>, where <span class="math inline">\(M\)</span>, is the maximum coalition size.</p></li>
-<li><p>Get prediction for each <span class="math inline">\(z_{k}&#39;\)</span>. For features not in the colaition we replace their values with random samples from the dataset (background data).</p></li>
+<li><p>Get prediction for each <span class="math inline">\(z_{k}&#39;\)</span>. For features not in the coalition we replace their values with random samples from the dataset (background data).</p></li>
 <li><p>Compute the weight for each <span class="math inline">\(z_{k}&#39;\)</span>, with the SHAP kernel,</p></li>
 </ol>
 <p><span class="math display">\[\pi_{x}(z&#39;) = \frac{(M-1)}{\binom{M}{|z&#39;|}|z&#39;|(M-|z&#39;|)}\]</span></p>
@@ -1325,7 +958,7 @@ ax.set(title=&quot;Hierarchical Clustering (Ward) based on Spearman&#39;s correl
 </ol>
 </blockquote>
 <p>We are going to use the python <a href="https://shap.readthedocs.io/en/latest/index.html">SHAP</a> package.</p>
-<div id="linear-model-2" class="section level3">
+<div id="linear-model-1" class="section level3">
 <h3>Linear Model</h3>
 <p>We can use the general <a href="https://github.com/slundberg/shap/blob/master/shap/explainers/_kernel.py">KernelShap</a>, a generic way to compute the SHAP values as follows:</p>
 <pre class="python"><code>import shap
@@ -1417,7 +1050,7 @@ plt.title(f&#39;Linear SHAP effects Observation {obs_index} (non-zero features)&
 </figure>
 </center>
 </div>
-<div id="tree-model-2" class="section level3">
+<div id="tree-model-1" class="section level3">
 <h3>Tree Model</h3>
 <p>We can proceed similarly for the tree model:</p>
 <pre class="python"><code>tree_shap_explainer = shap.TreeExplainer(
