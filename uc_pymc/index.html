@@ -7,8 +7,8 @@
 <meta name="generator" content="Hugo 0.79.1" />
 
 
-<title>Unobserved Component Model as a Bayesian Model with PyMC - Dr. Juan Camilo Orduz</title>
-<meta property="og:title" content="Unobserved Component Model as a Bayesian Model with PyMC - Dr. Juan Camilo Orduz">
+<title>Unobserved Components Model as a Bayesian Model with PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Unobserved Components Model as a Bayesian Model with PyMC - Dr. Juan Camilo Orduz">
 
 
   <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
@@ -68,7 +68,7 @@
     <span class="article-duration">11 min read</span>
     
 
-    <h1 class="article-title">Unobserved Component Model as a Bayesian Model with PyMC</h1>
+    <h1 class="article-title">Unobserved Components Model as a Bayesian Model with PyMC</h1>
 
     
     <span class="article-date">2021-12-10</span>
@@ -79,11 +79,11 @@
 <script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
-<p>In this notebook I want to deep-dive into the idea of wrapping a <a href="https://www.statsmodels.org/stable/index.html"><code>statsmodels</code></a> <a href="https://www.statsmodels.org/dev/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html"><code>UnobservedComponent</code></a> model as a bayesian model with <a href="https://github.com/pymc-devs/pymc">PyMC</a> described in the (great!) post <a href="https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html">Fast Bayesian estimation of SARIMAX models</a>. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponent model to a simulated time series. In the second part we describe the process of wrapping the model as a PyMC model, running the MCMC and sampling and generating out of sample predictions.</p>
-<p><strong>Remark:</strong> This notebook was motivated by trying to extend the Causal Impact implementation <a href="https://github.com/WillianFuks/causalimpact"><code>pycausalimpact</code></a> from <a href="https://github.com/WillianFuks">willfuks</a> to the Bayesian setting (we would still need to restrict the level priors, see <a href="https://github.com/WillianFuks/causalimpact/blob/master/causalimpact/main.py#L394">here</a>). Please check out his newer implementation (<a href="https://github.com/WillianFuks/tfcausalimpact"><code>tfcausalimpact</code></a>) using <a href="https://www.tensorflow.org/probability"><code>tensorflow-probability</code></a>.</p>
+<p>In this notebook I want to deep-dive into the idea of wrapping a <a href="https://www.statsmodels.org/stable/index.html"><code>statsmodels</code></a> <a href="https://www.statsmodels.org/dev/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html"><code>UnobservedComponents</code></a> model as a bayesian model with <a href="https://github.com/pymc-devs/pymc">PyMC</a> described in the (great!) post <a href="https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html">Fast Bayesian estimation of SARIMAX models</a>. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponents model to a simulated time series. In the second part we describe the process of wrapping the model as a PyMC model, running the MCMC and sampling and generating out of sample predictions.</p>
+<p><strong>Remark:</strong> This notebook was motivated by trying to extend the Causal Impact implementation <a href="https://github.com/WillianFuks/causalimpact"><code>pycausalimpact</code></a> from <a href="https://github.com/WillianFuks">willfuks</a> to the Bayesian setting (we would still need to restrict the level priors, see <a href="https://github.com/WillianFuks/causalimpact/blob/master/causalimpact/main.py#L394">here</a>). Please check out his newest implementation (<a href="https://github.com/WillianFuks/tfcausalimpact"><code>tfcausalimpact</code></a>) using <a href="https://www.tensorflow.org/probability"><code>tensorflow-probability</code></a>.</p>
 <hr />
-<div id="part-1-unobserved-component-model" class="section level1">
-<h1>Part 1: Unobserved Component Model</h1>
+<div id="part-1-unobserved-components-model" class="section level1">
+<h1>Part 1: Unobserved Components Model</h1>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import numpy as np
@@ -522,7 +522,7 @@ plt.tight_layout()</code></pre>
 <img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_53_1.svg" alt="html" style="width: 1000px;"/>
 </center>
 <p>Note that all the <code>sigma2.*</code> variables have much larger values in the pymc model. This is also the case in some of the models of the original <code>statsmodels</code> post.</p>
-<p>We can now compute some diagnostics metrics as usual (see this post on <a href="https://juanitorduz.github.io/intro_pymc3/">Introduction to Bayesian Modeling with PyMC3</a>::</p>
+<p>We can now compute some diagnostics metrics as usual (see this post on <a href="https://juanitorduz.github.io/intro_pymc3/">Introduction to Bayesian Modeling with PyMC3</a>:</p>
 <pre class="python"><code>az.summary(trace)</code></pre>
 <center>
 <img src="../images/unobserved_components_pymc_files/pymc_summary.png" alt="html" style="width: 800px;"/>
