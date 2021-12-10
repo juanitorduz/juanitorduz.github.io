@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Unobserved Component Model as a Bayesian Model with PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Unobserved Component Model as a Bayesian Model with PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">11 min read</span>
+    
+
+    <h1 class="article-title">Unobserved Component Model as a Bayesian Model with PyMC</h1>
+
+    
+    <span class="article-date">2021-12-10</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook I want to deep-dive into the idea of wrapping a <a href="https://www.statsmodels.org/stable/index.html"><code>statsmodels</code></a> <a href="https://www.statsmodels.org/dev/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html"><code>UnobservedComponent</code></a> model as a bayesian model with <a href="https://github.com/pymc-devs/pymc">PyMC</a> described in the (great!) post <a href="https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html">Fast Bayesian estimation of SARIMAX models</a>. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponent model to a simulated time series. In the second part we describe the process of wrapping the model as a PyMC model, running the MCMC and sampling and generating out of sample predictions.</p>
+<p><strong>Remark:</strong> This notebook was motivated by trying to extend the Causal Impact implementation <a href="https://github.com/WillianFuks/causalimpact"><code>pycausalimpact</code></a> from <a href="https://github.com/WillianFuks">willfuks</a> to the Bayesian setting (we would still need to restrict the level priors, see <a href="https://github.com/WillianFuks/causalimpact/blob/master/causalimpact/main.py#L394">here</a>). Please check out his newer implementation (<a href="https://github.com/WillianFuks/tfcausalimpact"><code>tfcausalimpact</code></a>) using <a href="https://www.tensorflow.org/probability"><code>tensorflow-probability</code></a>.</p>
+<hr />
+<div id="part-1-unobserved-component-model" class="section level1">
+<h1>Part 1: Unobserved Component Model</h1>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set_style(
+    style=&quot;darkgrid&quot;, 
+    rc={&quot;axes.facecolor&quot;: &quot;0.9&quot;, &quot;grid.color&quot;: &quot;0.8&quot;}
+)
+sns.set_palette(palette=&quot;deep&quot;)
+sns_c = sns.color_palette(palette=&quot;deep&quot;)
+
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+
+%reload_ext autoreload
+%autoreload 2
+
+%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+</div>
+<div id="generate-sample-data" class="section level2">
+<h2>Generate Sample Data</h2>
+<p>We generate a sample time series with a known trend, seasonal component, an external regressor and an auto-regressive term (see <a href="https://github.com/juanitorduz/btsa/blob/master/python/intro_forecasting/unobserved_components.ipynb">here</a> for more details).</p>
+<pre class="python"><code>np.random.seed(1)
+
+min_date = pd.to_datetime(&quot;2015-01-01&quot;)
+max_date = pd.to_datetime(&quot;2022-01-01&quot;)
+
+data_df = pd.DataFrame(
+    data={&quot;date&quot;: pd.date_range(start=min_date, end=max_date, freq=&quot;M&quot;)}
+)
+
+n = data_df.shape[0]
+
+def generate_data(n, sigma_eta, sigma_epsilon):
+   
+    y = np.zeros(n)
+    mu = np.zeros(n)
+    epsilon = np.zeros(n)
+    eta = np.zeros(n)
+
+    for t in range(1, n):
+        
+        eta[t] = np.random.normal(loc=0.0, scale=sigma_eta)
+        mu[t] = mu[t - 1] + eta[t]
+
+        epsilon[t] = np.random.normal(loc=0.0, scale=sigma_epsilon)
+        y[t] = mu[t] + epsilon[t]
+
+    return y, mu
+
+sigma_eta = 0.1
+sigma_epsilon = 0.1
+
+y, mu = generate_data(n=n, sigma_eta=sigma_eta, sigma_epsilon=sigma_epsilon)
+
+data_df[&quot;y&quot;] = y
+
+# Add external regressor.
+x = np.random.uniform(low=0.0, high=1.0, size=n)
+data_df[&quot;x&quot;] = np.where( x &gt; 0.80, x, 0)
+# Add seasonal component.
+data_df[&quot;cs&quot;] = np.sin(2 * np.pi * data_df[&quot;date&quot;].dt.dayofyear / 356.5) 
+data_df[&quot;cc&quot;] = np.cos(3 * np.pi * data_df[&quot;date&quot;].dt.dayofyear / 356.5) 
+data_df[&quot;s&quot;] = data_df[&quot;cs&quot;] + data_df[&quot;cc&quot;]
+# Construct target variable.
+data_df[&quot;z&quot;] = data_df[&quot;y&quot;] + data_df[&quot;x&quot;] + data_df[&quot;s&quot;]
+# Add autoregressive term.
+data_df[&quot;z&quot;] = data_df[&quot;z&quot;] + 0.5 * data_df[&quot;z&quot;].shift(1).fillna(0)</code></pre>
+<p>Let us plot the time series and its components:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;z&quot;, data=data_df, marker=&quot;o&quot;, markersize=5, color=&quot;black&quot;, label=&quot;z&quot;, ax=ax)
+sns.lineplot(x=&quot;date&quot;, y=&quot;y&quot;, data=data_df, marker=&quot;o&quot;, markersize=5, color=sns_c[0], alpha=0.6, label=&quot;y (local level)&quot;, ax=ax)
+sns.lineplot(x=&quot;date&quot;, y=&quot;s&quot;, data=data_df, marker=&quot;o&quot;, markersize=5, color=sns_c[1], alpha=0.6, label=&quot;seasonal&quot;, ax=ax)
+sns.lineplot(x=&quot;date&quot;, y=&quot;x&quot;, data=data_df, marker=&quot;o&quot;, markersize=5, color=sns_c[2], alpha=0.6, label=&quot;x&quot;, ax=ax)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Simulated data components&quot;);</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_7_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="train-test-split" class="section level2">
+<h2>Train-Test Split</h2>
+<p>Next we split the data into a training and test set.</p>
+<pre class="python"><code># Set date as index.
+data_df.set_index(&quot;date&quot;, inplace=True)
+data_df.index = pd.DatetimeIndex(
+    data=data_df.index.values,
+    freq=data_df.index.inferred_freq
+)</code></pre>
+<p>Let us see the split:</p>
+<pre class="python"><code>train_test_ratio = 0.80
+n_train = int(n * train_test_ratio)
+n_test = n - n_train
+
+data_train_df = data_df[: n_train]
+data_test_df = data_df[- n_test :]
+
+y_train = data_train_df[&quot;z&quot;]
+x_train = data_train_df[[&quot;x&quot;]]
+
+y_test = data_test_df[&quot;z&quot;]
+x_test = data_test_df[[&quot;x&quot;]]
+
+fig, ax = plt.subplots()
+sns.lineplot(x=y_train.index, y=y_train, marker=&quot;o&quot;, markersize=5, color=sns_c[0], label=&quot;y_train&quot;, ax=ax)
+sns.lineplot(x=y_test.index, y=y_test, marker=&quot;o&quot;, markersize=5, color=sns_c[1], label=&quot;y_test&quot;, ax=ax)
+ax.axvline(x=x_train.tail(1).index[0], color=sns_c[6], linestyle=&quot;--&quot;, label=&quot;train-test-split&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Train-Test Split&quot;);</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_11_0.svg" title="fig:" alt="svg" />
+</center>
+</div>
+<div id="fit-model" class="section level2">
+<h2>Fit Model</h2>
+<p>We not fit a <code>UnobservedComponents</code> model (also known as structural time series models). Recall that this is a model of the form:</p>
+<p><span class="math display">\[
+y_z = \mu_t + \gamma_t + c_t + \varepsilon_t
+\]</span></p>
+<p>where <span class="math inline">\(\mu_t\)</span> is the trend component, <span class="math inline">\(\gamma_t\)</span> is the seasonal component, <span class="math inline">\(c_t\)</span> is the cycle component and <span class="math inline">\(\varepsilon_t\)</span> is the irregular component. Please see the <a href="https://www.statsmodels.org/dev/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html">great documentation</a> for more details. For this specific case we will use <span class="math inline">\(4\)</span> Fourier terms to model the yearly seasonality (similar to <a href="https://facebook.github.io/prophet/"><code>prophet</code></a>). In addition, we are going to set the parameter <code>mle_regression</code> to <code>True</code> to add the external regressor into the state vector.</p>
+<pre class="python"><code>from statsmodels.tsa.statespace.structural import UnobservedComponents
+
+model_params =  {
+    &quot;endog&quot;: y_train,
+    &quot;exog&quot;: x_train,
+    &quot;level&quot;: &quot;local level&quot;,
+    &quot;freq_seasonal&quot;: [
+         {&quot;period&quot;: 12, &quot;harmonics&quot;: 4}
+    ],
+    &quot;autoregressive&quot;: 1,
+    &quot;mle_regression&quot;: True,
+ }
+ 
+model = UnobservedComponents(**model_params)</code></pre>
+<p>Let us now fit the model.</p>
+<pre class="python"><code>result = model.fit(disp=0)
+
+result.summary()</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/model_summary.png" alt="html" style="width: 700px;"/>
+</center>
+<p>Now we can see some diagnostic plots:</p>
+<pre class="python"><code>result.plot_diagnostics(figsize=(12, 9));</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_17_0.svg" title="fig:" alt="svg" />
+</center>
+<p>The error distribution looks ok! Now let us visualize the model (learned) components:</p>
+<pre class="python"><code>alpha = 0.05
+
+fig = result.plot_components(figsize=(12, 9), alpha=alpha)
+
+for ax in fig.get_axes():
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+    ax.set(title=None)
+
+fig.suptitle(&quot;Model Components&quot;, y=0.92);</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_19_0.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>This decomposition agrees with our data generation process.</p>
+<p><strong>Remark:</strong> Let us get the number of observations needed for the approximate diffuse initialization (see <a href="https://github.com/juanitorduz/btsa/blob/master/python/intro_forecasting/unobserved_components.ipynb">here</a> for more details).</p>
+<pre class="python"><code>n_obs_init = model.k_states - int(model._unused_state) - model.ar_order</code></pre>
+</div>
+<div id="generate-predictions" class="section level2">
+<h2>Generate Predictions</h2>
+<p>Now we can use the fitted model to generate in and out sample predictions and confidence intervals.</p>
+<pre class="python"><code>train_predictions_summary = result \
+    .get_prediction() \
+    .summary_frame(alpha=alpha)
+
+test_predictions_summary = result \
+    .get_forecast(steps=n_test, exog=x_test) \
+    .summary_frame(alpha=alpha)</code></pre>
+<p>Moreover, we can simulate from the state space model.</p>
+<pre class="python"><code>repetitions = 100
+
+simulations_train_df = result.simulate(
+    anchor=&quot;start&quot;,
+    nsimulations=n_train,
+    repetitions=repetitions,
+    exog=x_train
+)
+
+simulations_test_df = result.simulate(
+    anchor=&quot;end&quot;,
+    nsimulations=n_test,
+    repetitions=repetitions,
+    exog=x_test
+)
+
+# Verify expected shape of the simulations dataframes.
+assert simulations_train_df.shape == (n_train, repetitions)
+assert simulations_test_df.shape == (n_test, repetitions)</code></pre>
+<p>Let us see the results:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+# Input data
+sns.lineplot(
+    x=y_train.index,
+    y=y_train,
+    marker=&quot;o&quot;,
+    markersize=5,
+    color=&quot;C0&quot;,
+    label=&quot;y_train&quot;,
+    ax=ax
+)
+sns.lineplot(
+    x=y_test.index,
+    y=y_test,
+    marker=&quot;o&quot;,
+    markersize=5,
+    color=&quot;C1&quot;,
+    label=&quot;y_test&quot;,
+    ax=ax
+)
+ax.axvline(
+    x=x_train.tail(1).index[0],
+    color=&quot;C6&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;train-test-split&quot;
+)
+
+# Simulations
+for col in simulations_test_df.columns:
+    sns.lineplot(
+        x=simulations_test_df.index,
+        y=simulations_test_df[col],
+        color=&quot;C3&quot;,
+        alpha=0.05, 
+        ax=ax
+    )
+
+# Prediction intervals
+ax.fill_between(
+    x=train_predictions_summary.index[n_obs_init: ],
+    y1=train_predictions_summary[&quot;mean_ci_lower&quot;][n_obs_init: ],
+    y2=train_predictions_summary[&quot;mean_ci_upper&quot;][n_obs_init: ],
+    color=&quot;C2&quot;,
+    label=&quot;confidence interval (train)&quot;,
+    alpha=0.3
+)
+ax.fill_between(
+    x=test_predictions_summary.index[n_obs_init: ],
+    y1=test_predictions_summary[&quot;mean_ci_lower&quot;][n_obs_init: ],
+    y2=test_predictions_summary[&quot;mean_ci_upper&quot;][n_obs_init: ],
+    color=&quot;C3&quot;,
+    label=&quot;confidence interval (test)&quot;,
+    alpha=0.3
+)
+
+# Predictions
+sns.lineplot(
+    x=train_predictions_summary.index,
+    y=train_predictions_summary[&quot;mean&quot;],
+    marker=&quot;o&quot;,
+    markersize=5,
+    color=&quot;C2&quot;,
+    label=&quot;y_train_pred&quot;,
+    ax=ax
+)
+sns.lineplot(
+    x=test_predictions_summary.index,
+    y=test_predictions_summary[&quot;mean&quot;],
+    marker=&quot;o&quot;,
+    markersize=5,
+    color=&quot;C3&quot;,
+    label=&quot;y_test_pred&quot;,
+    ax=ax
+)
+
+# diffuse initialization
+ax.axvline(
+    x=y_train.index[n_obs_init],
+    color=&quot;C5&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;diffuse initialization&quot;
+)
+
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Unobserved Components Model Predictions&quot;);</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_28_0.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>Here are some remarks:</p>
+<ul>
+<li>The in and out sample predictions look good and there is no sign of significant over-fit.</li>
+<li>Nevertheless, it seems that the models is underestimating the trend component a bit.</li>
+<li>Note that all the simulations lie withing the confidence intervals.</li>
+</ul>
+<hr />
+</div>
+</div>
+<div id="part-2-pymc-integration" class="section level1">
+<h1>Part 2: PyMC Integration</h1>
+<div id="write-model-wrapper" class="section level2">
+<h2>Write Model Wrapper</h2>
+<p>As mentioned in the introduction, we follow the indications of the post <a href="https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html">Fast Bayesian estimation of SARIMAX models</a> to wrap the model as a PyMC model. Here is the main idea. The <code>UnobservedComponents</code> implementation from <code>statsmodels</code> already computes the derivative of the log-likelihood function with respect to the state vector. This is the main ingredient for the <a href="https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo">Hamiltonian Monte Carlo (HMC) algorithm</a>. Hence, we just need to extract the likelihood and its derivate as a <a href="https://docs.pymc.io/en/v3/PyMC3_and_Theano.html">Theano</a> / <a href="https://github.com/aesara-devs/aesara">Aesara</a> operator, which is what PyMC uses to construct the computational graph. To see the details about what is required to create a custom Python operator please see the extensive documentation <a href="https://theano-pymc.readthedocs.io/en/latest/extending/extending_theano.html">Creating a new Op: Python implementation</a>. The following is the structure of a Theano graph:</p>
+<center>
+<img src="https://theano-pymc.readthedocs.io/en/latest/_images/apply_node.png" alt="Theano Op">
+</center>
+<p>From the documentation:</p>
+<blockquote>
+<p><em>Theano represents symbolic mathematical computations as graphs. Those graphs are bi-partite graphs (graphs with 2 types of nodes), they are composed of interconnected Apply and Variable nodes. Variable nodes represent data in the graph, either inputs, outputs or intermediary values. As such, Inputs and Outputs of a graph are lists of Theano Variable nodes. Apply nodes perform computation on these variables to produce new variables. Each Apply node has a link to an instance of Op which describes the computation to perform</em>.</p>
+</blockquote>
+<p>For our particular, we need to construct a Theano operator to compute the model’s likelihood and its derivative given a set of parameters. Concretely, we need to implement something of the form:</p>
+<pre class="python"><code>from theano.graph.op import Op
+
+class Loglike(tt.Op):
+
+    def __init__(self, model):
+        ...
+
+    def perform(self, node, inputs, outputs):
+        &quot;&quot;&quot;Compute log-likelihood.&quot;&quot;&quot;
+        ...
+
+    def grad(self, inputs, g):
+        &quot;&quot;&quot;Compute gradient of log-likelihood (Jacobian).&quot;&quot;&quot;
+        ...</code></pre>
+<p>See the description and requirements of the <a href="https://theano-pymc.readthedocs.io/en/latest/extending/op.html#perform">perform</a> and <a href="https://theano-pymc.readthedocs.io/en/latest/extending/op.html#grad">grad</a> methods respectively.</p>
+<p>Now, how do we extract the likelihood from the <code>UnobservedComponents</code> model? We can access it via the <code>loglike</code> method. Let us compute the likelihood on the fitted parameters:</p>
+<pre class="python"><code>model.loglike(result.params)</code></pre>
+<pre><code>-10.895206701947446</code></pre>
+<p>Similarly, we can compute the gradient of the likelihood via the <code>score</code> method.</p>
+<pre class="python"><code>model.score(params = result.params)</code></pre>
+<pre><code>array([-6.72506452e+00, -1.14243319e-01, -4.49922733e+03,  2.79173498e-02,
+        1.59160648e-05, -1.51104128e-03])</code></pre>
+<p>Note that the output is a vector as expected.</p>
+<p>We first define a <code>Score</code> operator to compute the log-likelihood gradient:</p>
+<pre class="python"><code>import theano.tensor as tt
+
+class Score(tt.Op):
+    itypes = [tt.dvector]  # expects a vector of parameter values when called
+    otypes = [tt.dvector]  # outputs vector of log-likelihood values
+
+    def __init__(self, model):
+        self.model = model
+
+    def perform(self, node, inputs, outputs):
+        (theta,) = inputs
+        outputs[0][0] = self.model.score(theta)</code></pre>
+<p>Next we need a class to compute the likelihood.</p>
+<pre class="python"><code>class Loglike(tt.Op):
+
+    itypes = [tt.dvector]  # expects a vector of parameter values when called
+    otypes = [tt.dscalar]  # outputs a single scalar value (the log likelihood)
+
+    def __init__(self, model):
+        self.model = model
+        self.score = Score(self.model)
+
+    def perform(self, node, inputs, outputs):
+        (theta,) = inputs  # contains the vector of parameters
+        llf = self.model.loglike(theta)
+        outputs[0][0] = np.array(llf)  # output the log-likelihood
+
+    def grad(self, inputs, gradients):
+        # the method that calculates the gradients - it actually returns the
+        # vector-Jacobian product - gradients[0] is a vector of parameter values
+        (theta,) = inputs  # our parameters
+        out = [gradients[0] * self.score(theta)]
+        return out</code></pre>
+<p><strong>Remark:</strong> From the documentation <em>The grad method must return a list containing one Variable for each input. Each returned Variable represents the gradient with respect to that input computed based on the symbolic gradients with respect to each output.</em></p>
+<p>We are now ready to write the wrapper:</p>
+<pre class="python"><code>loglike = Loglike(model)</code></pre>
+<p>Let us see this in action:</p>
+<pre class="python"><code># parameters to theano tensor
+tt_params =  tt.as_tensor_variable(x=result.params.to_numpy(), ndim=1)
+
+# We evaluate the log-likelihood
+type(loglike(tt_params))</code></pre>
+<pre><code>theano.tensor.var.TensorVariable</code></pre>
+<pre class="python"><code># To get the value we evaluate the tensor
+loglike(tt_params).eval()</code></pre>
+<pre><code>array(-10.8952067)</code></pre>
+</div>
+<div id="run-pymc-model" class="section level2">
+<h2>Run PyMC Model</h2>
+<p>In order to write the PyMC model we need to define a target distribution. In this case we can use <a href="https://docs.pymc.io/en/v3/api/distributions/utilities.html#distribution-utility-classes-and-functions"><code>DensityDist</code></a> which is <em>a distribution with the passed log density function is created.</em></p>
+<pre class="python"><code>import arviz as az
+import pymc3 as pm
+
+# Set sampling params
+ndraws = 4000  # number of draws from the distribution
+nburn = 1000  # number of &quot;burn-in points&quot; (which will be discarded)
+
+with pm.Model() as pm_model:
+    # Priors
+    sigma2_irregular = pm.InverseGamma(&quot;sigma2.irregular&quot;, alpha=2, beta=1)
+    sigma2_level = pm.InverseGamma(&quot;sigma2.level&quot;, alpha=2, beta=1)
+    sigma2_freq_seasonal = pm.InverseGamma(&quot;sigma2.freq_seasonal_12(4)&quot;, alpha=2, beta=1)
+    sigma2_ar = pm.InverseGamma(&quot;sigma2.ar&quot;, alpha=2, beta=1)
+    ar_L1 = pm.Uniform(&quot;ar.L1&quot;, lower=-0.99, upper=0.99)
+    beta_x = pm.Normal(&quot;beta.x&quot;, mu=0, sigma=1)
+
+    # convert variables to tensor vectors
+    theta = tt.as_tensor_variable([
+        sigma2_irregular,
+        sigma2_level,
+        sigma2_freq_seasonal,
+        sigma2_ar,
+        ar_L1,
+        beta_x
+    ])
+
+    # use a DensityDist (use a lamdba function to &quot;call&quot; the Op)
+    pm.DensityDist(&quot;likelihood&quot;, logp=loglike, observed=theta)</code></pre>
+<p>Let us see the model structure:</p>
+<pre class="python"><code>pm_model</code></pre>
+<p><span class="math display">\[
+                \begin{array}{rcl}
+                \text{sigma2.irregular_log__} &amp;\sim &amp; \text{TransformedDistribution}\\\text{sigma2.level_log__} &amp;\sim &amp; \text{TransformedDistribution}\\\text{sigma2.freq_seasonal_12(4)_log__} &amp;\sim &amp; \text{TransformedDistribution}\\\text{sigma2.ar_log__} &amp;\sim &amp; \text{TransformedDistribution}\\\text{ar.L1_interval__} &amp;\sim &amp; \text{TransformedDistribution}\\\text{beta.x} &amp;\sim &amp; \text{Normal}\\\text{sigma2.irregular} &amp;\sim &amp; \text{InverseGamma}\\\text{sigma2.level} &amp;\sim &amp; \text{InverseGamma}\\\text{sigma2.freq_seasonal_12(4)} &amp;\sim &amp; \text{InverseGamma}\\\text{sigma2.ar} &amp;\sim &amp; \text{InverseGamma}\\\text{ar.L1} &amp;\sim &amp; \text{Uniform}\\\text{likelihood} &amp;\sim &amp; \text{DensityDist}
+                \end{array}
+\]</span></p>
+<p>Next, we fit the model:</p>
+<pre class="python"><code>with pm_model:
+
+    trace = pm.sample(
+        draws=ndraws,
+        tune=nburn,
+        chains=4,
+        return_inferencedata=True,
+        cores=-1,
+        compute_convergence_checks=True,
+    )</code></pre>
+<p>We can now plot the trace of the model and compare them against the point estimate of the maximu likelihood estimations from the <code>statsmodels</code> implementation:</p>
+<pre class="python"><code>az.plot_trace(
+    data=trace,
+    lines=[(k, {}, [v]) for k, v in dict(result.params).items()]
+)
+plt.tight_layout()</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_53_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>Note that all the <code>sigma2.*</code> variables have much larger values in the pymc model. This is also the case in some of the models of the original <code>statsmodels</code> post.</p>
+<p>We can now compute some diagnostics metrics as usual (see this post on <a href="https://juanitorduz.github.io/intro_pymc3/">Introduction to Bayesian Modeling with PyMC3</a>::</p>
+<pre class="python"><code>az.summary(trace)</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/pymc_summary.png" alt="html" style="width: 800px;"/>
+</center>
+<p>Let us compare with the original model parameters:</p>
+<pre class="python"><code>result.params</code></pre>
+<pre><code>sigma2.irregular              6.936593e-09
+sigma2.level                  2.357237e-03
+sigma2.freq_seasonal_12(4)    2.385904e-11
+sigma2.ar                     4.892693e-02
+ar.L1                         2.854379e-01
+beta.x                        5.656842e-01
+dtype: float64</code></pre>
+</div>
+<div id="generate-predictions-1" class="section level2">
+<h2>Generate Predictions</h2>
+<p>Now ge generate predictions by sampling from the posterior distribution. First, we take a subset of samples.</p>
+<pre class="python"><code># number os samples
+n_samples = 200
+
+# sample with replacement from the posterior
+posterior_samples = trace[&quot;posterior&quot;] \
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;)) \
+    .to_pandas() \
+    .sample(n=n_samples, replace=True)
+
+# make sure the parameters are in the right order
+posterior_samples = posterior_samples[result.params.index.to_numpy()]</code></pre>
+<p>For these samples we just update the parameters of the model using the (Kalman) <code>smooth</code> method.</p>
+<pre class="python"><code>pm_models = []
+
+for i in range(n_samples):
+    params = posterior_samples.iloc[i].to_numpy()
+    result_bayes = model.smooth(params=params)
+    pm_models.append(result_bayes)
+
+# get in-sample fitted values
+train_fitted_values_df = pd.concat(
+    [m.fittedvalues[n_obs_init: ] for m in pm_models],
+axis=1)
+
+# get out-of-sample forecasted values
+test_predicted_values_df = pd.concat(
+    [m.forecast(steps=n_test, exog=x_test) for m in pm_models],
+axis=1)
+test_predicted_values_df.columns = [f&quot;c_{i}&quot; for i in range(n_samples)]
+
+# simulate from the model
+sim_test_df  = pd.concat(
+    [
+        m.simulate(
+            anchor=&quot;end&quot;,
+            nsimulations=n_test,
+            repetitions=1,
+            exog=x_test
+        )
+        for m in pm_models
+    ],
+axis=1)
+sim_test_df.columns = [f&quot;c_{i}&quot; for i in range(n_samples)]</code></pre>
+<p>Finally, let us visualize the final results:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
+
+# Input data
+sns.lineplot(
+    x=y_train.index,
+    y=y_train,
+    marker=&quot;o&quot;,
+    markersize=5,
+    color=sns_c[0],
+    label=&quot;y_train&quot;,
+    ax=ax
+)
+sns.lineplot(
+    x=y_test.index,
+    y=y_test,
+    marker=&quot;o&quot;,
+    markersize=5,
+    color=sns_c[1],
+    label=&quot;y_test&quot;,
+    ax=ax
+)
+ax.axvline(
+    x=x_train.tail(1).index[0],
+    color=sns_c[6],
+    linestyle=&quot;--&quot;,
+    label=&quot;train-test-split&quot;
+)
+
+# Predictions
+
+for i, col in enumerate(train_fitted_values_df.columns):
+
+    label = &quot;fitted values&quot; if i == 0 else None
+    sns.lineplot(
+        x=train_fitted_values_df.index,
+        y=train_fitted_values_df[col],
+        color=&quot;C2&quot;,
+        alpha=0.03,
+        label=label,
+        ax=ax
+    )
+
+for i, col in enumerate(test_predicted_values_df.columns):
+    label = &quot;predicted values&quot; if i == 0 else None
+    sns.lineplot(
+        x=test_predicted_values_df.index,
+        y=test_predicted_values_df[col],
+        color=&quot;C3&quot;,
+        alpha=0.03,
+        label=label,
+        ax=ax
+    )
+
+for i, col in enumerate(sim_test_df.columns):
+    label = &quot;simulated value&quot; if i == 0 else None
+    sns.lineplot(
+        x=sim_test_df.index,
+        y=sim_test_df[col],
+        color=&quot;C3&quot;,
+        alpha=0.03,
+        label=label,
+        ax=ax
+    )
+
+# diffuse initialization
+ax.axvline(
+    x=y_train.index[n_obs_init],
+    color=&quot;C5&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;diffuse initialization&quot;
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Unobserved Components PyMC Model Predictions&quot;);</code></pre>
+<center>
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_63_0.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>Note that the simulated out-of-sample predictions range is much wider than the frequentist results as we are also considering the uncertainty of the model fitted parameters from the posterior distribution.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

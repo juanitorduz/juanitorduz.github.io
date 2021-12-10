@@ -6,7 +6,16 @@
     <description>Recent content in python, pymc3 on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 13 Aug 2017 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc3/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 10 Dec 2021 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc3/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Unobserved Component Model as a Bayesian Model with PyMC</title>
+      <link>/uc_pymc/</link>
+      <pubDate>Fri, 10 Dec 2021 00:00:00 +0000</pubDate>
+      
+      <guid>/uc_pymc/</guid>
+      <description>In this notebook I want to deep-dive into the idea of wrapping a statsmodels UnobservedComponent model as a bayesian model with PyMC described in the (great!) post Fast Bayesian estimation of SARIMAX models. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponent model to a simulated time series.</description>
+    </item>
+    
     <item>
       <title>Introduction to Bayesian Modeling with PyMC3</title>
       <link>/intro_pymc3/</link>
