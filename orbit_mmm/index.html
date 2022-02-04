@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Media Effect Estimation with the KTR Orbit Model - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Media Effect Estimation with the KTR Orbit Model - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">17 min read</span>
+    
+
+    <h1 class="article-title">Media Effect Estimation with the KTR Orbit Model</h1>
+
+    
+    <span class="article-date">2022-02-04</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook we want to experiment to the new <a href="https://orbit-ml.readthedocs.io/en/stable/tutorials/ktr1.html">KTR model</a> included in the new <a href="https://github.com/uber/orbit"><code>orbit</code></a>’s release <a href="https://github.com/uber/orbit/releases/tag/v1.1.0">(1.1)</a>. In particular, we are interested in its applications to media effects estimation in the context of media mix modeling. This is one of the applications for the KTR model by the Uber’s team, see the corresponding paper <a href="https://arxiv.org/abs/2106.03322">Edwin, Ng, et al. “Bayesian Time Varying Coefficient Model with Applications to Marketing Mix Modeling”</a>.</p>
+<p>KTR stands for <em>kernel-based Time-varying regression</em> as its main feature is to fit time-variant regression coefficients in a bayesian forecasting model. For details on the KTR model, see the paper mentioned above and <a href="https://orbit-ml.readthedocs.io/en/stable/tutorials/ktr1.html">KTR documentation</a> where there is a great sequence of tutorials. In a nutshell, given a time series <span class="math inline">\(y_t\)</span> the KTR models its components as <span class="math inline">\(y_t = l_t + s_t + r_t + \varepsilon_t\)</span>, where <span class="math inline">\(l_t\)</span> is the local-trend (level) , <span class="math inline">\(s_t\)</span> is the seasonal component, <span class="math inline">\(r_t\)</span> are the regression terms and <span class="math inline">\(\varepsilon_t\)</span> is a stationary random error process. This is very similar to the <a href="https://facebook.github.io/prophet/">Prophet</a> model (we actually compare these two models bellow). One of the main differences is that the regression coefficients are time-varying. From the model documentation:</p>
+<blockquote>
+<p><em>The core of KTR is the use of latent variables to define a smooth time varying representation of model coefficients. These smooth representations are <a href="https://en.wikipedia.org/wiki/Kernel_smoother">Kernel Smooths</a>.</em></p>
+</blockquote>
+<p>These <em>latent variables</em> are somehow similar (or at least inspired) to the basis functions in a spline regression. Again, for details see the references above (which is <strong>strongly</strong> recommended!).</p>
+<p>This notebook has two parts:
+- In <strong>Part I</strong> we generate the data ourselves. This allow us to have control on the data generation process in order to understand the strength and limitations of the KTR model. Moreover, we explore useful transformations of media cost data to model carryover and diminishing returns, see <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>.
+- In <strong>Part II</strong> we use the KTR model to estimate the media effects. We also compare it with a baseline <a href="https://facebook.github.io/prophet/">Prophet</a> model.</p>
+<p><strong>Remark</strong>: In many applications measuring the effects via regression analysis is challenging because potential stochastic factors between the input and response variable. In our work <a href="https://arxiv.org/abs/2111.06403">Modelling stochastic time delay for regression analysis</a> with Aaron Pickering we go deeper into this subject.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from orbit.models import KTR
+from prophet import Prophet
+from prophet.plot import add_changepoints_to_plot
+from prophet.utilities import regressor_coefficients
+from scipy.ndimage import gaussian_filter
+from sklearn.base import BaseEstimator, TransformerMixin
+import seaborn as sns
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+
+%load_ext rich
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+<pre class="python"><code># orbit version
+! pip list | grep -i &quot;orbit&quot;</code></pre>
+<pre><code>orbit-ml    1.1.1.dev0</code></pre>
+<hr />
+</div>
+<div id="part-i-generate-sample-data" class="section level2">
+<h2>Part I: Generate Sample Data</h2>
+<p>We are going to generate a sample data set. The main idea is to generate a time series <span class="math inline">\(y\)</span> which will represent target variable, lets say <em>sales</em>. This time series will consist of various components: a trend, a seasonal component, an external regressor and some gaussian noise. We will describe the components in more detail below. For now, let us tart by generating the data range: <span class="math inline">\(3\)</span> years of weekly data.</p>
+<pre class="python"><code>min_date = pd.to_datetime(&quot;2018-04-01&quot;)
+max_date = pd.to_datetime(&quot;2021-09-01&quot;)
+
+data_df = pd.DataFrame(
+    data={&quot;date&quot;: pd.date_range(start=min_date, end=max_date, freq=&quot;W-MON&quot;)}
+)
+
+data_df = data_df.assign(
+    year = lambda x: x[&quot;date&quot;].dt.year,
+    month = lambda x: x[&quot;date&quot;].dt.month,
+    dayofyear = lambda x: x[&quot;date&quot;].dt.dayofyear,
+)
+
+n = data_df.shape[0]</code></pre>
+<div id="media-cost-features" class="section level3">
+<h3>Media Cost Features</h3>
+<ul>
+<li><strong>Generate Media Cost Feature</strong></li>
+</ul>
+<p>Let us start by defining the external regressor: a media cost feature. This variable will play the role of sales driver for our target variable. In practice, the marketing manager will have control over this variable. In this example we use a uniform distribution to simulate it.</p>
+<pre class="python"><code>SEED = 42
+np.random.seed(SEED)
+
+# sample from a uniform distribution on [0, 1] and cut at thethreshold (0.4)
+z = np.random.uniform(low=0.0, high=1.0, size=n)
+data_df[&quot;z&quot;] = 10 * np.where( z &gt; 0.4, z, z/4)
+
+fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;z&quot;, data=data_df, ax=ax)
+ax.set(title=&quot;Raw Media Cost Data&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_7_1.svg" />
+</center>
+<ul>
+<li><strong>Adstock Transformation</strong></li>
+</ul>
+<p>Next we apply an <a href="https://en.wikipedia.org/wiki/Advertising_adstock">adstock transformation</a> to the media cost feature. This transformation aims to model the carry over effect of media spend. See <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a> for more details.</p>
+<p><strong>Remark:</strong> In practice we would like to <em>learn</em> the adstock curve from the data. This can be done with <a href="https://docs.pymc.io/en/v3/">PyMC</a> as illustrated in the blog post <a href="https://towardsdatascience.com/bayesian-marketing-mix-modeling-in-python-via-pymc3-7b2071f6001a">Bayesian Marketing Mix Modeling in Python via PyMC3</a>. This approach was also used in HelloFresh’s Media Mix Model, as presented in the following resources:
+- Article: <a href="https://engineering.hellofresh.com/bayesian-media-mix-modeling-using-pymc3-for-fun-and-profit-2bd4667504e6">Bayesian Media Mix Modeling using PyMC3, for Fun and Profit</a>
+- Video: <a href="https://www.youtube.com/watch?v=UznM_-_760Y">A Bayesian Approach to Media Mix Modeling by Michael Johns &amp; Zhenyu Wang</a>
+- Articles: <a href="https://www.pymc-labs.io/blog-posts/bayesian-media-mix-modeling-for-marketing-optimization/">Bayesian Media Mix Modeling for Marketing Optimization</a> and <a href="https://www.pymc-labs.io/blog-posts/reducing-customer-acquisition-costs-how-we-helped-optimizing-hellofreshs-marketing-budget/">Improving the Speed and Accuracy of Bayesian Media Mix Models</a> by <a href="https://www.pymc-labs.io/">PyMC Labs</a></p>
+<p>For this specific example we are going to assume a certain heuristic for the adstock curve, and hence it will not be part of the model. We are going to apply a <em>geometric adstock transformation</em>, which is defined by the following transformer:</p>
+<pre class="python"><code>class GeometricAdstockTransformer(BaseEstimator, TransformerMixin):
+
+    def __init__(self, alpha: float = 0.0, l: int = 12):
+        self.alpha = alpha
+        self.l = l
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, x):
+        if isinstance(x, pd.DataFrame):
+            x = x.to_numpy()
+        cycles = [
+            np.append(
+                arr=np.zeros(shape=x.shape)[:i],
+                values=x[: x.shape[0] - i],
+                axis=0
+            ) 
+            for i in range(self.l)
+        ]
+        x_cycle = np.stack(cycles, axis=0)
+        w = np.array([np.power(self.alpha, i) for i in range(self.l)])
+        return np.tensordot(a=w, b=x_cycle, axes=1)</code></pre>
+<p>Next, lets apply the adstock transformation to the media cost feature.</p>
+<pre class="python"><code># the effect carryover factor is 1/2 (usual assumption)
+alpha = 1/2
+# The carryover period is 12 weeks, which is also quite reasonable.
+l = 12 
+
+geometric_adstock_transformer = GeometricAdstockTransformer(alpha=alpha, l=l)
+
+data_df[&quot;z_adstock&quot;] = geometric_adstock_transformer.fit_transform(data_df[&quot;z&quot;])</code></pre>
+<p>Let us plot the transformed data:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+  nrows=2,
+  ncols=1,
+  sharex=True,
+  sharey=False,
+  layout=&quot;constrained&quot;
+)
+
+features = [&quot;z&quot;, &quot;z_adstock&quot;]
+
+for i, (col, ax) in enumerate(zip(features, axes.flatten())):
+    sns.lineplot(x=&quot;date&quot;, y=col, color=f&quot;C{i}&quot;, label=col, data=data_df, ax=ax)
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Media Cost Feature Transformations&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_13_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<ul>
+<li><strong>Saturation Transformation:</strong></li>
+</ul>
+<p>Now we apply a saturation transformation to the media cost feature, which should capture the non-linear effect of media in sales (otherwise the marketing manager would just spending more and more to increase sales, but experience and intuition shows the relation is non-linear and eventually saturates). There are many possible parametrizations for such a transformation, but we will use the following one:</p>
+<p><span class="math display">\[
+x\longmapsto \frac{1 - e^{-\mu x}}{1 + e^{-\mu x}}
+\]</span></p>
+<p>Let us implement the corresponding transformer:</p>
+<pre class="python"><code>class LogisticSaturationTransformer(BaseEstimator, TransformerMixin):
+
+    def __init__(self, mu: float = 0.5):
+        self.mu = mu
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, x):
+        return (1 - np.exp(-self.mu * x)) / (1 + np.exp(-self.mu * x))</code></pre>
+<p>We can now apply the saturation transformation to the (adstock) media cost feature.</p>
+<pre class="python"><code>mu = 1.5e-1
+
+logistic_saturation_transformer = LogisticSaturationTransformer(mu=mu)
+
+data_df[&quot;z_adstock_saturated&quot;] = logistic_saturation_transformer.fit_transform(data_df[&quot;z_adstock&quot;])</code></pre>
+<p>We will not use <code>z_adstock_saturated</code> in our model and we would like to recover the saturation effect. Let us plot the saturation curve:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(7, 6))
+
+latex_function = r&quot;$x\longmapsto \frac{1 - e^{-\mu x}}{1 + e^{-\mu x}}$&quot;
+sns.lineplot(
+    x=&quot;z_adstock&quot;,
+    y=&quot;z_adstock_saturated&quot;,
+    color=&quot;C2&quot;,
+    label=latex_function,
+    data=data_df,
+    ax=ax
+)
+ax.legend(loc=&quot;lower right&quot;, prop={&quot;size&quot;: 18})
+ax.set(title=f&quot;Media Cost True Saturation Curve ($\mu$ = {mu})&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_19_1.svg" />
+</center>
+<p>Note that the saturation curve is almost linear for values <code>z_adstock</code> &lt; <span class="math inline">\(6\)</span>. After this point the first derivative starts to decrease.</p>
+<p><strong>Remark:</strong> It is clear that the adstock and saturation transformations do not commute (i.e. the order matters). Which one to apply first? Following <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a> , section 2.3:</p>
+<blockquote>
+<p><em>We could first apply the adstock transformation to the time series of media spend, and then apply
+the shape transformation. An alternative way would be to reverse the order. If media spend in
+each time period is relatively small compared to the cumulative spend across multiple time periods,
+the shape effect in each time period is less obvious compared to that of cumulative media spend.
+In this case, we would prefer to apply the shape transformation after the adstock transformation.
+However, if the media spend is heavily concentrated in some single time periods with an on-and-off
+pattern, the latter choice might be preferable.</em></p>
+</blockquote>
+<p>Now we plot all the transformations:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+  nrows=3,
+  ncols=1,
+  sharex=True,
+  sharey=False,
+  layout=&quot;constrained&quot;
+)
+
+features = [&quot;z&quot;, &quot;z_adstock&quot;, &quot;z_adstock_saturated&quot;]
+
+for i, (col, ax) in enumerate(zip(features, axes.flatten())):
+    sns.lineplot(x=&quot;date&quot;, y=col, color=f&quot;C{i}&quot;, label=col, data=data_df, ax=ax)
+    ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Media Cost Feature Transformations&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_21_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<ul>
+<li><strong>Diminishing Returns Over Time</strong></li>
+</ul>
+<p>Finally, we want to assume that the overall media efficiency decreases over time. We can do this by multiplying <code>z_adstock_saturated</code> with a decreasing function. We would expect to recover the decreasing effect with Orbit’s KTR model. Let us consider a rational function:</p>
+<pre class="python"><code>data_df[&quot;beta&quot;] =  (np.arange(start=0.0, stop=1.0, step=1/n) + 1) ** (-1.8)
+
+fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;beta&quot;, color=&quot;C5&quot;, data=data_df, ax=ax)
+ax.set(title=&quot;Media Cost Multiplicative Efficiency over Time&quot;, ylabel=None);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_23_1.svg" />
+</center>
+<p>Next, we compute the product of <code>beta</code> and <code>z_adstock_saturated</code>:</p>
+<pre class="python"><code>data_df[&quot;z_effect&quot;] = data_df[&quot;beta&quot;] * data_df[&quot;z_adstock_saturated&quot;]</code></pre>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=4,
+    ncols=1,
+    figsize=(12, 7),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;
+)
+
+features = [&quot;z&quot;, &quot;z_adstock&quot;, &quot;z_adstock_saturated&quot;, &quot;z_effect&quot;]
+
+for i, (col, ax) in enumerate(zip(features, axes.flatten())):
+    sns.lineplot(x=&quot;date&quot;, y=col, color=f&quot;C{i}&quot;, label=col, data=data_df, ax=ax)
+    ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Media Cost Feature Transformations&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_26_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>We can now plot the “true” saturation curves at yearly level based on the transformed data. We would like to recover the saturation effect. Note that we do not seed to expect a curve of the form <span class="math inline">\(x\longmapsto (1 - e^{-\mu x}) / (1 + e^{-\mu x})\)</span> necessarily as we have a non-trivial time component (still, this parametrization could be a good approximation). For now, we simply use a <a href="https://www.statsmodels.org/stable/generated/statsmodels.nonparametric.smoothers_lowess.lowess.html"><code>lowess</code></a> fit.</p>
+<pre class="python"><code>g = sns.lmplot(
+    x=&quot;z_adstock&quot;,
+    y=&quot;z_effect&quot;,
+    hue=&quot;year&quot;,
+    palette=&quot;viridis&quot;,
+    lowess=True,
+    scatter_kws={&quot;edgecolor&quot;: &quot;black&quot;, &quot;alpha&quot;: 0.5},
+    height=6,
+    data=data_df
+)
+g.fig.suptitle(&quot;Media Cost Effect&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_28_1.svg" />
+</center>
+<p>We can see from this plot that (1) the overall media efficiency is decaying over time and the (2) the saturation effect is present but not very strong.</p>
+<p>Recall that for the model we will assume we have <code>z_adstock</code> and we would like to recover <code>z_effect</code>. Let us now plot the <code>effect ratio</code> defined by <code>z_effect</code> / <code>z_adstock</code>. We also smooth the curve (with a gaussian filter) to capture the overall trend.</p>
+<pre class="python"><code>data_df.eval(expr=&quot;effect_ratio = z_effect / z_adstock&quot;, inplace=True)
+
+data_df[&quot;effect_ratio_smooth&quot;] = gaussian_filter(input=data_df[&quot;effect_ratio&quot;], sigma=8)
+
+fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;effect_ratio&quot;, color=&quot;black&quot;, label=&quot;effect ratio&quot;, data=data_df, ax=ax)
+sns.lineplot(x=&quot;date&quot;, y=&quot;effect_ratio_smooth&quot;, color=&quot;C7&quot;, label=&quot;effect ratio smooth&quot;, data=data_df, ax=ax)
+ax.set(title=&quot;Media Cost Effect Ratio&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_31_1.svg" />
+</center>
+<p><strong>Remark:</strong> Note that we applied the saturation and diminishing returns transformations independently. We could have done it differently by simply making <span class="math inline">\(\mu=\mu(t)\)</span> time dependent in the <code>LogisticSaturationTransformer</code>. For example,</p>
+<pre class="python"><code>mu = np.linspace(start=0.05, stop=0.1, num=n)[::-1] ** (1.25)</code></pre>
+<p>This is the original formulation of Uber’s paper see section <span class="math inline">\(2\)</span> in <a href="https://arxiv.org/abs/2106.03322">Edwin, Ng, et al. “Bayesian Time Varying Coefficient Model with Applications to Marketing Mix Modeling”</a>. Some initial experiments show that ins this additive model structure, the saturation and diminishing returns transformations are well captured by the KTR model.</p>
+</div>
+<div id="trend-and-seasonality" class="section level3">
+<h3>Trend and Seasonality</h3>
+<p>Next, we add some additive trend and seasonal components. For the trend component we simple use a rational power law:</p>
+<pre class="python"><code>data_df[&quot;trend&quot;] = (np.linspace(start=0.0, stop=50, num=n) + 10)**(1/4) - 1 </code></pre>
+<p>For the seasonal component we use combinations of Fourier modes:</p>
+<pre class="python"><code>data_df[&quot;cs&quot;] = - np.sin(2 * 2 * np.pi * data_df[&quot;dayofyear&quot;] / 365.5) 
+data_df[&quot;cc&quot;] = np.cos(1 * 2 * np.pi * data_df[&quot;dayofyear&quot;] / 365.5)
+data_df[&quot;seasonality&quot;] = 0.25 * (data_df[&quot;cs&quot;] + data_df[&quot;cc&quot;])</code></pre>
+<p>Let us plot the components:</p>
+<pre class="python"><code>
+fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;trend&quot;, color=&quot;C4&quot;, label=&quot;trend&quot;, data=data_df, ax=ax)
+sns.lineplot(x=&quot;date&quot;, y=&quot;seasonality&quot;, color=&quot;C6&quot;, label=&quot;seasonality&quot;, data=data_df, ax=ax)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Trend &amp; Seasonality Components&quot;, ylabel=&quot;&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_38_1.svg" />
+</center>
+</div>
+<div id="target-variable-sales" class="section level3">
+<h3>Target Variable: Sales</h3>
+<p>As a final step in the data generation process let us put everything together. First, we can add an intercept and generate gaussian noise:</p>
+<pre class="python"><code>np.random.seed(SEED)
+
+data_df[&quot;intercept&quot;] = 3.0
+data_df[&quot;trend_plus_intercept&quot;] = data_df[&quot;trend&quot;] + data_df[&quot;intercept&quot;]
+
+# the noise variance is increasing to make sure the resulting time series has constant variance
+sigma_epsilon = linspace = np.linspace(start=3e-2, stop=7e-2, num=n)
+data_df[&quot;epsilon&quot;] = np.random.normal(loc=0.0, scale=sigma_epsilon)</code></pre>
+<p>Now we are ready to build our additive time series:</p>
+<pre class="python"><code>data_df.eval(expr=&quot;y = intercept + trend + seasonality + z_effect + epsilon&quot;, inplace=True)</code></pre>
+<p>We can now plot resulting time series:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, data=data_df, ax=ax)
+ax.set(title=&quot;Sales (Target Variable)&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_44_1.svg" />
+</center>
+<p>Let us compare the generated data with <code>z_effect</code>, which is the true effect of media on sales, and <code>z_adstock</code>, which is the the regressor we want to use in our regression model.</p>
+<pre class="python"><code>fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True, sharey=False, layout=&quot;constrained&quot;)
+sns.lineplot(x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, data=data_df, ax=axes[0])
+axes[0].set(title=&quot;Sales (Target Variable)&quot;)
+sns.lineplot(x=&quot;date&quot;, y=&quot;z_effect&quot;, color=&quot;C3&quot;, data=data_df, ax=axes[1])
+axes[1].set(title=&quot;Media Cost Effect on Sales&quot;)
+sns.lineplot(x=&quot;date&quot;, y=&quot;z_adstock&quot;, color=&quot;C1&quot;, data=data_df, ax=axes[2])
+axes[2].set(title=&quot;Media Cost Adstock Transform&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_46_1.svg" />
+</center>
+<hr />
+</div>
+</div>
+<div id="part-ii-modeling" class="section level2">
+<h2>Part II: Modeling</h2>
+<p>In this second part of the notebook we are going to fit two time series model: (1) a <a href="https://facebook.github.io/prophet/">Prophet</a> model and (2) a KTR model. Even though we are mainly interested in the time varying coefficients provided by the KTR model, we start fit the Prophet model to get a baseline.</p>
+<div id="prophet-model" class="section level3">
+<h3>Prophet Model</h3>
+<p>The Prophet model is a good choice for time series with strong trend and seasonality patterns (see the great <a href="https://facebook.github.io/prophet/docs/quick_start.html#python-api">documentation</a> and <a href="https://juanitorduz.github.io/fb_prophet/">this</a> blog post for an introduction). However, the regression coefficients do not vary over time. We use the default MAP estimation method to fit the model (not full MCMC).</p>
+<ul>
+<li><strong>Model Specification and Fit</strong></li>
+</ul>
+<pre class="python"><code># set model parameters
+prophet_model = Prophet(yearly_seasonality=True)
+prophet_model.add_regressor(name=&quot;z_adstock&quot;, mode=&quot;additive&quot;, standardize=False)
+# fit model
+prophet_model.fit(df=data_df.rename(columns={&quot;date&quot;: &quot;ds&quot;}))
+# generate predictions
+prophet_pred_df = prophet_model.predict(df=data_df.rename(columns={&quot;date&quot;: &quot;ds&quot;}))</code></pre>
+<p>First, let us see the model fit:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=&quot;y&quot;, data=data_df, ax=ax)
+fig = prophet_model.plot(fcst=prophet_pred_df, ax=ax)
+a = add_changepoints_to_plot(ax=ax, m=prophet_model, fcst=prophet_pred_df)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(title=&quot;Prophet Model Fit&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_50_1.svg" />
+</center>
+<ul>
+<li><strong>Model Components</strong></li>
+</ul>
+<p>The fit looks overall quite good. Now let us visualize the model predicted and true components:</p>
+<pre class="python"><code>fig = prophet_model.plot_components(fcst=prophet_pred_df)
+
+axes = fig.axes
+
+sns.lineplot(
+    x=&quot;ds&quot;,
+    y=&quot;trend_plus_intercept&quot;,
+    color=&quot;black&quot;,
+    data=data_df.rename(columns={&quot;date&quot;: &quot;ds&quot;}),
+    label=&quot;true trend&quot;,
+    ax=axes[0]
+)
+# seasonality plot is generated by plotting it in 2017 (source code) ¯\_(ツ)_/¯
+sns.lineplot(
+    x=&quot;ds_1&quot;,
+    y=&quot;seasonality&quot;,
+    color=&quot;black&quot;,
+    data=(
+        data_df
+        .rename(columns={&quot;date&quot;: &quot;ds&quot;})
+        .query(&quot;year == 2019&quot;)
+        .assign(ds_1 = lambda x: x[&quot;ds&quot;]  - pd.DateOffset(years=2))
+    ),
+    label=&quot;true seasonality&quot;,
+    ax=axes[1]
+)
+sns.lineplot(
+    x=&quot;ds&quot;,
+    y=&quot;z_effect&quot;,
+    color=&quot;black&quot;,
+    data=data_df.rename(columns={&quot;date&quot;: &quot;ds&quot;}),
+    label=&quot;z_effect&quot;,
+    ax=axes[2]
+)
+fig.suptitle(&quot;Prophet Model Components&quot;, y=1.02);
+</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_52_2.svg" />
+</center>
+<p>The trend and seasonal components seem to be well captured by the model. On the other hand, the model does not capture the effect of media on sales, as expected.</p>
+<ul>
+<li><strong>Estimated Media Effect</strong></li>
+</ul>
+<p>We can extract the estimated beta coefficient for <code>z_adstock</code> and compare it with the true value.</p>
+<pre class="python"><code>prophet_regressor_df = regressor_coefficients(m=prophet_model)
+beta_hat_prophet = prophet_regressor_df.query(&quot;regressor == &#39;z_adstock&#39;&quot;)[&quot;coef&quot;].to_numpy()[0]
+
+fig, ax = plt.subplots()
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;effect_ratio&quot;,
+    color=&quot;black&quot;,
+    label=&quot;effect ratio&quot;,
+    data=data_df,
+    ax=ax
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;effect_ratio_smooth&quot;,
+    color=&quot;C7&quot;,
+    label=&quot;effect ratio smooth&quot;,
+    data=data_df,
+    ax=ax
+)
+ax.axhline(
+    y=data_df[&quot;effect_ratio&quot;].median(),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;effect ratio median = {data_df[&#39;effect_ratio&#39;].median(): 0.2f}&quot;
+)
+ax.axhline(
+    y=data_df[&quot;effect_ratio&quot;].mean(),
+    color=&quot;gray&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;effect ratio mean = {data_df[&#39;effect_ratio&#39;].mean(): 0.2f}&quot;
+)
+ax.axhline(
+    y=beta_hat_prophet,
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;$\hat{\\beta}_{prophet}$ &quot; + f&quot;= {beta_hat_prophet: 0.3f}&quot;
+)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(title=&quot;Media Cost Effect Ratio&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_54_1.svg" />
+</center>
+<p>In this example we see that the estimated beta coefficient for <code>z_adstock</code> in the Prophet model is close to the median of the true time-varying beta coefficient expected from the data generation process.</p>
+</div>
+<div id="ktr-model" class="section level3">
+<h3>KTR Model</h3>
+<p>Now we fit the KTR model. We use the <code>pyro-svi</code> estimator which is a <a href="https://pyro.ai/">Pyro</a>-based stochastic variational inference.</p>
+<ul>
+<li><strong>Model Specification and Fit</strong></li>
+</ul>
+<pre class="python"><code># define model parameters
+date_col = &quot;date&quot;
+response_col = &quot;y&quot;
+regressor_col = [&quot;z_adstock&quot;]
+
+ktr = KTR(
+    response_col=response_col,
+    date_col=date_col,
+    regressor_col=regressor_col,
+    regression_knot_distance=12,
+    prediction_percentiles=[2.5, 97.5],
+    seasonality=[52.25],
+    regressor_sign=[&quot;+&quot;],
+    seed=42,
+    estimator=&#39;pyro-svi&#39;,
+)
+# fit model
+ktr.fit(df=data_df)</code></pre>
+<p>Let us generate predictions for the KTR model:</p>
+<pre class="python"><code>pred_df = ktr.predict(df=data_df, decompose=True)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=&quot;y&quot;, data=data_df, ax=ax)
+ax.fill_between(
+    x=pred_df[&quot;date&quot;],
+    y1=pred_df[&quot;prediction_2.5&quot;],
+    y2=pred_df[&quot;prediction_97.5&quot;],
+    color=&quot;C0&quot;,
+    alpha=0.15,
+    label=&quot;prediction interval (95%)&quot;
+)
+sns.lineplot(
+  x=&quot;date&quot;,
+  y=&quot;prediction&quot;,
+  color=&quot;C0&quot;,
+  label=&quot;prediction&quot;,
+  data=pred_df,
+  ax=ax
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;trend&quot;,
+    alpha=0.8,
+    color=&quot;red&quot;,
+    label=&quot;fitted trend&quot;,
+    data=pred_df,
+    ax=ax
+)
+sns.scatterplot(
+    x=&quot;date&quot;,
+    y=&quot;lev_knot&quot;,
+    data=ktr.get_level_knots(),
+    s=50,
+    color=&quot;red&quot;,
+    label=&quot;level knots&quot;,
+    ax=ax
+)
+for row in ktr.get_level_knots().itertuples():
+    ax.axvline(x=row.date, color=&quot;red&quot;, alpha=0.3, linestyle=&quot;--&quot;)
+
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;KTR Model Fit&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_60_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>We can get the complete posterior samples as follows:</p>
+<pre class="python"><code>for k, samples in ktr.get_posterior_samples().items():
+    print(k, samples.shape)</code></pre>
+<pre><code>lev_knot (100, 11)
+lev (100, 179)
+yhat (100, 179)
+obs_scale (100,)
+coef_knot (100, 16)
+coef_init_knot (100,)
+coef (100, 179)</code></pre>
+<ul>
+<li><strong>Model Components</strong></li>
+</ul>
+<p>Next, we can plot the fitted trend ans seasonal components:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+  nrows=2,
+  ncols=1,
+  sharex=True,
+  sharey=False,
+  layout=&quot;constrained&quot;
+)
+
+sns.lineplot(x=&quot;date&quot;,
+    y=&quot;seasonality&quot;,
+    color=&quot;C4&quot;,
+    label=&quot;s&quot;,
+    data=data_df,
+    ax=ax[0]
+)
+ax[0].fill_between(
+    x=pred_df[&quot;date&quot;],
+    y1=pred_df[&quot;seasonality_52.25_2.5&quot;],
+    y2=pred_df[&quot;seasonality_52.25_97.5&quot;],
+    color=&quot;C0&quot;,
+    alpha=0.15,
+    label=&quot;prediction interval (95%)&quot;
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;seasonality_52.25&quot;,
+    alpha=0.8,
+    color=&quot;C10&quot;,
+    label=&quot;fitted seasonality&quot;,
+    data=pred_df,
+    ax=ax[0]
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(title=&quot;Seasonality Fit&quot;, ylabel=None)
+
+sns.lineplot(
+    x=data_df[&quot;date&quot;],
+    y=data_df[&quot;trend&quot;] + data_df[&quot;intercept&quot;],
+    color=&quot;C4&quot;,
+    label=&quot;trend + intercept&quot;,
+    ax=ax[1]
+)
+ax[1].fill_between(
+    x=pred_df[&quot;date&quot;],
+    y1=pred_df[&quot;trend_2.5&quot;],
+    y2=pred_df[&quot;trend_97.5&quot;],
+    color=&quot;C0&quot;,
+    alpha=0.15,
+    label=&quot;prediction interval (95%)&quot;
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;trend&quot;,
+    alpha=0.8,
+    color=&quot;C0&quot;,
+    label=&quot;fitted trend&quot;,
+    data=pred_df,
+    ax=ax[1]
+)
+sns.scatterplot(
+    x=&quot;date&quot;,
+    y=&quot;lev_knot&quot;,
+    data=ktr.get_level_knots(),
+    s=50,
+    label=&quot;level knots&quot;,
+    ax=ax[1]
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].set(title=&quot;Trend Fit&quot;, ylabel=None)
+fig. suptitle(&quot;KTR Model Components&quot;, y=1.04);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_64_1.svg" />
+</center>
+<p>The fit looks a bit better than the prophet model (specially the trend component).</p>
+<ul>
+<li><strong>Estimated Media Effect</strong></li>
+</ul>
+<p>Now let us extract the beta coefficient for <code>z_adstock</code>:</p>
+<pre class="python"><code>coef_mid, coef_lower, coef_upper  = ktr.get_regression_coefs(include_ci=True)</code></pre>
+<p>From the estimated beta coefficient we can compute the estimated media effect on sales:</p>
+<pre class="python"><code>for df in coef_mid, coef_lower, coef_upper:
+    df[&quot;z_effect_pred&quot;] = df[&quot;z_adstock&quot;] * data_df[&quot;z_adstock&quot;]
+    df[&quot;year&quot;] = df[&quot;date&quot;].dt.year # this is a feature used later for viz purposes</code></pre>
+<p>We can now compare it with the true <code>effect ratio</code>:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3,
+    ncols=1,
+    figsize=(11, 8),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;
+)
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;z_adstock&quot;,
+    color=&quot;C1&quot;,
+    label=&quot;z_effect&quot;,
+    data=data_df,
+    ax=ax[0]
+)
+ax[0].set(title=&quot;Media Cost Adstock Transform&quot;)
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;effect_ratio&quot;,
+    color=&quot;black&quot;,
+    data=data_df,
+    ax=ax[1]
+)
+ax[1].fill_between(
+    x=coef_mid[&quot;date&quot;],
+    y1=coef_lower[&quot;z_adstock&quot;],
+    y2=coef_upper[&quot;z_adstock&quot;],
+    color=&quot;C9&quot;,
+    label=&quot;95% credible interval&quot;,
+    alpha=0.15
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;z_adstock&quot;,
+    color=&quot;C9&quot;,
+    label=&quot;$\hat{\\beta}_{z}$&quot;,
+    data=coef_mid,
+    ax=ax[1]
+)
+sns.scatterplot(
+    x=&quot;date&quot;,
+    y=&quot;z_adstock&quot;,
+    data=ktr.get_regression_coef_knots(),
+    s=50,
+    label=&quot;regression knots&quot;,
+    ax=ax[1]
+)
+ax[1].set(title=&quot;Effect Ratio&quot;)
+
+ax[2].fill_between(
+    x=coef_mid[&quot;date&quot;],
+    y1=coef_lower[&quot;z_effect_pred&quot;],
+    y2=coef_upper[&quot;z_effect_pred&quot;],
+    color=&quot;C9&quot;,
+    label=&quot;95% credible interval&quot;,
+    alpha=0.15
+)
+sns.lineplot(x=&quot;date&quot;,
+    y=&quot;z_effect_pred&quot;,
+    color=&quot;C9&quot;,
+    label=&quot;z_effect pred&quot;,
+    data=coef_mid,
+    ax=ax[2]
+)
+sns.lineplot(x=&quot;date&quot;,
+    y=&quot;z_effect&quot;,
+    color=&quot;C7&quot;,
+    label=&quot;z_effect&quot;,
+    data=data_df,
+    ax=ax[2]
+)
+ax[2].set(title=&quot;Media Effect Cost Ratio ($\\beta$-coef) KTR Model&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_70_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>The KTR model captures the overall diminishing returns effect over time. Let us now zoom in and compare the effect estimation of the Prophet and KTR models:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;effect_ratio&quot;,
+    color=&quot;black&quot;,
+    label=&quot;effect ratio&quot;,
+    data=data_df,
+    ax=ax
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;effect_ratio_smooth&quot;,
+    color=&quot;C7&quot;,
+    label=&quot;effect ratio smooth&quot;,
+    data=data_df,
+    ax=ax
+)
+ax.axhline(
+    y=data_df[&quot;effect_ratio&quot;].median(),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;effect ratio median = {data_df[&#39;effect_ratio&#39;].median(): 0.2f}&quot;
+)
+ax.axhline(
+    y=data_df[&quot;effect_ratio&quot;].mean(),
+    color=&quot;gray&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;effect ratio mean = {data_df[&#39;effect_ratio&#39;].mean(): 0.2f}&quot;
+)
+ax.axhline(
+    y=beta_hat_prophet,
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;$\hat{\\beta}_{prophet}$ &quot; + f&quot;= {beta_hat_prophet: 0.3f}&quot;
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;z_adstock&quot;,
+    color=&quot;C0&quot;,
+    label=&quot;$\hat{\\beta}_{KTR}$&quot;,
+    data=coef_mid,
+    ax=ax
+)
+ax.fill_between(
+    x=coef_mid[&quot;date&quot;],
+    y1=coef_lower[&quot;z_adstock&quot;],
+    y2=coef_upper[&quot;z_adstock&quot;],
+    color=&quot;C0&quot;,
+    label=&quot;$\hat{\\beta}_{KTR}$ 95% credible interval&quot;,
+    alpha=0.15
+)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(title=&quot;Media Cost Effect Ratio&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_72_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>It is clear that the KTR model flexibility for time-varying coefficients outperforms the Prophet model base model. Nevertheless, the estimated effect by the KTR model is a bit lower than the true effect.</p>
+<ul>
+<li><strong>Saturation Effect</strong></li>
+</ul>
+<p>Finally, let us see how much we can recover the saturation effect:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 8))
+
+markers, caps, bars = ax.errorbar(
+    x=data_df[&quot;z_adstock&quot;], 
+    y=coef_mid[&quot;z_effect_pred&quot;], 
+    yerr=(coef_upper[&quot;z_effect_pred&quot;] - coef_lower[&quot;z_effect_pred&quot;]) / 2,
+    fmt=&#39;o&#39;,
+    ms=5,
+    capsize=5,
+    label=&quot;estimated effect&quot;,
+)
+[bar.set_alpha(0.3) for bar in bars]
+
+
+latex_function = r&quot;$x\longmapsto \frac{1 - e^{-\mu z}}{1 + e^{-\mu z}}$&quot;
+sns.lineplot(
+    x=&quot;z_adstock&quot;,
+    y=&quot;z_adstock_saturated&quot;,
+    color=&quot;C2&quot;,
+    label=&quot;upper bound &quot; + latex_function,
+    linestyle=&quot;--&quot;,
+    data=data_df,
+    ax=ax
+)
+sns.scatterplot(
+    x=&quot;z_adstock&quot;,
+    y=&quot;z_effect&quot;,
+    color=&quot;C3&quot;,
+    label=&quot;true effect&quot;,
+    data=data_df,
+    ax=ax
+)
+ax.legend(loc=&#39;center left&#39;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Media Cost Effect Estimation&quot;, ylabel=&quot;effect&quot;);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_74_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>The dashed purple curve denotes the true saturation curve from the data generation process. Recall that the true effect was assumed to be product of the <code>z_adstock_saturated</code> by a decreasing function <span class="math inline">\(\beta = \beta(t) \subset [0, 1]\)</span>. These true estimated effects are the green points, which are of course below the dashed purple curve since the function <span class="math inline">\(\beta(t)\)</span> is in particular less or equal than one. The blue points (and the credible intervals) denote the KTR estimated media effect on sales. From this plot we can not easily infer the saturation effect. The reason is that the time component is not explicitly represented in this plot. Let us split it by year:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=2,
+    ncols=2,
+    figsize=(10, 9), 
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;
+)
+
+axes = axes.flatten()
+
+for i, year in enumerate(data_df[&quot;year&quot;].sort_values().unique()):
+    ax = axes[i]
+    mask = f&quot;year == {year}&quot;
+    
+    yerr = coef_upper.query(mask)[&quot;z_effect_pred&quot;] - coef_lower.query(mask)[&quot;z_effect_pred&quot;]
+    
+    markers, caps, bars = ax.errorbar(
+        x=data_df.query(mask)[&quot;z_adstock&quot;], 
+        y=coef_mid.query(mask)[&quot;z_effect_pred&quot;], 
+        yerr=yerr/2,
+        fmt=&#39;o&#39;,
+        ms=0,
+        capsize=5,
+        label=&quot;estimated effect&quot;,
+    )
+    [bar.set_alpha(0.3) for bar in bars]
+
+    sns.regplot(
+        x=data_df.query(mask)[&quot;z_adstock&quot;], 
+        y=coef_mid.query(mask)[&quot;z_effect_pred&quot;], 
+        lowess=True,
+        color=&quot;C0&quot;,
+        line_kws={&quot;alpha&quot;: 0.5},
+        ax=ax
+    )
+
+    sns.regplot(
+        x=&quot;z_adstock&quot;,
+        y=&quot;z_effect&quot;,
+        lowess=True,
+        color=&quot;C3&quot;,
+        label=&quot;true effect&quot;,
+        data=data_df.query(mask),
+        scatter_kws={&quot;alpha&quot;: 0.3},
+        line_kws={&quot;alpha&quot;: 0.3},
+        ax=ax
+    )
+    if i == 0:
+        ax.legend(loc=&#39;upper center&#39;, bbox_to_anchor=(0.5, 1.2), ncol=3)
+    else:
+        ax.legend().remove()
+    ax.set(title=f&quot;{year}&quot;)
+    
+fig.suptitle(&quot;Media Cost Effect Estimation KTR Model&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/orbit_mmm_files/orbit_mmm_76_1.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>In this plot we also see that the KTR is underestimating the media effect on sales most of the time. For both, the true and estimated effects we are using a <code>lowess</code> interpolation. In this example, the true saturation effect is by itself not very strong. The KTR model does show a non-linear relation as seen by the <code>lowess</code> fit. The year <span class="math inline">\(2020\)</span> shows the closes fit.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
