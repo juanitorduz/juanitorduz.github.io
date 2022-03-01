@@ -299,7 +299,7 @@ pm.model_to_graphviz(base_model)</code></pre>
 <center>
 <img src="../images/pymc_mmm_files/pymc_mmm_24_0.svg" />
 </center>
-<p>In order tho generate samples form the models the following function comes very handy (taken from <a href="https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html">Air passengers - Prophet-like model</a>):</p>
+<p>In order to generate samples form the models the following function comes very handy (taken from <a href="https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html">Air passengers - Prophet-like model</a>):</p>
 <pre class="python"><code>def _sample(array, n_samples):
     &quot;&quot;&quot;Little utility function, sample n_samples with replacement.&quot;&quot;&quot;
     idx = np.random.choice(np.arange(len(array)), n_samples, replace=True)
