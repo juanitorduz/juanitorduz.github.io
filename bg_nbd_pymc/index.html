@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>BG/NBD model in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="BG/NBD model in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">14 min read</span>
+    
+
+    <h1 class="article-title">BG/NBD model in PyMC</h1>
+
+    
+    <span class="article-date">2022-03-02</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook we show how to port the BG/NBD model from the the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> (developed mainly by <a href="https://github.com/CamDavidsonPilon">Cameron Davidson-Pilon</a>) package to <a href="https://github.com/pymc-devs/pymc"><code>pymc</code></a>. The BG/NBD model, introduced in the seminal paper <a href="http://brucehardie.com/papers/018/fader_et_al_mksc_05.pdf">“Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model</a> by Peter S. Fader, Bruce G. S. Hardie and Ka Lok Lee in 2005, is used to</p>
+<blockquote>
+<p><em>predict future purchasing patterns, which can then serve as an input into “lifetime value” calculations, in the “non-contractual” setting (i.e., where the opportunities for transactions are continuous and the time at which customers become inactive is unobserved).</em></p>
+</blockquote>
+<p>Why to port the BG/NBD model to <a href="https://github.com/pymc-devs/pymc"><code>pymc</code></a>?</p>
+<ol style="list-style-type: decimal">
+<li>The<a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package is currently in “maintenance-mode”, so we do not expect it to be further developed. In addition, I am not aware of other python implementation (the R community has more options available)</li>
+<li>This current implementation does not allow for time-invariant external covariates even though is an easy extension an shown in the paper <a href="http://brucehardie.com/notes/019/time_invariant_covariates.pdf">Incorporating Time-Invariant Covariates into the Pareto/NBD and BG/NBD Models</a> by Peter S. Fader and Bruce G. S. Hardie. There is actually an <a href="https://github.com/CamDavidsonPilon/lifetimes/pull/342">open PR</a> to att his feature into the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package, but it is highly unlikely to be merged. Hence, as in practice time-invariant covariates could further segment user purchase patterns, writing this model explicitly can allow for more flexibility.</li>
+<li>We can take advantage of the powerful bayesian machinery to have better uncertainty estimation and the possibility to use extend the base BG/NBD model to more complex ones, e.g. hierarchical models.</li>
+</ol>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from lifetimes.datasets import load_cdnow_summary
+from lifetimes import BetaGeoFitter
+import pymc3 as pm
+from scipy.special import expit
+import theano.tensor as tt
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+</div>
+<div id="load-data" class="section level2">
+<h2>Load Data</h2>
+<p>We are going to use an existing data set from the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package documentation, see <a href="https://lifetimes.readthedocs.io/en/latest/Quickstart.html">here</a>.</p>
+<pre class="python"><code>data_df = load_cdnow_summary(index_col=[0])
+
+data_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+Int64Index: 2357 entries, 1 to 2357
+Data columns (total 3 columns):
+ #   Column     Non-Null Count  Dtype  
+---  ------     --------------  -----  
+ 0   frequency  2357 non-null   int64  
+ 1   recency    2357 non-null   float64
+ 2   T          2357 non-null   float64
+dtypes: float64(2), int64(1)
+memory usage: 73.7 KB</code></pre>
+<p>From the package’s documentation:</p>
+<blockquote>
+<ul>
+<li><code>frequency</code>: Number of repeat purchases the customer has made. More precisely, It’s the count of time periods the customer had a purchase in.</li>
+<li><code>T</code>: Age of the customer in whatever time units chosen (weekly, in the above dataset). This is equal to the duration between a customer’s first purchase and the end of the period under study.</li>
+<li><code>recency</code> Age of the customer when they made their most recent purchases. This is equal to the duration between a customer’s first purchase and their latest purchase.</li>
+</ul>
+</blockquote>
+<pre class="python"><code>data_df.head(10)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+frequency
+</th>
+<th>
+recency
+</th>
+<th>
+T
+</th>
+</tr>
+<tr>
+<th>
+ID
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+1
+</th>
+<td>
+2
+</td>
+<td>
+30.43
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+1
+</td>
+<td>
+1.71
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+0
+</td>
+<td>
+0.00
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+0
+</td>
+<td>
+0.00
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+5
+</th>
+<td>
+0
+</td>
+<td>
+0.00
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+6
+</th>
+<td>
+7
+</td>
+<td>
+29.43
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+7
+</th>
+<td>
+1
+</td>
+<td>
+5.00
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+8
+</th>
+<td>
+0
+</td>
+<td>
+0.00
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+9
+</th>
+<td>
+2
+</td>
+<td>
+35.71
+</td>
+<td>
+38.86
+</td>
+</tr>
+<tr>
+<th>
+10
+</th>
+<td>
+0
+</td>
+<td>
+0.00
+</td>
+<td>
+38.86
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let us extract the data as arrays and recover the notation from the original papers.</p>
+<pre class="python"><code>n = data_df.shape[0]
+x = data_df[&quot;frequency&quot;].to_numpy()
+t_x = data_df[&quot;recency&quot;].to_numpy()
+T = data_df[&quot;T&quot;].to_numpy()
+
+# convenient indicator function
+int_vec = np.vectorize(int)
+x_zero = int_vec(x &gt; 0)</code></pre>
+</div>
+<div id="bgnbd-model-lifetimes" class="section level2">
+<h2>BG/NBD Model (Lifetimes)</h2>
+<p>We do not want to give a detailed description of the model, so we will just show the notation. Please refer to the original papers for more details, e.g. <a href="http://brucehardie.com/papers/018/fader_et_al_mksc_05.pdf">“Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model</a>.</p>
+<center>
+<img src="../images/bg_nbd_model_description.png" alt="html" style="width: 600px;"/>
+</center>
+<p>We nos use the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> object <a href="https://lifetimes.readthedocs.io/en/latest/lifetimes.fitters.html#module-lifetimes.fitters.beta_geo_fitter"><code>BetaGeoFitter</code></a> to estimate the model parameters via maximum likelihood estimation.</p>
+<pre class="python"><code># fit BG/NBD model
+bgf = BetaGeoFitter()
+bgf.fit(frequency=x, recency=t_x, T=T)
+
+bgf.summary</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+coef
+</th>
+<th>
+se(coef)
+</th>
+<th>
+lower 95% bound
+</th>
+<th>
+upper 95% bound
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+r
+</th>
+<td>
+0.242593
+</td>
+<td>
+0.012557
+</td>
+<td>
+0.217981
+</td>
+<td>
+0.267205
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+4.413532
+</td>
+<td>
+0.378221
+</td>
+<td>
+3.672218
+</td>
+<td>
+5.154846
+</td>
+</tr>
+<tr>
+<th>
+a
+</th>
+<td>
+0.792886
+</td>
+<td>
+0.185719
+</td>
+<td>
+0.428877
+</td>
+<td>
+1.156895
+</td>
+</tr>
+<tr>
+<th>
+b
+</th>
+<td>
+2.425752
+</td>
+<td>
+0.705345
+</td>
+<td>
+1.043276
+</td>
+<td>
+3.808229
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Note that the models provide confidence intervals for the estimated parameters.</p>
+<div id="full-bayesian-model" class="section level3">
+<h3>Full Bayesian Model</h3>
+<p>A nice <code>pymc</code> implementation of the full bayesian model can be found in the blog post <a href="https://sidravi1.github.io/blog/2018/07/08/fader-hardie-clv">Implementing Fader Hardie (2005) in pymc3</a> by <a href="https://sidravi1.github.io/about.html">Sid Ravinutala</a>. In this post, the author uses the complete likelihood function (Equation (3) in <a href="http://brucehardie.com/papers/018/fader_et_al_mksc_05.pdf">“Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model</a>):</p>
+<p><span class="math display">\[
+L(\lambda, p | X=x, T) = (1 - p)^{x}\lambda^{x}e^{-\lambda T} + \delta_{X &gt; 0}p(1 - p)^{x - 1}\lambda^x e^{-\lambda t_x}
+\]</span></p>
+<p>Here is the model in <code>pymc</code>:</p>
+<pre class="python"><code>with pm.Model() as model_full:
+
+    # hyper priors for the Gamma params    
+    a = pm.HalfNormal(name=&quot;a&quot;, sigma=10)
+    b = pm.HalfNormal(name=&quot;b&quot;, sigma=10)
+
+    # hyper priors for the Beta params
+    alpha = pm.HalfNormal(name=&quot;alpha&quot;, sigma=10)
+    r = pm.HalfNormal(name=&quot;r&quot;, sigma=10)
+
+    lam = pm.Gamma(name=&quot;lam&quot;, alpha=r, beta=alpha, shape=n)
+    p = pm.Beta(name=&quot;p&quot;, alpha=a, beta=b, shape=n)
+
+    def logp(x, t_x, T, x_zero):
+        log_term_a = x * tt.log(1 - p) + x * tt.log(lam) - t_x * lam
+        term_b_1 = -lam * (T - t_x)
+        term_b_2 = tt.log(p) - tt.log(1 - p)
+        log_term_b = pm.math.switch(x_zero, pm.math.logaddexp(term_b_1, term_b_2), term_b_1)
+
+        return tt.sum(log_term_a) + tt.sum(log_term_b)
+
+    likelihood = pm.DensityDist(
+        name=&quot;likelihood&quot;,
+        logp=logp,
+        observed = {&quot;x&quot;:x, &quot;t_x&quot;:t_x, &quot;T&quot;:T, &quot;x_zero&quot;: x_zero}
+    )</code></pre>
+<p>We run the sampler:</p>
+<pre class="python"><code>with model_full:
+    trace_full = pm.sample(
+        tune=3000,
+        draws=6000,
+        chains=4,
+        target_accept=0.95,
+        return_inferencedata=True
+    )</code></pre>
+<p>This model takes a while to run and the results coincide with the ones from obtained using <code>lifetimes</code>.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=trace_full,
+    var_names=[&quot;a&quot;, &quot;b&quot;, &quot;alpha&quot;, &quot;r&quot;],
+    lines=[(k, {}, [v]) for k, v in bgf.summary[&quot;coef&quot;].items()],
+    compact=True,
+    backend_kwargs={
+        &quot;figsize&quot;: (12, 9),
+        &quot;layout&quot;: &quot;constrained&quot;
+    },
+)
+fig = axes[0][0].get_figure()
+fig.suptitle(&quot;Full BG/NBD Model Trace&quot;);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_16_0.svg" alt="html" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_pair(data=trace_full, var_names=[&quot;a&quot;, &quot;b&quot;, &quot;alpha&quot;, &quot;r&quot;], figsize=(12, 12))
+fig = axes[0][0].get_figure()
+fig.suptitle(&quot;Full BG/NBD Model Parameters Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_17_0.png" alt="html" style="width: 1000px;"/>
+</center>
+<p>The chains for <code>a</code> and <code>b</code> do not look so good. We actually see from the pairplot that these parameters highly correlated. See the <code>r_hat</code> values below.</p>
+<pre class="python"><code>az.summary(data=trace_full, var_names=[&quot;a&quot;, &quot;b&quot;, &quot;alpha&quot;, &quot;r&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+a
+</th>
+<td>
+0.974
+</td>
+<td>
+0.260
+</td>
+<td>
+0.548
+</td>
+<td>
+1.453
+</td>
+<td>
+0.025
+</td>
+<td>
+0.018
+</td>
+<td>
+102.0
+</td>
+<td>
+187.0
+</td>
+<td>
+1.03
+</td>
+</tr>
+<tr>
+<th>
+b
+</th>
+<td>
+3.200
+</td>
+<td>
+1.079
+</td>
+<td>
+1.538
+</td>
+<td>
+5.223
+</td>
+<td>
+0.101
+</td>
+<td>
+0.072
+</td>
+<td>
+109.0
+</td>
+<td>
+243.0
+</td>
+<td>
+1.03
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+4.488
+</td>
+<td>
+0.387
+</td>
+<td>
+3.778
+</td>
+<td>
+5.218
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+2009.0
+</td>
+<td>
+4723.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+r
+</th>
+<td>
+0.245
+</td>
+<td>
+0.013
+</td>
+<td>
+0.221
+</td>
+<td>
+0.269
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+1407.0
+</td>
+<td>
+3496.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+</div>
+<div id="bayesian-model-randomly-chosen-individual" class="section level2">
+<h2>Bayesian Model: Randomly Chosen Individual</h2>
+<p>One drawback (computationally) of the <code>model_full</code> is that we have <span class="math inline">\(\lambda\)</span> and <span class="math inline">\(p\)</span> parameters per user. This does not scale that easily. That is why in practice one usually takes the expectation over <span class="math inline">\(\lambda\)</span> and <span class="math inline">\(p\)</span> to study a randomly chosen individual. One can compute this expectation analytically, see Section <span class="math inline">\(5\)</span> in <a href="http://brucehardie.com/papers/018/fader_et_al_mksc_05.pdf">“Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model</a> for the mathematical details. What is important to remark is this the end expression for the log-likelihood is relatively easy to write. Actually, the authors of the paper have a document which describes how to estimate the corresponding parameters in Excel, see <a href="http://brucehardie.com/notes/004/bgnbd_spreadsheet_note.pdf">Implementing the BG/NBD Model for Customer Base Analysis in Excel</a>. The resulting expression for the likelihood function is:</p>
+<p><span class="math display">\[
+L(a, b, \alpha, r|X=x, t_x, T) = A_{1}A_{2}(A_{3} + \delta_{x&gt;0}A_4)
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[\begin{align*}
+A_{1} &amp; = \frac{\Gamma(r + x)\alpha^{{r}}}{\Gamma(x)} \\
+A_{2} &amp; = \frac{\Gamma(a + b)\Gamma(b + x)}{\Gamma(b)\Gamma(a + b + x)} \\
+A_{3} &amp; = \left(\frac{1}{\alpha + T}\right)^{r+x} \\
+A_{4} &amp; = \left(\frac{a}{b + x - 1}\right)\left(\frac{1}{\alpha + t_x}\right)^{r + x}
+\end{align*}\]</span></p>
+<p>Computing the <span class="math inline">\(\log (L(a, b, \alpha, r|X=x, t_x, T))\)</span> is straight forward from these explicit expressions <span class="math inline">\(a_{i}:= \log(A_{i})\)</span>. Note however that one has to be careful with the <span class="math inline">\(a_{4} := \log(A_4)\)</span> term since we need to ensure that <span class="math inline">\(b + x - 1 &gt;0\)</span> (otherwise should be zero). Fortunately, we wan simple re-factor the log-likelihood method code of th <code>lifetimes</code>’s <code>BetaGeoFitter</code> class from <code>numpy</code> to <code>theano</code> (see <a href="https://github.com/CamDavidsonPilon/lifetimes/blob/master/lifetimes/fitters/beta_geo_fitter.py#L164"><code>lifetimes.BetaGeoFitter._negative_log_likelihood</code></a>).</p>
+<pre class="python"><code>with pm.Model() as model:
+   
+    a = pm.HalfNormal(name=&quot;a&quot;, sigma=10)
+    b = pm.HalfNormal(name=&quot;b&quot;, sigma=10)
+
+    alpha = pm.HalfNormal(name=&quot;alpha&quot;, sigma=10)
+    r = pm.HalfNormal(name=&quot;r&quot;, sigma=10)
+
+    def logp(x, t_x, T, x_zero):
+        a1 = tt.gammaln(r + x) - tt.gammaln(r) + r * tt.log(alpha)
+        a2 = tt.gammaln(a + b) + tt.gammaln(b + x) - tt.gammaln(b) - tt.gammaln(a + b + x)
+        a3 = -(r + x) * tt.log(alpha + T)
+        a4 =  tt.log(a) - tt.log(b + tt.maximum(x, 1) - 1) - (r + x) * tt.log(t_x + alpha)
+        max_a3_a4 = tt.maximum(a3, a4)
+        ll_1 = a1 + a2 
+        ll_2 = tt.log(tt.exp(a3 - max_a3_a4) + tt.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)) + max_a3_a4
+        return tt.sum(ll_1 + ll_2)
+
+    likelihood = pm.DensityDist(
+        name=&quot;likelihood&quot;,
+        logp=logp,
+        observed = {&quot;x&quot;:x, &quot;t_x&quot;:t_x, &quot;T&quot;:T, &quot;x_zero&quot;: x_zero}
+    )</code></pre>
+<p>Let us compute the posterior distributions:</p>
+<pre class="python"><code>with model:
+    trace = pm.sample(
+        tune=3000,
+        draws=6000,
+        chains=4,
+        target_accept=0.95,
+        return_inferencedata=True
+    )</code></pre>
+<p>This model is much faster to train! We can now take a look at the traces, pairplots and summary statistics.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=trace,
+    lines=[(k, {}, [v]) for k, v in bgf.summary[&quot;coef&quot;].items()],
+    compact=True,
+    backend_kwargs={
+        &quot;figsize&quot;: (12, 9),
+        &quot;layout&quot;: &quot;constrained&quot;
+    },
+)
+fig = axes[0][0].get_figure()
+fig.suptitle(&quot;BG/NBD Model Trace&quot;);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_25_0.svg" alt="html" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_pair(data=trace, figsize=(12, 12))
+fig = axes[0][0].get_figure()
+fig.suptitle(&quot;BG/NBD Model Parameters Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_26_0.png" alt="html" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>az.summary(data=trace)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+a
+</th>
+<td>
+0.960
+</td>
+<td>
+0.274
+</td>
+<td>
+0.518
+</td>
+<td>
+1.460
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+10051.0
+</td>
+<td>
+9551.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b
+</th>
+<td>
+3.137
+</td>
+<td>
+1.133
+</td>
+<td>
+1.410
+</td>
+<td>
+5.183
+</td>
+<td>
+0.012
+</td>
+<td>
+0.009
+</td>
+<td>
+9966.0
+</td>
+<td>
+9157.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+4.480
+</td>
+<td>
+0.380
+</td>
+<td>
+3.782
+</td>
+<td>
+5.208
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+11245.0
+</td>
+<td>
+11998.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+r
+</th>
+<td>
+0.244
+</td>
+<td>
+0.013
+</td>
+<td>
+0.221
+</td>
+<td>
+0.269
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11324.0
+</td>
+<td>
+12401.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The summary statistics look overall good. In particular the chains values for <code>a</code> and <code>b</code> look better than the <code>model_full</code>.</p>
+<p>Now that we have posterior samples for the model parameters we can easily compute quantities of interest. For example, let us compute the <em>conditional probability of being alive</em>, see the note <a href="https://brucehardie.com/notes/021/palive_for_BGNBD.pdf">Computing P(alive) Using
+the BG/NBD Model</a>. Again, we can simply port the corresponding method from <a href="https://lifetimes.readthedocs.io/en/latest/lifetimes.fitters.html#lifetimes.fitters.beta_geo_fitter.BetaGeoFitter.conditional_probability_alive"><code>lifetimes.BetaGeoFitter.conditional_probability_alive</code></a>.</p>
+<pre class="python"><code># See https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html
+def _sample(array, n_samples):
+    &quot;&quot;&quot;Little utility function, sample n_samples with replacement.&quot;&quot;&quot;
+    idx = np.random.choice(np.arange(len(array)), n_samples, replace=True)
+    return array[idx]
+
+
+def conditional_probability_alive(trace, x, t_x, T):
+    n_vals = x.shape[0]
+
+    a = _sample(array=trace.posterior[&quot;a&quot;].to_numpy(), n_samples=n_vals)
+    b = _sample(array=trace.posterior[&quot;b&quot;].to_numpy(), n_samples=n_vals)
+    alpha = _sample(array=trace.posterior[&quot;alpha&quot;].to_numpy(), n_samples=n_vals)
+    r = _sample(array=trace.posterior[&quot;r&quot;].to_numpy(), n_samples=n_vals)
+
+    log_div = (
+        (r + x[..., None]) * np.log((alpha + T[..., None]) / (alpha + t_x[..., None]))
+        + np.log(a / (b + np.maximum(x[..., None], 1) - 1))
+    )
+    return np.where(x[..., None] == 0, 1.0, expit(-log_div))
+
+
+p_alive_sample = conditional_probability_alive(trace, x, t_x, T)</code></pre>
+<p>We compute these probabilities directly from the <code>BetaGeoFitter</code> object directly so that we could compare the results.</p>
+<pre class="python"><code>p_alive = bgf.conditional_probability_alive(x, t_x, T)</code></pre>
+<p>We can simply plot some example predictions:</p>
+<pre class="python"><code>def plot_conditional_probability_alive(p_alive_sample, p_alive, idx, ax):
+    sns.kdeplot(x=p_alive_sample[idx], color=&quot;C0&quot;, fill=True, ax=ax)
+    ax.axvline(x=p_alive[idx], color=&quot;C1&quot;, linestyle=&quot;--&quot;)
+    ax.set(title=f&quot;idx={idx}&quot;)
+    return ax
+
+fig, axes = plt.subplots(
+    nrows=3,
+    ncols=3,
+    figsize=(9, 9),
+    layout=&quot;constrained&quot;
+)
+for idx, ax in enumerate(axes.flatten()):
+    plot_conditional_probability_alive(p_alive_sample, p_alive, idx, ax)
+
+fig.suptitle(&quot;Conditional Probability Alive&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_34_0.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>The plots without density correspond to users with probability of being active of <span class="math inline">\(1.0\)</span>. Note for example that for <code>idx=2</code> we have:</p>
+<pre class="python"><code>idx = 2
+# probability estimation lifetimes model
+p_alive[idx]</code></pre>
+<pre><code>1.0</code></pre>
+<pre class="python"><code># posterior samples
+np.unique(p_alive_sample[idx])</code></pre>
+<pre><code>array([1.])</code></pre>
+<p>Hence, the bayesian model also captures the case when the user is certainly alive (because did a very recent purchase).</p>
+<p>Finally we can compare both model’s parameters.</p>
+<pre class="python"><code>axes = az.plot_forest(
+    data=[trace_full, trace],
+    model_names=[&quot;full_model&quot;, &quot;bg_nbd_model&quot;],
+    var_names=[&quot;a&quot;, &quot;b&quot;, &quot;alpha&quot;, &quot;r&quot;],
+    combined=True,
+    r_hat=True,
+    ess=True,
+    figsize=(10, 9)
+)
+plt.gcf().suptitle(&quot;Model Comparison&quot;, y=0.95, fontsize=16);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_40_0.svg" alt="html" style="width: 800px;"/>
+</center>
+<p>We indeed see that the <code>full_model</code> has a lower <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.ess.html"><code>ess</code></a>.</p>
+</div>
+<div id="bayesian-model-randomly-chosen-individual-with-time-independent-covariates" class="section level2">
+<h2>Bayesian Model: Randomly Chosen Individual with Time-Independent Covariates</h2>
+<p>In the research note <a href="http://brucehardie.com/notes/019/time_invariant_covariates.pdf">Incorporating Time-Invariant Covariates into the Pareto/NBD and BG/NBD Models</a> by Peter S. Fader and Bruce G. S. Hardie, it is shown how easy (after some clever math manipulations of course!) to incorporate time-invariant covariates into the BG/NBD model. The main idea is to allow covariates <span class="math inline">\(z_1\)</span> and <span class="math inline">\(z_2\)</span> to explain the cross-sectional heterogeneity in the purchasing process and cross-sectional heterogeneity in the dropout process respectively (see model description above). The authors show that the likelihood and quantities of interests computed by computing expectations (e.g. quantities which have a close expression so that, for example can be computed in Excel), remain the almost the same. One only has to replace:</p>
+<p><span class="math display">\[\begin{align*}
+\alpha &amp; \longmapsto \alpha_{0}\exp(-\gamma_{1}^{T}z_{1}) \\
+a &amp; \longmapsto a_{0}\exp(\gamma_{2}^{T}z_{2}) \\
+b &amp; \longmapsto b_{0}\exp(\gamma_{3}^{T}z_{2})
+\end{align*}\]</span></p>
+<p>where <span class="math inline">\(\gamma_{i}\)</span> are the model coefficients.</p>
+<p>Let us modify the frequency of our data set by reducing it as a function of a covariate <span class="math inline">\(z\)</span>.</p>
+<pre class="python"><code># construct covariate
+mu = 0.4
+rho = 0.7
+z = np.random.binomial(n=1, p=mu, size=x.size)
+# change frequency values by reducing it the values where z !=0
+x_z = np.floor(x * (1 - (rho * z)))
+# make sure the recency is zero whenever the frequency is zero
+t_x_z = t_x.copy()
+t_x_z[np.argwhere(x_z == 0).flatten()] = 0
+# sanity checks
+assert x_z.min() == 0
+assert np.all(t_x_z[np.argwhere(x_z == 0).flatten()] == 0)
+# convenient indicator function
+int_vec = np.vectorize(int)
+x_zero_z = int_vec(x_z &gt; 0)</code></pre>
+<p>First, we fit the <code>lifetimes</code> model with this modified data.</p>
+<pre class="python"><code>bgf_cov = BetaGeoFitter()
+bgf_cov.fit(frequency=x_z, recency=t_x_z, T=T)
+
+bgf_cov.summary</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+coef
+</th>
+<th>
+se(coef)
+</th>
+<th>
+lower 95% bound
+</th>
+<th>
+upper 95% bound
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+r
+</th>
+<td>
+0.159772
+</td>
+<td>
+0.009987
+</td>
+<td>
+0.140197
+</td>
+<td>
+0.179347
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+5.056624
+</td>
+<td>
+0.528071
+</td>
+<td>
+4.021605
+</td>
+<td>
+6.091643
+</td>
+</tr>
+<tr>
+<th>
+a
+</th>
+<td>
+0.744132
+</td>
+<td>
+0.263720
+</td>
+<td>
+0.227240
+</td>
+<td>
+1.261024
+</td>
+</tr>
+<tr>
+<th>
+b
+</th>
+<td>
+2.827880
+</td>
+<td>
+1.256310
+</td>
+<td>
+0.365514
+</td>
+<td>
+5.290247
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Next, we write the bayesian model, which adds term <span class="math inline">\(\alpha \longmapsto \alpha_{0}\exp(-\gamma_{1}^{T}z_{1})\)</span> to model the effect of <span class="math inline">\(z\)</span> on the to explain the cross-sectional heterogeneity in the purchasing process (because we are modifying the frequency as a function of <span class="math inline">\(z\)</span>).</p>
+<p><strong>Remark:</strong> I also tried adding the covariate <span class="math inline">\(z_2 = z\)</span>, but the resulting model had trouble sampling. By looking into the pair-plots of the posterior distributions (which had many divergences) I found that the terms <span class="math inline">\(a_0\)</span> and <span class="math inline">\(b_0\)</span> where highly correlated (actually, <span class="math inline">\(g_2\)</span> (<span class="math inline">\(=\gamma_{2}\)</span>)and <span class="math inline">\(g_3\)</span> (<span class="math inline">\(=\gamma_{3}\)</span>) as well, see notation below). This indicates that we might need a different and more appropriate parametrization of the log-likelihood function.</p>
+<pre class="python"><code>with pm.Model() as model_cov:
+   
+    # a0 = pm.HalfNormal(name=&quot;a0&quot;, sigma=10)
+    # g2 = pm.Normal(name=&quot;g2&quot;, mu=0, sigma=10)
+    # a = a0 * tt.exp(g2 * z)
+    a = pm.HalfNormal(name=&quot;a&quot;, sigma=10)
+    
+    # b0 = pm.HalfNormal(name=&quot;b0&quot;, sigma=10)
+    # g3 = pm.Normal(name=&quot;g3&quot;, mu=0, sigma=10)
+    # b = tt.exp(g3 * z)
+    b = pm.HalfNormal(name=&quot;b&quot;, sigma=10)
+
+    alpha0 = pm.HalfNormal(name=&quot;alpha0&quot;, sigma=10)
+    g1 = pm.Normal(name=&quot;g1&quot;, mu=0, sigma=10)
+    alpha = pm.Deterministic(name=&quot;alpha&quot;, var=alpha0 * tt.exp(- g1 * z))
+    
+    r = pm.HalfNormal(name=&quot;r&quot;, sigma=10)
+
+    def logp(x, t_x, T, x_zero):
+        a1 = tt.gammaln(r + x) - tt.gammaln(r) + r * tt.log(alpha)
+        a2 = tt.gammaln(a + b) + tt.gammaln(b + x) - tt.gammaln(b) - tt.gammaln(a + b + x)
+        a3 = -(r + x) * tt.log(alpha + T)
+        a4 =  tt.log(a) - tt.log(b + tt.maximum(x, 1) - 1) - (r + x) * tt.log(t_x + alpha)
+        max_a3_a4 = tt.maximum(a3, a4)
+        ll_1 = a1 + a2 
+        ll_2 = tt.log(tt.exp(a3 - max_a3_a4) + tt.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)) + max_a3_a4
+        return tt.sum(ll_1 + ll_2)
+
+    likelihood = pm.DensityDist(
+        name=&quot;likelihood&quot;,
+        logp=logp,
+        observed = {&quot;x&quot;:x_z, &quot;t_x&quot;:t_x_z, &quot;T&quot;:T, &quot;x_zero&quot;: x_zero_z}
+    )</code></pre>
+<p>He run the sampler:</p>
+<pre class="python"><code>with model_cov:
+    trace_cov = pm.sample(
+        tune=3000,
+        draws=6000,
+        chains=4,
+        target_accept=0.95,
+        return_inferencedata=True
+    )</code></pre>
+<p>Let see the traces:</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=trace_cov,
+    var_names=[&quot;~alpha&quot;],
+    lines=[(k, {}, [v]) for k, v in bgf_cov.summary[&quot;coef&quot;].items()],
+    compact=True,
+    backend_kwargs={
+        &quot;figsize&quot;: (12, 15),
+        &quot;layout&quot;: &quot;constrained&quot;
+    }
+)
+fig = axes[0][0].get_figure()
+fig.suptitle(&quot;BG/NBD Model (Time-Invariant Covariates) Trace&quot;);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_50_0.svg" alt="html" style="width: 1000px;"/>
+</center>
+<p>We indeed see a difference in the model parameters as compared with the model without covariates <code>bgf_cov</code> (note specially the shift in <span class="math inline">\(r\)</span>).</p>
+<pre class="python"><code>axes = az.plot_pair(data=trace_cov, var_names=[&quot;~alpha&quot;], figsize=(12, 12))
+fig = axes[0][0].get_figure()
+fig.suptitle(&quot;BG/NBD Model Parameters (Time-Invariant Covariates) Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_52_0.png" alt="html" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>az.summary(data=trace_cov, var_names=[&quot;~alpha&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+g1
+</th>
+<td>
+-2.446
+</td>
+<td>
+0.136
+</td>
+<td>
+-2.693
+</td>
+<td>
+-2.182
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+14936.0
+</td>
+<td>
+14854.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+a
+</th>
+<td>
+1.111
+</td>
+<td>
+0.528
+</td>
+<td>
+0.393
+</td>
+<td>
+2.049
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+11538.0
+</td>
+<td>
+9626.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b
+</th>
+<td>
+4.444
+</td>
+<td>
+2.658
+</td>
+<td>
+1.146
+</td>
+<td>
+9.113
+</td>
+<td>
+0.028
+</td>
+<td>
+0.021
+</td>
+<td>
+11359.0
+</td>
+<td>
+9607.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha0
+</th>
+<td>
+4.616
+</td>
+<td>
+0.509
+</td>
+<td>
+3.677
+</td>
+<td>
+5.582
+</td>
+<td>
+0.005
+</td>
+<td>
+0.003
+</td>
+<td>
+11107.0
+</td>
+<td>
+12468.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+r
+</th>
+<td>
+0.230
+</td>
+<td>
+0.015
+</td>
+<td>
+0.202
+</td>
+<td>
+0.259
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+12102.0
+</td>
+<td>
+13290.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Finally, let us see the two different values (for <span class="math inline">\(z=0\)</span> and <span class="math inline">\(z=1\)</span>) of the <code>alpha</code> parameter.</p>
+<pre class="python"><code>model_cov_params_df = pd.DataFrame(data=
+    {
+        &quot;alpha_mean&quot;: (
+            trace_cov.posterior[&quot;alpha&quot;]
+            .stack(sample=(&#39;chain&#39;, &#39;draw&#39;))
+            .mean(axis=1)
+        ),
+        &quot;z&quot;: z,
+    }
+)
+
+fix, ax = plt.subplots()
+sns.barplot(
+    x=&quot;z&quot;,
+    y=&quot;alpha_mean&quot;,
+    data=model_cov_params_df,
+    hue=&quot;z&quot;,
+    estimator=np.mean,
+    dodge=False,
+    ax=ax
+)
+ax.legend(title=&quot;z&quot;, loc=&quot;upper left&quot;)
+ax.set(
+    title=r&quot;Mean Posterior $\alpha$&quot;,
+    ylabel=r&quot;mean posterior $\alpha$&quot;
+);</code></pre>
+<center>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_55_0.svg" alt="html" style="width: 800px;"/>
+</center>
+<p>This parameter represents (up to a constant) the rate of the exponential distribution of the interpurchase times for a random users. This means that a higher value of <span class="math inline">\(\alpha\)</span> translates into lower number of purchases (for a fixed time period). This agrees with the effect we imposed of the covariate <span class="math inline">\(z\)</span> on the frequency of purchases above.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
