@@ -7,8 +7,8 @@
 <meta name="generator" content="Hugo 0.79.1" />
 
 
-<title>BG/NBD model in PyMC - Dr. Juan Camilo Orduz</title>
-<meta property="og:title" content="BG/NBD model in PyMC - Dr. Juan Camilo Orduz">
+<title>BG/NBD Model in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="BG/NBD Model in PyMC - Dr. Juan Camilo Orduz">
 
 
   <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
@@ -68,10 +68,10 @@
     <span class="article-duration">14 min read</span>
     
 
-    <h1 class="article-title">BG/NBD model in PyMC</h1>
+    <h1 class="article-title">BG/NBD Model in PyMC</h1>
 
     
-    <span class="article-date">2022-03-02</span>
+    <span class="article-date">2022-03-03</span>
     
 
     <div class="article-content">
@@ -955,7 +955,7 @@ r
 <p>The summary statistics look overall good. In particular the chains values for <code>a</code> and <code>b</code> look better than the <code>model_full</code>.</p>
 <p>Now that we have posterior samples for the model parameters we can easily compute quantities of interest. For example, let us compute the <em>conditional probability of being alive</em>, see the note <a href="https://brucehardie.com/notes/021/palive_for_BGNBD.pdf">Computing P(alive) Using
 the BG/NBD Model</a>. Again, we can simply port the corresponding method from <a href="https://lifetimes.readthedocs.io/en/latest/lifetimes.fitters.html#lifetimes.fitters.beta_geo_fitter.BetaGeoFitter.conditional_probability_alive"><code>lifetimes.BetaGeoFitter.conditional_probability_alive</code></a>.</p>
-<pre class="python"><code># See https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html
+<pre class="python"><code># https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html
 def _sample(array, n_samples):
     &quot;&quot;&quot;Little utility function, sample n_samples with replacement.&quot;&quot;&quot;
     idx = np.random.choice(np.arange(len(array)), n_samples, replace=True)
