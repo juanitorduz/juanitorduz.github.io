@@ -338,7 +338,7 @@ x_zero = int_vec(x &gt; 0)</code></pre>
 <center>
 <img src="../images/bg_nbd_model_description.png" alt="html" style="width: 600px;"/>
 </center>
-<p>We nos use the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> object <a href="https://lifetimes.readthedocs.io/en/latest/lifetimes.fitters.html#module-lifetimes.fitters.beta_geo_fitter"><code>BetaGeoFitter</code></a> to estimate the model parameters via maximum likelihood estimation.</p>
+<p>We now use the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> object <a href="https://lifetimes.readthedocs.io/en/latest/lifetimes.fitters.html#module-lifetimes.fitters.beta_geo_fitter"><code>BetaGeoFitter</code></a> to estimate the model parameters via maximum likelihood estimation.</p>
 <pre class="python"><code># fit BG/NBD model
 bgf = BetaGeoFitter()
 bgf.fit(frequency=x, recency=t_x, T=T)

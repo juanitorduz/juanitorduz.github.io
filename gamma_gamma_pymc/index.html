@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Gamma-Gamma Model of Monetary Value in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Gamma-Gamma Model of Monetary Value in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">7 min read</span>
+    
+
+    <h1 class="article-title">Gamma-Gamma Model of Monetary Value in PyMC</h1>
+
+    
+    <span class="article-date">2022-03-29</span>
+    
+
+    <div class="article-content">
+      
+<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
+
+
+<p>In this notebook we describe how to fit Fader’s and Hardie’s <em>gamma-gamma model</em> presented in the paper <a href="http://www.brucehardie.com/papers/rfm_clv_2005-02-16.pdf">“RFM and CLV: Using Iso-value Curves
+for Customer Base Analysis”</a> and the note <a href="http://www.brucehardie.com/notes/025/gamma_gamma.pdf">“The Gamma-Gamma Model of Monetary
+Value”</a>. The approach is very similar as the one presented in the previous post <a href="https://juanitorduz.github.io/bg_nbd_pymc/">BG/NBD Model in PyMC</a> where we simply ported the log-likelihood of the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package from <code>numpy</code> to <code>theano</code>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from lifetimes.datasets import load_cdnow_summary_data_with_monetary_value
+from lifetimes import GammaGammaFitter
+import pymc3 as pm
+import theano.tensor as tt
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [8, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+</div>
+<div id="load-data" class="section level2">
+<h2>Load Data</h2>
+<p>We are going to use an existing data set from the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package documentation, see <a href="https://lifetimes.readthedocs.io/en/latest/Quickstart.html">here</a>.</p>
+<pre class="python"><code>data_df = load_cdnow_summary_data_with_monetary_value()
+
+data_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+Int64Index: 2357 entries, 1 to 2357
+Data columns (total 4 columns):
+ #   Column          Non-Null Count  Dtype  
+---  ------          --------------  -----  
+ 0   frequency       2357 non-null   int64  
+ 1   recency         2357 non-null   float64
+ 2   T               2357 non-null   float64
+ 3   monetary_value  2357 non-null   float64
+dtypes: float64(3), int64(1)
+memory usage: 92.1 KB</code></pre>
+<p>From the package’s documentation:</p>
+<ul>
+<li><code>frequency</code>: Number of repeat purchases the customer has made. More precisely, It’s the count of time periods the customer had a purchase in.</li>
+<li><code>monetary_value</code>: represents the average value of a given customer’s purchases.</li>
+</ul>
+<p>LEt us plot the distribution of the features of interest:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(9, 4),
+    sharex=False,
+    sharey=False,
+    layout=&quot;constrained&quot;
+)
+sns.kdeplot(x=&quot;frequency&quot;, data=data_df, color=&quot;C2&quot;, clip=(0.0, None), fill=True, ax=ax[0])
+ax[0].set(title=&quot;Frequency&quot;,xlabel=&quot;frequency (log)&quot;,xscale=&quot;log&quot;)
+sns.kdeplot(x=&quot;monetary_value&quot;, data=data_df, color=&quot;C3&quot;, clip=(0.0, None), fill=True, ax=ax[1])
+ax[1].set(title=&quot;Monetary Value&quot;,xlabel=&quot;monetary value (log)&quot;,xscale=&quot;log&quot;)
+fig.suptitle(&quot;Data Distribution (log scale)&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/gamma_gamma_files/gamma_gamma_6_0.svg" />
+</center>
+</div>
+<div id="gamma-gamma-model-lifetimes" class="section level2">
+<h2>Gamma-Gamma Model (Lifetimes)</h2>
+<p>In this first section we we fit the model using the <a href="https://lifetimes.readthedocs.io/en/latest/lifetimes.fitters.html#module-lifetimes.fitters.gamma_gamma_fitter"><code>GammaGammaFitter</code></a> class from the <a href="https://lifetimes.readthedocs.io/en/latest/"><code>lifetimes</code></a> package. Before fitting the model, let us recall the model specification (see <a href="http://www.brucehardie.com/notes/025/gamma_gamma.pdf">“The Gamma-Gamma Model of Monetary
+Value”</a>). First, here are the assumptions:</p>
+<blockquote>
+<ul>
+<li>The monetary value of a customer’s given transaction varies randomly around their average transaction value.</li>
+<li>Average transaction values vary across customers but do not vary over time for any given individual.</li>
+<li>The distribution of average transaction values across customers is independent of the transaction process.</li>
+</ul>
+</blockquote>
+<p>Let <span class="math inline">\(\bar{z}\)</span> be the observed average transaction value for a given customer. One is generally interested in the expected value <span class="math inline">\(E(Z|\bar{z}, x)\)</span>, where <span class="math inline">\(Z\)</span> denotes the random variable of the customer monetary value per transaction and <span class="math inline">\(x\)</span> is the observed frequency (see last section below). Now let us look into the concrete model parametrization:</p>
+<blockquote>
+<ul>
+<li>We assume that <span class="math inline">\(z_i \sim \text{Gamma}(p, \nu)\)</span>, with <span class="math inline">\(E(Z_i| p, \nu) = \xi = p/\nu\)</span>.
+<ul>
+<li>Given the convolution properties of the gamma, it follows that total spend across <span class="math inline">\(x\)</span> transactions is distributed <span class="math inline">\(\text{Gamma}(px, \nu)\)</span>.</li>
+<li>Given the scaling property of the gamma distribution, it follows <span class="math inline">\(\bar{z} \sim \text{Gamma}(px, νx)\)</span>.</li>
+</ul></li>
+<li>We assume <span class="math inline">\(\nu \sim \text{Gamma}(q, \gamma)\)</span>.</li>
+</ul>
+</blockquote>
+<p><strong>Remark:</strong> The notation used in the paper is slightly different from the one used in the <a href="https://lifetimes.readthedocs.io/en/latest/"><code>lifetimes</code></a> package. The parameter <span class="math inline">\(\gamma\)</span> is denoted by <span class="math inline">\(v\)</span>.</p>
+<p>For more details in the theory and the consequences of this parametrization please see the references above.</p>
+<p>When fitting the model, we need to be careful with two conditions:</p>
+<ol style="list-style-type: decimal">
+<li>We must remove users without repeated purchases.</li>
+<li>The Gamma-Gamma model assumes that there is no relationship between the monetary value and the purchase frequency.</li>
+</ol>
+<p>For the first condition we simply filter out the data:</p>
+<pre class="python"><code>data_df.query(&quot;frequency &gt; 0&quot;, inplace=True)</code></pre>
+<p>For the second condition we compute the correlation:</p>
+<pre class="python"><code>data_df.filter([&quot;frequency&quot;, &quot;monetary_value&quot;]).corr()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+frequency
+</th>
+<th>
+monetary_value
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+frequency
+</th>
+<td>
+1.000000
+</td>
+<td>
+0.113884
+</td>
+</tr>
+<tr>
+<th>
+monetary_value
+</th>
+<td>
+0.113884
+</td>
+<td>
+1.000000
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The correlation is not very high. Let us see it ins a scatter plot:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(x=&quot;frequency&quot;, y=&quot;monetary_value&quot;, data=data_df, ax=ax)
+ax.set(title=&quot;Frequency vs Monetary Value&quot;,xlabel=&quot;frequency&quot;,ylabel=&quot;monetary value&quot;);</code></pre>
+<center>
+<img src="../images/gamma_gamma_files/gamma_gamma_12_0.svg" />
+</center>
+<p>There does not seem to be a high relation between these features, so we can move and fir the <code>lifetimes</code> model.</p>
+<pre class="python"><code># extract the data using the paper&#39;s (and lifetimes) notation 
+x = data_df[&quot;frequency&quot;].to_numpy()
+m = data_df[&quot;monetary_value&quot;].to_numpy()</code></pre>
+<pre class="python"><code>ggf = GammaGammaFitter(penalizer_coef=0.0)
+ggf.fit(frequency=x, monetary_value=m)
+
+ggf.summary</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+coef
+</th>
+<th>
+se(coef)
+</th>
+<th>
+lower 95% bound
+</th>
+<th>
+upper 95% bound
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+p
+</th>
+<td>
+6.248802
+</td>
+<td>
+1.189687
+</td>
+<td>
+3.917016
+</td>
+<td>
+8.580589
+</td>
+</tr>
+<tr>
+<th>
+q
+</th>
+<td>
+3.744588
+</td>
+<td>
+0.290166
+</td>
+<td>
+3.175864
+</td>
+<td>
+4.313313
+</td>
+</tr>
+<tr>
+<th>
+v
+</th>
+<td>
+15.447748
+</td>
+<td>
+4.159994
+</td>
+<td>
+7.294160
+</td>
+<td>
+23.601336
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>These errors are computed using the Hessian (see for example <a href="http://www.sherrytowers.com/mle_introduction.pdf">here</a>).</p>
+</div>
+<div id="bayesian-model" class="section level2">
+<h2>Bayesian Model</h2>
+<p>We use the same strategy of the post <a href="https://juanitorduz.github.io/bg_nbd_pymc/">BG/NBD Model in PyMC</a> where we rewrite the log-likelihood of the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package from <code>numpy</code> to <code>theano</code>. In this case the expression is much simpler, see the <code>staticmethod</code> of the class <code>GammaGammaFitter._negative_log_likelihood</code>.</p>
+<pre class="python"><code>with pm.Model() as model:
+
+    p = pm.HalfNormal(name=&quot;p&quot;, sd=10)
+    q = pm.HalfNormal(name=&quot;q&quot;, sd=10)
+    v = pm.HalfNormal(name=&quot;v&quot;, sd=10)
+
+    def logp(x, m):
+        return (
+            tt.gammaln(p * x + q)
+            - tt.gammaln(p * x)
+            - tt.gammaln(q)
+            + q * tt.log(v)
+            + (p * x - 1) * tt.log(m)
+            + (p * x) * tt.log(x)
+            - (p * x + q) * tt.log(x * m + v)
+        )
+    
+    likelihood = pm.DensityDist(
+        name=&quot;likelihood&quot;,
+        logp=logp,
+        observed = {&quot;x&quot;:x, &quot;m&quot;: m}
+    )</code></pre>
+<p>Next, we estimate the posterior distribution.</p>
+<pre class="python"><code>with model:
+    trace = pm.sample(
+        tune=2000,
+        draws=6000,
+        chains=4,
+        target_accept=0.95,
+        return_inferencedata=True
+    )</code></pre>
+<p>Let us take a look at the model summary:</p>
+<pre class="python"><code>az.summary(data=trace, var_names=[&quot;p&quot;, &quot;q&quot;, &quot;v&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+p
+</th>
+<td>
+6.991
+</td>
+<td>
+1.352
+</td>
+<td>
+4.733
+</td>
+<td>
+9.541
+</td>
+<td>
+0.018
+</td>
+<td>
+0.013
+</td>
+<td>
+5455.0
+</td>
+<td>
+6269.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+q
+</th>
+<td>
+3.663
+</td>
+<td>
+0.257
+</td>
+<td>
+3.198
+</td>
+<td>
+4.150
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+5666.0
+</td>
+<td>
+6580.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+v
+</th>
+<td>
+14.021
+</td>
+<td>
+3.466
+</td>
+<td>
+7.963
+</td>
+<td>
+20.688
+</td>
+<td>
+0.049
+</td>
+<td>
+0.035
+</td>
+<td>
+5034.0
+</td>
+<td>
+5506.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We now plot the posterior distributions and compare them against the point estimate of the <code>GammaFitter</code> model.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=trace,
+    lines=[(k, {}, [v]) for k, v in ggf.summary[&quot;coef&quot;].items()],
+    compact=True,
+    backend_kwargs={
+        &quot;figsize&quot;: (10, 7),
+        &quot;layout&quot;: &quot;constrained&quot;
+    },
+)
+fig = axes[0][0].get_figure()
+fig.suptitle(&quot;Gamma-Gamma Model Trace&quot;);</code></pre>
+<center>
+<img src="../images/gamma_gamma_files/gamma_gamma_24_0.svg" />
+</center>
+<p>The results look comparable!</p>
+<p>Finally, let’s look into the pair-plot of the posterior distributions:</p>
+<pre class="python"><code>axes = az.plot_pair(data=trace, var_names=[&quot;p&quot;, &quot;q&quot;, &quot;v&quot;], figsize=(8, 8))
+fig = plt.gcf()
+fig.suptitle(&quot;Gamma-Gamma Model Parameters Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+<center>
+<img src="../images/gamma_gamma_files/gamma_gamma_26_0.svg" />
+</center>
+<p>It is interesting to see that the <code>p</code> and <code>v</code> distributions seem to obey a non-linear relationship.</p>
+</div>
+<div id="conditional-expected-average-profit" class="section level2">
+<h2>Conditional Expected Average Profit</h2>
+<p>Now that we have posterior samples at our disposal, we can compute quantities of interest using the expressions from the <code>lifetimes</code> package (and the papers of course). For example, let us compute the <em>conditional expected average profit</em> defined by the expected value <span class="math inline">\(E(Z|\bar{z}, x)\)</span>. One can show that the expected average profit is a weighted average of individual monetary value and the population mean (see Equation 5 in <a href="http://www.brucehardie.com/notes/025/gamma_gamma.pdf">“The Gamma-Gamma Model of Monetary
+Value”</a>).</p>
+<p>First we compute it using the method <code>GammaGammaFitter.conditional_expected_average_profit</code>:</p>
+<pre class="python"><code>ggf_ceap = ggf.conditional_expected_average_profit(frequency=x, monetary_value=m)</code></pre>
+<p>Next, we compare it to the results from the <code>pymc</code> model. We do this by simply re-writing (specifically, vectorizing) the method above.</p>
+<pre class="python"><code># pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html
+def _sample(array, n_samples):
+    &quot;&quot;&quot;Little utility function, sample n_samples with replacement.&quot;&quot;&quot;
+    idx = np.random.choice(np.arange(len(array)), n_samples, replace=True)
+    return array[idx]
+
+def conditional_expected_average_profit(trace, x, m, n_samples):
+    posterior = trace.posterior.stack(sample=(&#39;chain&#39;, &#39;draw&#39;))
+    p = _sample(array=posterior[&quot;p&quot;], n_samples=n_samples).to_numpy()[..., None]
+    q = _sample(array=posterior[&quot;q&quot;], n_samples=n_samples).to_numpy()[..., None]
+    v = _sample(array=posterior[&quot;v&quot;], n_samples=n_samples).to_numpy()[..., None]
+
+    individual_weight = p * x[None, ...] / (p * x[None, ...] + q - 1)
+    population_mean = (v * p) / (q - 1)
+    return (population_mean * (1 - individual_weight)) + (individual_weight * m)
+
+
+n_samples = 1000
+
+pymc_ceap = conditional_expected_average_profit(trace, x, m, n_samples)</code></pre>
+<p>Finally, we can compare the results:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 8))
+
+ax.errorbar(
+    x=ggf_ceap,
+    y=pymc_ceap.mean(axis=0),
+    yerr=az.hdi(ary=pymc_ceap).T,
+    fmt=&quot;o&quot;,
+    ecolor=&quot;C6&quot;,
+    markeredgecolor=&quot;C1&quot;,
+    markerfacecolor=&quot;C1&quot;,
+    markersize=5,
+    alpha=0.5,
+    capsize=2,
+)
+ax.axline(
+    xy1=(0, 0),
+    slope=1,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;diagonal&quot;
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Model Comparison&quot;, xlabel=&quot;lifetimes&quot;, ylabel=&quot;pymc&quot;);</code></pre>
+<center>
+<img src="../images/gamma_gamma_files/gamma_gamma_33_0.svg" />
+</center>
+<p>Note that the credible intervals increase as the monetary value increases. This is no surprise given the data distribution (see first plot above).</p>
+<p><strong>Remark:</strong> Note that the credible intervals are always positive:</p>
+<pre class="python"><code>assert az.hdi(ary=pymc_ceap).min().min() &gt; 0</code></pre>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

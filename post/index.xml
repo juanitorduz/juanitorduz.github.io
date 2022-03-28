@@ -6,7 +6,17 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 03 Mar 2022 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 29 Mar 2022 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Gamma-Gamma Model of Monetary Value in PyMC</title>
+      <link>/gamma_gamma_pymc/</link>
+      <pubDate>Tue, 29 Mar 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/gamma_gamma_pymc/</guid>
+      <description>In this notebook we describe how to fit Fader’s and Hardie’s gamma-gamma model presented in the paper “RFM and CLV: Using Iso-value Curves for Customer Base Analysis” and the note “The Gamma-Gamma Model of Monetary Value”. The approach is very similar as the one presented in the previous post BG/NBD Model in PyMC where we simply ported the log-likelihood of the lifetimes package from numpy to theano.
+Prepare Notebook import arviz as az import matplotlib.</description>
+    </item>
+    
     <item>
       <title>BG/NBD Model in PyMC</title>
       <link>/bg_nbd_pymc/</link>
