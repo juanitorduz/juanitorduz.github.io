@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">18 min read</span>
+    <span class="article-duration">21 min read</span>
     
 
     <h1 class="article-title">Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</h1>
@@ -76,10 +76,9 @@
 
     <div class="article-content">
       
-<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
-<p>In this notebook we present a concrete example of estimating the media effects via bayesian methods, following the strategy outlined in Google’s paper <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>. This example can be considered the continuation of the post <a href="https://juanitorduz.github.io/orbit_mmm/">Media Effect Estimation with Orbit’s KTR Model</a>. However, it is not strictly necessary to read before as we make this notebook self-contained.</p>
+<p>In this notebook we present a concrete example of estimating the media effects via bayesian methods, following the strategy outlined in Google’s paper <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>. This example can be considered the continuation of the post <a href="https://juanitorduz.github.io/orbit_mmm/">Media Effect Estimation with Orbit’s KTR Model</a>. However, it is not strictly necessary to read before as we make this notebook self-contained. In addition, we provide some remarks and references regarding MMM projects in practice.</p>
 <div id="data-generation-process" class="section level2">
 <h2>Data Generation Process</h2>
 <p>In <a href="https://juanitorduz.github.io/orbit_mmm/">Part I</a> of the post <a href="https://juanitorduz.github.io/orbit_mmm/">Media Effect Estimation with Orbit’s KTR Model</a>, we generated a synthetic dataset where we modeled a target variable <code>y</code> (sales) as a function of a trend, a seasonal component and an external regressor <code>z</code> (media spend). The effect of <code>z</code> on <code>y</code> was specified by the composition two transformations: a carryover effect (adstock) and a shape (saturation) effect.These two transformations have proven successful in practical Media Mix Modeling.</p>
@@ -131,7 +130,56 @@ y(t) = \beta_{0} + \beta_{\text{trend}}\:\text{trend} + \beta_{\text{seasonality
 </ul>
 <p>Of course, the main motivation is Google’s paper <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects” (2017)</a>. Moreover, for a discussion of MMM in practice please see <a href="https://research.google/pubs/pub45998/">Chan, David, et al. “Challenges and Opportunities in Media Mix Modeling” (2017)</a></p>
 <p>As usual in applied data analysis, we will start from simple models and iterate to add more complexity. Moreover, we will follow the recommended <a href="https://arxiv.org/abs/2011.01808">bayesian workflow</a>.</p>
+</div>
+<div id="some-additional-remarks" class="section level2">
+<h2>Some Additional Remarks</h2>
+<div id="mmm-projects" class="section level3">
+<h3>MMM Projects</h3>
+<p>There are many existing projects regarding media mix models. Two of the most known ones are</p>
+<ul>
+<li><a href="https://facebookexperimental.github.io/Robyn/">Facebook’s Robyn</a>: This model uses a combination of <a href="https://facebook.github.io/prophet/">Prophet</a> (trend-seasonality model) and a ridge regression to model media data.</li>
+<li><a href="https://github.com/google/lightweight_mmm">Google’s LightweightMMM</a>: This project in essence follows the approach we describe in this post. The code is written in <a href="https://github.com/pyro-ppl/numpyro">Numpyro</a>.</li>
+</ul>
+</div>
+<div id="which-media-data-to-use" class="section level3">
+<h3>Which Media Data to Use?</h3>
+<p>In this simulated example we are using <em>media spend</em> as regressor for the media variable. Nevertheless, in practice this is not the best choice as described in the <a href="https://facebookexperimental.github.io/Robyn/docs/analysts-guide-to-MMM">Analysts guide to MMM</a> from <a href="https://facebookexperimental.github.io/Robyn/">Facebook’s Robyn</a> documentation:</p>
+<blockquote>
+<p><em>Data collected for media ideally should reflect how many “eyeballs” have seen or been exposed to the media (e.g. impressions, GRPs). Spends should also be collected in order to calculate Return On Investment, however it is best practice to use exposure metrics as direct inputs into the model, as this is a better representation than spends of how media activity has been consumed by consumers.</em></p>
+</blockquote>
+<p>So, if we use impressions in the model, how to include the cost data? There are various alternatives. For example:</p>
+<ul>
+<li><p><a href="https://facebookexperimental.github.io/Robyn/">Facebook’s Robyn</a>: Includes the costs data as part of the model selection. They train many models and the user has to select the best among two metrics: model fit (NRMSE) and the predicted cost distribution (DECOMP.RSSD), see <a href="https://facebookexperimental.github.io/Robyn/docs/analysts-guide-to-MMM#modeling-techniques-">here</a> for details.</p></li>
+<li><p><a href="https://github.com/google/lightweight_mmm">Googles’s LightweightMMM</a>: Their approach is fully-bayesian so they include the cost data as part of the <em>prior</em> distributions of the model.</p></li>
+</ul>
+<p><strong>Remark:</strong> In practice, I have used <a href="https://github.com/google/lightweight_mmm">Googles’s LightweightMMM</a> approach to include costs as part of the priors with PyMC models as the one presented in this post. The results are quite good and personally I like it more that the manual-model selection approach.</p>
+</div>
+<div id="controling-for-seasonality" class="section level3">
+<h3>Controling for Seasonality</h3>
+<ul>
+<li>One has to be careful to control for seasonality when is really meaningful. For example, for digital channels the impressions data can already be driven by seasonality, so adding additional Fourier modes can be counterproductive. Moreover, certain modelers suggest to add time-variant coefficients to encode seasonality via Gaussian processes (see for example the post <a href="https://getrecast.com/seasonality/">You’re probably modeling seasonality the wrong way</a>).</li>
+</ul>
+</div>
+<div id="adstock-and-saturation-order" class="section level3">
+<h3>Adstock and Saturation Order</h3>
+<p>Note that the adstock and saturation transformations <strong>do not commute</strong> (i.e. the order matters). So which one to apply first? I recommend you look into Section <em>2.3 Combining the Carryover and the Shape Effect</em> in <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>. The rule of thumb is to apply:</p>
+<blockquote>
+<ul>
+<li><em>Adstock transformation first if:</em> the media spend in each time period is relatively small compared to the cumulative spend across multiple time periods.</li>
+</ul>
+</blockquote>
+<blockquote>
+<ul>
+<li><em>Saturation transformation first if:</em> the media spend is heavily concentrated in some single time periods with an on-and-off pattern.</li>
+</ul>
+</blockquote>
+</div>
+<div id="it-is-all-about-the-data" class="section level3">
+<h3>It is <strong>All</strong> about the Data</h3>
+<p>As any other data science project the data is the key factor of the success of an MMM project. As the main idea of an MMM is to estimate effects across many digital and offline channels, the data collection can be challenging (it usually is). Hence, the recommendation is to spend a significant par of the project collecting and understanding the data: Where is the data coming from? How is it transformed and stored? Outliers? Missing values?</p>
+<p><strong>Remark:</strong> The <a href="https://facebookexperimental.github.io/Robyn/docs/analysts-guide-to-MMM">Analysts guide to MMM</a> from <a href="https://facebookexperimental.github.io/Robyn/">Facebook’s Robyn</a> gives nice tips about planing and executing an MMM project (steps, data collection, timeline, etc.).</p>
 <hr />
+</div>
 </div>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
@@ -318,10 +366,7 @@ ax.plot(
 )
 ax.set(title=&quot;Base Model - Prior Predictive Samples&quot;);</code></pre>
 <center>
-<div class="figure">
-<img src="../images/pymc_mmm_files/pymc_mmm_28_0.svg" alt="" />
-<p class="caption">svg</p>
-</div>
+<img src="../images/pymc_mmm_files/pymc_mmm_28_0.svg" />
 </center>
 <p>The priors do constrain the range of the generated time series. Nevertheless, they are not too restrictive.</p>
 <ul>
