@@ -130,9 +130,10 @@ y(t) = \beta_{0} + \beta_{\text{trend}}\:\text{trend} + \beta_{\text{seasonality
 </ul>
 <p>Of course, the main motivation is Google’s paper <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects” (2017)</a>. Moreover, for a discussion of MMM in practice please see <a href="https://research.google/pubs/pub45998/">Chan, David, et al. “Challenges and Opportunities in Media Mix Modeling” (2017)</a></p>
 <p>As usual in applied data analysis, we will start from simple models and iterate to add more complexity. Moreover, we will follow the recommended <a href="https://arxiv.org/abs/2011.01808">bayesian workflow</a>.</p>
+<hr />
 </div>
-<div id="some-additional-remarks" class="section level2">
-<h2>Some Additional Remarks</h2>
+<div id="some-additional-remarks-on-mmm-in-practice" class="section level2">
+<h2>Some Additional Remarks on MMM in Practice</h2>
 <div id="mmm-projects" class="section level3">
 <h3>MMM Projects</h3>
 <p>There are many existing projects regarding media mix models. Two of the most known ones are</p>
@@ -156,9 +157,7 @@ y(t) = \beta_{0} + \beta_{\text{trend}}\:\text{trend} + \beta_{\text{seasonality
 </div>
 <div id="controling-for-seasonality" class="section level3">
 <h3>Controling for Seasonality</h3>
-<ul>
-<li>One has to be careful to control for seasonality when is really meaningful. For example, for digital channels the impressions data can already be driven by seasonality, so adding additional Fourier modes can be counterproductive. Moreover, certain modelers suggest to add time-variant coefficients to encode seasonality via Gaussian processes (see for example the post <a href="https://getrecast.com/seasonality/">You’re probably modeling seasonality the wrong way</a>).</li>
-</ul>
+<p>One has to be careful to control for seasonality when is really meaningful. For example, for digital channels the impressions data can already be driven by seasonality, so adding additional Fourier modes can be counterproductive. Moreover, certain modelers suggest to add time-variant coefficients to encode seasonality via Gaussian processes (see for example the post <a href="https://getrecast.com/seasonality/">You’re probably modeling seasonality the wrong way</a>).</p>
 </div>
 <div id="adstock-and-saturation-order" class="section level3">
 <h3>Adstock and Saturation Order</h3>
