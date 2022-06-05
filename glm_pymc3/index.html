@@ -80,9 +80,9 @@
 
 <p>In this notebook I explore the <a href="https://docs.pymc.io/api/glm.html">glm</a> module of <a href="https://docs.pymc.io/">PyMC3</a>. I am particularly interested in the model definition using <a href="https://patsy.readthedocs.io/en/latest/">patsy</a> formulas, as it makes the model evaluation loop faster (easier to include features and/or interactions). There are many good resources on this subject, but most of them evaluate the model in-sample. For many applications we require doing predictions on out-of-sample data. This experiment was motivated by the discussion of the thread <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">“Out of sample” predictions with the GLM sub-module</a> on the (great!) forum <a href="https://discourse.pymc.io/">discourse.pymc.io/</a>, thank you all for your input!</p>
 <p style="color:red">
-<strong>WARNING:</strong>
+📢 <strong>WARNING:</strong>
 </p>
-<p>Since <code>pymc v4</code> the <code>GLM</code> module has been depreciated in favor of <a href="https://bambinos.github.io/bambi/">Bambi</a>, a more complete implementation of the GLM sub-module which also allows for mixed-effects models. If you are coming from <code>pymc</code> you can take a look into a tutorial I wrote (together with <a href="https://github.com/tomicapretto">Tomás Capretto</a>) about how to port a hierarchical bayesian model from <code>pymc</code> to <code>bambi</code> <a href="https://bambinos.github.io/bambi/main/notebooks/radon_example.html">here</a>.</p>
+<p>Since <code>pymc v4</code> the <code>GLM</code> module has been depreciated in favor of <a href="https://bambinos.github.io/bambi/">Bambi</a>, a more complete implementation of the GLM sub-module which also allows for mixed-effects models. If you are coming from <code>pymc</code> you can take a look into a tutorial I wrote (together with <a href="https://github.com/tomicapretto">Tomás Capretto</a>) about how to port a hierarchical bayesian model from <code>pymc</code> to <code>bambi</code> <a href="https://bambinos.github.io/bambi/main/notebooks/radon_example.html">here</a>. That being said, <strong>besides the syntax in the model specification, the rest of the concepts and code of this post remain valid!</strong> 😉</p>
 <hr />
 <p><strong>Resources</strong></p>
 <ul>
