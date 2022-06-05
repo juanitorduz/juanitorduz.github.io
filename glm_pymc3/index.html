@@ -76,17 +76,20 @@
 
     <div class="article-content">
       
-<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p>In this notebook I explore the <a href="https://docs.pymc.io/api/glm.html">glm</a> module of <a href="https://docs.pymc.io/">PyMC3</a>. I am particularly interested in the model definition using <a href="https://patsy.readthedocs.io/en/latest/">patsy</a> formulas, as it makes the model evaluation loop faster (easier to include features and/or interactions). There are many good resources on this subject, but most of them evaluate the model in-sample. For many applications we require doing predictions on out-of-sample data. This experiment was motivated by the discussion of the thread <a href="https://discourse.pymc.io/t/out-of-sample-predictions-with-the-glm-sub-module/773">“Out of sample” predictions with the GLM sub-module</a> on the (great!) forum <a href="https://discourse.pymc.io/">discourse.pymc.io/</a>, thank you all for your input!</p>
+<p style="color:red">
+<strong>WARNING:</strong>
+</p>
+<p>Since <code>pymc v4</code> the <code>GLM</code> module has been depreciated in favor of <a href="https://bambinos.github.io/bambi/">Bambi</a>, a more complete implementation of the GLM sub-module which also allows for mixed-effects models. If you are coming from <code>pymc</code> you can take a look into a tutorial I wrote (together with <a href="https://github.com/tomicapretto">Tomás Capretto</a>) about how to port a hierarchical bayesian model from <code>pymc</code> to <code>bambi</code> <a href="https://bambinos.github.io/bambi/main/notebooks/radon_example.html">here</a>.</p>
+<hr />
 <p><strong>Resources</strong></p>
 <ul>
 <li><p><a href="https://docs.pymc.io/nb_examples/index.html">PyMC3 Docs: Example Notebooks</a></p>
 <ul>
 <li>In particular check <a href="https://docs.pymc.io/notebooks/GLM-logistic.html">GLM: Logistic Regression</a></li>
 </ul></li>
-<li><p><a href="https://bambinos.github.io/bambi/">Bambi</a>, a more complete implementation of the GLM submodule which also allows for mixed-effects models.</p></li>
 <li><p><a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a></p></li>
 <li><p><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a></p></li>
 </ul>
@@ -252,7 +255,10 @@ y
     diag_kws={&quot;color&quot;: sns_c[2]}
 );</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_6_0.svg" title="fig:" alt="svg" />
+<div class="figure">
+<img src="../images/glm_pymc3_files/glm_pymc3_6_0.svg" alt="" />
+<p class="caption">svg</p>
+</div>
 </center>
 <ul>
 <li><span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span> are not correlated.</li>
@@ -277,7 +283,10 @@ ax.set(
   ylabel=&quot;x2&quot;
 );</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_8_0.svg" title="fig:" alt="svg" />
+<div class="figure">
+<img src="../images/glm_pymc3_files/glm_pymc3_8_0.svg" alt="" />
+<p class="caption">svg</p>
+</div>
 </center>
 </div>
 <div id="prepare-data-for-modeling" class="section level2">
@@ -369,7 +378,10 @@ sns.kdeplot(
 ax.axvline(x=0.5, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
 ax.set(title=&quot;Prior Means Distribution (train)&quot;, xlim=(0, 1));</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_26_0.svg" title="fig:" alt="svg" />
+<div class="figure">
+<img src="../images/glm_pymc3_files/glm_pymc3_26_0.svg" alt="" />
+<p class="caption">svg</p>
+</div>
 </center>
 <p>We clearly see that the model can not distinguish between the two classes yet. This makes sense as we have non-informative priors for this synthetic data set. We can also confirm this if we plot each point separately:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
@@ -394,7 +406,10 @@ ax.set(
   ylabel=&quot;x2&quot;
 );</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_28_0.svg" title="fig:" alt="svg" />
+<div class="figure">
+<img src="../images/glm_pymc3_files/glm_pymc3_28_0.svg" alt="" />
+<p class="caption">svg</p>
+</div>
 </center>
 </div>
 <div id="fit-model" class="section level2">
@@ -624,7 +639,10 @@ roc_display = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc)
 roc_display = roc_display.plot(ax=ax, marker=&quot;o&quot;, color=sns_c[4], markersize=4)
 ax.set(title=&quot;ROC&quot;);</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_40_0.svg" title="fig:" alt="svg" />
+<div class="figure">
+<img src="../images/glm_pymc3_files/glm_pymc3_40_0.svg" alt="" />
+<p class="caption">svg</p>
+</div>
 </center>
 <p>The model is performing as expected (we of course know the data generating process, which is almost never the case in practical applications).</p>
 </div>
@@ -690,7 +708,10 @@ ax.set(
   ylabel=&quot;x2&quot;
 );</code></pre>
 <center>
-<img src="../images/glm_pymc3_files/glm_pymc3_48_0.svg" title="fig:" alt="svg" />
+<div class="figure">
+<img src="../images/glm_pymc3_files/glm_pymc3_48_0.svg" alt="" />
+<p class="caption">svg</p>
+</div>
 </center>
 <p><strong>Remark:</strong> Note that we have computed the model decision boundary by using the mean of the posterior samples. However, we can generate a better (and more informative!) plot if we use the complete distribution (similarly for other metrics like accuracy and auc). One way of doing this is by storing and computing it inside the model definition as a <code>Deterministic</code> variable as in <a href="https://github.com/aloctavodia/BAP/blob/master/code/Chp4/04_Generalizing_linear_models.ipynb">Bayesian Analysis with Python (Second edition) - Chapter 4</a>.</p>
 </div>

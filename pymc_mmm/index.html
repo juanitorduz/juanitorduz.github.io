@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">21 min read</span>
+    <span class="article-duration">23 min read</span>
     
 
     <h1 class="article-title">Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</h1>
@@ -155,9 +155,68 @@ y(t) = \beta_{0} + \beta_{\text{trend}}\:\text{trend} + \beta_{\text{seasonality
 </ul>
 <p><strong>Remark:</strong> In practice, I have used <a href="https://github.com/google/lightweight_mmm">Googles’s LightweightMMM</a> approach to include costs as part of the priors with PyMC models as the one presented in this post. The results are quite good and personally I like it more that the manual-model selection approach.</p>
 </div>
-<div id="controling-for-seasonality" class="section level3">
-<h3>Controling for Seasonality</h3>
-<p>One has to be careful to control for seasonality when is really meaningful. For example, for digital channels the impressions data can already be driven by seasonality, so adding additional Fourier modes can be counterproductive. Moreover, certain modelers suggest to add time-variant coefficients to encode seasonality via Gaussian processes (see for example the post <a href="https://getrecast.com/seasonality/">You’re probably modeling seasonality the wrong way</a>).</p>
+<div id="controling-for-seasonality-and-other-factors-causal-graph" class="section level3">
+<h3>Controling for Seasonality and other Factors: Causal Graph</h3>
+<p>As <a href="https://xcelab.net/rm/">Richard McElreath</a> would say (paraphrasing from his amazing lectures!) “Do not try to be clever, build a causal graph model!” Indeed, it is not worth trying to add all control variables to the media mix models and hope to solve all confounding effects. A much better approach (strongly recommended!) is to build a causal graph. For more details about this approach I recommend <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a> by <a href="https://xcelab.net/rm/">Richard McElreath</a> (and the corresponding YouTube <a href="https://www.youtube.com/watch?v=BYUykHScxj8&amp;list=PLDcUM9US4XdMROZ57-OIRtIK0aOynbgZN">videos</a>). Once we have a causal model, we can actually use software (for example <a href="https://cran.r-project.org/web/packages/dagitty/index.html"><code>dagitty</code>: Graphical Analysis of Structural Causal Models</a> in R) to help us with the regression model structure. For example, let’s consider a simple causal graph:</p>
+<pre class="r"><code>library(dagitty)
+
+dag &lt;- dagitty( x = &quot;dag {
+  TV -&gt; Search -&gt; Conversions
+  TV -&gt; Facebook -&gt; Conversions
+  TV -&gt; Conversions
+  Radio -&gt; Search -&gt; Conversions
+  Radio -&gt; Facebook -&gt; Conversions
+  Radio -&gt; Conversions
+  Seasonality -&gt; Conversions
+  Seasonality -&gt; Search
+  Seasonality -&gt; Facebook
+}&quot; )
+
+coordinates( x = dag ) &lt;- list(
+  x = c(
+    &quot;Seasonality&quot; = 0,
+    &quot;TV&quot; = 0,
+    &quot;Radio&quot; = 0,
+    &quot;Search&quot; = 1,
+    &quot;Facebook&quot; = 1,
+    &quot;Conversions&quot; = 2
+  ),
+  y = c(
+    &quot;Seasonality&quot; = 1,
+    &quot;TV&quot; = -1,
+    &quot;Radio&quot; = 0,
+    &quot;Search&quot; = 1,
+    &quot;Facebook&quot; = -1,
+    &quot;Conversions&quot; = 0
+  )
+)
+
+plot( dag )</code></pre>
+<p><img src="../post/pymc_mmm_files/figure-html/unnamed-chunk-1-1.png" width="672" style="display: block; margin: auto;" /></p>
+<p>We would like to estimate the effect of <code>TV</code> on <code>Conversions</code>. To begin, we can get the <em>list of conditional independence statements that must hold in every probability distribution compatible with the given model</em>.</p>
+<pre class="r"><code>impliedConditionalIndependencies( x = dag )</code></pre>
+<pre><code>## Fcbk _||_ Srch | Radi, Ssnl, TV
+## Radi _||_ Ssnl
+## Radi _||_ TV
+## Ssnl _||_ TV</code></pre>
+<p>We can use the data to test these implications. Next, we can get the <em>sets of covariates that (asymptotically) allow unbiased estimation of causal effects from observational data, assuming that the input causal graph is correct</em> (by looking into the back-door criterion). For example to estimate the direct effect of <code>TV</code> on <code>Conversions</code> we run:</p>
+<pre class="r"><code>adjustmentSets( x = dag , exposure = &quot;TV&quot;, outcome = &quot;Conversions&quot; )</code></pre>
+<pre><code>##  {}</code></pre>
+<p>This shows that the regression model structure should be</p>
+<center>
+<code>Conversions ~ Intercept + TV</code>.
+</center>
+<p>On the other hand, if we want the effect of <code>Facebook</code> to <code>Conversions</code> we run:</p>
+<pre class="r"><code>adjustmentSets( x = dag , exposure = &quot;Facebook&quot;, outcome = &quot;Conversions&quot; )</code></pre>
+<pre><code>## { Radio, Seasonality, TV }</code></pre>
+<p>Hence, the correct model (given the graph causal model!) is</p>
+<center>
+<code>Conversions ~ Intercept + Facebook + TV + Radio + Seasonality</code>
+</center>
+<p>Again, no need to be clever, just specify the causal model. One could argue that for digital channels (like <code>Facebook</code>) the impressions data is already driven by seasonality, so adding additional Fourier modes can be counterproductive. However, given a causal graph as above this is actually not the case. One can extend this type of analysis for additional external factors to be consider in the media mix model.</p>
+<p><strong>Remark:</strong> There are of course other strategies to model seasonality. Certain modelers suggest to add time-variant coefficients to encode seasonality via Gaussian processes (see for example the post <a href="https://getrecast.com/seasonality/">You’re probably modeling seasonality the wrong way</a>).</p>
+<p><strong>Remark</strong>: To estimate the cost of incremental sales by considering the funnels effects (causal graph) please refer to the excellent blog post <a href="https://engineering.hellofresh.com/bayesian-media-mix-modeling-using-pymc3-for-fun-and-profit-2bd4667504e6">Bayesian Media Mix Modeling using PyMC3, for Fun and Profit</a></p>
+<p>For more examples and details about <em>good and bad controls</em> you can look into the article <a href="https://ftp.cs.ucla.edu/pub/stat_ser/r493.pdf">A Crash Course in Good and Bad Controls</a>.</p>
 </div>
 <div id="adstock-and-saturation-order" class="section level3">
 <h3>Adstock and Saturation Order</h3>
