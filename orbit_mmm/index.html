@@ -76,7 +76,6 @@
 
     <div class="article-content">
       
-<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p>In this notebook we want to experiment to the new <a href="https://orbit-ml.readthedocs.io/en/stable/tutorials/ktr1.html">KTR model</a> included in the new <a href="https://github.com/uber/orbit"><code>orbit</code></a>’s release <a href="https://github.com/uber/orbit/releases/tag/v1.1.0">(1.1)</a>. In particular, we are interested in its applications to media effects estimation in the context of media mix modeling. This is one of the applications for the KTR model by the Uber’s team, see the corresponding paper <a href="https://arxiv.org/abs/2106.03322">Edwin, Ng, et al. “Bayesian Time Varying Coefficient Model with Applications to Marketing Mix Modeling”</a>.</p>
@@ -136,7 +135,7 @@ n = data_df.shape[0]</code></pre>
 <pre class="python"><code>SEED = 42
 np.random.seed(SEED)
 
-# sample from a uniform distribution on [0, 1] and cut at thethreshold (0.4)
+# sample from a uniform distribution on [0, 1] and cut at the threshold (0.4)
 z = np.random.uniform(low=0.0, high=1.0, size=n)
 data_df[&quot;z&quot;] = 10 * np.where( z &gt; 0.4, z, z/4)
 
@@ -376,7 +375,7 @@ data_df[&quot;intercept&quot;] = 3.0
 data_df[&quot;trend_plus_intercept&quot;] = data_df[&quot;trend&quot;] + data_df[&quot;intercept&quot;]
 
 # the noise variance is increasing to make sure the resulting time series has constant variance
-sigma_epsilon = linspace = np.linspace(start=3e-2, stop=7e-2, num=n)
+sigma_epsilon  = np.linspace(start=3e-2, stop=7e-2, num=n)
 data_df[&quot;epsilon&quot;] = np.random.normal(loc=0.0, scale=sigma_epsilon)</code></pre>
 <p>Now we are ready to build our additive time series:</p>
 <pre class="python"><code>data_df.eval(expr=&quot;y = intercept + trend + seasonality + z_effect + epsilon&quot;, inplace=True)</code></pre>
