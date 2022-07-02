@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>python, pymc on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-pymc/</link>
+    <description>Recent content in python, pymc on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 03 Jul 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</title>
+      <link>/bikes_pymc/</link>
+      <pubDate>Sun, 03 Jul 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/bikes_pymc/</guid>
+      <description>In this notebook we want to illustrate how to use PyMC to fit a time-varying coefficient regression model. The motivation comes from post Exploring Tools for Interpretable Machine Learning where we studied a time series problem, regarding the prediction of the number of bike rentals, from a machine learning perspective. Concretely, we fitted and compared two machine learning models: a linear regression with interactions and a gradient boost model (XGBoost).</description>
+    </item>
+    
+  </channel>
+</rss>

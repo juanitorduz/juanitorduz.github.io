@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">10 min read</span>
+    
+
+    <h1 class="article-title">Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</h1>
+
+    
+    <span class="article-date">2022-07-03</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we want to illustrate how to use PyMC to fit a time-varying coefficient regression model. The motivation comes from post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a> where we studied a time series problem, regarding the <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">prediction of the number of bike rentals</a>, from a machine learning perspective. Concretely, we fitted and compared two machine learning models: a linear regression with interactions and a gradient boost model (XGBoost). The models regressors were mainly meteorological data and seasonality features. One interesting feature we saw, through <a href="https://christophm.github.io/interpretable-ml-book/pdp.html">PDP</a> and <a href="https://christophm.github.io/interpretable-ml-book/ice.html">ICE</a> plots was that the temperature feature had a non-constant effect over the bike rentals (see <a href="https://christophm.github.io/interpretable-ml-book/ice.html#examples-4">here</a>). Indeed, when the temperature is high (more than 25 degrees approximately), the bike rentals are negatively impacted by the temperature (to be fair, this is when controlling by other regressors) on average. What we want to do in this notebook is to tackle the same problem from a different perspective. Namely, use to use a <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html">GaussianRandomWalk</a> to model the interaction effect between the temperature and the bike rentals. We of course start with the simple regression baseline for comparison.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pymc.sampling_jax
+from pymc.distributions.continuous import Exponential
+from sklearn.preprocessing import StandardScaler
+import seaborn as sns
+
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>For a detailed description of the data set please see <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">here</a> (from the book <a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning:A Guide for Making Black Box Models Explainable by Christoph Molnar</a>). For a detailed EDA see the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/christophM/interpretable-ml-book/master/data/bike.csv&quot;
+
+raw_data_df = pd.read_csv(data_path)
+
+raw_data_df.head()
+</code></pre>
+<center>
+<img src="../images/interpretable_ml_files/head.png" alt="glue" style="width: 1000px;"/>
+</center>
+</div>
+<div id="data-formatting" class="section level2">
+<h2>Data Formatting</h2>
+<pre class="python"><code>data_df = raw_data_df.copy().assign(
+    date=pd.date_range(
+        start=pd.to_datetime(&quot;2011-01-01&quot;), end=pd.to_datetime(&quot;2012-12-31&quot;), freq=&quot;D&quot;
+    )
+)
+
+data_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 731 entries, 0 to 730
+Data columns (total 13 columns):
+ #   Column           Non-Null Count  Dtype         
+---  ------           --------------  -----         
+ 0   season           731 non-null    object        
+ 1   yr               731 non-null    int64         
+ 2   mnth             731 non-null    object        
+ 3   holiday          731 non-null    object        
+ 4   weekday          731 non-null    object        
+ 5   workingday       731 non-null    object        
+ 6   weathersit       731 non-null    object        
+ 7   temp             731 non-null    float64       
+ 8   hum              731 non-null    float64       
+ 9   windspeed        731 non-null    float64       
+ 10  cnt              731 non-null    int64         
+ 11  days_since_2011  731 non-null    int64         
+ 12  date             731 non-null    datetime64[ns]
+dtypes: datetime64[ns](1), float64(3), int64(3), object(6)
+memory usage: 74.4+ KB</code></pre>
+<p>Let’s plot the time development of the bike rentals and temperature over time.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 6), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(x=&quot;date&quot;, y=&quot;cnt&quot;, data=data_df, color=&quot;black&quot;, ax=ax[0])
+sns.lineplot(x=&quot;date&quot;, y=&quot;temp&quot;, data=data_df, color=&quot;C0&quot;, ax=ax[1])
+ax[0].set(title=&quot;Count of bikes&quot;)
+ax[1].set(title=&quot;Temperature&quot;);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_7_0.svg" />
+</center>
+<p>As we are going to fit a linear model is always good to scale the data.</p>
+<pre class="python"><code>target = &quot;cnt&quot;
+target_scaled = f&quot;{target}_scaled&quot;
+
+endog_scaler = StandardScaler()
+exog_scaler = StandardScaler()
+
+
+data_df[target_scaled] = endog_scaler.fit_transform(X=data_df[[target]])
+data_df[[&quot;temp_scaled&quot;, &quot;hum_scaled&quot;, &quot;windspeed_scaled&quot;]] = exog_scaler.fit_transform(
+    X=data_df[[&quot;temp&quot;, &quot;hum&quot;, &quot;windspeed&quot;]]
+)
+</code></pre>
+<p>Finally, we extract the features we want to include in the model.</p>
+<pre class="python"><code>n = data_df.shape[0]
+# target
+cnt = data_df[target].to_numpy()
+cnt_scaled = data_df[target_scaled].to_numpy()
+# date feature
+date = data_df[&quot;date&quot;].to_numpy()
+# seasonality
+n_order = 10
+periods = data_df[&quot;date&quot;].dt.dayofyear / 365.25
+fourier_features = pd.DataFrame(
+    {
+        f&quot;{func}_order_{order}&quot;: getattr(np, func)(2 * np.pi * periods * order)
+        for order in range(1, n_order + 1)
+        for func in (&quot;sin&quot;, &quot;cos&quot;)
+    }
+)
+# model regressors
+temp_scaled = data_df[&quot;temp_scaled&quot;].to_numpy()
+hum_scaled = data_df[&quot;hum_scaled&quot;].to_numpy()
+windspeed_scaled = data_df[&quot;windspeed_scaled&quot;].to_numpy()
+holiday_idx, holiday = data_df[&quot;holiday&quot;].factorize(sort=True)
+workingday_idx, workingday = data_df[&quot;workingday&quot;].factorize(sort=True)
+weathersit_idx, weathersit = data_df[&quot;weathersit&quot;].factorize(sort=True)
+t = data_df[&quot;days_since_2011&quot;].to_numpy() / data_df[&quot;days_since_2011&quot;].max()</code></pre>
+</div>
+<div id="base-model" class="section level2">
+<h2>Base Model</h2>
+<p>Before we jump into the time-varying coefficient model let us fist fit a baseline regression model. Let us follow the <a href="https://arxiv.org/abs/2011.01808">bayesian workflow</a> for model development.</p>
+<div id="model-specification" class="section level3">
+<h3>1. Model Specification</h3>
+<p>In a first step (after EDA and data pre-processing) we define the model structure. In particular we choose</p>
+<ol style="list-style-type: decimal">
+<li><strong>Prior</strong> distributions for the regression coefficients and the noise.</li>
+<li><strong>Model parametrization</strong>, i.e. the structure of the linear model.</li>
+<li><strong>Likelihood function</strong>, which is this case we decide for a <a href="https://docs.pymc.io/en/latest/api/distributions/generated/pymc.StudentT.html">StudentT</a> distribution.</li>
+</ol>
+<pre class="python"><code>coords = {
+    &quot;date&quot;: date,
+    &quot;workingday&quot;: workingday,
+    &quot;weathersit&quot;: weathersit,
+}
+
+
+with pm.Model(coords=coords) as base_model:
+
+    # --- priors ---
+    intercept = pm.Normal(name=&quot;intercept&quot;, mu=0, sigma=2)
+    b_temp = pm.Normal(name=&quot;b_temp&quot;, mu=0, sigma=2)
+    b_hum = pm.Normal(name=&quot;b_hum&quot;, mu=0, sigma=2)
+    b_windspeed = pm.Normal(name=&quot;b_windspeed&quot;, mu=0, sigma=2)
+    b_workingday = pm.Normal(name=&quot;b_workingday&quot;, mu=0, sigma=2, dims=&quot;workingday&quot;)
+    b_weathersit = pm.Normal(name=&quot;b_weathersit&quot;, mu=0, sigma=2, dims=&quot;weathersit&quot;)
+    b_t = pm.Normal(name=&quot;b_t&quot;, mu=0, sigma=3)
+    nu = pm.Gamma(name=&quot;nu&quot;, alpha=8, beta=2)
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=2)
+
+    # --- model parametrization ---
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=(
+            intercept
+            + b_t * t
+            + b_temp * temp_scaled
+            + b_hum * hum_scaled
+            + b_windspeed * windspeed_scaled
+            + b_workingday[workingday_idx]
+            + b_weathersit[weathersit_idx]
+        ),
+        dims=&quot;date&quot;,
+    )
+
+    # --- likelihood ---
+    likelihood = pm.StudentT(
+        name=&quot;likelihood&quot;, mu=mu, nu=nu, sigma=sigma, dims=&quot;date&quot;, observed=cnt_scaled
+    )
+
+
+pm.model_to_graphviz(base_model)
+</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_14_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="prior-predictive-analysis" class="section level3">
+<h3>2. Prior Predictive Analysis</h3>
+<p>We can analyze what the model <em>expects</em> before seeing the data.</p>
+<pre class="python"><code>with base_model:
+    # --- prior samples ---
+    prior_predictive_base = pm.sample_prior_predictive(samples=200)
+
+
+palette = &quot;viridis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+fig, ax = plt.subplots(figsize=(12, 6))
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(
+        prior_predictive_base.prior_predictive[&quot;likelihood&quot;], p, axis=1
+    )
+    lower = np.percentile(
+        prior_predictive_base.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
+    )
+    color_val = colors[i]
+    ax.fill_between(
+        x=date,
+        y1=upper.flatten(),
+        y2=lower.flatten(),
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+sns.lineplot(x=date, y=cnt_scaled, color=&quot;black&quot;, ax=ax)
+ax.set(
+    title=&quot;Base Model - Prior Predictive Samples&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=target_scaled,
+);
+</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_16_0.svg" />
+</center>
+<p>The chosen prior distributions are not very restrictive but they image of the predictions is still within a reasonable range.</p>
+</div>
+<div id="model-fit" class="section level3">
+<h3>3. Model Fit</h3>
+<p>We sample from the posterior distributions using the <a href="https://www.pymc.io/projects/docs/en/latest/api/generated/pymc.sampling_jax.sample_numpyro_nuts.html">JAX based NUTS sampler from Numpyro</a>.</p>
+<pre class="python"><code>with base_model:
+    idata_base = pm.sampling_jax.sample_numpyro_nuts(
+        target_accept=0.8, draws=1000, chains=4
+    )
+    posterior_predictive_base = pm.sample_posterior_predictive(trace=idata_base)
+</code></pre>
+</div>
+<div id="model-diagnostics" class="section level3">
+<h3>4. Model Diagnostics</h3>
+<p>Now wee look into some diagnostics metrics an plots.</p>
+<pre class="python"><code>az.summary(data=idata_base, var_names=[&quot;~mu&quot;])</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/base_summary.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata_base,
+    var_names=[&quot;~mu&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Base Model - Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_22_0.svg" style="width: 1000px;"/>
+</center>
+<p>Overall, the model looks good.</p>
+<pre class="python"><code>axes = az.plot_forest(
+    data=idata_base,
+    var_names=[&quot;~mu&quot;],
+    combined=True,
+    r_hat=True,
+    ess=True,
+    figsize=(10, 6),
+)
+axes[0].axvline(x=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+plt.gcf().suptitle(&quot;Base Model - Posterior Distributions&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_24_0.svg" style="width: 900px;"/>
+</center>
+<p>Note that in this base model the temperature feature has a positive effect on bike rentals on average.</p>
+</div>
+<div id="posterior-predictive-distribution" class="section level3">
+<h3>5. Posterior Predictive Distribution</h3>
+<p>Finally, let us take a look at the fitted values.</p>
+<pre class="python"><code>palette = &quot;viridis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+posterior_predictive_likelihood = posterior_predictive_base.posterior_predictive[
+    &quot;likelihood&quot;
+].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+
+posterior_predictive_likelihood_inv = endog_scaler.inverse_transform(
+    X=posterior_predictive_likelihood.to_numpy()
+)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(posterior_predictive_likelihood_inv, p, axis=1)
+    lower = np.percentile(posterior_predictive_likelihood_inv, 100 - p, axis=1)
+    color_val = colors[i]
+    ax.fill_between(
+        x=date,
+        y1=upper,
+        y2=lower,
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+
+sns.lineplot(
+    x=date,
+    y=posterior_predictive_likelihood_inv.mean(axis=1),
+    color=&quot;C2&quot;,
+    label=&quot;posterior predictive mean&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=date,
+    y=cnt,
+    color=&quot;black&quot;,
+    label=target,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Base Model - Posterior Predictive Samples&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=target,
+);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_27_0.svg" />
+</center>
+<p>Observe that for certain points in July the predictions and the fit do not coincide and go in opposite directions. This will be solved by adding the time-varying coefficient to the linear model for the temperature regressor (see below).</p>
+<p><strong>Remark</strong>: Note that the model predict negative values for the bike rentals. This is of course not good! An alterative choice of likelihood to model count data would resolve this (e.g. Poisson or Negative Binomial likelihoods).</p>
+</div>
+</div>
+<div id="time-varying-coefficients-model" class="section level2">
+<h2>Time-Varying Coefficients Model</h2>
+<p>We now follow the same workflow above. The main difference is that we replace the regression coefficient of the temperature with <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html">GaussianRandomWalk</a>.</p>
+<div id="model-specification-1" class="section level3">
+<h3>1. Model Specification</h3>
+<pre class="python"><code>with pm.Model(coords=coords) as model:
+
+    # --- priors ---
+    intercept = pm.Normal(name=&quot;intercept&quot;, mu=0, sigma=2)
+    b_hum = pm.Normal(name=&quot;b_hum&quot;, mu=0, sigma=2)
+    b_windspeed = pm.Normal(name=&quot;b_windspeed&quot;, mu=0, sigma=2)
+    b_workingday = pm.Normal(name=&quot;b_workingday&quot;, mu=0, sigma=2, dims=&quot;workingday&quot;)
+    b_weathersit = pm.Normal(name=&quot;b_weathersit&quot;, mu=0, sigma=2, dims=&quot;weathersit&quot;)
+    b_t = pm.Normal(name=&quot;b_t&quot;, mu=0, sigma=3)
+    sigma_slopes = pm.HalfNormal(name=&quot;sigma_slope&quot;, sigma=0.5)
+    nu = pm.Gamma(name=&quot;nu&quot;, alpha=8, beta=2)
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=2)
+
+    # --- model parametrization ---
+    slopes = pm.GaussianRandomWalk(
+        name=&quot;slopes&quot;,
+        sigma=sigma_slopes,
+        init_dist=Exponential.dist(lam=1.0),
+        dims=&quot;date&quot;,
+    )
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=(
+            intercept
+            + b_t * t
+            + slopes * temp_scaled
+            + b_hum * hum_scaled
+            + b_windspeed * windspeed_scaled
+            + b_workingday[workingday_idx]
+            + b_weathersit[weathersit_idx]
+        ),
+        dims=&quot;date&quot;,
+    )
+
+    # --- likelihood ---
+    likelihood = pm.StudentT(
+        name=&quot;likelihood&quot;, mu=mu, nu=nu, sigma=sigma, dims=&quot;date&quot;, observed=cnt_scaled
+    )
+
+
+pm.model_to_graphviz(model)
+</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_31_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="prior-predictive-analysis-1" class="section level3">
+<h3>2. Prior Predictive Analysis</h3>
+<pre class="python"><code>with model:
+    # --- prior samples ---
+    prior_predictive = pm.sample_prior_predictive(samples=200)
+
+
+palette = &quot;viridis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+fig, ax = plt.subplots(figsize=(12, 6))
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(
+        prior_predictive.prior_predictive[&quot;likelihood&quot;], p, axis=1
+    )
+    lower = np.percentile(
+        prior_predictive.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
+    )
+    color_val = colors[i]
+    ax.fill_between(
+        x=date,
+        y1=upper.flatten(),
+        y2=lower.flatten(),
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+sns.lineplot(x=date, y=cnt_scaled, color=&quot;black&quot;, ax=ax)
+ax.set(
+    title=&quot;Time-Varying Coefficient Model - Prior Predictive Samples&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=target_scaled
+);
+</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_33_0.svg" />
+</center>
+<blockquote>
+
+</blockquote>
+</div>
+<div id="model-fit-1" class="section level3">
+<h3>3. Model Fit</h3>
+<pre class="python"><code>with model:
+    idata = pm.sampling_jax.sample_numpyro_nuts(
+        target_accept=0.8, draws=1000, chains=4
+    )
+    posterior_predictive = pm.sample_posterior_predictive(trace=idata)</code></pre>
+</div>
+<div id="model-diagnostics-1" class="section level3">
+<h3>4. Model Diagnostics</h3>
+<pre class="python"><code>az.summary(data=idata, var_names=[&quot;~mu&quot;, &quot;~slopes&quot;])</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/tv_summary.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata_base,
+    var_names=[&quot;~mu&quot;, &quot;~slopes&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Time-Varying Coefficient Model - Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_38_1.svg" style="width: 1000px;"/>
+</center>
+<p>Let us now compare the two models in a forest plot.</p>
+<pre class="python"><code>axes = az.plot_forest(
+    data=[idata_base, idata],
+    model_names=[&quot;base&quot;, &quot;time-varying&quot;],
+    var_names=[&quot;~mu&quot;, &quot;~slopes&quot;],
+    combined=True,
+    r_hat=True,
+    ess=True, figsize=(10, 6),
+)
+axes[0].axvline(x=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+plt.gcf().suptitle(&quot;Posterior Distributions&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_40_0.svg" style="width: 1000px;"/>
+</center>
+<p>Overall, there is no major change in the estimated regression coefficients besides the trend component.</p>
+<p>We can also use the <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.plot_compare.html"><code>az.compare</code></a> method to compare the two models.</p>
+<pre class="python"><code>az.compare(compare_dict={&quot;base&quot;: idata_base, &quot;time-varying&quot;: idata})</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+rank
+</th>
+<th>
+loo
+</th>
+<th>
+p_loo
+</th>
+<th>
+d_loo
+</th>
+<th>
+weight
+</th>
+<th>
+se
+</th>
+<th>
+dse
+</th>
+<th>
+warning
+</th>
+<th>
+loo_scale
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+time-varying
+</th>
+<td>
+0
+</td>
+<td>
+-234.726306
+</td>
+<td>
+131.925724
+</td>
+<td>
+0.000000
+</td>
+<td>
+0.989431
+</td>
+<td>
+26.230529
+</td>
+<td>
+0.000000
+</td>
+<td>
+False
+</td>
+<td>
+log
+</td>
+</tr>
+<tr>
+<th>
+base
+</th>
+<td>
+1
+</td>
+<td>
+-488.674408
+</td>
+<td>
+10.541945
+</td>
+<td>
+253.948102
+</td>
+<td>
+0.010569
+</td>
+<td>
+26.755712
+</td>
+<td>
+22.971437
+</td>
+<td>
+False
+</td>
+<td>
+log
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>It seems that the time-varying coefficient model is better at predicting the bike rentals.</p>
+</div>
+<div id="posterior-predictive-distribution-1" class="section level3">
+<h3>5. Posterior Predictive Distribution</h3>
+<pre class="python"><code>palette = &quot;viridis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+posterior_predictive_likelihood = posterior_predictive.posterior_predictive[
+    &quot;likelihood&quot;
+].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+
+posterior_predictive_likelihood_inv = endog_scaler.inverse_transform(
+    X=posterior_predictive_likelihood.to_numpy()
+)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(posterior_predictive_likelihood_inv, p, axis=1)
+    lower = np.percentile(posterior_predictive_likelihood_inv, 100 - p, axis=1)
+    color_val = colors[i]
+    ax.fill_between(
+        x=date,
+        y1=upper,
+        y2=lower,
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+
+sns.lineplot(
+    x=date,
+    y=posterior_predictive_likelihood_inv.mean(axis=1),
+    color=&quot;C2&quot;,
+    label=&quot;posterior predictive mean&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=date,
+    y=cnt,
+    color=&quot;black&quot;,
+    label=target,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Time-Varying Coefficient Model - Posterior Predictive Samples&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=target,
+);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_46_0.svg" />
+</center>
+</div>
+<div id="temperature-effect-deep-dive" class="section level3">
+<h3>6. Temperature Effect Deep-Dive</h3>
+<p>Next, we wan to compare the inferred temperature effect from both models. To begin with, let us compare the mean effect for both models.</p>
+<pre class="python"><code>base_tmp_mean = (
+    idata_base.posterior[&quot;b_temp&quot;].stack(sample=(&quot;chain&quot;, &quot;draw&quot;)).to_numpy().mean()
+)
+time_varying_tmp_mean = (
+    idata.posterior[&quot;slopes&quot;].stack(sample=(&quot;chain&quot;, &quot;draw&quot;)).to_numpy().mean()
+)
+print(
+    f&quot;&quot;&quot;
+base model mean effect = {base_tmp_mean: 0.3f}
+------------------------------------------
+time-varying model mean effect  = {time_varying_tmp_mean: 0.3f}
+------------------------------------------
+&quot;&quot;&quot;
+)</code></pre>
+<pre><code>base model mean effect =  0.512
+------------------------------------------
+time-varying model mean effect  =  0.611
+------------------------------------------</code></pre>
+<p>It seems that the effect of the time-varying coefficient model is higher. Still, this is just one statistic.It is always better to see the data. The following plot shows the effect as a function of the temperature.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+sns.scatterplot(
+    x=&quot;temp&quot;,
+    y=&quot;slopes&quot;,
+    data=data_df.assign(
+        slopes=idata.posterior[&quot;slopes&quot;].stack(sample=(&quot;chain&quot;, &quot;draw&quot;)).mean(axis=1)
+    ),
+    hue=&quot;mnth&quot;,
+    palette=&quot;tab20&quot;,
+)
+sns.lineplot(
+    x=&quot;temp&quot;,
+    y=&quot;b_temp&quot;,
+    data=data_df.assign(
+        b_temp=idata_base.posterior[&quot;b_temp&quot;]
+        .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+        .mean()
+        .to_numpy()
+    ),
+    color=&quot;black&quot;,
+    label=&quot;base model&quot;,
+    ax=ax,
+)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.set(title=&quot;Temperature Effect&quot;, xlabel=&quot;temp&quot;, ylabel=&quot;effect&quot;);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_50_0.svg" />
+</center>
+<p>We see many interesting features from this plot:
+- The time-varying coefficient model indeed finds a non constant effect of temperature on bike rentals.
+- The effect of second model is always positive for temperatures lower than 25 degrees. For higher temperatures the effect is sometimes negative, which is consistent with the results found in the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>. Ths happens mainly in the months of June and July.
+- The variance of the time-varying effect decreases with the temperature.</p>
+<p>Finally, let us plot the temperature effect as a function of time.</p>
+<pre class="python"><code>palette = &quot;cividis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+posterior_predictive_slopes = idata.posterior[&quot;slopes&quot;].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+
+fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 6), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(posterior_predictive_slopes, p, axis=1)
+    lower = np.percentile(posterior_predictive_slopes, 100 - p, axis=1)
+    color_val = colors[i]
+    ax[0].fill_between(
+        x=date,
+        y1=upper,
+        y2=lower,
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;b_temp&quot;,
+    data=data_df.assign(
+        b_temp=idata_base.posterior[&quot;b_temp&quot;]
+        .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+        .mean()
+        .to_numpy()
+    ),
+    color=&quot;black&quot;,
+    label=&quot;base model&quot;,
+    ax=ax[0]
+)
+ax[0].axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(title=&quot;Temperature Effect&quot;)
+sns.lineplot(x=&quot;date&quot;, y=&quot;temp&quot;, data=data_df, color=&quot;C0&quot;, ax=ax[1])
+ax[1].set(title=&quot;Temperature&quot;);</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_52_0.svg" />
+</center>
+<p>We see that the effect is quite seasonal.</p>
+<p>Note that these results are compatible with the insights found on the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>. For example, take a look into the PDP and ICE Pots</p>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_104_0.svg" style="width: 1000px;"/>
+</center>
+<p>and specifically here is are the same plots restricted to the month of July:</p>
+<center>
+<img src="../images/interpretable_ml_files/interpretable_ml_106_0.svg" style="width: 800px;"/>
+</center>
+<p>Here we see the negative effect of temperature on bike count for the summer months.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
