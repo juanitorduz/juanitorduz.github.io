@@ -200,11 +200,11 @@ t = data_df[&quot;days_since_2011&quot;].to_numpy() / data_df[&quot;days_since_2
 <div id="model-specification" class="section level3">
 <h3>1. Model Specification</h3>
 <p>In a first step (after EDA and data pre-processing) we define the model structure. In particular we choose</p>
-<ol style="list-style-type: decimal">
+<ul>
 <li><strong>Prior</strong> distributions for the regression coefficients and the noise.</li>
 <li><strong>Model parametrization</strong>, i.e. the structure of the linear model.</li>
 <li><strong>Likelihood function</strong>, which is this case we decide for a <a href="https://docs.pymc.io/en/latest/api/distributions/generated/pymc.StudentT.html">StudentT</a> distribution.</li>
-</ol>
+</ul>
 <pre class="python"><code>coords = {
     &quot;date&quot;: date,
     &quot;workingday&quot;: workingday,
@@ -255,6 +255,7 @@ pm.model_to_graphviz(base_model)
 <div id="prior-predictive-analysis" class="section level3">
 <h3>2. Prior Predictive Analysis</h3>
 <p>We can analyze what the model <em>expects</em> before seeing the data.</p>
+<p><strong>Remark:</strong> The following plotting function was taken from <a href="https://github.com/pymc-devs/pymc/blob/main/pymc/gp/util.py">pymc/gp/util.py</a>, see <code>plot_gp_dist</code>.</p>
 <pre class="python"><code>with base_model:
     # --- prior samples ---
     prior_predictive_base = pm.sample_prior_predictive(samples=200)
@@ -342,13 +343,7 @@ plt.gcf().suptitle(&quot;Base Model - Posterior Distributions&quot;, fontsize=16
 <div id="posterior-predictive-distribution" class="section level3">
 <h3>5. Posterior Predictive Distribution</h3>
 <p>Finally, let us take a look at the fitted values.</p>
-<pre class="python"><code>palette = &quot;viridis_r&quot;
-cmap = plt.get_cmap(palette)
-percs = np.linspace(51, 99, 100)
-colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
-
-
-posterior_predictive_likelihood = posterior_predictive_base.posterior_predictive[
+<pre class="python"><code>posterior_predictive_likelihood = posterior_predictive_base.posterior_predictive[
     &quot;likelihood&quot;
 ].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
 
@@ -453,12 +448,6 @@ pm.model_to_graphviz(model)
 <pre class="python"><code>with model:
     # --- prior samples ---
     prior_predictive = pm.sample_prior_predictive(samples=200)
-
-
-palette = &quot;viridis_r&quot;
-cmap = plt.get_cmap(palette)
-percs = np.linspace(51, 99, 100)
-colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
 
 
 fig, ax = plt.subplots(figsize=(12, 6))
@@ -656,13 +645,7 @@ log
 </div>
 <div id="posterior-predictive-distribution-1" class="section level3">
 <h3>5. Posterior Predictive Distribution</h3>
-<pre class="python"><code>palette = &quot;viridis_r&quot;
-cmap = plt.get_cmap(palette)
-percs = np.linspace(51, 99, 100)
-colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
-
-
-posterior_predictive_likelihood = posterior_predictive.posterior_predictive[
+<pre class="python"><code>posterior_predictive_likelihood = posterior_predictive.posterior_predictive[
     &quot;likelihood&quot;
 ].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
 
@@ -758,10 +741,12 @@ ax.set(title=&quot;Temperature Effect&quot;, xlabel=&quot;temp&quot;, ylabel=&qu
 <center>
 <img src="../images/bikes_pymc_files/bikes_pymc_50_0.svg" />
 </center>
-<p>We see many interesting features from this plot:
-- The time-varying coefficient model indeed finds a non constant effect of temperature on bike rentals.
-- The effect of second model is always positive for temperatures lower than 25 degrees. For higher temperatures the effect is sometimes negative, which is consistent with the results found in the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>. Ths happens mainly in the months of June and July.
-- The variance of the time-varying effect decreases with the temperature.</p>
+<p>We see many interesting features from this plot:</p>
+<ul>
+<li><p>The time-varying coefficient model indeed finds a non constant effect of temperature on bike rentals.</p></li>
+<li><p>The effect of second model is always positive for temperatures lower than 25 degrees. For higher temperatures the effect is sometimes negative, which is consistent with the results found in the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>. This happens mainly in the months of June and July.</p></li>
+<li><p>The variance of the time-varying effect decreases with the temperature.</p></li>
+</ul>
 <p>Finally, let us plot the temperature effect as a function of time.</p>
 <pre class="python"><code>palette = &quot;cividis_r&quot;
 cmap = plt.get_cmap(palette)
