@@ -175,16 +175,6 @@ cnt = data_df[target].to_numpy()
 cnt_scaled = data_df[target_scaled].to_numpy()
 # date feature
 date = data_df[&quot;date&quot;].to_numpy()
-# seasonality
-n_order = 10
-periods = data_df[&quot;date&quot;].dt.dayofyear / 365.25
-fourier_features = pd.DataFrame(
-    {
-        f&quot;{func}_order_{order}&quot;: getattr(np, func)(2 * np.pi * periods * order)
-        for order in range(1, n_order + 1)
-        for func in (&quot;sin&quot;, &quot;cos&quot;)
-    }
-)
 # model regressors
 temp_scaled = data_df[&quot;temp_scaled&quot;].to_numpy()
 hum_scaled = data_df[&quot;hum_scaled&quot;].to_numpy()
