@@ -1,0 +1,2325 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Modeling Short Time Series with Prior Knowledge in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Modeling Short Time Series with Prior Knowledge in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">21 min read</span>
+    
+
+    <h1 class="article-title">Modeling Short Time Series with Prior Knowledge in PyMC</h1>
+
+    
+    <span class="article-date">2022-07-19</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook I want to reproduce in <a href="https://github.com/pymc-devs/pymc">PyMC</a> the methodology described in the amazing blog post <a href="https://minimizeregret.com/short-time-series-prior-knowledge">Modeling Short Time Series with Prior Knowledge</a> by <a href="https://minimizeregret.com/about/">Tim Radtke</a> to forecast short time series using <em>bayesian transfer learning</em>. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete. The challenge of the example is to generate long term forecast for a short time series of bike sales data. Specifically, the input sales data consists of three months of daily data and the objective is to generate at least a two years forecast. In general this is very hard to to with commonly available methods (as we will show below) due the fact we do not have enough historical data to capture seasonal patterns. For this concrete example, we do expect to have a strong yearly seasonal pattern as bike sales are usually much higher during summer than in winter. Hence, we could use temperature as a proxy for this seasonal pattern. However, as mentioned above, we can not simply try to use such data in a model with just 3 months of daily data … ¯\<em>(ツ)</em>/¯ …</p>
+<p><strong>Here s the elegant trick</strong>: First, fit a model on long past historical temperature data through <a href="https://en.wikipedia.org/wiki/Fourier_series">Fourier modes</a> (as in Facebook’s <a href="https://facebook.github.io/prophet/">Prophet</a> model). Then use the posterior means and standard deviations of each Fourier mode as the prior distribution for the sales short time series <span class="math inline">\(y_t\)</span>. For the later model we use a <a href="https://en.wikipedia.org/wiki/Negative_binomial_distribution">negative binomial distribution</a> as the likelihood function (as we are modeling count data, i.e. the number of sales) and model the mean <span class="math inline">\(\mu_t\)</span> through three main components:</p>
+<ol style="list-style-type: decimal">
+<li>A <em>seasonal component</em> which consists of Fourier modes with the specified priors, dummy variables to model the weekly seasonality and a mild trend component.</li>
+<li>We use an autoregressive term <span class="math inline">\(\mu_{t -1}\)</span> on the mean itself.</li>
+<li>An autoregressive term <span class="math inline">\(y_{t - 1}\)</span> from the input sales data.</li>
+</ol>
+<p>By combining the the long term seasonality learned in the temperature model in this way we can adapt it to match the scale of the sales data. We will describe the full model specification below.</p>
+<p>I was fortunate to see <a href="https://minimizeregret.com/post/2019/06/16/satrday-berlin-presentation/">Tim’s talk</a> about the subject back in 2019 during the <a href="https://berlin2019.satrdays.org/">satRdays</a> Berlin conference (where I also gave a talk on <a href="https://juanitorduz.github.io/class_imbalance/">Remedies for Severe Class Imbalance</a>). I remember listening to such great presentation ant thinking <em>Wow! This is a fantastic idea!</em> At that time I was not able to follow the modeling strategy 100%, but I kept the idea in mind. Since then, I have been faced a couple of times to the challenge of forecasting short time series where there is an expected seasonal pattern but not enough historical data. Of course, when there are many time series, the problem can be tackled using probabilistic forecasting as well (see for example <a href="https://arxiv.org/abs/1704.04110?context=stat.ML">deepAR</a>). However, the strategy presented on Tim’s blog post is very elegant and can serve situations where the number of time series is small (which is often the case in certain domains, e.g. marketing). Hence, I decided to try it out in PyMC! Moreover, while trying to reproduce this work I also learned some very useful things on the side:</p>
+<ul>
+<li><p>The particular models (which we describe below) to perform the transfer learning are very interesting (specially the local level model) and I can see similar variations being applicable in many real world problems.</p></li>
+<li><p>Learn to read <a href="https://mc-stan.org/">Stan</a> code and understand how it works. This is because the code is provided in <a href="https://www.r-project.org/">R</a> and the model is sampled using <a href="https://mc-stan.org/">Stan</a>. Please find the code of the blog post <a href="https://github.com/timradtke/short-time-series">here</a> (kudos to Tim for sharing it and making the results fully reproducible!).</p></li>
+<li><p>Learn how to use <a href="https://aesara.readthedocs.io/en/latest/library/scan.html"><code>aesara.scan</code></a> to run loops efficiently inside a PyMC model. I must admit that learning how <a href="https://aesara.readthedocs.io/en/latest/library/scan.html"><code>aesara.scan</code></a> works was not very easy and I really had to work a concrete example and carefully read documentation to get it work. I still need some more practice but I have a much better intuition now. I share some findings and extended explanations on an appendix at the end of this notebook.</p></li>
+</ul>
+<p>I <strong>strongly recommend to read Tim’s original blog post</strong> <a href="https://minimizeregret.com/short-time-series-prior-knowledge">Modeling Short Time Series with Prior Knowledge</a> first to enjoy a clear understanding of the problem and the underlying ideas. The purpose of this notebook is mainly to reproduce his results (and the details behind the PyMC code) and not to give a detailed explanation of the model, specially the remarkable prior distributions analysis done by Tim. In addition, the original post was motivated by the short post <a href="https://robjhyndman.com/hyndsight/short-time-series/">Fitting models to short time series</a> by <a href="https://robjhyndman.com/">Rob J Hyndman</a>.</p>
+<p><em>For the experienced readers:</em> if you have know a better way to re-write or optimize this PyMC implementation I would love to hear about it. The time it takes to sample is comparable to the time it takes to run the Stan code through R.</p>
+<p><strong>Data Sources:</strong></p>
+<ul>
+<li><p><em>Sales Data:</em> Publicly available <a href="https://www.citibikenyc.com/">Citi Bike</a> data from station 360 in New York City, see <a href="https://s3.amazonaws.com/tripdata/index.html">here</a>.</p></li>
+<li><p><em>Temperature Data:</em> Available on Kaggle, see <a href="https://www.kaggle.com/datasets/selfishgene/historical-hourly-weather-data">here</a>.</p></li>
+</ul>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import aesara
+import aesara.tensor as at
+import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pymc.sampling_jax
+import seaborn as sns
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext rich
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We get the data from the original blog post repository <a href="https://github.com/timradtke/short-time-series">github.com/timradtke/short-time-series</a>. For the purpose of this notebook, I already combined (outer join on date) the sales and temperature data.</p>
+<pre class="python"><code>raw_df = pd.read_csv(&quot;../data/sales.csv&quot;, parse_dates=[&quot;date&quot;])
+
+raw_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+date
+</th>
+<th>
+sales
+</th>
+<th>
+temp
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2013-07-01
+</td>
+<td>
+57.0
+</td>
+<td>
+303.0
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2013-07-02
+</td>
+<td>
+58.0
+</td>
+<td>
+298.0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2013-07-03
+</td>
+<td>
+53.0
+</td>
+<td>
+301.0
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2013-07-04
+</td>
+<td>
+36.0
+</td>
+<td>
+302.0
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2013-07-05
+</td>
+<td>
+29.0
+</td>
+<td>
+305.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>Let us start by looking into the data.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 6), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(x=&quot;date&quot;, y=&quot;sales&quot;, data=raw_df, color=&quot;black&quot;, ax=ax[0])
+sns.lineplot(x=&quot;date&quot;, y=&quot;temp&quot;, data=raw_df, color=&quot;C0&quot;, ax=ax[1])
+fig.suptitle(&quot;Raw Data&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_6_0.svg" />
+</center>
+<p>The first thing we observe is that we long data for both sales and temperature. Note however that our assumption is that we just have 3 months of historical sales data. The rest of the sales data is used as a “test set”. On the other hand we do use all the available temperature data since the main idea s to have a predictor which is available in the future at prediction time (this could be the temperature forecast in real cases). Next, let us look at the sales data when both of them are not null:</p>
+<pre class="python"><code>mask = &quot;sales.notnull() and temp.notnull()&quot;
+
+fig, ax = plt.subplots(
+  nrows=2, ncols=1, figsize=(10, 6), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(x=&quot;date&quot;, y=&quot;sales&quot;, data=raw_df.query(mask), color=&quot;black&quot;, ax=ax[0])
+sns.lineplot(x=&quot;date&quot;, y=&quot;temp&quot;, data=raw_df.query(mask), color=&quot;C0&quot;, ax=ax[1])
+ax[0].set(title=&quot;Sales&quot;)
+ax[1].set(title=&quot;Temperature&quot;);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_8_0.svg" />
+</center>
+<p>We see a strong yearly seasonal pattern both variables. Now we move intro the data preparation step.</p>
+</div>
+<div id="data-preparation" class="section level2">
+<h2>Data Preparation</h2>
+<p>Let us set the start and end date of the training set for the sales model.</p>
+<pre class="python"><code>start_date = pd.to_datetime(&quot;2013-07-01&quot;)
+train_test_date = pd.to_datetime(&quot;&#39;2013-10-15&#39;&quot;)
+
+print(f&quot;Training Set Length: {(train_test_date - start_date).days} days&quot;)</code></pre>
+<pre><code>Training Set Length: 106 days</code></pre>
+<p>Now we split the data accordingly. In the process we also add two features:
+1. We scale the temperature data
+2. We create a trend component.</p>
+<p>Please refer to the original blog post for a detailed explanation behind the motivation of these transformations. In a nutshell, we scale the temperature data as we are interested in relative values (so we subtract the minimum) and the trend is something we expect to be present in the long ter forecast, see below (again, the scales is not important).</p>
+<pre class="python"><code># data points before the start of the training set
+n_init = raw_df.sort_values(&quot;date&quot;).query(&quot;date &lt; &#39;2013-07-01&#39;&quot;).shape[0]
+
+df = (
+    raw_df.query(&quot;temp.notnull()&quot;)
+    .sort_values(&quot;date&quot;)
+    .reset_index(drop=True)
+    .eval(
+        &quot;&quot;&quot;
+        temp_scaled = temp - temp.min()
+        trend = (sales.index - @n_init + 1) / 365.25
+    &quot;&quot;&quot;
+    )
+)
+
+# train / test split
+df_train = df.query(&quot;date &lt; @train_test_date &amp; sales.notnull()&quot;)
+df_test = df.query(&quot;date &gt;= @train_test_date&quot;)
+
+n_train = df_train.shape[0]
+n_test = df_test.shape[0]
+n = n_test + n_train</code></pre>
+<p>Let’s visualize the sales model training set.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_train,
+    color=&quot;black&quot;,
+    marker=&quot;o&quot;,
+    markersize=4,
+    markeredgecolor=&quot;black&quot;,
+    ax=ax,
+)
+ax.set(title=&quot;Sales (Training Set)&quot;);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_15_0.svg" style="width: 800px;"/>
+</center>
+<p>We see a clearly weekly pattern and a mild positive trend. Finally we plot the train and test split.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_train,
+    marker=&quot;o&quot;,
+    color=&quot;black&quot;,
+    alpha=0.8,
+    markersize=4,
+    markeredgecolor=&quot;black&quot;,
+    label=&quot;sales (train)&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_test,
+    marker=&quot;o&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.8,
+    markersize=4,
+    markeredgecolor=&quot;C1&quot;,
+    label=&quot;sales (test)&quot;,
+    ax=ax,
+)
+ax.axvline(x=train_test_date, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;train/test split&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Sales - Train/Test Split&quot;);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_17_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="temperature-model" class="section level2">
+<h2>Temperature Model</h2>
+<p>Now that we are more familiar with the data we proceed to build the temperature model as described in the original blog post: We fit a Poisson regression (temperature is in Farenheit, so are integers) where the mean is modeled using <a href="https://en.wikipedia.org/wiki/Fourier_series">Fourier modes</a> and and intercept. Note we use the complete set of available temperature values. Mathematically,</p>
+<p><span class="math display">\[\begin{align*}
+\text{temp_scaled}_{t} &amp; \sim \text{Poisson}(\mu_{t}) \\
+\log(\mu_{t}) &amp; = a + \sum_{k=1}^{K=6} b_{k}\sin\left(\frac{2\pi k t}{m}\right) + \tilde{b}_{k}\cos\left(\frac{2\pi k t}{m}\right), \quad m = 365.25 \\
+a &amp; \sim \text{Normal}(0, 1) \\
+b_{k}, \tilde{b}_{k} &amp; \sim \text{Normal}(0, 1)
+\end{align*}\]</span></p>
+<pre class="python"><code># We extract useful features.
+date = df[&quot;date&quot;]
+temp_scaled = df[&quot;temp_scaled&quot;]
+trend = df[&quot;trend&quot;]
+sales = df[&quot;sales&quot;]
+# We extract the day of week for the sales model below.
+dayofweek_idx, dayofweek = df[&quot;date&quot;].dt.dayofweek.factorize()</code></pre>
+<p>We generate the Fourier modes as described in <a href="https://www.pymc.io/projects/examples/en/latest/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html">Air passengers - Prophet-like model</a>.</p>
+<pre class="python"><code>periods = df[&quot;date&quot;].dt.dayofyear / 365.25
+n_order = 6
+
+fourier_features = pd.DataFrame(
+    {
+        f&quot;{func}_order_{order}&quot;: getattr(np, func)(2 * np.pi * periods * order)
+        for order in range(1, n_order + 1)
+        for func in (&quot;sin&quot;, &quot;cos&quot;)
+    }
+)</code></pre>
+<p>Now we are ready to define the model.</p>
+<pre class="python"><code>coords = {
+    &quot;date&quot;: date,
+    &quot;fourier_features&quot;: np.arange(2 * n_order),
+}
+
+with pm.Model(coords=coords) as temp_model:
+    
+    # --- priors ---
+    ## intercept
+    a = pm.Normal(name=&quot;a&quot;, mu=0, sigma=1)
+    ## seasonality
+    b_fourier = pm.Normal(name=&quot;b_fourier&quot;, mu=0, sigma=1, dims=&quot;fourier_features&quot;)
+    
+    # --- model parametrization ---
+    seasonality = pm.Deterministic(
+        &quot;seasonality&quot;, pm.math.dot(b_fourier, fourier_features.T), dims=&quot;date&quot;
+    )
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=a + seasonality, dims=&quot;date&quot;)
+
+    # --- likelihood ---
+    pm.Poisson(&quot;likelihood&quot;, mu=pm.math.exp(mu), observed=temp_scaled, dims=&quot;date&quot;)
+
+pm.model_to_graphviz(temp_model)</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_23_0.svg" />
+</center>
+<p>Next we run some prior predictive checks.</p>
+<pre class="python"><code>with temp_model:
+    temp_prior_predictive = pm.sample_prior_predictive(samples=1000)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.lineplot(
+    x=&quot;date&quot;, y=&quot;temp_scaled&quot;, data=df, color=&quot;C0&quot;, label=&quot;temp (scaled)&quot;, ax=ax
+)
+az.plot_hdi(
+    x=date,
+    y=temp_prior_predictive.prior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.95,
+    color=&quot;gray&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 50%&quot;, &quot;alpha&quot;: 0.3},
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=temp_prior_predictive.prior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;gray&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 95%&quot;, &quot;alpha&quot;: 0.5},
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Prior HDI Temperature Model&quot;);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_26_0.svg" />
+</center>
+<p>Looks the values are feasible and not very constraining. Hence, we proceed to fit the model.</p>
+<pre class="python"><code>with temp_model:
+    temp_idata = pm.sampling_jax.sample_numpyro_nuts(
+        target_accept=0.9, draws=4000, chains=4
+    )
+    temp_posterior_predictive = pm.sample_posterior_predictive(trace=temp_idata)</code></pre>
+<p>Let’s see the summary and plot the trace.</p>
+<pre class="python"><code>az.summary(data=temp_idata, var_names=[&quot;a&quot;, &quot;b_fourier&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+a
+</th>
+<td>
+3.146
+</td>
+<td>
+0.006
+</td>
+<td>
+3.134
+</td>
+<td>
+3.159
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+20969.0
+</td>
+<td>
+13624.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[0]
+</th>
+<td>
+-0.248
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.265
+</td>
+<td>
+-0.231
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+24786.0
+</td>
+<td>
+12867.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[1]
+</th>
+<td>
+-0.547
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.566
+</td>
+<td>
+-0.530
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+18472.0
+</td>
+<td>
+13477.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[2]
+</th>
+<td>
+-0.122
+</td>
+<td>
+0.010
+</td>
+<td>
+-0.140
+</td>
+<td>
+-0.104
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+19721.0
+</td>
+<td>
+12822.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[3]
+</th>
+<td>
+-0.049
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.066
+</td>
+<td>
+-0.031
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+20019.0
+</td>
+<td>
+13006.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[4]
+</th>
+<td>
+-0.046
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.064
+</td>
+<td>
+-0.029
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+19058.0
+</td>
+<td>
+13353.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[5]
+</th>
+<td>
+0.047
+</td>
+<td>
+0.009
+</td>
+<td>
+0.030
+</td>
+<td>
+0.065
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+19848.0
+</td>
+<td>
+13078.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[6]
+</th>
+<td>
+-0.005
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.022
+</td>
+<td>
+0.013
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+19416.0
+</td>
+<td>
+13460.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[7]
+</th>
+<td>
+0.046
+</td>
+<td>
+0.009
+</td>
+<td>
+0.028
+</td>
+<td>
+0.063
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+19233.0
+</td>
+<td>
+13051.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[8]
+</th>
+<td>
+-0.000
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.018
+</td>
+<td>
+0.017
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+18230.0
+</td>
+<td>
+13328.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[9]
+</th>
+<td>
+0.016
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.001
+</td>
+<td>
+0.034
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+20411.0
+</td>
+<td>
+12549.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[10]
+</th>
+<td>
+0.007
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.009
+</td>
+<td>
+0.024
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+21447.0
+</td>
+<td>
+13222.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[11]
+</th>
+<td>
+0.017
+</td>
+<td>
+0.009
+</td>
+<td>
+0.001
+</td>
+<td>
+0.034
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+21141.0
+</td>
+<td>
+12520.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>ax = az.plot_forest(
+    kind=&quot;forestplot&quot;,
+    data=temp_idata,
+    var_names=[&quot;b_fourier&quot;],
+    combined=True,
+    r_hat=True,
+    ess=True,
+    figsize=(12, 6),
+)
+plt.gcf().suptitle(
+    &quot;Temperature Model - Posterior Distributions Fourier Modes&quot;, fontsize=16
+);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_31_0.svg" style="width: 1000px;"/>
+</center>
+<p>These distributions match the ones obtained in the original blog post (see figure <em>Posterior linear combination of the Fourier terms for the temperature model</em>). To end this section we simply plot the posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.lineplot(
+    x=&quot;date&quot;, y=&quot;temp_scaled&quot;, data=df, color=&quot;C0&quot;, label=&quot;temp (scaled)&quot;, ax=ax
+)
+az.plot_hdi(
+    x=date,
+    y=temp_posterior_predictive.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.95,
+    color=&quot;gray&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 50%&quot;, &quot;alpha&quot;: 0.3},
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=temp_posterior_predictive.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;gray&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 95%&quot;, &quot;alpha&quot;: 0.5},
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Posterior HDI Temperature Model&quot;);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_33_0.svg" />
+</center>
+</div>
+<div id="sales-model" class="section level2">
+<h2>Sales Model</h2>
+<p>Now we come to the core of this notebook: build the sales model using the output of the temperature model. To begin with, we define extract similar features as above but <em>just for the training period</em>.</p>
+<pre class="python"><code>date_train = df_train[&quot;date&quot;]
+sales_train = df_train[&quot;sales&quot;]
+trend_train = df_train[&quot;trend&quot;]
+dayofweek_idx_train, dayofweek_train = df_train[&quot;date&quot;].dt.dayofweek.factorize()
+
+periods_train = df_train[&quot;date&quot;].dt.dayofyear / 365.25
+n_order = 6
+
+fourier_features_train = pd.DataFrame(
+    {
+        f&quot;{func}_order_{order}&quot;: getattr(np, func)(2 * np.pi * periods_train * order)
+        for order in range(1, n_order + 1)
+        for func in (&quot;sin&quot;, &quot;cos&quot;)
+    }
+)</code></pre>
+<p>Next we extract the means and standard deviations of the learned Fourier modes posterior distributions.</p>
+<pre class="python"><code>temp_model_summary = az.summary(data=temp_idata, var_names=[&quot;b_fourier&quot;])
+fourier_loc = temp_model_summary[&quot;mean&quot;]
+fourier_sd = temp_model_summary[&quot;sd&quot;]</code></pre>
+<p>Let’s now be explicit about the model structure:</p>
+<p><span class="math display">\[\begin{align*}
+\text{sales}_{t} &amp; \sim \text{NegativeBinomial}(\mu_{t}, \alpha) \\
+\mu_{t} &amp; = (1 - \delta - \eta) \lambda_{t} + \delta \mu_{t-1} + \eta \: \text{sales}_{t-1}, \quad 0 \leq \delta \leq 1, 0 \leq \eta \leq 1 - \delta  \\
+\log(\lambda_{t}) &amp; = b_{\text{trend}}\frac{t}{m} + \sum_{j=1}^{7}b_{\text{dow}, j}\text{dayofweek}_{t} + \sum_{k=1}^{K=6} b_{k}&#39;\sin\left(\frac{2\pi k t}{m}\right) + \tilde{b}_{k}
+&#39;\cos\left(\frac{2\pi k t}{m}\right), \quad m = 365.25 \\
+\alpha &amp; = \frac{1}{\tilde{\alpha}^2} \\
+\delta &amp; \sim \text{Beta}(1, 10) \\
+\eta &amp; \sim \text{Gamma}(1, 10) \\
+b_{\text{trend}} &amp; \sim \text{Normal}(0.03, 0.02) \\
+b_{\text{dow}, j} &amp; \sim \text{Normal}(4, 2) \\
+b_{k}&#39; &amp; \sim \text{Normal}(\text{E}[b_{k}], \sqrt{\text{Var}[b_{k}]}) \\
+\tilde{b}_{k}&#39; &amp; \sim \text{Normal}(\text{E}[\tilde{b}_{k}], \sqrt{\text{Var}[\tilde{b}_{k}]}) \\
+\tilde{\alpha} &amp; \sim \text{Normal}(0, 0.5)
+\end{align*}\]</span></p>
+<p>In summary, we model the sales using a negative binomial likelihood. The mean <span class="math inline">\(\mu_t\)</span> of such distribution is modeled using three components: seasonality (<span class="math inline">\(\lambda_t\)</span>), an autoregressive term on the latent mean (<span class="math inline">\(\mu_{t - 1}\)</span>) and an autoregressive sales model. The seasonality component includes a linear trend, in-week seasonality via day of week indicator functions and long term seasonality modeled using Fourier modes. The key point to note is that the prior of such Fourier modes are actually determined by the posterior distribution obtained from the temperature model.</p>
+<p>Now we write the model above in PyMC.</p>
+<pre class="python"><code>coords = {
+    &quot;fourier_features&quot;: np.arange(2 * n_order),
+    &quot;dayofweek&quot;: dayofweek_train,
+}
+
+with pm.Model(coords=coords) as sales_model:
+    
+    # --- data containers ---
+    sales_model.add_coord(name=&quot;date&quot;, values=date_train, mutable=True)
+    trend_data = pm.MutableData(name=&quot;trend&quot;, value=trend_train, dims=&quot;date&quot;)
+    sales_data = pm.MutableData(name=&quot;sales&quot;, value=sales_train, dims=&quot;date&quot;)
+
+    # --- priors ---
+    delta = pm.Beta(name=&quot;delta&quot;, alpha=1, beta=10)
+    eta = pm.Gamma(name=&quot;eta&quot;, alpha=0.5, beta=10)
+    b_fourier = pm.Normal(
+        name=&quot;b_fourier&quot;, mu=fourier_loc, sigma=fourier_sd, dims=&quot;fourier_features&quot;
+    )
+    b_dayofweek = pm.Normal(name=&quot;b_dayofweek&quot;, mu=4, sigma=2, dims=&quot;dayofweek&quot;)
+    b_trend = pm.Normal(name=&quot;b_trend&quot;, mu=0.03, sigma=0.02)
+    alpha_inv = pm.Normal(name=&quot;alpha_inv&quot;, mu=0, sigma=0.5)
+
+    # --- model parametrization ---
+    ## parameters constraints
+    pm.Potential(name=&quot;constrain&quot;, var=at.switch(eta &gt; 1 - delta, -np.inf, 0))
+    # transferred trend and seasonality
+    fourier_contribution = pm.Deterministic(
+        name=&quot;fourier_contribution&quot;,
+        var=pm.math.dot(b_fourier, fourier_features_train.to_numpy().T),
+        dims=&quot;date&quot;,
+    )
+    dayofweek_contribution = pm.Deterministic(
+        name=&quot;dayofweek_contribution&quot;, var=b_dayofweek[dayofweek_idx_train], dims=&quot;date&quot;
+    )
+    trend_contribution = pm.Deterministic(
+        name=&quot;trend_contribution&quot;, var=b_trend * trend_data, dims=&quot;date&quot;
+    )
+    seasonality = pm.Deterministic(
+        name=&quot;seasonality&quot;,
+        var=pymc.math.exp(
+            fourier_contribution + dayofweek_contribution + trend_contribution
+        ),
+        dims=&quot;date&quot;,
+    )
+    ## damped dynamic mean
+    mu0 = pm.MutableData(
+        name=&quot;mu0&quot;, value=np.zeros(sales_data.shape.eval()[0]), dims=&quot;date&quot;
+    )
+    mu0 = at.set_subtensor(mu0[0], sales_data[0])
+
+    def one_step(seasonality_t, sales_tm1, mu_tm1, delta, eta):
+        return (1 - delta - eta) * seasonality_t + delta * mu_tm1 + eta * sales_tm1
+
+    outputs, _ = aesara.scan(
+        fn=one_step,
+        sequences=[
+            dict(input=seasonality[1:], taps=[0]),
+            dict(input=sales_data, taps=[-1]),
+        ],
+        outputs_info=dict(initial=mu0, taps=[-1]),
+        non_sequences=[delta, eta],
+        strict=True,
+    )
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;, var=at.set_subtensor(mu0[1:], outputs[:, 0]), dims=&quot;date&quot;
+    )
+    alpha = pm.Deterministic(name=&quot;alpha&quot;, var=1 / pm.math.sqr(alpha_inv))
+
+    # --- likelihood ---
+    pm.NegativeBinomial(
+        name=&quot;likelihood&quot;, alpha=alpha, mu=mu, observed=sales_data, dims=&quot;date&quot;
+    )
+
+pm.model_to_graphviz(sales_model)</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_39_0.svg" style="width: 1000px;"/>
+</center>
+<p>As always, is always good to run prior predictive checks before fitting the model.</p>
+<pre class="python"><code>with sales_model:
+    sales_prior_predictive = pm.sample_prior_predictive(samples=1000)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_train,
+    marker=&quot;o&quot;,
+    color=&quot;black&quot;,
+    alpha=0.8,
+    markersize=4,
+    markeredgecolor=&quot;black&quot;,
+    label=&quot;sales (train)&quot;,
+)
+az.plot_hdi(
+    x=date_train,
+    y=sales_prior_predictive.prior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.95,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 50%&quot;, &quot;alpha&quot;: 0.3},
+    ax=ax,
+)
+az.plot_hdi(
+    x=date_train,
+    y=sales_prior_predictive.prior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 95%&quot;, &quot;alpha&quot;: 0.5},
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Prior HDI Sales Model&quot;);
+</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_42_0.svg" />
+</center>
+<p>Overall, looks ok. Now we fit the model.</p>
+<p><strong>Remark:</strong> I was not able to use the <code>pymc.sampling_jax</code> samples for this model because of the scan operator ¯\<em>(ツ)</em>/¯ .</p>
+<pre class="python"><code>with sales_model:
+    sales_idata = pm.sample(target_accept=0.95, draws=4_000, chains=4)
+    sales_posterior_predictive = pm.sample_posterior_predictive(trace=sales_idata)</code></pre>
+<p>We can now look into the posterior diagnostic and posterior distributions.</p>
+<pre class="python"><code>var_names = [&quot;b_fourier&quot;, &quot;b_dayofweek&quot;,&quot;b_trend&quot;, &quot;delta&quot;, &quot;eta&quot;, &quot;alpha&quot;]</code></pre>
+<pre class="python"><code>az.summary(data=sales_idata, var_names=var_names)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+b_fourier[0]
+</th>
+<td>
+-0.250
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.267
+</td>
+<td>
+-0.233
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18423.0
+</td>
+<td>
+11279.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[1]
+</th>
+<td>
+-0.545
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.562
+</td>
+<td>
+-0.528
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+17956.0
+</td>
+<td>
+11734.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[2]
+</th>
+<td>
+-0.122
+</td>
+<td>
+0.010
+</td>
+<td>
+-0.141
+</td>
+<td>
+-0.104
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+20597.0
+</td>
+<td>
+11769.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[3]
+</th>
+<td>
+-0.052
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.069
+</td>
+<td>
+-0.035
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+19250.0
+</td>
+<td>
+12459.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[4]
+</th>
+<td>
+-0.044
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.060
+</td>
+<td>
+-0.027
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16019.0
+</td>
+<td>
+11818.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[5]
+</th>
+<td>
+0.049
+</td>
+<td>
+0.009
+</td>
+<td>
+0.032
+</td>
+<td>
+0.066
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18712.0
+</td>
+<td>
+12220.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[6]
+</th>
+<td>
+-0.006
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.023
+</td>
+<td>
+0.010
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18835.0
+</td>
+<td>
+12163.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[7]
+</th>
+<td>
+0.046
+</td>
+<td>
+0.009
+</td>
+<td>
+0.029
+</td>
+<td>
+0.063
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16716.0
+</td>
+<td>
+11111.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[8]
+</th>
+<td>
+-0.000
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.017
+</td>
+<td>
+0.016
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+17914.0
+</td>
+<td>
+12005.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[9]
+</th>
+<td>
+0.017
+</td>
+<td>
+0.009
+</td>
+<td>
+0.001
+</td>
+<td>
+0.034
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+15545.0
+</td>
+<td>
+12165.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[10]
+</th>
+<td>
+0.006
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.011
+</td>
+<td>
+0.023
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+19463.0
+</td>
+<td>
+12214.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_fourier[11]
+</th>
+<td>
+0.014
+</td>
+<td>
+0.009
+</td>
+<td>
+-0.002
+</td>
+<td>
+0.032
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16982.0
+</td>
+<td>
+11644.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dayofweek[0]
+</th>
+<td>
+4.627
+</td>
+<td>
+0.254
+</td>
+<td>
+4.169
+</td>
+<td>
+5.112
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+2786.0
+</td>
+<td>
+3250.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dayofweek[1]
+</th>
+<td>
+4.292
+</td>
+<td>
+0.241
+</td>
+<td>
+3.858
+</td>
+<td>
+4.763
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+7113.0
+</td>
+<td>
+5535.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dayofweek[2]
+</th>
+<td>
+3.935
+</td>
+<td>
+0.461
+</td>
+<td>
+3.231
+</td>
+<td>
+4.556
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+7282.0
+</td>
+<td>
+2862.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dayofweek[3]
+</th>
+<td>
+3.528
+</td>
+<td>
+0.656
+</td>
+<td>
+2.340
+</td>
+<td>
+4.355
+</td>
+<td>
+0.011
+</td>
+<td>
+0.008
+</td>
+<td>
+6393.0
+</td>
+<td>
+3485.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dayofweek[4]
+</th>
+<td>
+3.246
+</td>
+<td>
+0.883
+</td>
+<td>
+1.473
+</td>
+<td>
+4.205
+</td>
+<td>
+0.017
+</td>
+<td>
+0.012
+</td>
+<td>
+3710.0
+</td>
+<td>
+3827.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dayofweek[5]
+</th>
+<td>
+1.414
+</td>
+<td>
+1.105
+</td>
+<td>
+-0.643
+</td>
+<td>
+3.176
+</td>
+<td>
+0.012
+</td>
+<td>
+0.009
+</td>
+<td>
+8494.0
+</td>
+<td>
+8827.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dayofweek[6]
+</th>
+<td>
+3.685
+</td>
+<td>
+0.416
+</td>
+<td>
+3.057
+</td>
+<td>
+4.248
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+5247.0
+</td>
+<td>
+2370.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_trend
+</th>
+<td>
+0.032
+</td>
+<td>
+0.020
+</td>
+<td>
+-0.005
+</td>
+<td>
+0.070
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18385.0
+</td>
+<td>
+11342.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+delta
+</th>
+<td>
+0.386
+</td>
+<td>
+0.144
+</td>
+<td>
+0.110
+</td>
+<td>
+0.645
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+2761.0
+</td>
+<td>
+4262.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+eta
+</th>
+<td>
+0.331
+</td>
+<td>
+0.093
+</td>
+<td>
+0.155
+</td>
+<td>
+0.502
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7054.0
+</td>
+<td>
+8094.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+22.876
+</td>
+<td>
+4.435
+</td>
+<td>
+15.129
+</td>
+<td>
+31.254
+</td>
+<td>
+0.035
+</td>
+<td>
+0.025
+</td>
+<td>
+16097.0
+</td>
+<td>
+11193.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=sales_idata,
+    var_names=var_names,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Sales Model - Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_48_0.svg" style="width: 1000px;"/>
+</center>
+<p>Now let’s look into the in-sample posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_train,
+    marker=&quot;o&quot;,
+    color=&quot;black&quot;,
+    alpha=0.8,
+    markersize=4,
+    markeredgecolor=&quot;black&quot;,
+    label=&quot;sales (train)&quot;,
+)
+az.plot_hdi(
+    x=date_train,
+    y=sales_posterior_predictive.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.95,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 50%&quot;, &quot;alpha&quot;: 0.2},
+    ax=ax,
+)
+az.plot_hdi(
+    x=date_train,
+    y=sales_posterior_predictive.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: &quot;HDI 95%&quot;, &quot;alpha&quot;: 0.3},
+    ax=ax,
+)
+sns.lineplot(
+    x=date_train,
+    y=sales_posterior_predictive.posterior_predictive[&quot;likelihood&quot;]
+    .stack(samples=(&quot;chain&quot;, &quot;draw&quot;))
+    .mean(axis=1),
+    marker=&quot;o&quot;,
+    color=&quot;C0&quot;,
+    markersize=4,
+    markeredgecolor=&quot;C0&quot;,
+    label=&quot;mean posterior predictive&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Posterior HDI Sales Model&quot;);
+</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_50_0.svg" />
+</center>
+<p>The results look good. Still, we can not see the long term effect (yet!).</p>
+<p><strong>Remark:</strong> In spite of the fact I tried to wrap almost all input variables as <code>pm.MutableData</code>, I was not able to run the <code>pm.sample_posterior_predictive</code> function to generate out-of-sample predictions. I think it has to do with the fact that the local level <span class="math inline">\(\lambda_t\)</span> depends on the previous days sales and the model specification does not allow for this dependency. Hence I do the predictions <em>by hand</em> (as in the original post). For the expert readers, please let me know if there is a way to modify the model to allow to get out-of-sample predictions through the <code>pm.sample_posterior_predictive</code> function.</p>
+<pre class="python"><code># ! Warning:  This does not work ¯\_(ツ)_/¯
+with sales_model:
+  pm.set_data(new_data={&quot;sales&quot;: sales}, coords={&quot;date&quot;: date})
+  sales_idata.extend(
+     other=pm.sample_posterior_predictive(
+         trace=sales_idata,
+         var_names=[&quot;likelihood&quot;],
+         idata_kwargs={&quot;coords&quot;: {&quot;date&quot;: date}},
+     ),
+     join=&quot;right&quot;,
+  )
+</code></pre>
+<p>Now we are ready to generate the out-of-sample predictions. The idea is to generate the in-sample predictions for each component and then use the local level formula to generate out-of-sample predictions. Overall, it is quite straightforward but one just needs to be careful broadcasting over the sample dimensions.</p>
+<pre class="python"><code>posterior = sales_idata.posterior.stack(samples=(&quot;chain&quot;, &quot;draw&quot;))
+
+n_samples = sales_idata.sample_stats.stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).samples.size</code></pre>
+<ul>
+<li>Seasonal Component</li>
+</ul>
+<pre class="python"><code>seasonality_posterior = np.exp(
+    posterior[&quot;b_trend&quot;].to_numpy()[..., None] * trend[-n:][None, ...]
+    + posterior[&quot;b_dayofweek&quot;][dayofweek_idx[-n:]].T
+    + np.tensordot(
+        a=posterior[&quot;b_fourier&quot;], b=fourier_features[-n:], axes=[[0], [1]]
+    ).reshape(-1, n)
+)</code></pre>
+<ul>
+<li>Posterior Predictive Distribution</li>
+</ul>
+<pre class="python"><code>sales_train_posterior = sales_posterior_predictive.posterior_predictive[
+    &quot;likelihood&quot;
+].stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).T</code></pre>
+<p>Now we are ready to generate the out-of-sample predictions. We start by generating data containers to fill in.</p>
+<pre class="python"><code># container to store sales out-of-sample predictions
+sales_posterior = np.zeros(shape=(n_samples, n))
+sales_posterior[:, :n_train] = sales_train_posterior
+# container to store out-of-sample predictions for the local level
+mu_posterior = np.zeros(shape=(n_samples, n))
+mu_posterior[:, :n_train] = posterior[&quot;mu&quot;].T</code></pre>
+<p>Let’s run the forward steps. Note this simply follows the model specification.</p>
+<pre class="python"><code>from tqdm.notebook import tqdm
+
+for t in tqdm(range(n_train, n)):
+    
+    mu_posterior[:, t] = (
+        ((1 - posterior[&quot;delta&quot;] - posterior[&quot;eta&quot;]) * seasonality_posterior[:, t])
+        + (posterior[&quot;delta&quot;] * mu_posterior[:, t - 1])
+        + (posterior[&quot;eta&quot;] * sales_posterior[:, t - 1])
+    )
+
+    likelihood = pm.NegativeBinomial.dist(
+        name=&quot;posterior_sales&quot;, mu=mu_posterior[:, t], alpha=posterior[&quot;alpha&quot;].to_numpy()
+    )
+
+    sales_posterior[:, t] = pm.draw(likelihood)</code></pre>
+<p>Finally, we plot the predictions:</p>
+<pre class="python"><code>sales_posterior_hdi95 = az.hdi(sales_posterior, hdi_prob=0.95)
+sales_posterior_hdi50 = az.hdi(sales_posterior, hdi_prob=0.50)
+
+fig, ax = plt.subplots(figsize=(15, 7))
+
+ax.fill_between(
+    x=date[-n:],
+    y1=sales_posterior_hdi95[:, 0],
+    y2=sales_posterior_hdi95[:, 1],
+    color=&quot;C0&quot;,
+    label=&quot;HDI 95%&quot;,
+    alpha=0.5,
+)
+ax.fill_between(
+    x=date[-n:],
+    y1=sales_posterior_hdi50[:, 0],
+    y2=sales_posterior_hdi50[:, 1],
+    color=&quot;C0&quot;,
+    label=&quot;HDI 50%&quot;,
+    alpha=0.7,
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_train,
+    marker=&quot;o&quot;,
+    color=&quot;black&quot;,
+    alpha=0.8,
+    markersize=4,
+    markeredgecolor=&quot;black&quot;,
+    label=&quot;sales (train)&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_test,
+    marker=&quot;o&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.8,
+    markersize=4,
+    markeredgecolor=&quot;C1&quot;,
+    label=&quot;sales (test)&quot;,
+    ax=ax,
+)
+ax.axvline(x=train_test_date, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;train/test split&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Sales Model - Out of Sample Predictions&quot;);
+</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_65_1.svg" style="width: 1000px;"/>
+</center>
+<p>Yay! These predictions coincide with the original post <a href="https://minimizeregret.com/short-time-series-prior-knowledge">Modeling Short Time Series with Prior Knowledge</a> by <a href="https://minimizeregret.com/about/">Tim Radtke</a>.</p>
+<hr />
+</div>
+<div id="appendix-scan-operator" class="section level2">
+<h2>Appendix: Scan Operator</h2>
+<p>In this section I simply present some code which helped me with the recursive step of the model defined using the <a href="https://aesara.readthedocs.io/en/latest/library/scan.html#aesara.scan"><code>aesara.scan</code></a> operator. The documentation page <a href="https://aesara.readthedocs.io/en/latest/library/scan.html#scan-looping-in-aesara"><code>scan</code> - Looping in Aesara</a> is definitively a good starting point. It provides many examples and really tries to build some intuition. Nevertheless, to really unedrstand what is going on I had to try it myself! One particular example that helped me for this special use case was the one on <a href="https://aesara.readthedocs.io/en/latest/library/scan.html#multiple-outputs-several-taps-values-recurrent-neural-network-with-scan">Multiple outputs, several taps values - Recurrent Neural Network with Scan</a>. It provides exactly what I needed to implement the model! The idea is to explicitly define a function with the recursive step. In our case is simply:</p>
+<pre class="python"><code>def one_step(seasonality_t, sales_tm1, alpha_tm1, delta, eta):
+    return (1 - delta - eta) * seasonality_t + delta * alpha_tm1 + eta * sales_tm1</code></pre>
+<p>We can run this function a couple of times for testing purposes:</p>
+<pre class="python"><code>mu0 = at.zeros(sales_data.shape.eval()[0])
+mu0 = at.set_subtensor(mu0[0], sales_data[0])
+
+for t in range(1, 20):
+    step_output = one_step(seasonality[t], sales_data[t - 1], mu0[t - 1], delta, eta)
+    mu0 = at.set_subtensor(mu0[t], step_output)
+
+mu0.eval()</code></pre>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">
+<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">array</span><span style="font-weight: bold">([</span> <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">57</span>.        ,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">46.35528237</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.36461315</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">62.5669635</span> ,
+       <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">206.03102471</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">60.91539446</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.06142701</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">38.64463848</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">48.69596301</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">84.01553658</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">67.9182289</span> , <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">214.42825066</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">67.67288707</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">28.97307982</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">42.4934078</span> ,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">43.52909534</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">81.50515206</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">68.25865339</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">226.84680599</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.11496603</span>,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,
+         <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        ,   <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0</span>.        <span style="font-weight: bold">])</span>
+</pre>
+<p>Now, to compare the result let’s run the scan code:</p>
+<pre class="python"><code>outputs, _ = aesara.scan(
+    fn=one_step,
+    sequences=[
+        dict(input=seasonality[1:], taps=[-0]),
+        dict(input=sales_data, taps=[-1]),
+    ],
+    outputs_info=dict(initial=mu0, taps=[-1]),
+    non_sequences=[delta, eta],
+    strict=True,
+)
+
+outputs.eval()</code></pre>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">
+<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">array</span><span style="font-weight: bold">([[</span><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">46.35528237</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">43.69484783</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">51.44501065</span>, <span style="color: #808000; text-decoration-color: #808000">...</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">32.10927093</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">32.10927093</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">32.10927093</span><span style="font-weight: bold">]</span>,
+       <span style="font-weight: bold">[</span><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.36461315</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">76.69969067</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">78.63668906</span>, <span style="color: #808000; text-decoration-color: #808000">...</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">73.80410715</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">73.80410715</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">73.80410715</span><span style="font-weight: bold">]</span>,
+       <span style="font-weight: bold">[</span><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">62.5669635</span> , <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">62.4007794</span> , <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">62.88489346</span>, <span style="color: #808000; text-decoration-color: #808000">...</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">61.67708614</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">61.67708614</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">61.67708614</span><span style="font-weight: bold">]</span>,
+       <span style="color: #808000; text-decoration-color: #808000">...</span>,
+       <span style="font-weight: bold">[</span><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">59.69723366</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">59.69723366</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">59.69723366</span>, <span style="color: #808000; text-decoration-color: #808000">...</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">59.69723366</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">59.69723366</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">59.69723366</span><span style="font-weight: bold">]</span>,
+       <span style="font-weight: bold">[</span><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">31.08826576</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">31.08826576</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">31.08826576</span>, <span style="color: #808000; text-decoration-color: #808000">...</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">31.08826576</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">31.08826576</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">31.08826576</span><span style="font-weight: bold">]</span>,
+       <span style="font-weight: bold">[</span><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.81745512</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.81745512</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.81745512</span>, <span style="color: #808000; text-decoration-color: #808000">...</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.81745512</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.81745512</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.81745512</span><span style="font-weight: bold">]])</span>
+</pre>
+<p>Not that the <em>naïve</em> choice <code>output[-1]</code> is not the correct choice (of course I made this mistake 🙈). The correct choice is to use the <code>output[:, 0]</code> to get the last element of the output.</p>
+<pre class="python"><code>outputs[:, 0].eval()</code></pre>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">
+<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">array</span><span style="font-weight: bold">([</span> <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">46.35528237</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.36461315</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">62.5669635</span> , <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">206.03102471</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">60.91539446</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.06142701</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">38.64463848</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">48.69596301</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">84.01553658</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">67.9182289</span> , <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">214.42825066</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">67.67288707</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">28.97307982</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">42.4934078</span> ,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">43.52909534</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">81.50515206</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">68.25865339</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">226.84680599</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.11496603</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">35.2410469</span> ,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">42.38604802</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">43.98564908</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">83.71434839</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">75.03218001</span>,
+       <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">223.71559658</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.53323883</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">38.71352354</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">45.72966074</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">57.26447802</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">96.33602292</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.50433362</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">217.07865088</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">82.40460194</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">37.41142948</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">48.41411987</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">56.58039678</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">87.00310458</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">75.45419002</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">215.44805382</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">74.15228365</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">40.34252016</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">44.97789006</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">51.59072859</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">76.10426498</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">68.99419101</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">216.71068033</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">80.73103627</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">37.96599247</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">44.80732999</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">51.05013976</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">88.93101823</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">75.04113315</span>,
+       <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">203.22957544</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">69.7566518</span> ,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">35.59106705</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">38.5982584</span> ,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">48.3188339</span> ,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">84.33208137</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">68.31739529</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">201.33341532</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">70.20431736</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">30.49282447</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">40.79887753</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">35.11528204</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">72.23567431</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">69.8326729</span> , <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">205.21856554</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">78.67772541</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">35.45084071</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">43.40436573</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">51.28585601</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">86.16062643</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">73.08332093</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">194.97761923</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">77.05595542</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">36.19211187</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">40.85234724</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">42.09669308</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">78.93666395</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">72.99853526</span>,
+       <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">200.12680735</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">75.62789428</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">38.19101915</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">41.24660307</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">46.48963647</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">78.82210601</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">70.67371747</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">194.62390142</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">73.95875205</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">34.50534998</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">43.01153049</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">49.63817769</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">82.14963965</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">70.18719913</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">190.02505947</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">71.5217414</span> ,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">30.8291644</span> ,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">32.42343611</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">41.73709566</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">78.56230307</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">65.24091702</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">171.32735382</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">59.69723366</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">31.08826576</span>,
+        <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">33.81745512</span><span style="font-weight: bold">])</span>
+</pre>
+<p>Finally note that we need to add the value <code>sales_data[0]</code> to <code>outputs[:, 0]</code> so that the dimensions match in the likelihood function. This explains the line <code>at.set_subtensor(mu0[1:], outputs[:, 0])</code>.</p>
+</div>
+<div id="appendix-b-simple-time-series-forecasting-models" class="section level2">
+<h2>Appendix B: Simple Time Series Forecasting Models</h2>
+<p>Just for the sake of completeness we try to fit some time series forecasting models using <a href="https://www.sktime.org/en/stable/index.html"><code>sktime</code></a>. Note how easy and convenient the API is :) !</p>
+<pre class="python"><code>from sktime.forecasting.arima import AutoARIMA
+from sktime.forecasting.base import ForecastingHorizon
+from sktime.forecasting.exp_smoothing import ExponentialSmoothing
+from sktime.forecasting.fbprophet import Prophet
+from sktime.forecasting.structural import UnobservedComponents
+
+y_train = df_train.set_index(&quot;date&quot;)[&quot;sales&quot;]
+y_train.index.freq = &quot;D&quot;
+y_test = df_test.set_index(&quot;date&quot;)[&quot;sales&quot;]
+y_test.index.freq = &quot;D&quot;
+
+fh = ForecastingHorizon(y_test.index, is_relative=False)
+
+# arima model
+arima_forecaster = AutoARIMA()
+arima_forecaster.fit(y=y_train)
+y_pred_arima = arima_forecaster.predict(fh=fh)
+
+# exponential smoothing model
+es_forecaster = ExponentialSmoothing(seasonal=&quot;additive&quot;, sp=7)
+es_forecaster.fit(y=y_train)
+y_pred_es = es_forecaster.predict(fh=fh)
+
+# prophet model
+p_forecaster = Prophet(weekly_seasonality=True, yearly_seasonality=True)
+p_forecaster.fit(y=y_train)
+y_pred_p = p_forecaster.predict(fh=fh)
+
+# state space model (unobserved components)
+uc_forecaster = UnobservedComponents(
+    level=&quot;local level&quot;,
+    freq_seasonal=[
+        {&quot;period&quot;: 7, &quot;harmonics&quot;: 6},
+        {&quot;period&quot;: 365.25, &quot;harmonics&quot;: 6}
+    ]
+)
+uc_forecaster.fit(y=y_train)
+y_pred_uc = uc_forecaster.predict(fh=fh)</code></pre>
+<p>Let’s visualize the predictions.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 7))
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_train,
+    marker=&quot;o&quot;,
+    color=&quot;black&quot;,
+    alpha=0.8,
+    markersize=4,
+    markeredgecolor=&quot;black&quot;,
+    label=&quot;sales (train)&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;sales&quot;,
+    data=df_test,
+    marker=&quot;o&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    markersize=4,
+    markeredgecolor=&quot;C1&quot;,
+    label=&quot;sales (test)&quot;,
+    ax=ax,
+)
+y_pred_arima.plot(label=&quot;auto arima model&quot;, color=&quot;C3&quot;, ax=ax)
+y_pred_es.plot(label=&quot;exponential smoothing model&quot;, color=&quot;C4&quot;, ax=ax)
+y_pred_p.plot(label=&quot;prophet model&quot;, color=&quot;C5&quot;, ax=ax)
+y_pred_uc.plot(label=&quot;unobserved components model&quot;, color=&quot;C6&quot;, ax=ax)
+ax.axvline(x=train_test_date, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;train/test split&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.2), ncol=4)
+ax.set(title=&quot;Sales - Time Series Models&quot;);</code></pre>
+<center>
+<img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_79_0.svg" style="width: 1000px;"/>
+</center>
+<p>None of them capture both the short and long term seasonality (of course! there is simply not enough data!).</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

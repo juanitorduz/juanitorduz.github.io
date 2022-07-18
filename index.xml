@@ -6,7 +6,16 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 03 Jul 2022 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 19 Jul 2022 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Modeling Short Time Series with Prior Knowledge in PyMC</title>
+      <link>/short_time_series_pymc/</link>
+      <pubDate>Tue, 19 Jul 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/short_time_series_pymc/</guid>
+      <description>In this notebook I want to reproduce in PyMC the methodology described in the amazing blog post Modeling Short Time Series with Prior Knowledge by Tim Radtke to forecast short time series using bayesian transfer learning. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete.</description>
+    </item>
+    
     <item>
       <title>Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</title>
       <link>/bikes_pymc/</link>
