@@ -78,8 +78,8 @@
       
 
 
-<p>In this notebook I want to reproduce in <a href="https://github.com/pymc-devs/pymc">PyMC</a> the methodology described in the amazing blog post <a href="https://minimizeregret.com/short-time-series-prior-knowledge">Modeling Short Time Series with Prior Knowledge</a> by <a href="https://minimizeregret.com/about/">Tim Radtke</a> to forecast short time series using <em>bayesian transfer learning</em>. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete. The challenge of the example is to generate long term forecast for a short time series of bike sales data. Specifically, the input sales data consists of three months of daily data and the objective is to generate at least a two years forecast. In general this is very hard to to with commonly available methods (as we will show below) due the fact we do not have enough historical data to capture seasonal patterns. For this concrete example, we do expect to have a strong yearly seasonal pattern as bike sales are usually much higher during summer than in winter. Hence, we could use temperature as a proxy for this seasonal pattern. However, as mentioned above, we can not simply try to use such data in a model with just 3 months of daily data … ¯\<em>(ツ)</em>/¯ …</p>
-<p><strong>Here s the elegant trick</strong>: First, fit a model on long past historical temperature data through <a href="https://en.wikipedia.org/wiki/Fourier_series">Fourier modes</a> (as in Facebook’s <a href="https://facebook.github.io/prophet/">Prophet</a> model). Then use the posterior means and standard deviations of each Fourier mode as the prior distribution for the sales short time series <span class="math inline">\(y_t\)</span>. For the later model we use a <a href="https://en.wikipedia.org/wiki/Negative_binomial_distribution">negative binomial distribution</a> as the likelihood function (as we are modeling count data, i.e. the number of sales) and model the mean <span class="math inline">\(\mu_t\)</span> through three main components:</p>
+<p>In this notebook I want to reproduce in <a href="https://github.com/pymc-devs/pymc">PyMC</a> the methodology described in the amazing blog post <a href="https://minimizeregret.com/short-time-series-prior-knowledge">Modeling Short Time Series with Prior Knowledge</a> by <a href="https://minimizeregret.com/about/">Tim Radtke</a> to forecast short time series using <em>bayesian transfer learning</em> 🚀. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete. The challenge of the example is to generate long term forecast for a short time series of bike sales data. Specifically, the input sales data consists of three months of daily data and the objective is to generate at least a two years forecast. In general this is very hard to to with commonly available methods (as we will show below) due the fact we do not have enough historical data to capture seasonal patterns. For this concrete example, we do expect to have a strong yearly seasonal pattern as bike sales are usually much higher during summer than in winter. Hence, we could use temperature as a proxy for this seasonal pattern. However, as mentioned above, we can not simply try to use such data in a model with just 3 months of daily data … ¯\<em>(ツ)</em>/¯ …</p>
+<p>💡<strong>Here s the elegant trick</strong>: First, fit a model on long past historical temperature data through <a href="https://en.wikipedia.org/wiki/Fourier_series">Fourier modes</a> (as in Facebook’s <a href="https://facebook.github.io/prophet/">Prophet</a> model). Then use the posterior means and standard deviations of each Fourier mode as the prior distribution for the sales short time series <span class="math inline">\(y_t\)</span>. For the later model we use a <a href="https://en.wikipedia.org/wiki/Negative_binomial_distribution">negative binomial distribution</a> as the likelihood function (as we are modeling count data, i.e. the number of sales) and model the mean <span class="math inline">\(\mu_t\)</span> through three main components:</p>
 <ol style="list-style-type: decimal">
 <li>A <em>seasonal component</em> which consists of Fourier modes with the specified priors, dummy variables to model the weekly seasonality and a mild trend component.</li>
 <li>We use an autoregressive term <span class="math inline">\(\mu_{t -1}\)</span> on the mean itself.</li>
@@ -1023,7 +1023,9 @@ with pm.Model(coords=coords) as sales_model:
         dims=&quot;date&quot;,
     )
     dayofweek_contribution = pm.Deterministic(
-        name=&quot;dayofweek_contribution&quot;, var=b_dayofweek[dayofweek_idx_train], dims=&quot;date&quot;
+        name=&quot;dayofweek_contribution&quot;,
+        var=b_dayofweek[dayofweek_idx_train],
+        dims=&quot;date&quot;
     )
     trend_contribution = pm.Deterministic(
         name=&quot;trend_contribution&quot;, var=b_trend * trend_data, dims=&quot;date&quot;
@@ -1108,8 +1110,8 @@ ax.set(title=&quot;Prior HDI Sales Model&quot;);
 <center>
 <img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_42_0.svg" />
 </center>
-<p>Overall, looks ok. Now we fit the model.</p>
-<p><strong>Remark:</strong> I was not able to use the <code>pymc.sampling_jax</code> samples for this model because of the scan operator ¯\<em>(ツ)</em>/¯ .</p>
+<p>Overall, it looks ok. Now we fit the model.</p>
+<p><strong>Remark:</strong> I was not able to use the <code>pymc.sampling_jax</code> samples for this model because of the scan operator ¯\<em>(ツ)</em>/¯ (<em>Update:</em> Actually there are some issues regarding this problem, see <a href="https://github.com/pymc-devs/pymc/issues/5989">pymc/issues/5989</a> and <a href="https://github.com/aesara-devs/aesara/issues/924">aesara/issues/924</a>).</p>
 <pre class="python"><code>with sales_model:
     sales_idata = pm.sample(target_accept=0.95, draws=4_000, chains=4)
     sales_posterior_predictive = pm.sample_posterior_predictive(trace=sales_idata)</code></pre>
@@ -2077,7 +2079,7 @@ ax.set(title=&quot;Sales Model - Out of Sample Predictions&quot;);
 <center>
 <img src="../images/short-time-series-prior-knowledge_files/short-time-series-prior-knowledge_65_1.svg" style="width: 1000px;"/>
 </center>
-<p>Yay! These predictions coincide with the original post <a href="https://minimizeregret.com/short-time-series-prior-knowledge">Modeling Short Time Series with Prior Knowledge</a> by <a href="https://minimizeregret.com/about/">Tim Radtke</a>.</p>
+<p>Yay 🤓! These predictions coincide with the original post <a href="https://minimizeregret.com/short-time-series-prior-knowledge">Modeling Short Time Series with Prior Knowledge</a> by <a href="https://minimizeregret.com/about/">Tim Radtke</a>.</p>
 <hr />
 </div>
 <div id="appendix-scan-operator" class="section level2">
@@ -2186,7 +2188,7 @@ outputs.eval()</code></pre>
 </div>
 <div id="appendix-b-simple-time-series-forecasting-models" class="section level2">
 <h2>Appendix B: Simple Time Series Forecasting Models</h2>
-<p>Just for the sake of completeness we try to fit some time series forecasting models using <a href="https://www.sktime.org/en/stable/index.html"><code>sktime</code></a>. Note how easy and convenient the API is :) !</p>
+<p>Just for the sake of completeness we try to fit some time series forecasting models using <a href="https://www.sktime.org/en/stable/index.html"><code>sktime</code></a>. Note how easy and convenient the API is 🙂!</p>
 <pre class="python"><code>from sktime.forecasting.arima import AutoARIMA
 from sktime.forecasting.base import ForecastingHorizon
 from sktime.forecasting.exp_smoothing import ExponentialSmoothing
