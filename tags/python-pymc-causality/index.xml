@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>python, pymc, causality on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-pymc-causality/</link>
+    <description>Recent content in python, pymc, causality on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Tue, 09 Aug 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-causality/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Synthetic Control in PyMC</title>
+      <link>/synthetic_control_pymc/</link>
+      <pubDate>Tue, 09 Aug 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/synthetic_control_pymc/</guid>
+      <description>Synthetic control can be considered “the most important innovation in the policy evaluation literature in the last few years” (see The State of Applied Econometrics: Causality and Policy Evaluation by Susan Athey and Guido W. Imbens).
+ In this notebook we provide an example of how to implement a synthetic control problem in PyMC to answer a “what if this had happened?” type of question in the context of causal inference.</description>
+    </item>
+    
+  </channel>
+</rss>

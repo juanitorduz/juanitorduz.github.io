@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Synthetic Control in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Synthetic Control in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">10 min read</span>
+    
+
+    <h1 class="article-title">Synthetic Control in PyMC</h1>
+
+    
+    <span class="article-date">2022-08-09</span>
+    
+
+    <div class="article-content">
+      
+
+
+<blockquote>
+<p><em>Synthetic control can be considered “the most important innovation in the policy evaluation literature in the last few years”</em> (see <a href="https://www.aeaweb.org/articles?id=10.1257/jep.31.2.3">The State of Applied Econometrics: Causality and Policy Evaluation</a> by Susan Athey and Guido W. Imbens).</p>
+</blockquote>
+<p>In this notebook we provide an example of how to implement a synthetic control problem in <a href="https://github.com/pymc-devs/pymc">PyMC</a> to answer a “what if this had happened?” type of question in the context of causal inference. We reproduce the results of the example provided in the great book <a href="https://matheusfacure.github.io/python-causality-handbook/landing-page.html">Causal Inference for The Brave and True</a> by <a href="https://matheusfacure.github.io/">Matheus Facure</a>. Specifically, we look into the problem of estimating the <em>effect of cigarette taxation on its consumption</em> presented in Chapter <a href="https://matheusfacure.github.io/python-causality-handbook/15-Synthetic-Control.html">15 - Synthetic Control</a>. The purpose of this notebook is not to present a general description of this method but rather show how to implement it in PyMC. Therefore, we strongly recommend to look into the book to understand the problem, motivation and details of the method.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import aesara.tensor as at
+import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pymc.sampling_jax
+import seaborn as sns
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+%load_ext rich
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We read the data directly from the book’s repository.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/matheusfacure/python-causality-handbook/master/causal-inference-for-the-brave-and-true/data/smoking.csv&quot;
+
+raw_data_df = pd.read_csv(data_path)
+
+raw_data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+state
+</th>
+<th>
+year
+</th>
+<th>
+cigsale
+</th>
+<th>
+lnincome
+</th>
+<th>
+beer
+</th>
+<th>
+age15to24
+</th>
+<th>
+retprice
+</th>
+<th>
+california
+</th>
+<th>
+after_treatment
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+1
+</td>
+<td>
+1970
+</td>
+<td>
+89.800003
+</td>
+<td>
+NaN
+</td>
+<td>
+NaN
+</td>
+<td>
+0.178862
+</td>
+<td>
+39.599998
+</td>
+<td>
+False
+</td>
+<td>
+False
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+1
+</td>
+<td>
+1971
+</td>
+<td>
+95.400002
+</td>
+<td>
+NaN
+</td>
+<td>
+NaN
+</td>
+<td>
+0.179928
+</td>
+<td>
+42.700001
+</td>
+<td>
+False
+</td>
+<td>
+False
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+1
+</td>
+<td>
+1972
+</td>
+<td>
+101.099998
+</td>
+<td>
+9.498476
+</td>
+<td>
+NaN
+</td>
+<td>
+0.180994
+</td>
+<td>
+42.299999
+</td>
+<td>
+False
+</td>
+<td>
+False
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+1
+</td>
+<td>
+1973
+</td>
+<td>
+102.900002
+</td>
+<td>
+9.550107
+</td>
+<td>
+NaN
+</td>
+<td>
+0.182060
+</td>
+<td>
+42.099998
+</td>
+<td>
+False
+</td>
+<td>
+False
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+1
+</td>
+<td>
+1974
+</td>
+<td>
+108.199997
+</td>
+<td>
+9.537163
+</td>
+<td>
+NaN
+</td>
+<td>
+0.183126
+</td>
+<td>
+43.099998
+</td>
+<td>
+False
+</td>
+<td>
+False
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We are mainly interested in the <code>cigsale</code> variable as a target and <code>retprice</code> as control. Also note we already have an indicator tag <code>california</code> which is true for the <code>state</code> index <span class="math inline">\(3\)</span>.</p>
+<pre class="python"><code># select relevant columns
+df = raw_data_df.copy().drop(columns=[&quot;lnincome&quot;, &quot;beer&quot;, &quot;age15to24&quot;])
+
+df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 1209 entries, 0 to 1208
+Data columns (total 6 columns):
+ #   Column           Non-Null Count  Dtype  
+---  ------           --------------  -----  
+ 0   state            1209 non-null   int64  
+ 1   year             1209 non-null   int64  
+ 2   cigsale          1209 non-null   float64
+ 3   retprice         1209 non-null   float64
+ 4   california       1209 non-null   bool   
+ 5   after_treatment  1209 non-null   bool   
+dtypes: bool(2), float64(2), int64(2)
+memory usage: 40.3 KB</code></pre>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>Let’s plot the sales data for California and the other states together.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+(
+    df.groupby([&quot;year&quot;, &quot;california&quot;], as_index=False)
+    .agg({&quot;cigsale&quot;: np.mean})
+    .pipe(
+        (sns.lineplot, &quot;data&quot;),
+        x=&quot;year&quot;,
+        y=&quot;cigsale&quot;,
+        hue=&quot;california&quot;,
+        marker=&quot;o&quot;,
+        ax=ax,
+    )
+)
+ax.axvline(
+    x=1988,
+    linestyle=&quot;:&quot;,
+    lw=2,
+    color=&quot;C2&quot;,
+    label=&quot;Proposition 99&quot;,
+)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(
+    title=&quot;Gap in per-capita cigarette sales (in packs)&quot;,
+    ylabel=&quot;Cigarette Sales Trend&quot;
+);
+</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_8_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="data-processing" class="section level2">
+<h2>Data Processing</h2>
+<p>We now split the data intro pre and post treatment years. Moreover, we shape the data in such a way that the columns correspond to states (see <a href="https://matheusfacure.github.io/python-causality-handbook/15-Synthetic-Control.html#we-have-time">here</a> for details).</p>
+<pre class="python"><code>features = [&quot;cigsale&quot;, &quot;retprice&quot;]
+
+pre_df = (
+    df
+    .query(&quot;~ after_treatment&quot;)
+    .pivot(index=&#39;state&#39;, columns=&quot;year&quot;, values=features)
+    .T
+)
+
+post_df = (
+    df
+    .query(&quot;after_treatment&quot;)
+    .pivot(index=&#39;state&#39;, columns=&quot;year&quot;, values=features)
+    .T
+)</code></pre>
+<p>Finally, we extract some useful information about the data.</p>
+<pre class="python"><code>idx = 3
+
+y_pre = pre_df[idx].to_numpy()
+x_pre = pre_df.drop(columns=idx).to_numpy()
+pre_years = pre_df.reset_index(inplace=False).year.unique()
+n_pre = pre_years.size
+
+y_post = post_df[idx].to_numpy()
+x_post = post_df.drop(columns=idx).to_numpy()
+post_years = post_df.reset_index(inplace=False).year.unique()
+n_post = post_years.size
+
+k = pre_df.shape[0]</code></pre>
+</div>
+<div id="model" class="section level2">
+<h2>Model</h2>
+<p>Here is the PyMC model for the synthetic control problem. The only thing to remark is the appearance of the <a href="https://docs.pymc.io/en/latest/api/distributions/generated/pymc.Dirichlet.html"><code>Dirichlet</code></a> distribution as prior for the model weights. This ensures the weights are all positive and add up all to one as required.</p>
+<p><strong>Remark:</strong> Note that the prior parameter <code>a</code> coincides with the initial point <code>w_start</code> in the <code>get_w(X, y)</code> function in the book (see <a href="https://matheusfacure.github.io/python-causality-handbook/15-Synthetic-Control.html#don-t-extrapolate">here</a>).</p>
+<pre class="python"><code>with pm.Model() as model:
+    x = pm.MutableData(name=&quot;x&quot;, value=x_pre)
+    y = pm.MutableData(name=&quot;y&quot;, value=y_pre)
+    beta = pm.Dirichlet(name=&quot;beta&quot;, a=(1 / k) * np.ones(k))
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=5)
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=pm.math.dot(x, beta))
+    likelihood = pm.Normal(name=&quot;likelihood&quot;, mu=mu, sigma=sigma, observed=y)
+
+pm.model_to_graphviz(model)</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_14_0.svg" style="width: 600px;"/>
+</center>
+<p>We now sample from the mode to get the posterior distributions.</p>
+<pre class="python"><code>with model:
+    idata = pm.sampling_jax.sample_numpyro_nuts(draws=4000, chains=4)
+    posterior_predictive_pre = pm.sample_posterior_predictive(trace=idata)</code></pre>
+<p>Let’s plot the posterior distributions for the weights.</p>
+<pre class="python"><code>az.plot_forest(data=idata, combined=True, var_names=[&quot;beta&quot;]);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_18_0.png" style="width: 600px;"/>
+</center>
+<p>Note that many of the weights are zero and the non-zero weights coincide (the mean) with the weights from the book. We can confirm that the weights satisfy the constraints, namely that they are all positive and add up to one.</p>
+<pre class="python"><code>np.unique(
+    idata
+    .posterior[&quot;beta&quot;]
+    .stack(samples=(&quot;chain&quot;, &quot;draw&quot;))
+    .sum(axis=0)
+    .to_numpy()
+    - 1
+)</code></pre>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace">
+<span style="color: #800080; text-decoration-color: #800080; font-weight: bold">array</span><span style="font-weight: bold">([</span><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">-5.55111512e-16</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">-4.44089210e-16</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">-3.33066907e-16</span>, <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">-2.22044605e-16</span>,
+       <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">-1.11022302e-16</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0.00000000e+00</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">2.22044605e-16</span>,  <span style="color: #008080; text-decoration-color: #008080; font-weight: bold">4.44089210e-16</span><span style="font-weight: bold">])</span>
+</pre>
+</div>
+<div id="posterior-predictive" class="section level2">
+<h2>Posterior Predictive</h2>
+<p>We can now generate predictions for the post treatment years.</p>
+<pre class="python"><code>with model:
+    pm.set_data(new_data={&quot;x&quot;: x_post, &quot;y&quot;: y_post})
+    posterior_predictive_post = pm.sample_posterior_predictive(
+        trace=idata, var_names=[&quot;likelihood&quot;]
+    )
+</code></pre>
+<p>We can now visualize the results (sample plot as the book but this time with credible intervals!).</p>
+<pre class="python"><code>pre_posterior_mean = (
+    posterior_predictive_pre.posterior_predictive[&quot;likelihood&quot;][:, :, :n_pre]
+    .stack(samples=(&quot;chain&quot;, &quot;draw&quot;))
+    .mean(axis=1)
+)
+
+post_posterior_mean = (
+    posterior_predictive_post.posterior_predictive[&quot;likelihood&quot;][:, :, :n_post]
+    .stack(samples=(&quot;chain&quot;, &quot;draw&quot;))
+    .mean(axis=1)
+)
+
+
+fig, ax = plt.subplots()
+
+(
+    df.groupby([&quot;year&quot;, &quot;california&quot;], as_index=False)
+    .agg({&quot;cigsale&quot;: np.mean})
+    .assign(
+        california=lambda x: x.california.map(
+            {True: &quot;is_california&quot;, False: &quot;is_not_california&quot;}
+        )
+    )
+    .pipe(
+        (sns.lineplot, &quot;data&quot;),
+        x=&quot;year&quot;,
+        y=&quot;cigsale&quot;,
+        hue=&quot;california&quot;,
+        alpha=0.5,
+        ax=ax,
+    )
+)
+ax.axvline(
+    x=1988,
+    linestyle=&quot;:&quot;,
+    lw=2,
+    color=&quot;C2&quot;,
+    label=&quot;Proposition 99&quot;,
+)
+sns.lineplot(
+    x=pre_years,
+    y=pre_posterior_mean,
+    color=&quot;C1&quot;,
+    marker=&quot;o&quot;,
+    label=&quot;pre-treatment posterior predictive mean&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=post_years,
+    y=post_posterior_mean,
+    color=&quot;C2&quot;,
+    marker=&quot;o&quot;,
+    label=&quot;post-treatment posterior predictive mean&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=pre_years,
+    y=posterior_predictive_pre.posterior_predictive[&quot;likelihood&quot;][:, :, :n_pre],
+    smooth=True,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;label&quot;: &quot;pre-treatment posterior predictive (94% HDI)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=post_years,
+    y=posterior_predictive_post.posterior_predictive[&quot;likelihood&quot;][:, :, :n_post],
+    smooth=True,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;label&quot;: &quot;post-treatment posterior predictive (94% HDI)&quot;},
+    ax=ax,
+)
+ax.legend(loc=&quot;lower left&quot;)
+ax.set(
+    title=&quot;Gap in per-capita cigarette sales (in packs)&quot;, ylabel=&quot;Cigarette Sales Trend&quot;
+);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_24_0.png" style="width: 900px;"/>
+</center>
+<p>We can also plot the “errors”.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+ax.axvline(
+    x=1988,
+    linestyle=&quot;:&quot;,
+    lw=2,
+    color=&quot;C2&quot;,
+    label=&quot;Proposition 99&quot;,
+)
+sns.lineplot(
+    x=pre_years,
+    y=y_pre[:n_pre] - pre_posterior_mean,
+    color=&quot;C1&quot;,
+    marker=&quot;o&quot;,
+    label=&quot;pre-treatment posterior predictive effect mean&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=post_years,
+    y=y_post[:n_post] - post_posterior_mean,
+    color=&quot;C2&quot;,
+    marker=&quot;o&quot;,
+    label=&quot;post-treatment posterior predictive effect mean&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=pre_years,
+    y=y_pre[:n_pre]
+    - posterior_predictive_pre.posterior_predictive[&quot;likelihood&quot;][:, :, :n_pre],
+    smooth=True,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;label&quot;: &quot;pre-treatment posterior predictive effect (94% HDI)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=post_years,
+    y=y_post[:n_post]
+    - posterior_predictive_post.posterior_predictive[&quot;likelihood&quot;][:, :, :n_post],
+    smooth=True,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;label&quot;: &quot;post-treatment posterior predictive effect (94% HDI)&quot;},
+    ax=ax,
+)
+ax.axhline(y=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;lower left&quot;)
+ax.set(
+    title=&quot;State - Synthetic Across Time&quot;,
+    ylabel=&quot;Gap in per-capita cigarette sales (in packs)&quot;,
+);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_26_0.png" style="width: 900px;"/>
+</center>
+<p>Note that in the pre-treatment years the model errors oscillate around zero whereas in the post-treatment period they have a negative trend.</p>
+<p>Finally, we can take a look into the reduced sales year distribution for the year <span class="math inline">\(2000\)</span>.</p>
+<pre class="python"><code>g = (
+    (
+        y_post[:n_post]
+        - posterior_predictive_post.posterior_predictive[&quot;likelihood&quot;][:, :, :n_post]
+    )[:, :, -1]
+    .stack(samples=(&quot;chain&quot;, &quot;draw&quot;))
+    .pipe((sns.displot, &quot;data&quot;), kde=True, height=4.5, aspect=1.5)
+)
+g.set(title=&quot;reduced the sales in cigarettes in 2000&quot;);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_28_0.png" style="width: 900px;"/>
+</center>
+<p>Hence we obtain the same result as in the book:</p>
+<blockquote>
+<p><em>By the year 2000, it looks like Proposition 99 has reduced the sales in cigarettes by 25 packs.</em></p>
+</blockquote>
+<p>However, the bayesian framework gives additional valuable information about the model’s uncertainty.</p>
+</div>
+<div id="making-inference" class="section level2">
+<h2>Making Inference</h2>
+<p>In this final section we want to implement the procedure described in the book to asses <em>significance</em> (see <a href="https://matheusfacure.github.io/python-causality-handbook/15-Synthetic-Control.html#making-inference">here</a>). The main idea is to run the model above for all the states and compare the distribution of the resulting synthetic control estimates. First we simply write a function that wraps the main steps (its a long function which could be modularized, but I keep it explicit for the purpose of the exposition).</p>
+<pre class="python"><code>def run_synthetic_control(
+    pre_df: pd.DataFrame, post_df: pd.DataFrame, idx: int
+) -&gt; tuple:
+    # prepare data
+    y_pre = pre_df[idx].to_numpy()
+    x_pre = pre_df.drop(columns=idx).to_numpy()
+    pre_years = pre_df.reset_index(inplace=False).year.unique()
+    n_pre = pre_years.size
+
+    y_post = post_df[idx].to_numpy()
+    x_post = post_df.drop(columns=idx).to_numpy()
+    post_years = post_df.reset_index(inplace=False).year.unique()
+    n_post = post_years.size
+
+    k = pre_df.shape[0]
+
+    # specify the model
+    with pm.Model() as model:
+        x = pm.MutableData(name=&quot;x&quot;, value=x_pre)
+        y = pm.MutableData(name=&quot;y&quot;, value=y_pre)
+
+        beta = pm.Dirichlet(name=&quot;beta&quot;, a=(1 / k) * np.ones(k))
+        sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=5)
+        mu = pm.Deterministic(name=&quot;mu&quot;, var=pm.math.dot(x, beta))
+        likelihood = pm.Normal(name=&quot;likelihood&quot;, mu=mu, sigma=sigma, observed=y)
+
+        # fit the model
+        idata = pm.sampling_jax.sample_numpyro_nuts(draws=4000, chains=4)
+        posterior_predictive_pre = pm.sample_posterior_predictive(trace=idata)
+        # post-treatment predictive distribution
+        pm.set_data(new_data={&quot;x&quot;: x_post, &quot;y&quot;: y_post})
+        posterior_predictive_post = pm.sample_posterior_predictive(
+            trace=idata, var_names=[&quot;likelihood&quot;]
+        )
+
+        # compute errors
+        error_pre = (
+            y_pre[:n_pre]
+            - posterior_predictive_pre.posterior_predictive[&quot;likelihood&quot;][:, :, :n_pre]
+        )
+        error_post = (
+            y_post[:n_post]
+            - posterior_predictive_post.posterior_predictive[&quot;likelihood&quot;][
+                :, :, :n_post
+            ]
+        )
+
+    return error_pre, error_post
+</code></pre>
+<p>Now we run it (it was to run 39 bayesian model but with the JAX backend it takes less than an hour in my local machine).</p>
+<pre class="python"><code>from tqdm.notebook import tqdm
+
+results = {
+    idx: run_synthetic_control(pre_df=pre_df, post_df=post_df, idx=idx)
+    for idx in tqdm(df[&quot;state&quot;].unique())
+}
+</code></pre>
+<p>Let’s plot the results. First we look into the mean of the posterior distributions. We do ths to verify we obtain the same results as in the book (which we do!).</p>
+<p><strong>Remark:</strong> We filter out certain states on which the synthetic control does not work well in the pre-treatment period. The book filters them out using the mean squared error. Here we filter out based on the standard deviation of the error posterior distribution (not super important).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for idx in df[&quot;state&quot;].unique():
+    error_pre, error_post = results[idx]
+    sigma_pre = error_pre.stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).std(axis=1).min().item()
+    if sigma_pre &lt; 10:
+        color = &quot;C6&quot; if idx == 3 else &quot;gray&quot;
+        alpha = 1 if idx == 3 else 0.3
+        label = &quot;california&quot; if idx == 3 else None
+        sns.lineplot(
+            x=pre_years,
+            y=error_pre.stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).mean(axis=1),
+            color=color,
+            alpha=alpha,
+            ax=ax,
+        )
+        sns.lineplot(
+            x=post_years,
+            y=error_post.stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).mean(axis=1),
+            color=color,
+            alpha=alpha,
+            label=label,
+            ax=ax,
+        )
+
+ax.axhline(y=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;lower left&quot;)
+ax.set(
+    title=&quot;State - Synthetic Across Time&quot;,
+    ylabel=&quot;Gap in per-capita cigarette sales (in packs)&quot;,
+);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_35_0.png" style="width: 900px;"/>
+</center>
+<p>Now we can plot the whole posterior distributions.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for idx in df[&quot;state&quot;].unique():
+    error_pre, error_post = results[idx]
+    sigma_pre = error_pre.stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).std(axis=1).min().item()
+    if sigma_pre &lt; 10:
+        color = &quot;C6&quot; if idx == 3 else &quot;gray&quot;
+        alpha = 1 if idx == 3 else 0.05
+        label = &quot;california&quot; if idx == 3 else None
+        az.plot_hdi(
+            x=pre_years,
+            y=error_pre,
+            smooth=True,
+            color=color,
+            fill_kwargs={&quot;alpha&quot;: alpha},
+            ax=ax,
+        )
+        az.plot_hdi(
+            x=post_years,
+            y=error_post,
+            smooth=True,
+            color=color,
+            fill_kwargs={&quot;alpha&quot;: alpha, &quot;label&quot;: label},
+            ax=ax,
+        )
+
+ax.axhline(y=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;lower left&quot;)
+ax.set(
+    title=&quot;State - Synthetic Across Time&quot;,
+    ylabel=&quot;Gap in per-capita cigarette sales (in packs)&quot;,
+);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_37_0.png" style="width: 900px;"/>
+</center>
+<p>Overall, it looks California has an “extreme” value as compared with all the other states. Let’s look into the highest density intervals (HDI) for the states when looking into the year <span class="math inline">\(2000\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for idx in df[&quot;state&quot;].unique():
+    error_pre, error_post = results[idx]
+    sigma_pre = error_pre.stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).std(axis=1).min().item()
+    if sigma_pre &lt; 10:
+        color = &quot;C6&quot; if idx == 3 else &quot;gray&quot;
+        alpha = 1 if idx == 3 else 0.8
+        label = &quot;california&quot; if idx == 3 else None
+        hdi = az.hdi(error_post[:, :, -1])[&quot;likelihood&quot;].to_numpy()
+        ax.vlines(
+            x=idx,
+            ymin=hdi[0],
+            ymax=hdi[1],
+            linestyle=&quot;solid&quot;,
+            linewidth=3,
+            color=color,
+            alpha=alpha,
+            label=label,
+        )
+
+ax.axhline(y=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;94% HDI reduced the sales in cigarettes in 2000&quot;,
+    xlabel=&quot;sate index&quot;,
+    ylabel=&quot;Gap in per-capita cigarette sales (in packs)&quot;,
+);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_39_0.png" style="width: 900px;"/>
+</center>
+<p>Here we see that the HDI for California is indeed quite small an low. We can now compute <em>the proportion of times the effect in California is bigger than all the estimated effects.</em> First let is see the explicit ids of the states we are filtering out.</p>
+<pre class="python"><code>for idx in df[&quot;state&quot;].unique():
+    error_pre, error_post = results[idx]
+    sigma_pre = error_pre.stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).std(axis=1).min().item()
+    if sigma_pre &gt;= 10:
+        print(idx)</code></pre>
+<pre><code>13
+22
+24
+34</code></pre>
+<p>Now we “simply count”:</p>
+<pre class="python"><code>cal_samples = np.array(
+    [
+        v[1].stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).T.to_numpy()
+        for k, v in results.items()
+        if k == 3
+    ]
+)
+
+non_cal_samples = np.array(
+    [
+        v[1].stack(samples=(&quot;chain&quot;, &quot;draw&quot;)).T.to_numpy()
+        for k, v in results.items()
+        if k not in [3, 13, 22, 24, 34]
+    ]
+)
+
+
+samples = (cal_samples[:, :, -1] &gt; non_cal_samples[:, :, -1]).mean(axis=0)
+
+fig, ax = plt.subplots()
+sns.histplot(
+    x=samples,
+    color=&quot;C4&quot;,
+    label=f&quot;mean: {samples.mean(): .3f} and std = {samples.std(): .3f}&quot;,
+    ax=ax,
+)
+ax.legend()
+ax.set(
+    title=&quot;Proportion of times the effect in California is bigger than all the estimated effects&quot;
+);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_43_0.png" style="width: 900px;"/>
+</center>
+<p>Finally, let’s visualize the distributions:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.histplot(x=non_cal_samples[:, :, -1].flatten(), color=&quot;gray&quot;, stat=&quot;density&quot;, ax=ax)
+sns.histplot(
+    x=cal_samples[:, :, -1].flatten(),
+    color=&quot;C6&quot;,
+    stat=&quot;density&quot;,
+    label=&quot;california&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(
+    title=&quot;Histograms for year 2000&quot;,
+    xlabel=&quot;Gap in per-capita cigarette sales (in packs)&quot;,
+    ylabel=&quot;frequency&quot;,
+);</code></pre>
+<center>
+<img src="../images/synthetic_control_files/synthetic_control_45_0.png" style="width: 900px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

@@ -6,7 +6,17 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 19 Jul 2022 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 09 Aug 2022 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Synthetic Control in PyMC</title>
+      <link>/synthetic_control_pymc/</link>
+      <pubDate>Tue, 09 Aug 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/synthetic_control_pymc/</guid>
+      <description>Synthetic control can be considered “the most important innovation in the policy evaluation literature in the last few years” (see The State of Applied Econometrics: Causality and Policy Evaluation by Susan Athey and Guido W. Imbens).
+ In this notebook we provide an example of how to implement a synthetic control problem in PyMC to answer a “what if this had happened?” type of question in the context of causal inference.</description>
+    </item>
+    
     <item>
       <title>Modeling Short Time Series with Prior Knowledge in PyMC</title>
       <link>/short_time_series_pymc/</link>
