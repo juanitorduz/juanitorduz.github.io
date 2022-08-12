@@ -1450,6 +1450,8 @@ ax.set(title=&quot;Adstock-Saturation  Model - Estimated Effect&quot;);</code></
     w = at.as_tensor_variable([at.power(alpha, i) for i in range(l_max)])
     w = at.transpose(w)[None, ...]
     return at.sum(at.mul(x_cycle, w), axis=2)</code></pre>
+<p>Here <code>alpha</code> is a tensor where each dimension corresponds to a channel. Moreover, one can normalize the weights as</p>
+<pre class="pyhton"><code>w / at.sum(w, axis=2, keepdims=True)</code></pre>
 </div>
 <div id="adstock-saturation-diminishing-returns-asdr-model" class="section level3">
 <h3>Adstock-Saturation-Diminishing-Returns (ASDR) Model</h3>
