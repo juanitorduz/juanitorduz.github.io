@@ -408,7 +408,7 @@ x_post = post_df.drop(columns=idx).to_numpy()
 post_years = post_df.reset_index(inplace=False).year.unique()
 n_post = post_years.size
 
-k = pre_df.shape[0]</code></pre>
+k = pre_df.shape[1] - 1</code></pre>
 </div>
 <div id="model" class="section level2">
 <h2>Model</h2>
@@ -627,7 +627,7 @@ g.set(title=&quot;reduced the sales in cigarettes in 2000&quot;);</code></pre>
     post_years = post_df.reset_index(inplace=False).year.unique()
     n_post = post_years.size
 
-    k = pre_df.shape[0]
+    k = pre_df.shape[1] - 1
 
     # specify the model
     with pm.Model() as model:
