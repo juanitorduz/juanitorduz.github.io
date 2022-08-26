@@ -65,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">29 min read</span>
+    <span class="article-duration">36 min read</span>
     
 
     <h1 class="article-title">Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</h1>
@@ -107,7 +107,7 @@ y(t) = \beta_{0} + \beta_{\text{trend}}\:\text{trend} + \beta_{\text{seasonality
 </div>
 <div id="pymc-model" class="section level2">
 <h2>PyMC Model</h2>
-<p>Motivated by the results above, we now want to build a bayesian model to estimate <span class="math inline">\(\alpha\)</span>, <span class="math inline">\(\lambda\)</span> and <span class="math inline">\(\beta_z(t)\)</span> simultaneously (as well as the other regression coefficients for the trend and seasonality). We will use the <a href="https://github.com/pymc-devs/pymc">PyMC3</a> motivated by the following great resources:</p>
+<p>Motivated by the results above, we now want to build a bayesian model to estimate <span class="math inline">\(\alpha\)</span>, <span class="math inline">\(\lambda\)</span> and <span class="math inline">\(\beta_z(t)\)</span> simultaneously (as well as the other regression coefficients for the trend and seasonality). We will use the <a href="https://www.pymc.io/projects/docs/en/stable/learn.html">PyMC</a> motivated by the following great resources:</p>
 <ol style="list-style-type: decimal">
 <li>Simulated Example by <a href="https://dr-robert-kuebler.medium.com/">Dr. Robert Kübler</a>:</li>
 </ol>
@@ -232,6 +232,12 @@ plot( dag )</code></pre>
 </ul>
 </blockquote>
 </div>
+<div id="roas-and-mroas" class="section level3">
+<h3>ROAS and mROAS</h3>
+<p>One of the most important outputs of the model are the Return on Ad Spend (ROAS) and and the
+marginal ROAS (mROAS), see Section 4.1 in <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>. In this post we describe how to extract them from the bayesian model in PyMC. Moreover, we compare the inferred with the true values which can be easily computed in an additive model.</p>
+<p>In practice one can actually calibrate the model through the priors (this is one of the key benefits of going fully bayesian) using geo-lift tests, see for example the article <a href="https://research.google/pubs/pub45950/">Estimating Ad Effectiveness using Geo Experiments in a Time-Based Regression Framework</a> (and for alternative methodologies see for example the blog post <a href="https://juanitorduz.github.io/synthetic_control_pymc/">Synthetic Control in PyMC</a>).</p>
+</div>
 <div id="it-is-all-about-the-data" class="section level3">
 <h3>It is <strong>All</strong> about the Data</h3>
 <p>As any other data science project the data is the key factor of the success of an MMM project. As the main idea of an MMM is to estimate effects across many digital and offline channels, the data collection can be challenging (it usually is). Hence, the recommendation is to spend a significant par of the project collecting and understanding the data: Where is the data coming from? How is it transformed and stored? Outliers? Missing values?</p>
@@ -260,8 +266,6 @@ plt.rcParams[&quot;figure.dpi&quot;] = 100
 %load_ext autoreload
 %autoreload 2
 %config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
-<pre><code>/Users/juanitorduz/.local/share/virtualenvs/website_projects-1IZj_WTw/lib/python3.9/site-packages/pymc/sampling_jax.py:36: UserWarning: This module is experimental.
-  warnings.warn(&quot;This module is experimental.&quot;)</code></pre>
 </div>
 <div id="read-data" class="section level2">
 <h2>Read Data</h2>
@@ -312,7 +316,7 @@ ax[1].set(title=&quot;Media Cost Effect on Sales&quot;)
 sns.lineplot(x=&quot;date&quot;, y=&quot;z&quot;, data=data_df, ax=ax[2])
 ax[2].set(title=&quot;Raw Media Cost Data&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_8_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_8_0.png" style="width: 900px;"/>
 </center>
 <ol style="list-style-type: decimal">
 <li>The first plot is our target variable <code>y</code>, which can represent sales data, for example.</li>
@@ -327,7 +331,7 @@ ax[2].set(title=&quot;Raw Media Cost Data&quot;);</code></pre>
 <pre class="python"><code>columns_to_keep = [&quot;index&quot;, &quot;date&quot;, &quot;year&quot;, &quot;month&quot;, &quot;dayofyear&quot;, &quot;z&quot;, &quot;y&quot;]
 
 df = data_df[columns_to_keep].copy()</code></pre>
-<p>Next, we generate input features to model the trend and seasonal components. We follow the strategy presented in the very compprehensive post <a href="https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html">Air passengers - Prophet-like model</a> from the <a href="https://docs.pymc.io/en/stable/pymc-examples/README.html"><code>pymc-examples</code></a> repository (please check it out!).</p>
+<p>Next, we generate input features to model the trend and seasonal components. We follow the strategy presented in the very comprehensive post <a href="https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html">Air passengers - Prophet-like model</a> from the <a href="https://docs.pymc.io/en/stable/pymc-examples/README.html"><code>pymc-examples</code></a> repository (please check it out!).</p>
 <div id="trend" class="section level3">
 <h3>Trend</h3>
 <p>For the trend component we simply use a linear feature (which we scale between <span class="math inline">\(0\)</span> and <span class="math inline">\(1\)</span>).</p>
@@ -354,9 +358,9 @@ fourier_features.filter(like=&quot;cos&quot;).plot(color=&quot;C1&quot;, alpha=0
 ax[1].get_legend().remove()
 ax[1].set(title=&quot;Fourier Modes (Cos)&quot;, xlabel=&quot;index (week)&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_18_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_18_0.png" style="width: 900px;"/>
 </center>
-<p>Finally, we extract the target and features asn <code>numpy</code> arrays.</p>
+<p>Finally, we extract the target and features as <code>numpy</code> arrays.</p>
 <pre class="python"><code>date = df[&quot;date&quot;].to_numpy()
 date_index = df.index
 y = df[&quot;y&quot;].to_numpy()
@@ -374,10 +378,10 @@ z_scaled = channel_scaler.transform(z.reshape(-1, 1)).flatten()</code></pre>
 </div>
 <div id="models" class="section level2">
 <h2>Models</h2>
-<p>In this section we fit <span class="math inline">\(3\)</span> models, from simpler to complex:
-1. <strong>Base Model:</strong> We fit a linear regression model with a single regressor <code>z</code> and controlling from trend ans seasonality.</p>
-<ol start="2" style="list-style-type: decimal">
-<li><p><strong>Adstock-Saturation Model:</strong> We use the same model structure as the base model but we now apply the (geometric) adstock and saturation transformations to the <code>z</code> variable. We <strong>do not</strong> se a variable for <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\lambda\)</span> as we learn them from the data. We do fix the variable <span class="math inline">\(\ell=12\)</span> of the adstock transformation.</p></li>
+<p>In this section we fit <span class="math inline">\(3\)</span> models, from simpler to complex:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>Base Model:</strong> We fit a linear regression model with a single regressor <code>z</code> and controlling from trend ans seasonality.</p></li>
+<li><p><strong>Adstock-Saturation Model:</strong> We use the same model structure as the base model but we now apply the (geometric) adstock and saturation transformations to the <code>z</code> variable. We <strong>do not</strong> set a value for <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\lambda\)</span> as we learn them from the data. We do fix the variable <span class="math inline">\(\ell=12\)</span> of the adstock transformation.</p></li>
 <li><p><strong>Adstock-Saturation-Diminishing Returns Model:</strong> We use the same model structure as the Adstock-Saturation model but we allow a time-varying coefficient for (the transformed) <code>z</code> by modeling it as a gaussian random walk.</p></li>
 </ol>
 <p>Here are some comments on the models:</p>
@@ -395,7 +399,10 @@ z_scaled = channel_scaler.transform(z.reshape(-1, 1)).flatten()</code></pre>
 </ul>
 <pre class="python"><code>coords = {&quot;date&quot;: date, &quot;fourier_mode&quot;: np.arange(2 * n_order)}
 
-with pm.Model(check_bounds=False, coords=coords) as base_model:
+with pm.Model(coords=coords) as base_model:
+    # --- data containers ---
+    z_scaled_ = pm.MutableData(name=&quot;z_scaled&quot;, value=z_scaled, dims=&quot;date&quot;)
+
     # --- priors ---
     ## intercept
     a = pm.Normal(name=&quot;a&quot;, mu=0, sigma=4)
@@ -415,7 +422,7 @@ with pm.Model(check_bounds=False, coords=coords) as base_model:
     seasonality = pm.Deterministic(
         name=&quot;seasonality&quot;, var=pm.math.dot(fourier_features, b_fourier), dims=&quot;date&quot;
     )
-    z_effect = pm.Deterministic(name=&quot;z_effect&quot;, var=b_z * z_scaled, dims=&quot;date&quot;)
+    z_effect = pm.Deterministic(name=&quot;z_effect&quot;, var=b_z * z_scaled_, dims=&quot;date&quot;)
     mu = pm.Deterministic(name=&quot;mu&quot;, var=trend + seasonality + z_effect, dims=&quot;date&quot;)
 
     # --- likelihood ---
@@ -426,7 +433,7 @@ with pm.Model(check_bounds=False, coords=coords) as base_model:
 
 pm.model_to_graphviz(model=base_model)</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_25_0.svg" alt="html" style="width: 1000px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_25_0.svg" style="width: 1000px;"/>
 </center>
 <ul>
 <li>Prior Predictive Samples</li>
@@ -459,7 +466,7 @@ sns.lineplot(x=date, y=y_scaled, color=&quot;black&quot;, label=&quot;target (sc
 ax.legend()
 ax.set(title=&quot;Base Model - Prior Predictive Samples&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_27_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_27_0.png" style="width: 900px;"/>
 </center>
 <p>The priors do constrain the range of the generated time series. Nevertheless, they are not too restrictive.</p>
 <p><strong>Remark:</strong> Note that the prior predictive shows the possibility of having <em>negative sales</em> which makes no sense. A common approach is to model the logarithm of the sales instead. We do not do this here for the sake of simplicity (specially when interpreting the results).</p>
@@ -542,22 +549,22 @@ a
 0.010
 </td>
 <td>
-0.319
+0.318
 </td>
 <td>
-0.356
-</td>
-<td>
-0.000
+0.355
 </td>
 <td>
 0.000
 </td>
 <td>
-21257.0
+0.000
 </td>
 <td>
-19230.0
+21506.0
+</td>
+<td>
+17719.0
 </td>
 <td>
 1.0
@@ -577,7 +584,7 @@ b_trend
 0.344
 </td>
 <td>
-0.398
+0.397
 </td>
 <td>
 0.000
@@ -586,10 +593,10 @@ b_trend
 0.000
 </td>
 <td>
-27709.0
+27610.0
 </td>
 <td>
-18546.0
+18125.0
 </td>
 <td>
 1.0
@@ -609,7 +616,7 @@ b_z
 0.131
 </td>
 <td>
-0.176
+0.175
 </td>
 <td>
 0.000
@@ -618,10 +625,10 @@ b_z
 0.000
 </td>
 <td>
-26931.0
+28120.0
 </td>
 <td>
-18156.0
+17578.0
 </td>
 <td>
 1.0
@@ -650,10 +657,10 @@ sigma
 0.000
 </td>
 <td>
-33140.0
+34281.0
 </td>
 <td>
-18299.0
+18129.0
 </td>
 <td>
 1.0
@@ -664,16 +671,16 @@ sigma
 nu
 </th>
 <td>
-12.497
+12.525
 </td>
 <td>
-2.412
+2.392
 </td>
 <td>
-8.018
+8.245
 </td>
 <td>
-17.018
+17.114
 </td>
 <td>
 0.012
@@ -682,10 +689,10 @@ nu
 0.009
 </td>
 <td>
-37170.0
+42656.0
 </td>
 <td>
-17905.0
+18619.0
 </td>
 <td>
 1.0
@@ -707,7 +714,7 @@ nu
 fig = axes[0][0].get_figure()
 fig.suptitle(&quot;Base Model - Trace&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_33_0.png" alt="html" style="width: 1000px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_33_0.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(6, 4))
 az.plot_forest(
@@ -721,7 +728,7 @@ ax.set(
     xscale=&quot;log&quot;
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_34_0.png" alt="html" style="width: 700px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_34_0.png" style="width: 700px;"/>
 </center>
 <p>Overall, the model looks ok!</p>
 <ul>
@@ -766,7 +773,7 @@ sns.lineplot(
 ax.legend(loc=&quot;upper left&quot;)
 ax.set(title=&quot;Base Model - Posterior Predictive Samples&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_37_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_37_0.png" style="width: 900px;"/>
 </center>
 <p>The base model does capture the trend and seasonality of the data. We can now plot the model components:</p>
 <pre class="python"><code># compute HDI for all the model parameters
@@ -795,7 +802,7 @@ sns.lineplot(x=date, y=y_scaled, color=&quot;black&quot;, alpha=1.0, label=&quot
 ax.legend(title=&quot;components&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&quot;Base Model Components&quot;, ylabel=&quot;target (scaled)&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_39_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_39_0.png" style="width: 1000px;"/>
 </center>
 <ul>
 <li>Estimated <code>z_effect</code></li>
@@ -826,7 +833,7 @@ sns.lineplot(x=&quot;date&quot;, y=&quot;z_effect&quot;, color=&quot;C3&quot;, d
 ax.legend(loc=&quot;upper right&quot;)
 ax.set(title=&quot;Media Cost Effect on Sales Estimation - Base Model&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_41_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_41_0.png" style="width: 900px;"/>
 </center>
 <p>We clearly see that the effect of <code>z</code> is a linear function of <code>z</code> and does not depend on the time, as expected from the model specification. It is interesting to see that the variance of the estimated effect is similar to the real effect of the latest observations.</p>
 <p>Next, we simply plot the estimated against the true values.</p>
@@ -862,9 +869,145 @@ h, l = ax.get_legend_handles_labels()
 ax.legend(handles=h[:9], labels=l[:9], loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&quot;Base  Model - Estimated Effect&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_43_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_43_0.png" style="width: 900px;"/>
 </center>
 <p>To encode the time component we map the size of the points to the <code>index</code>, which is a global time-component (number of weeks since the first observation). Note that the fitted values do not seem to match the data. This model is too simple to capture the non-linear interactions.</p>
+<div id="roas-and-mroas-1" class="section level4">
+<h4>ROAS and mROAS</h4>
+<p>Estimating the effect as above is very important. Nevertheless, one is mainly interested in certain return on investment metrics. Here we describe how to compute two common ones: ROAS (Return on Ad Spend) and mROAS (marginal ROAS) as described in Section 4.1 in the paper <a href="https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/46001.pdf">Bayesian Methods for Media Mix Modeling with Carryover and
+Shape Effects</a>.</p>
+<ul>
+<li><strong>ROAS</strong></li>
+</ul>
+<p>From the reference above:</p>
+<blockquote>
+<p>ROAS is the change in revenue (or sales) per dollar spent on the medium; it is usually calculated by setting spend of the medium to zero in the selected time period and comparing the predicted revenue against that of the current media spend.</p>
+</blockquote>
+<p>We can express this mathematically as:</p>
+<p><span class="math display">\[
+ROAS = \frac{\sum^{n}_{t=0}\hat{f}(z_{t}, \xi_{t}) - \hat{f}(0, \xi_{t})}{\sum^{n}_{t=0} z_{t}}
+\]</span></p>
+<p>where <span class="math inline">\(\hat{f}(z_{t}, \xi_{t})\)</span> represents the posterior predictive distribution (and <span class="math inline">\(\xi_t\)</span> additional control variables) and <span class="math inline">\(\hat{f}(0, \xi_{t})\)</span> represents the posterior predictive distribution when setting <span class="math inline">\(z=0\)</span>. There is a caveat with this formula however. One has to be careful about the pre/during/post computation periods because of the carryover effects. Here, for simplicity will do it for the whole time-range. For more details, please check the reference above.</p>
+<p>In this specific example where we have an additive model we can compute the ROAS’ denominator as:</p>
+<p><span class="math display">\[y -  (y - z_{\text{effect}}) = z_{\text{effect}}\]</span></p>
+<p>Note that this is not true for a multiplicative model (when for example you are applying log transform to the target variable)!.</p>
+<pre class="python"><code># true roas for z
+roas_true = data_df[&quot;z_effect&quot;].sum() / data_df[&quot;z&quot;].sum()
+
+roas_true</code></pre>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0.06620312360383751</span>
+</pre>
+<p>Now we estimate it from the data and the model.</p>
+<pre class="python"><code>base_model_trace_roas = base_model_trace.copy()
+
+with base_model:
+    pm.set_data(new_data={&quot;z_scaled&quot;: np.zeros_like(a=z_scaled)})
+    base_model_trace_roas.extend(
+        other=pm.sample_posterior_predictive(trace=base_model_trace_roas, var_names=[&quot;likelihood&quot;])
+    )</code></pre>
+<pre class="python"><code>base_roas_numerator = (
+    endog_scaler.inverse_transform(
+        X=base_model_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+    - endog_scaler.inverse_transform(
+        X=base_model_trace_roas.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+).sum(axis=0)
+
+roas_denominator = z.sum()
+
+base_roas = base_roas_numerator / roas_denominator</code></pre>
+<pre class="python"><code>base_roas_mean = base_roas.mean()
+base_roas_hdi = az.hdi(ary=base_roas)
+
+g = sns.displot(x=base_roas, kde=True, height=5, aspect=1.5)
+ax = g.axes.flatten()[0]
+ax.axvline(
+    x=base_roas_mean, color=&quot;C0&quot;, linestyle=&quot;--&quot;, label=f&quot;mean = {base_roas_mean: 0.3f}&quot;
+)
+ax.axvline(
+    x=base_roas_hdi[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_lwr = {base_roas_hdi[0]: 0.3f}&quot;,
+)
+ax.axvline(
+    x=base_roas_hdi[1],
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_upr = {base_roas_hdi[1]: 0.3f}&quot;,
+)
+ax.axvline(x=roas_true, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=f&quot;true = {roas_true: 0.3f}&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Base Model ROAS&quot;);</code></pre>
+<center>
+<img src="../images/pymc_mmm_files/pymc_mmm_51_0.png" style="width: 900px;"/>
+</center>
+<p>Observe that, as for the base model is <em>under estimating the effect</em> of <span class="math inline">\(z\)</span> on <span class="math inline">\(y\)</span>, this translates into smaller predicted ROAS as compared to the true ROAS. This is consistent with the plot above.</p>
+<ul>
+<li><strong>mROAS</strong></li>
+</ul>
+<blockquote>
+<p><em>mROAS for the m-th medium is the additional revenue generated by one-unit increase in spend, usually from the current spent level.</em></p>
+</blockquote>
+<p>Let’s compute t by evaluating the a <span class="math inline">\(10\%\)</span> increase in media spend <span class="math inline">\(z\)</span> (we will leave the computation of the true mROAS for the next example).</p>
+<pre class="python"><code>eta: float = 0.10
+
+base_model_trace_mroas = base_model_trace.copy()
+
+with base_model:
+    pm.set_data(new_data={&quot;z_scaled&quot;: (1 + eta) * z_scaled})
+    base_model_trace_mroas.extend(
+        other=pm.sample_posterior_predictive(trace=base_model_trace_mroas, var_names=[&quot;likelihood&quot;])
+    )</code></pre>
+<pre class="python"><code>base_mroas_numerator = (
+    endog_scaler.inverse_transform(
+        X=base_model_trace_mroas.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+    - endog_scaler.inverse_transform(
+        X=base_model_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+).sum(axis=0)
+
+mroas_denominator = eta * z.sum()
+
+base_mroas = base_mroas_numerator / mroas_denominator</code></pre>
+<pre class="python"><code>base_mroas_mean = base_mroas.mean()
+base_mroas_hdi = az.hdi(ary=base_mroas)
+
+g = sns.displot(x=base_mroas, kde=True, height=5, aspect=1.5)
+ax = g.axes.flatten()[0]
+ax.axvline(
+    x=base_mroas_mean, color=&quot;C0&quot;, linestyle=&quot;--&quot;, label=f&quot;mean = {base_mroas_mean: 0.3f}&quot;
+)
+ax.axvline(
+    x=base_mroas_hdi[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_lwr = {base_mroas_hdi[0]: 0.3f}&quot;,
+)
+ax.axvline(
+    x=base_mroas_hdi[1],
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_upr = {base_roas_hdi[1]: 0.3f}&quot;,
+)
+ax.axvline(x=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=f&quot;Base Model MROAS ({eta:.0%} increase)&quot;);</code></pre>
+<center>
+<img src="../images/pymc_mmm_files/pymc_mmm_56_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
 </div>
 <div id="adstock-saturation-model" class="section level3">
 <h3>Adstock-Saturation Model</h3>
@@ -892,7 +1035,10 @@ def logistic_saturation(x, lam: float = 0.5):
 <li>Model Specification</li>
 </ul>
 <p>As we want <span class="math inline">\(\alpha\)</span> to be in the interval <span class="math inline">\((0, 1)\)</span> we use a Beta distribution. Moreover, we choose <span class="math inline">\(\alpha \sim \text{Beta}(1, 1) = \text{Uniform}(0, 1)\)</span> as prior. For <span class="math inline">\(\lambda\)</span> we use a <span class="math inline">\(\text{Gamma}\)</span> distribution as this parameters has to be positive.</p>
-<pre class="python"><code>with pm.Model(check_bounds=False, coords=coords) as adstock_saturation_model:
+<pre class="python"><code>with pm.Model(coords=coords) as adstock_saturation_model:
+    # --- data containers ---
+    z_scaled_ = pm.MutableData(name=&quot;z_scaled&quot;, value=z_scaled, dims=&quot;date&quot;)
+    
     # --- priors ---
     ## intercept
     a = pm.Normal(name=&quot;a&quot;, mu=0, sigma=4)
@@ -917,7 +1063,7 @@ def logistic_saturation(x, lam: float = 0.5):
         name=&quot;seasonality&quot;, var=pm.math.dot(fourier_features, b_fourier), dims=&quot;date&quot;
     )
     z_adstock = pm.Deterministic(
-        name=&quot;z_adstock&quot;, var=geometric_adstock(x=z_scaled, alpha=alpha, l_max=12), dims=&quot;date&quot;
+        name=&quot;z_adstock&quot;, var=geometric_adstock(x=z_scaled_, alpha=alpha, l_max=12), dims=&quot;date&quot;
     )
     z_adstock_saturated = pm.Deterministic(
         name=&quot;z_adstock_saturated&quot;,
@@ -937,7 +1083,7 @@ def logistic_saturation(x, lam: float = 0.5):
 
 pm.model_to_graphviz(model=adstock_saturation_model)</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_48_0.svg" alt="html" style="width: 1000px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_60_0.svg" style="width: 1000px;"/>
 </center>
 <ul>
 <li>Prior Predictive Samples</li>
@@ -951,7 +1097,7 @@ for i, p in enumerate(percs[::-1]):
         axis=1,
     )
     lower = np.percentile(
-        base_model_prior_predictive.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
+        adstock_saturation_model_prior_predictive.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
     )
     color_val = colors[i]
     ax.fill_between(
@@ -966,7 +1112,7 @@ sns.lineplot(x=date, y=y_scaled, color=&quot;black&quot;, label=&quot;target (sc
 ax.legend()
 ax.set(title=&quot;Adstock Saturation Model - Prior Predictive&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_50_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_62_1.png" style="width: 900px;"/>
 </center>
 <ul>
 <li>Fit Model</li>
@@ -1047,22 +1193,22 @@ a
 0.020
 </td>
 <td>
-0.187
+0.189
 </td>
 <td>
-0.262
-</td>
-<td>
-0.000
+0.263
 </td>
 <td>
 0.000
 </td>
 <td>
-13120.0
+0.000
 </td>
 <td>
-14597.0
+12575.0
+</td>
+<td>
+14891.0
 </td>
 <td>
 1.0
@@ -1079,22 +1225,22 @@ b_trend
 0.011
 </td>
 <td>
-0.346
+0.347
 </td>
 <td>
-0.386
-</td>
-<td>
-0.000
+0.387
 </td>
 <td>
 0.000
 </td>
 <td>
-28179.0
+0.000
 </td>
 <td>
-17335.0
+32206.0
+</td>
+<td>
+16703.0
 </td>
 <td>
 1.0
@@ -1105,28 +1251,28 @@ b_trend
 b_z
 </th>
 <td>
-0.369
+0.368
 </td>
 <td>
-0.066
+0.058
 </td>
 <td>
-0.284
+0.290
 </td>
 <td>
-0.456
-</td>
-<td>
-0.001
+0.459
 </td>
 <td>
 0.001
 </td>
 <td>
-7694.0
+0.001
 </td>
 <td>
-4798.0
+10591.0
+</td>
+<td>
+6364.0
 </td>
 <td>
 1.0
@@ -1143,7 +1289,7 @@ alpha
 0.034
 </td>
 <td>
-0.467
+0.468
 </td>
 <td>
 0.595
@@ -1155,10 +1301,10 @@ alpha
 0.000
 </td>
 <td>
-18514.0
+16444.0
 </td>
 <td>
-17328.0
+16660.0
 </td>
 <td>
 1.0
@@ -1169,16 +1315,16 @@ alpha
 lam
 </th>
 <td>
-1.330
+1.332
 </td>
 <td>
-0.285
+0.281
 </td>
 <td>
-0.799
+0.802
 </td>
 <td>
-1.876
+1.864
 </td>
 <td>
 0.003
@@ -1187,10 +1333,10 @@ lam
 0.002
 </td>
 <td>
-8068.0
+10823.0
 </td>
 <td>
-4795.0
+6357.0
 </td>
 <td>
 1.0
@@ -1207,7 +1353,7 @@ sigma
 0.002
 </td>
 <td>
-0.032
+0.033
 </td>
 <td>
 0.041
@@ -1219,10 +1365,10 @@ sigma
 0.000
 </td>
 <td>
-23163.0
+23451.0
 </td>
 <td>
-16836.0
+17988.0
 </td>
 <td>
 1.0
@@ -1233,28 +1379,28 @@ sigma
 nu
 </th>
 <td>
-13.334
+13.306
 </td>
 <td>
-2.496
+2.482
 </td>
 <td>
-8.894
+8.662
 </td>
 <td>
-18.118
+17.910
 </td>
 <td>
-0.015
+0.014
 </td>
 <td>
 0.010
 </td>
 <td>
-28567.0
+32192.0
 </td>
 <td>
-15950.0
+17234.0
 </td>
 <td>
 1.0
@@ -1277,7 +1423,7 @@ nu
 fig = axes[0][0].get_figure()
 fig.suptitle(&quot;Adstock-Saturation Model - Trace&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_56_0.png" alt="html" style="width: 1000px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_68_0.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(6, 4))
 az.plot_forest(
@@ -1291,7 +1437,7 @@ ax.set(
     xscale=&quot;log&quot;
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_57_0.png" alt="html" style="width: 700px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_69_1.png" style="width: 700px;"/>
 </center>
 <ul>
 <li>Posterior Predictive Samples</li>
@@ -1337,7 +1483,7 @@ sns.lineplot(
 ax.legend(loc=&quot;upper left&quot;)
 ax.set(title=&quot;Adstock-Saturation Model - Posterior Predictive Samples&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_59_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_71_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code># compute HDI for all the model parameters
 model_hdi = az.hdi(ary=adstock_saturation_model_trace)
@@ -1365,7 +1511,7 @@ sns.lineplot(x=date, y=y_scaled, color=&quot;black&quot;, alpha=1.0, label=&quot
 ax.legend(title=&quot;components&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&quot;Adstock-Saturation Model Components&quot;, ylabel=&quot;target (scaled)&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_60_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_72_0.png" style="width: 1000px;"/>
 </center>
 <ul>
 <li>Estimated <code>z_effect</code></li>
@@ -1395,10 +1541,10 @@ sns.lineplot(x=&quot;date&quot;, y=&quot;z_effect&quot;, color=&quot;C3&quot;, d
 ax.legend(loc=&quot;upper right&quot;)
 ax.set(title=&quot;Media Cost Effect on Sales Estimation - Adstock-Saturation&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_62_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_74_0.png" style="width: 900px;"/>
 </center>
 <p>This model captures more variance in the effect of <code>z</code> than the base model. This shows that the adstock and saturation transformations do make the difference. Note however that the diminishing returns effect is not present in this model, as the regression coefficient is not time-varying.</p>
-<p>Finally, we look into the estimated against the true values for this adstock-saturation model. We would expect to find a non-linear patter because of the composition of these two transformations.</p>
+<p>We continue by looking into the estimated against the true values for this adstock-saturation model. We would expect to find a non-linear patter because of the composition of these two transformations.</p>
 <pre class="python"><code>z_effect_pred_mean = (
     adstock_saturation_model_trace[&quot;posterior&quot;][&quot;z_effect&quot;]
     .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
@@ -1434,11 +1580,11 @@ h, l = ax.get_legend_handles_labels()
 ax.legend(handles=h[:9], labels=l[:9], loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&quot;Adstock-Saturation  Model - Estimated Effect&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_64_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_76_1.png" style="width: 900px;"/>
 </center>
 <p>As for the base-model, we encode the time component as the size of the points. Note that we indeed see a better fit and a non-linear pattern. For low values of <code>z</code> the effect seems constant whereas for larger values we see a non-linear pattern which saturates as expected.</p>
 <p>We will deep-dive in the adstock and saturation transformations in the next example.</p>
-<p><strong>Remark:</strong> One can easily vectorize the adstock transformation above to include various channels without using a <code>for</code> loop. Namely,</p>
+<p><strong>Remark:</strong> One can easily vectorize the adstock transformation above to include various channels without using a for loop. Namely,</p>
 <pre class="python"><code>def geometric_adstock_vectorized(x, alpha, l_max: int = 12):
     &quot;&quot;&quot;Vectorized geometric adstock transformation.&quot;&quot;&quot;
     cycles = [
@@ -1450,8 +1596,134 @@ ax.set(title=&quot;Adstock-Saturation  Model - Estimated Effect&quot;);</code></
     w = at.as_tensor_variable([at.power(alpha, i) for i in range(l_max)])
     w = at.transpose(w)[None, ...]
     return at.sum(at.mul(x_cycle, w), axis=2)</code></pre>
-<p>Here <code>alpha</code> is a tensor where each dimension corresponds to a channel. Moreover, one can normalize the weights as</p>
-<pre class="pyhton"><code>w / at.sum(w, axis=2, keepdims=True)</code></pre>
+<p>Here alpha is a tensor where each dimension corresponds to a channel. Moreover, one can normalize the weights as</p>
+<pre class="python"><code>w / at.sum(w, axis=2, keepdims=True)</code></pre>
+<div id="roas-and-mroas-2" class="section level4">
+<h4>ROAS and mROAS</h4>
+<ul>
+<li><strong>ROAS</strong></li>
+</ul>
+<pre class="python"><code>adstock_saturation_model_trace_roas = adstock_saturation_model_trace.copy()
+
+with adstock_saturation_model:
+    pm.set_data(new_data={&quot;z_scaled&quot;: np.zeros_like(a=z_scaled)})
+    adstock_saturation_model_trace_roas.extend(
+        other=pm.sample_posterior_predictive(trace=adstock_saturation_model_trace_roas, var_names=[&quot;likelihood&quot;])
+    )</code></pre>
+<pre class="python"><code>adstock_saturation_roas_numerator = (
+    endog_scaler.inverse_transform(
+        X=adstock_saturation_model_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+    - endog_scaler.inverse_transform(
+        X=adstock_saturation_model_trace_roas.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+).sum(axis=0)
+
+roas_denominator = z.sum()
+
+adstock_saturation_roas = adstock_saturation_roas_numerator / roas_denominator</code></pre>
+<pre class="python"><code>adstock_saturation_roas_mean = adstock_saturation_roas.mean()
+adstock_saturation_roas_hdi = az.hdi(ary=adstock_saturation_roas)
+
+g = sns.displot(x=adstock_saturation_roas, kde=True, height=5, aspect=1.5)
+ax = g.axes.flatten()[0]
+ax.axvline(
+    x=adstock_saturation_roas_mean, color=&quot;C0&quot;, linestyle=&quot;--&quot;, label=f&quot;mean = {adstock_saturation_roas_mean: 0.3f}&quot;
+)
+ax.axvline(
+    x=adstock_saturation_roas_hdi[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_lwr = {adstock_saturation_roas_hdi[0]: 0.3f}&quot;,
+)
+ax.axvline(
+    x=adstock_saturation_roas_hdi[1],
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_upr = {adstock_saturation_roas_hdi[1]: 0.3f}&quot;,
+)
+ax.axvline(x=roas_true, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=f&quot;true = {roas_true: 0.3f}&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Adstock Saturation Model ROAS&quot;);</code></pre>
+<center>
+<img src="../images/pymc_mmm_files/pymc_mmm_85_0.png" style="width: 900px;"/>
+</center>
+<p>In this case, as for the adstock saturation model is <em>over estimating the effect</em> of <span class="math inline">\(z\)</span> on <span class="math inline">\(y\)</span>, this translates into a <em>smaller</em> predicted ROAS as compared to the true ROAS.</p>
+<ul>
+<li><strong>mROAS</strong></li>
+</ul>
+<p>Let’s compute the true mROAS. We first need to estimate the effect of <span class="math inline">\(z\)</span> on <span class="math inline">\(y\)</span> by increasing it by <span class="math inline">\(10%\)</span> and then pushing it through the data transformations using the true values of the parameters (see the blog post (Media Effect Estimation with Orbit’s KTR Model)[<a href="https://juanitorduz.github.io/orbit_mmm/" class="uri">https://juanitorduz.github.io/orbit_mmm/</a>] to see the data generation process). Then we subtract the initial effect (again, note that this just works for additive models!).</p>
+<pre class="python"><code>b_z_true = (np.arange(start=0.0, stop=1.0, step=1/n_obs) + 1) ** (-1.8)
+
+z_effect_eta = b_z_true * logistic_saturation(
+    x=geometric_adstock(x=(1 + eta) * z, alpha=0.5, l_max=12),
+    lam=0.15
+).eval()
+
+mroas_true = (z_effect_eta - data_df[&quot;z_effect&quot;]).sum() / ( eta * z.sum())
+
+mroas_true</code></pre>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><span style="color: #008080; text-decoration-color: #008080; font-weight: bold">0.045259246530653344</span>
+</pre>
+<p>Now, let use compute it from the model.</p>
+<pre class="python"><code>eta: float = 0.10
+
+adstock_saturation_model_trace_mroas = adstock_saturation_model_trace.copy()
+
+with adstock_saturation_model:
+    pm.set_data(new_data={&quot;z_scaled&quot;: (1 + eta) * z_scaled})
+    adstock_saturation_model_trace_mroas.extend(
+        other=pm.sample_posterior_predictive(trace=adstock_saturation_model_trace_mroas, var_names=[&quot;likelihood&quot;])
+    )</code></pre>
+<pre class="python"><code>adstock_saturation_mroas_numerator = (
+    endog_scaler.inverse_transform(
+        X=adstock_saturation_model_trace_mroas.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+    - endog_scaler.inverse_transform(
+        X=adstock_saturation_model_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+).sum(axis=0)
+
+mroas_denominator = eta * z.sum()
+
+adstock_saturation_mroas = adstock_saturation_mroas_numerator / mroas_denominator</code></pre>
+<pre class="python"><code>adstock_saturation_mroas_mean = adstock_saturation_mroas.mean()
+adstock_saturation_mroas_hdi = az.hdi(ary=adstock_saturation_mroas)
+
+g = sns.displot(x=adstock_saturation_mroas, kde=True, height=5, aspect=1.5)
+ax = g.axes.flatten()[0]
+ax.axvline(
+    x=adstock_saturation_mroas_mean, color=&quot;C0&quot;, linestyle=&quot;--&quot;, label=f&quot;mean = {adstock_saturation_mroas_mean: 0.3f}&quot;
+)
+ax.axvline(
+    x=adstock_saturation_mroas_hdi[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_lwr = {adstock_saturation_mroas_hdi[0]: 0.3f}&quot;,
+)
+ax.axvline(
+    x=adstock_saturation_mroas_hdi[1],
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_upr = {adstock_saturation_roas_hdi[1]: 0.3f}&quot;,
+)
+ax.axvline(x=mroas_true, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=f&quot;true = {roas_true: 0.3f}&quot;)
+ax.axvline(x=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=f&quot;Adstock Saturation Model MROAS ({eta:.0%} increase)&quot;);</code></pre>
+<center>
+<img src="../images/pymc_mmm_files/pymc_mmm_92_0.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
 </div>
 <div id="adstock-saturation-diminishing-returns-asdr-model" class="section level3">
 <h3>Adstock-Saturation-Diminishing-Returns (ASDR) Model</h3>
@@ -1459,7 +1731,10 @@ ax.set(title=&quot;Adstock-Saturation  Model - Estimated Effect&quot;);</code></
 <ul>
 <li>Model Specification</li>
 </ul>
-<pre class="python"><code>with pm.Model(check_bounds=False, coords=coords) as asdr_model:
+<pre class="python"><code>with pm.Model(coords=coords) as asdr_model:
+    # --- data containers ---
+    z_scaled_ = pm.MutableData(name=&quot;z_scaled&quot;, value=z_scaled, dims=&quot;date&quot;)
+
     # --- priors ---
     ## intercept
     a = pm.Normal(name=&quot;a&quot;, mu=0, sigma=4)
@@ -1492,7 +1767,7 @@ ax.set(title=&quot;Adstock-Saturation  Model - Estimated Effect&quot;);</code></
         dims=&quot;date&quot;,
     )
     z_adstock = pm.Deterministic(
-        name=&quot;z_adstock&quot;, var=geometric_adstock(x=z_scaled, alpha=alpha, l_max=12), dims=&quot;date&quot;
+        name=&quot;z_adstock&quot;, var=geometric_adstock(x=z_scaled_, alpha=alpha, l_max=12), dims=&quot;date&quot;
     )
     z_adstock_saturated = pm.Deterministic(
         name=&quot;z_adstock_saturated&quot;,
@@ -1512,7 +1787,7 @@ ax.set(title=&quot;Adstock-Saturation  Model - Estimated Effect&quot;);</code></
 
 pm.model_to_graphviz(model=asdr_model)</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_68_0.svg" alt="html" style="width: 1000px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_95_0.svg" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>fig, ax = plt.subplots()
 
@@ -1523,7 +1798,7 @@ for i, p in enumerate(percs[::-1]):
         axis=1,
     )
     lower = np.percentile(
-        base_model_prior_predictive.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
+        asdr_model_prior_predictive.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
     )
     color_val = colors[i]
     ax.fill_between(
@@ -1538,7 +1813,7 @@ sns.lineplot(x=date, y=y_scaled, color=&quot;black&quot;, label=&quot;target (sc
 ax.legend()
 ax.set(title=&quot;Adstock-Saturation-Diminishing-Returns Model - Prior Predictive Samples&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_69_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_96_0.png" style="width: 900px;"/>
 </center>
 <ul>
 <li>Model Fit</li>
@@ -1619,25 +1894,25 @@ a
 0.020
 </td>
 <td>
-0.089
+0.090
 </td>
 <td>
-0.166
-</td>
-<td>
-0.000
+0.165
 </td>
 <td>
 0.000
 </td>
 <td>
-6907.0
+0.000
 </td>
 <td>
-12691.0
+8055.0
 </td>
 <td>
-1.0
+13243.0
+</td>
+<td>
+1.00
 </td>
 </tr>
 <tr>
@@ -1651,7 +1926,7 @@ b_trend
 0.025
 </td>
 <td>
-0.526
+0.528
 </td>
 <td>
 0.621
@@ -1663,13 +1938,13 @@ b_trend
 0.000
 </td>
 <td>
-3011.0
+3205.0
 </td>
 <td>
-5525.0
+5227.0
 </td>
 <td>
-1.0
+1.00
 </td>
 </tr>
 <tr>
@@ -1677,31 +1952,31 @@ b_trend
 sigma_slope
 </th>
 <td>
-0.040
+0.041
 </td>
 <td>
 0.009
 </td>
 <td>
-0.025
+0.024
 </td>
 <td>
-0.057
-</td>
-<td>
-0.000
+0.059
 </td>
 <td>
 0.000
 </td>
 <td>
-894.0
+0.000
 </td>
 <td>
-2020.0
+825.0
 </td>
 <td>
-1.0
+1559.0
+</td>
+<td>
+1.01
 </td>
 </tr>
 <tr>
@@ -1709,7 +1984,7 @@ sigma_slope
 alpha
 </th>
 <td>
-0.509
+0.510
 </td>
 <td>
 0.028
@@ -1718,22 +1993,22 @@ alpha
 0.456
 </td>
 <td>
-0.560
+0.561
+</td>
+<td>
+0.001
 </td>
 <td>
 0.000
 </td>
 <td>
-0.000
+2906.0
 </td>
 <td>
-3357.0
+6273.0
 </td>
 <td>
-7033.0
-</td>
-<td>
-1.0
+1.00
 </td>
 </tr>
 <tr>
@@ -1744,28 +2019,28 @@ lam
 1.591
 </td>
 <td>
-0.244
+0.248
 </td>
 <td>
-1.141
+1.130
 </td>
 <td>
-2.051
+2.066
 </td>
 <td>
-0.005
+0.006
 </td>
 <td>
 0.004
 </td>
 <td>
-1965.0
+1657.0
 </td>
 <td>
-2940.0
+1835.0
 </td>
 <td>
-1.0
+1.00
 </td>
 </tr>
 <tr>
@@ -1791,13 +2066,13 @@ sigma
 0.000
 </td>
 <td>
-11655.0
+11692.0
 </td>
 <td>
-17562.0
+17695.0
 </td>
 <td>
-1.0
+1.00
 </td>
 </tr>
 <tr>
@@ -1805,31 +2080,31 @@ sigma
 nu
 </th>
 <td>
-11.378
+11.348
 </td>
 <td>
-3.107
+3.111
 </td>
 <td>
-5.958
+5.977
 </td>
 <td>
-17.188
+17.196
 </td>
 <td>
-0.018
+0.019
 </td>
 <td>
-0.013
+0.014
 </td>
 <td>
-28169.0
+27164.0
 </td>
 <td>
-18528.0
+18614.0
 </td>
 <td>
-1.0
+1.00
 </td>
 </tr>
 </tbody>
@@ -1855,7 +2130,7 @@ nu
 fig = axes[0][0].get_figure()
 fig.suptitle(&quot;Adstock-Saturation-Diminishing-Returns Model - Trace&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_75_0.png" alt="html" style="width: 1000px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_102_1.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(6, 4))
 az.plot_forest(
@@ -1869,7 +2144,7 @@ ax.set(
     xscale=&quot;log&quot;
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_76_0.png" alt="html" style="width: 700px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_103_0.png" style="width: 700px;"/>
 </center>
 <ul>
 <li>Posterior Predictive Samples</li>
@@ -1915,7 +2190,7 @@ sns.lineplot(
 ax.legend(loc=&quot;upper left&quot;)
 ax.set(title=&quot;Adstock-Saturation-Diminishing-Returns Model - Posterior Predictive&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_78_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_105_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code># compute HDI for all the model parameters
 model_hdi = az.hdi(ary=asdr_model_trace)
@@ -1948,7 +2223,7 @@ ax.set(
     ylabel=&quot;target (scaled)&quot;,
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_79_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_106_0.png" style="width: 1000px;"/>
 </center>
 <p>Now we want to deep dive into the parameters <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\lambda\)</span> of the adstock and saturation transformations respectively. First, let us look into their joint posterior distributions.</p>
 <pre class="python"><code>alpha_true = 0.5
@@ -1972,7 +2247,7 @@ ax.set(
     ylabel=&quot;$\lambda$&quot;
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_81_0.png" alt="html" style="width: 700px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_108_1.png" style="width: 700px;"/>
 </center>
 <p>The true values are quite close to the posterior mode. Note that there seems to be a weak negative correlation between these two parameters.</p>
 <pre class="python"><code>corr, _ = pearsonr(
@@ -1981,7 +2256,7 @@ ax.set(
 )
 
 print(f&quot;Correlation between alpha and lambda {corr: 0.3f}&quot;);</code></pre>
-<pre><code>Correlation between alpha and lambda -0.478</code></pre>
+<pre><code>Correlation between alpha and lambda -0.500</code></pre>
 <ul>
 <li><span class="math inline">\(\alpha\)</span> deep dive</li>
 </ul>
@@ -2027,7 +2302,7 @@ ax.set(
     ylabel=&quot;z_adstock (pred)&quot;,
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_87_1.png" alt="html" style="width: 700px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_114_1.png" style="width: 700px;"/>
 </center>
 <p>We see that the model is capturing the adstock transformation (within the model uncertainty limits). Note how the hdi intervals increase as a function of <code>z_adstock</code> (true).</p>
 <ul>
@@ -2083,7 +2358,7 @@ ax.set(
     ylabel=&quot;z_adstock_saturaded (pred)&quot;,
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_92_1.png" alt="html" style="width: 700px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_119_1.png" style="width: 700px;"/>
 </center>
 <p>The true saturation curve lies within the <span class="math inline">\(94\%\)</span> hdi estimated by the model.</p>
 <ul>
@@ -2128,7 +2403,7 @@ for i, var_name in enumerate([&quot;z_adstock&quot;, &quot;z_adstock_saturated&q
     )
     ax.set(title=var_name);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_95_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_122_0.png" style="width: 1000px;"/>
 </center>
 <ul>
 <li>Estimated <code>z_effect</code></li>
@@ -2162,7 +2437,7 @@ ax.set(
     title=&quot;Media Cost Effect Estimation - Adstock-Saturation-Diminishing-Returns Model&quot;
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_97_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_124_0.png" style="width: 900px;"/>
 </center>
 <p>As expected, we get a very good fit. In particular, the model is capturing the time-varying effect as a result of the gaussian random walk component. As above, we can now look into the estimated vs true scatter plot.</p>
 <pre class="python"><code>z_effect_pred_mean = (
@@ -2197,7 +2472,7 @@ h, l = ax.get_legend_handles_labels()
 ax.legend(handles=h[:9], labels=l[:9], loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&quot;Adstock-Saturation-Diminishing-Returns Model - Estimated Effect&quot;);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_99_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_126_0.png" style="width: 900px;"/>
 </center>
 <p>It is interesting to see that the non-linear pattern does not look precisely as a logistic saturation. One of the main reasons for this is the diminishing returns in the time component. We can better see the logistic-like saturation if we factor the time component, for example by splitting by year:</p>
 <pre class="python"><code>z_effect_hdi = az.hdi(asdr_model_trace[&quot;posterior&quot;] / endog_scaler.scale_.item())[&quot;z_effect&quot;].to_numpy()
@@ -2259,19 +2534,132 @@ for i, year in enumerate(data_df[&quot;year&quot;].sort_values().unique()):
 
 fig.suptitle(&quot;Media Cost Effect Estimation - ASDR Model&quot;, y=1.05);</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_102_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_129_0.png" style="width: 900px;"/>
 </center>
 <p>The results look very good! These are exactly the curves we would need for decision making and budget allocation.</p>
 <p><strong>Remark:</strong> Note that this plot looks very similar to the one obtained in the post <a href="https://juanitorduz.github.io/orbit_mmm/">Media Effect Estimation with Orbit’s KTR Model</a>. The main difference is that in the previous post we could only estimated the effect of <code>z_adstock</code> on <code>y</code> while in this one we estimate the effect of <code>z</code> on <code>y</code> directly by learning the adstock effect from the data.</p>
+<div id="roas-and-mroas-3" class="section level4">
+<h4>ROAS and mROAS</h4>
+<ul>
+<li><strong>ROAS</strong></li>
+</ul>
+<pre class="python"><code>asdr_model_trace_roas = asdr_model_trace.copy()
+
+with asdr_model:
+    pm.set_data(new_data={&quot;z_scaled&quot;: np.zeros_like(a=z_scaled)})
+    asdr_model_trace_roas.extend(
+        other=pm.sample_posterior_predictive(trace=asdr_model_trace_roas, var_names=[&quot;likelihood&quot;])
+    )</code></pre>
+<pre class="python"><code>asdr_roas_numerator = (
+    endog_scaler.inverse_transform(
+        X=asdr_model_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+    - endog_scaler.inverse_transform(
+        X=asdr_model_trace_roas.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+).sum(axis=0)
+
+roas_denominator = z.sum()
+
+asdr_roas = asdr_roas_numerator / roas_denominator
+</code></pre>
+<pre class="python"><code>asdr_roas_mean = np.median(asdr_roas)
+asdr_roas_hdi = az.hdi(ary=asdr_roas)
+
+g = sns.displot(x=asdr_roas, kde=True, height=5, aspect=1.5)
+ax = g.axes.flatten()[0]
+ax.axvline(
+    x=asdr_roas_mean, color=&quot;C0&quot;, linestyle=&quot;--&quot;, label=f&quot;mean = {asdr_roas_mean: 0.3f}&quot;
+)
+ax.axvline(
+    x=asdr_roas_hdi[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_lwr = {asdr_roas_hdi[0]: 0.3f}&quot;,
+)
+ax.axvline(
+    x=asdr_roas_hdi[1],
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_upr = {asdr_roas_hdi[1]: 0.3f}&quot;,
+)
+ax.axvline(x=roas_true, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=f&quot;true = {roas_true: 0.3f}&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Adstock-Saturation-Diminishing-Returns Model ROAS&quot;);</code></pre>
+<center>
+<img src="../images/pymc_mmm_files/pymc_mmm_134_0.png" style="width: 900px;"/>
+</center>
+<p>As expected, the true and predicted values are very close! Also, the HDI is much smaller than the adstock-saturation model.</p>
+<ul>
+<li><strong>mROAS</strong></li>
+</ul>
+<pre class="python"><code>eta: float = 0.10
+
+asdr_model_trace_mroas = asdr_model_trace.copy()
+
+with asdr_model:
+    pm.set_data(new_data={&quot;z_scaled&quot;: (1 + eta) * z_scaled})
+    asdr_model_trace_mroas.extend(
+        other=pm.sample_posterior_predictive(trace=asdr_model_trace_mroas, var_names=[&quot;likelihood&quot;])
+    )</code></pre>
+<pre class="python"><code>asdr_mroas_numerator = (
+    endog_scaler.inverse_transform(
+        X=asdr_model_trace_mroas.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+    - endog_scaler.inverse_transform(
+        X=asdr_model_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+            sample=(&quot;chain&quot;, &quot;draw&quot;)
+        )
+    )
+).sum(axis=0)
+
+mroas_denominator = eta * z.sum()
+
+asdr_mroas = asdr_mroas_numerator / mroas_denominator</code></pre>
+<pre class="python"><code>asdr_mroas_mean = asdr_mroas.mean()
+asdr_mroas_hdi = az.hdi(ary=asdr_mroas)
+
+g = sns.displot(x=asdr_mroas, kde=True, height=5, aspect=1.5)
+ax = g.axes.flatten()[0]
+ax.axvline(
+    x=asdr_mroas_mean, color=&quot;C0&quot;, linestyle=&quot;--&quot;, label=f&quot;mean = {asdr_mroas_mean: 0.3f}&quot;
+)
+ax.axvline(
+    x=asdr_mroas_hdi[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_lwr = {asdr_mroas_hdi[0]: 0.3f}&quot;,
+)
+ax.axvline(
+    x=asdr_mroas_hdi[1],
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;HDI_upr = {asdr_roas_hdi[1]: 0.3f}&quot;,
+)
+ax.axvline(x=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.axvline(x=mroas_true, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=f&quot;true = {mroas_true: 0.3f}&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=f&quot;Adstock-Saturation-Diminishing-Returns Model MROAS ({eta:.0%} increase)&quot;);</code></pre>
+<center>
+<img src="../images/pymc_mmm_files/pymc_mmm_139_0.png" style="width: 900px;"/>
+</center>
+<p>The estimated mROAS mean and the true values aver almost the same!</p>
+</div>
 </div>
 </div>
 <div id="model-comparison" class="section level2">
 <h2>Model Comparison</h2>
 <p>To end this notebook, let us compare the three models.</p>
 <pre class="python"><code>dataset_dict = {
-    &quot;base&quot;: base_model_trace,
-    &quot;adstock_saturation&quot;: adstock_saturation_model_trace,
-    &quot;asdr&quot;: asdr_model_trace,
+    &quot;base_model&quot;: base_model_trace,
+    &quot;adstock_saturation_model&quot;: adstock_saturation_model_trace,
+    &quot;asdr_model&quot;: asdr_model_trace,
 }
 
 az.compare(compare_dict=dataset_dict, ic=&quot;loo&quot;, method=&quot;stacking&quot;, scale=&quot;log&quot;)</code></pre>
@@ -2330,19 +2718,19 @@ asdr
 0
 </td>
 <td>
-361.174003
+361.024610
 </td>
 <td>
-36.551015
+36.862033
 </td>
 <td>
 0.000000
 </td>
 <td>
-0.983147
+0.984242
 </td>
 <td>
-9.050730
+9.032556
 </td>
 <td>
 0.000000
@@ -2359,22 +2747,22 @@ adstock_saturation
 1
 </td>
 <td>
-314.674101
+314.591488
 </td>
 <td>
-20.633697
+20.697276
 </td>
 <td>
-46.499902
+46.433122
 </td>
 <td>
-0.016853
+0.015758
 </td>
 <td>
-8.768646
+8.766352
 </td>
 <td>
-8.838102
+8.823452
 </td>
 <td>
 log
@@ -2388,22 +2776,22 @@ base
 2
 </td>
 <td>
-260.603954
+260.616149
 </td>
 <td>
-18.068711
+18.037276
 </td>
 <td>
-100.570050
+100.408462
 </td>
 <td>
 0.000000
 </td>
 <td>
-10.837618
+10.833981
 </td>
 <td>
-12.740939
+12.737767
 </td>
 <td>
 log
@@ -2422,7 +2810,7 @@ log
     figsize=(10, 7),
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_107_0.png" alt="html" style="width: 900px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_144_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_forest(
     data=[base_model_trace, adstock_saturation_model_trace, asdr_model_trace],
@@ -2432,7 +2820,57 @@ log
     figsize=(8, 3),
 );</code></pre>
 <center>
-<img src="../images/pymc_mmm_files/pymc_mmm_108_0.png" alt="html" style="width: 700px;"/>
+<img src="../images/pymc_mmm_files/pymc_mmm_145_0.png" style="width: 700px;"/>
+</center>
+<p>Finally, let’s compare the estimated ROAS and mROAS of all models. First we collect the samples:</p>
+<pre class="python"><code>roas_samples_df = (
+    pd.DataFrame(
+        data={
+            &quot;base&quot;: base_roas,
+            &quot;adstock-saturation&quot;: adstock_saturation_roas,
+            &quot;asdr&quot;: asdr_mroas,
+        }
+    )
+    .melt()
+    .assign(metric=&quot;ROAS&quot;)
+)
+
+mroas_samples_df = (
+    pd.DataFrame(
+        data={
+            &quot;base&quot;: base_mroas,
+            &quot;adstock-saturation&quot;: adstock_saturation_mroas,
+            &quot;asdr&quot;: asdr_mroas,
+        }
+    )
+    .melt()
+    .assign(metric=&quot;mROAS&quot;)
+)</code></pre>
+<p>Now we generate the plots:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=False, figsize=(10, 7), layout=&quot;constrained&quot;
+)
+sns.violinplot(x=&quot;variable&quot;, y=&quot;value&quot;, color=&quot;C0&quot;, data=roas_samples_df, ax=axes[0])
+axes[0].axhline(
+    y=roas_true, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=f&quot;true value = {roas_true: 0.3f}&quot;
+)
+axes[0].legend(loc=&quot;upper left&quot;)
+axes[0].set(title=&quot;ROAS Samples - Model Comparison&quot;, xlabel=&quot;model&quot;, ylabel=&quot;ROAS&quot;)
+sns.violinplot(x=&quot;variable&quot;, y=&quot;value&quot;, color=&quot;C1&quot;, data=mroas_samples_df, ax=axes[1])
+axes[1].axhline(
+    y=mroas_true,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=f&quot;true value = {mroas_true: 0.3f}&quot;,
+)
+axes[1].legend(loc=&quot;upper left&quot;)
+axes[1].set(
+    title=f&quot;mROAS Samples({eta:.0%} increase) - Model Comparison&quot;,
+    xlabel=&quot;model&quot;,
+    ylabel=&quot;mROAS&quot;,
+);</code></pre>
+<center>
+<img src="../images/pymc_mmm_files/pymc_mmm_149_0.png" style="width: 900px;"/>
 </center>
 </div>
 
