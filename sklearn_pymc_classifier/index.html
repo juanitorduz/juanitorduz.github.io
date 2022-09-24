@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Scikit-Learn Example in PyMC: Gaussian Process Classifier - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Scikit-Learn Example in PyMC: Gaussian Process Classifier - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">9 min read</span>
+    
+
+    <h1 class="article-title">Scikit-Learn Example in PyMC: Gaussian Process Classifier</h1>
+
+    
+    <span class="article-date">2022-09-24</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we want to describe how to port a couple of classification examples from <a href="https://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html#sphx-glr-auto-examples-classification-plot-classifier-comparison-py">scikit-learn’s documentation (classifier comparison)</a> to PyMC. We focus in the classical <a href="https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html#sklearn.datasets.make_moons"><code>moons</code></a> synthetic dataset.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pymc.sampling_jax
+import seaborn as sns
+from sklearn.datasets import make_moons
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
+
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [8, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-raw-data" class="section level2">
+<h2>Generate Raw Data</h2>
+<p>We generate synthetic data using the <a href="https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html#sklearn.datasets.make_moons"><code>moons</code></a> function from <code>sklearn.datasets</code> and split it into a training and test set.</p>
+<pre class="python"><code>x, y = make_moons(n_samples=130, noise=0.2, random_state=0)
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.25, random_state=0)
+
+n_train = x_train.shape[0]
+n_test = x_test.shape[0]
+n = n_train + n_test
+
+idx_train = range(n_train)
+idx_test = range(n_train, n_train + n_test)
+
+domain_dim = x.shape[1]</code></pre>
+<p>Let’s look into the data:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1, ncols=2, figsize=(12, 5), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+sns.scatterplot(x=x_train[:, 0], y=x_train[:, 1], s=50, hue=y_train, ax=ax[0])
+ax[0].set(title=&quot;Raw Data - Training Set&quot;)
+sns.scatterplot(x=x_test[:, 0], y=x_test[:, 1], s=50, hue=y_test, ax=ax[1])
+ax[1].set(title=&quot;Raw Data - Test Set&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_6_0.png" height=400 />
+</center>
+<p>We clearly see the non-linearity of pattern.</p>
+</div>
+<div id="linear-model" class="section level2">
+<h2>Linear Model</h2>
+<p>First, we start with a simple linear model: Logistic Regression. Just because of the non-linearity of the data, we expect this model to perform poorly. Still, it serves as a baseline.</p>
+<p><strong>Remark:</strong> For details on the implementation, take a look into the slides of my talk <a href="https://juanitorduz.github.io/html/pyconco22_orduz.html#/title-slide"><em>Introduction to Bayesian Analysis with PyMC</em></a> at PyCon Colombia 2022. Moreover, please make sure you check out the <a href="https://docs.pymc.io/">PyMC documentation</a> (specially the <a href="https://www.pymc.io/projects/examples/en/latest/gallery.html">examples</a> section).</p>
+<pre class="python"><code>with pm.Model() as linear_model:
+    # coordinates
+    linear_model.add_coord(name=&quot;domain_dim&quot;, values=np.arange(domain_dim), mutable=False)
+    linear_model.add_coord(name=&quot;idx&quot;, values=idx_train, mutable=True)
+    # data containers
+    x_ = pm.MutableData(name=&quot;x&quot;, value=x_train, dims=(&quot;idx&quot;, &quot;domain_dim&quot;))
+    y_ = pm.MutableData(name=&quot;y&quot;, value=y_train, dims=&quot;idx&quot;)
+    # priors
+    a = pm.Normal(name=&quot;a&quot;, mu=0, sigma=2)
+    b = pm.Normal(name=&quot;b&quot;, mu=0, sigma=2, dims=&quot;domain_dim&quot;)
+    # model parametrization
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=pm.math.dot(x_, b) + a, dims=&quot;idx&quot;)
+    p = pm.Deterministic(name=&quot;p&quot;, var=pm.math.invlogit(mu), dims=&quot;idx&quot;)
+    # likelihood
+    likelihood = pm.Bernoulli(name=&quot;likelihood&quot;, p=p, dims=&quot;idx&quot;, observed=y_)
+
+pm.model_to_graphviz(model=linear_model)</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_9_0.svg" height=600 />
+</center>
+<p>We now fit the model.</p>
+<pre class="python"><code>with linear_model:
+    linear_idata = pm.sampling_jax.sample_numpyro_nuts(draws=4000, chains=4)
+    linear_posterior_predictive = pm.sample_posterior_predictive(trace=linear_idata)</code></pre>
+<p>Let’s look into some model diagnostics:</p>
+<pre class="python"><code>az.summary(data=linear_idata, var_names=[&quot;a&quot;, &quot;b&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+a
+</th>
+<td>
+0.298
+</td>
+<td>
+0.405
+</td>
+<td>
+-0.455
+</td>
+<td>
+1.075
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+9374.0
+</td>
+<td>
+10373.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b[0]
+</th>
+<td>
+1.152
+</td>
+<td>
+0.370
+</td>
+<td>
+0.459
+</td>
+<td>
+1.845
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+9628.0
+</td>
+<td>
+10147.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b[1]
+</th>
+<td>
+-3.305
+</td>
+<td>
+0.691
+</td>
+<td>
+-4.630
+</td>
+<td>
+-2.021
+</td>
+<td>
+0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+9674.0
+</td>
+<td>
+10096.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=linear_idata,
+    var_names=[&quot;a&quot;, &quot;b&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 5), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Linear Model - Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_14_0.png" height=500 />
+</center>
+<p>Next, we generate out-of-sample predictions.</p>
+<pre class="python"><code>with linear_model:
+    pm.set_data(new_data={&quot;x&quot;: x_test, &quot;y&quot;: y_test}, coords={&quot;idx&quot;: idx_test})
+    linear_idata.extend(
+        other=pm.sample_posterior_predictive(
+            trace=linear_idata,
+            var_names=[&quot;likelihood&quot;, &quot;p&quot;],
+            idata_kwargs={&quot;coords&quot;: {&quot;idx&quot;: idx_test}},
+        ),
+        join=&quot;right&quot;,
+    )</code></pre>
+<p>We can now compare the model in-sample and out-of-sample performance.</p>
+<pre class="python"><code>linear_posterior_predictive_mean_train = (
+    linear_posterior_predictive.posterior_predictive[&quot;likelihood&quot;]
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+    .mean(axis=1)
+)
+
+linear_posterior_predictive_mean_test = (
+    linear_idata.posterior_predictive[&quot;likelihood&quot;]
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+    .mean(axis=1)
+)
+
+fig, ax = plt.subplots(
+    nrows=2, ncols=2, figsize=(12, 10), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+sns.scatterplot(x=x_train[:, 0], y=x_train[:, 1], s=50, hue=y_train, ax=ax[0, 0])
+ax[0, 0].set(title=&quot;Raw Data - Training Set&quot;)
+
+sns.scatterplot(
+    x=x_train[:, 0],
+    y=x_train[:, 1],
+    s=50,
+    hue=linear_posterior_predictive_mean_train,
+    hue_norm=(0, 1),
+    palette=&quot;coolwarm&quot;,
+    ax=ax[0, 1],
+)
+ax[0, 1].legend(loc=&quot;upper left&quot;)
+ax[0, 1].set(title=&quot;Posterior Predictive Mean - Training Set&quot;)
+
+sns.scatterplot(x=x_test[:, 0], y=x_test[:, 1], s=50, hue=y_test, ax=ax[1, 0])
+ax[1, 0].set(title=&quot;Raw Data - Test Set&quot;)
+
+sns.scatterplot(
+    x=x_test[:, 0],
+    y=x_test[:, 1],
+    s=50,
+    hue=linear_posterior_predictive_mean_test,
+    hue_norm=(0, 1),
+    palette=&quot;coolwarm&quot;,
+    ax=ax[1, 1],
+)
+ax[1, 1].legend(loc=&quot;upper left&quot;)
+ax[1, 1].set(title=&quot;Posterior Predictive Mean - Test Set&quot;)
+fig.suptitle(&quot;Linear Model - Posterior Predictive Mean&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_18_0.png" height=800 />
+</center>
+<pre class="python"><code>linear_errors_mean_train = (
+    y_train[..., None]
+    - linear_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+        sample=(&quot;chain&quot;, &quot;draw&quot;)
+    )
+).mean(axis=1)
+
+linear_errors_mean_test = (
+    y_test[..., None]
+    - linear_idata.posterior_predictive[&quot;likelihood&quot;].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+).mean(axis=1)
+
+fig, ax = plt.subplots(
+    nrows=1, ncols=2, figsize=(12, 5), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+sns.scatterplot(
+    x=x_train[:, 0],
+    y=x_train[:, 1],
+    s=50,
+    edgecolor=&quot;black&quot;,
+    hue=linear_errors_mean_train,
+    hue_norm=(-1, 1),
+    palette=&quot;PRGn&quot;,
+    ax=ax[0],
+)
+ax[0].legend(title=&quot;mean error&quot;)
+ax[0].set(title=&quot;Training Set&quot;)
+
+sns.scatterplot(
+    x=x_test[:, 0],
+    y=x_test[:, 1],
+    s=50,
+    edgecolor=&quot;black&quot;,
+    hue=linear_errors_mean_test,
+    hue_norm=(-1, 1),
+    palette=&quot;PRGn&quot;,
+    ax=ax[1],
+)
+ax[1].legend(title=&quot;mean error&quot;)
+ax[1].set(title=&quot;Test Set&quot;)
+fig.suptitle(&quot;Linear Model - Posterior Predictive Mean Errors&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_19_0.png" height=400 />
+</center>
+<p>It is also interesting to compare the <span class="math inline">\(94\%\)</span> <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.hdi.html">HDI</a> (highest density interval) interval of the errors distribution obtained from the posterior mean.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;model&quot;: linear_errors_mean_train}),
+        az.convert_to_dataset(obj={&quot;model&quot;: linear_errors_mean_test}),
+    ],
+    model_names=[&quot;train&quot;, &quot;test&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;Linear Model - HDI Mean Errors&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_21_0.png" height=500 />
+</center>
+<p>Finally, we compute the <span class="math inline">\(94/%\)</span> <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.hdi.html">HDI</a> of accuracy distribution.</p>
+<pre class="python"><code>linear_acc_samples_train = np.apply_along_axis(
+    func1d=lambda x: accuracy_score(y_true=y_train, y_pred=x),
+    axis=0,
+    arr=linear_posterior_predictive
+    .posterior_predictive
+    [&quot;likelihood&quot;]
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+)
+
+linear_acc_samples_test = np.apply_along_axis(
+    func1d=lambda x: accuracy_score(y_true=y_test, y_pred=x),
+    axis=0,
+    arr=linear_idata
+    .posterior_predictive
+    [&quot;likelihood&quot;]
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+)
+
+
+ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: linear_acc_samples_train}),
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: linear_acc_samples_test}),
+    ],
+    model_names=[&quot;train&quot;, &quot;test&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;Linear Model - HDI Accuracy&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_23_0.png" height=500 />
+</center>
+</div>
+<div id="gaussian-process" class="section level2">
+<h2>Gaussian Process</h2>
+<p>To account for non-linearity, we now fit a Gaussian Process Classifier.</p>
+<p><strong>References:</strong></p>
+<ul>
+<li><p>For more details about gaussian processes, please check out the <a href="http://www.gaussianprocess.org/gpml/chapters/RW.pdf">Gaussian Processes for Machine Learning</a> book by Rasmussen and Williams.</p></li>
+<li><p>If you are interested in a more practical introduction you can take a look into a couple of blog posts <a href="https://juanitorduz.github.io/reg_bayesian_regression/">Bayesian Regression as a Gaussian Process</a> and <a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a>.</p></li>
+<li><p>For a practical introduction to Gaussian Processes in PyMC, please check out the examples <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/GP-Latent.html">Latent Variable Implementation</a> and <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/GP-Marginal.html">Marginal Likelihood Implementation</a>.</p></li>
+</ul>
+<pre class="python"><code>with pm.Model(coords={&quot;domain_dim&quot;: range(domain_dim)}) as gp_model:
+
+    gp_model.add_coord(name=&quot;idx&quot;, values=idx_train, mutable=True)
+
+    ls = pm.Gamma(name=&quot;ls&quot;, alpha=2, beta=1, dims=&quot;domain_dim&quot;)
+    amplitude = pm.Gamma(name=&quot;amplitude&quot;, alpha=2, beta=1)
+    cov = amplitude ** 2 * pm.gp.cov.ExpQuad(input_dim=2, ls=ls)
+
+    gp= pm.gp.Latent(cov_func=cov)
+    f = gp.prior(name=&quot;f&quot;, X=x_train, dims=&quot;idx&quot;)
+    p = pm.Deterministic(name=&quot;p&quot;, var=pm.math.invlogit(f), dims=&quot;idx&quot;)
+    # likelihood
+    likelihood = pm.Bernoulli(name=&quot;likelihood&quot;, p=p, dims=&quot;idx&quot;, observed=y_train)
+
+pm.model_to_graphviz(model=gp_model)</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_25_0.svg" height=600 />
+</center>
+<p>We now fit the model.</p>
+<pre class="python"><code>with gp_model:
+    gp_idata = pm.sampling_jax.sample_numpyro_nuts(draws=4000, chains=4)
+    gp_posterior_predictive = pm.sample_posterior_predictive(trace=gp_idata)</code></pre>
+<p>Again, we look into some model diagnostics:</p>
+<pre class="python"><code>az.summary(data=gp_idata, var_names=[&quot;ls&quot;, &quot;amplitude&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+ls[0]
+</th>
+<td>
+0.551
+</td>
+<td>
+0.120
+</td>
+<td>
+0.334
+</td>
+<td>
+0.784
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7028.0
+</td>
+<td>
+8196.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+ls[1]
+</th>
+<td>
+1.132
+</td>
+<td>
+0.432
+</td>
+<td>
+0.459
+</td>
+<td>
+1.934
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+5184.0
+</td>
+<td>
+8655.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+amplitude
+</th>
+<td>
+6.769
+</td>
+<td>
+2.010
+</td>
+<td>
+3.390
+</td>
+<td>
+10.516
+</td>
+<td>
+0.018
+</td>
+<td>
+0.013
+</td>
+<td>
+12487.0
+</td>
+<td>
+12276.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gp_idata,
+    var_names=[&quot;ls&quot;, &quot;amplitude&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 5), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Gaussian Process Model - Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_30_0.png" height=500 />
+</center>
+<p>In order to generate out-of-sample predictions, we need to use the <code>.conditional</code> method (see <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/GP-Latent.html">Latent Variable Implementation</a>) to get posterior predictive samples of the latent variable <code>f</code>. Then, we simply pass it through the <code>invlink</code> function to get the posterior predictive samples of the class probabilities.</p>
+<pre class="python"><code>with gp_model:
+    f_pred = gp.conditional(name=&quot;f_pred&quot;, Xnew=x_test)
+    p_pred = pm.Deterministic(name=&quot;p_pred&quot;, var=pm.math.invlogit(f_pred))
+    likelihood_pred = pm.Bernoulli(name=&quot;likelihood_pred&quot;, p=p_pred)
+    gp_posterior_predictive_test = pm.sample_posterior_predictive(
+        trace=gp_idata, var_names=[&quot;f_pred&quot;, &quot;p_pred&quot;, &quot;likelihood_pred&quot;]
+    )
+
+gp_p_pred_samples = gp_posterior_predictive_test.posterior_predictive[&quot;p_pred&quot;].stack(
+    sample=(&quot;chain&quot;, &quot;draw&quot;)
+)
+gp_pred_test = np.random.binomial(n=1, p=gp_p_pred_samples)
+</code></pre>
+<p>Finally, we compute and visualize the predictions, errors and accuracy distributions.</p>
+<pre class="python"><code>gp_posterior_predictive_mean_train = (
+    gp_posterior_predictive.posterior_predictive[&quot;likelihood&quot;]
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+    .mean(axis=1)
+)
+
+gp_posterior_predictive_mean_test = (
+    gp_posterior_predictive_test.posterior_predictive[&quot;likelihood_pred&quot;]
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+    .mean(axis=1)
+)
+
+fig, ax = plt.subplots(
+    nrows=2, ncols=2, figsize=(12, 10), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+sns.scatterplot(x=x_train[:, 0], y=x_train[:, 1], s=50, hue=y_train, ax=ax[0, 0])
+ax[0, 0].set(title=&quot;Raw Data - Training Set&quot;)
+
+sns.scatterplot(
+    x=x_train[:, 0],
+    y=x_train[:, 1],
+    s=50,
+    hue=gp_posterior_predictive_mean_train,
+    hue_norm=(0, 1),
+    palette=&quot;coolwarm&quot;,
+    ax=ax[0, 1],
+)
+ax[0, 1].legend(loc=&quot;upper left&quot;)
+ax[0, 1].set(title=&quot;Posterior Predictive Mean - Training Set&quot;)
+
+sns.scatterplot(x=x_test[:, 0], y=x_test[:, 1], s=50, hue=y_test, ax=ax[1, 0])
+ax[1, 0].set(title=&quot;Raw Data - Test Set&quot;)
+
+sns.scatterplot(
+    x=x_test[:, 0],
+    y=x_test[:, 1],
+    s=50,
+    hue=gp_posterior_predictive_mean_test,
+    hue_norm=(0, 1),
+    palette=&quot;coolwarm&quot;,
+    ax=ax[1, 1],
+)
+ax[1, 1].legend(loc=&quot;upper left&quot;)
+ax[1, 1].set(title=&quot;Posterior Predictive Mean - Test Set&quot;)
+fig.suptitle(&quot;Gaussian Process Model - Posterior Predictive Mean&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_34_0.png" height=800 />
+</center>
+<pre class="python"><code>gp_errors_mean_train = (
+    y_train[..., None]
+    - gp_posterior_predictive.posterior_predictive[&quot;likelihood&quot;].stack(
+        sample=(&quot;chain&quot;, &quot;draw&quot;)
+    )
+).mean(axis=1)
+
+gp_errors_mean_test = (y_test[..., None] - gp_pred_test).mean(axis=1)
+
+fig, ax = plt.subplots(
+    nrows=1, ncols=2, figsize=(12, 5), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+sns.scatterplot(
+    x=x_train[:, 0],
+    y=x_train[:, 1],
+    s=50,
+    edgecolor=&quot;black&quot;,
+    hue=gp_errors_mean_train,
+    hue_norm=(-1, 1),
+    palette=&quot;PRGn&quot;,
+    ax=ax[0],
+)
+ax[0].legend(title=&quot;mean error&quot;)
+ax[0].set(title=&quot;Training Set&quot;)
+
+sns.scatterplot(
+    x=x_test[:, 0],
+    y=x_test[:, 1],
+    s=50,
+    edgecolor=&quot;black&quot;,
+    hue=gp_errors_mean_test,
+    hue_norm=(-1, 1),
+    palette=&quot;PRGn&quot;,
+    ax=ax[1],
+)
+ax[1].legend(title=&quot;mean error&quot;)
+ax[1].set(title=&quot;Test Set&quot;)
+fig.suptitle(&quot;Gaussian Process Model - Posterior Predictive Mean Errors&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_35_0.png" height=400 />
+</center>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;model&quot;: gp_errors_mean_train}),
+        az.convert_to_dataset(obj={&quot;model&quot;: gp_errors_mean_test}),
+    ],
+    model_names=[&quot;train&quot;, &quot;test&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;Gaussian Process - HDI Mean Errors&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_36_0.png" height=500 />
+</center>
+<pre class="python"><code>gp_acc_samples_train = np.apply_along_axis(
+    func1d=lambda x: accuracy_score(y_true=y_train, y_pred=x),
+    axis=0,
+    arr=gp_posterior_predictive
+    .posterior_predictive
+    [&quot;likelihood&quot;]
+    .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
+    .to_numpy()
+)
+
+gp_acc_samples_test = np.apply_along_axis(
+    func1d=lambda x: accuracy_score(y_true=y_test, y_pred=x),
+    axis=0,
+    arr=gp_pred_test
+)
+
+ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: gp_acc_samples_train}),
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: gp_acc_samples_test}),
+    ],
+    model_names=[&quot;train&quot;, &quot;test&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;Gaussian Process Model - HDI Accuracy&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_37_0.png" height=500 />
+</center>
+</div>
+<div id="model-comparison" class="section level2">
+<h2>Model Comparison</h2>
+<p>By looking into the plots above we clearly see that the gaussian process model is a better model for this non-linear data. In this last section we hand to dig a bit deeper into model comparison. First, let’s look into the <a href="https://arviz-devs.github.io/arviz/examples/plot_separation.html"><code>plot_separation</code></a> function from <a href="https://arviz-devs.github.io/arviz/"><code>arviz</code></a>. According to the authors of the method:</p>
+<blockquote>
+<p><em>It is a visual method for assessing the predictive power of models with binary outcomes. This technique allows the analyst to evaluate model fit based upon the models’ ability to consistently match high-probability predictions to actual occurrences of the event of interest, and low-probability predictions to nonoccurrences of the event of interest.</em></p>
+</blockquote>
+<p>For more details see <a href="https://onlinelibrary.wiley.com/doi/10.1111/j.1540-5907.2011.00525.x">The Separation Plot: A New Visual Method for Evaluating the Fit of Binary Models</a>)</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+        nrows=2, ncols=1, figsize=(9, 4), layout=&quot;constrained&quot;
+)
+az.plot_separation(idata=linear_posterior_predictive, y=&quot;likelihood&quot;, ax=ax[0])
+ax[0].set(title=&quot;Linear Model&quot;)
+az.plot_separation(idata=gp_posterior_predictive, y=&quot;likelihood&quot;, ax=ax[1])
+ax[1].set(title=&quot;Gaussian Process Model&quot;)
+fig.suptitle(&quot;Separation Plot&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_39_0.png" height=400 />
+</center>
+<p>We indeed see that in the training set the gaussian process model separates the classes better.</p>
+<p>We can try to generate a “separation” plot ourselves by looking into the posterior distribution of <span class="math inline">\(p\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=range(n_train),
+    y=linear_idata.posterior[&quot;p&quot;][:, :, np.argsort(y_train)],
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;label&quot;: &quot;linear&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=range(n_train),
+    y=gp_idata.posterior[&quot;p&quot;][:, :, np.argsort(y_train)],
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;label&quot;: &quot;gp&quot;},
+    ax=ax,
+)
+ax.legend()
+ax.set(title=&quot;P Posterior Predictive HDI&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_42_0.png" height=500 />
+</center>
+<p>Next, we compare the errors of the posterior mean:</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;model&quot;: linear_errors_mean_train.to_numpy()}),
+        az.convert_to_dataset(obj={&quot;model&quot;: gp_errors_mean_train.to_numpy()}),
+    ],
+    model_names=[&quot;Linear&quot;, &quot;Gaussian Process&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;HDI Mean Errors (Train)&quot;);
+
+ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;model&quot;: linear_errors_mean_test.to_numpy()}),
+        az.convert_to_dataset(obj={&quot;model&quot;: gp_errors_mean_test}),
+    ],
+    model_names=[&quot;Linear&quot;, &quot;Gaussian Process&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;HDI Mean Errors (Test)&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_44_0.png" height=500 />
+</center>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_44_1.png" height=500 />
+</center>
+<p>We can plot similar diagnostics for the accuracy distributions.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: linear_acc_samples_train}),
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: gp_acc_samples_train}),
+    ],
+    model_names=[&quot;Linear&quot;, &quot;Gaussian Process&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;HDI Accuracy (Train)&quot;);
+
+ax, *_ = az.plot_forest(
+    [
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: linear_acc_samples_test}),
+        az.convert_to_dataset(obj={&quot;accuracy&quot;: gp_acc_samples_test}),
+    ],
+    model_names=[&quot;Linear&quot;, &quot;Gaussian Process&quot;],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+ax.set(title=&quot;HDI Accuracy (Test)&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_46_0.png" height=500 />
+</center>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_46_1.png" height=500 />
+</center>
+<p>Finally, we can use the <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.compare.html"><code>compare</code></a> function from <a href="https://arviz-devs.github.io/arviz/"><code>arviz</code></a>:</p>
+<pre class="python"><code>comp_df = az.compare({&quot;linear&quot;: linear_idata, &quot;gp&quot;: gp_idata})
+comp_df</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+rank
+</th>
+<th>
+loo
+</th>
+<th>
+p_loo
+</th>
+<th>
+d_loo
+</th>
+<th>
+weight
+</th>
+<th>
+se
+</th>
+<th>
+dse
+</th>
+<th>
+warning
+</th>
+<th>
+loo_scale
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+gp
+</th>
+<td>
+0
+</td>
+<td>
+-11.810795
+</td>
+<td>
+3.467666
+</td>
+<td>
+0.000000
+</td>
+<td>
+1.000000e+00
+</td>
+<td>
+2.882276
+</td>
+<td>
+0.000000
+</td>
+<td>
+True
+</td>
+<td>
+log
+</td>
+</tr>
+<tr>
+<th>
+linear
+</th>
+<td>
+1
+</td>
+<td>
+-36.181303
+</td>
+<td>
+2.218763
+</td>
+<td>
+24.370509
+</td>
+<td>
+3.630873e-12
+</td>
+<td>
+5.428638
+</td>
+<td>
+4.262536
+</td>
+<td>
+False
+</td>
+<td>
+log
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Here we use the <em>expected log pointwise predictive density (ELPD)</em> (see <a href="https://arxiv.org/abs/1507.04544">Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC</a>) metric to compare these two models. We clearly see that the gaussian process model is much better model that the logistic regression. Please refer the to the documentation <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.plot_compare.html"><code>arviz.plot_compare</code></a>.</p>
+<pre class="python"><code>az.plot_compare(
+  comp_df=comp_df, backend_kwargs={&quot;figsize&quot;: (8, 4), &quot;layout&quot;: &quot;constrained&quot;}
+);</code></pre>
+<center>
+<img src="../images/sklearn_classifier_example_pymc_files/sklearn_classifier_example_pymc_50_0.png" height=500 />
+</center>
+<p>Regarding this compare plot:</p>
+<blockquote>
+<p><em>This plot is in the style of the one used in the book <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a> by Richard McElreath.Chapter 6 in the first edition or 7 in the second.</em></p>
+</blockquote>
+<ul>
+<li>Filled values are in-sample estimates.</li>
+<li>Open points are the ELPD values and the error bars are the standard deviations.</li>
+<li>The light gray line is the ELPD difference between the model and the best model.</li>
+</ul>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

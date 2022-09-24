@@ -6,7 +6,17 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 09 Aug 2022 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 24 Sep 2022 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Scikit-Learn Example in PyMC: Gaussian Process Classifier</title>
+      <link>/sklearn_pymc_classifier/</link>
+      <pubDate>Sat, 24 Sep 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/sklearn_pymc_classifier/</guid>
+      <description>In this notebook we want to describe how to port a couple of classification examples from scikit-learn’s documentation (classifier comparison) to PyMC. We focus in the classical moons synthetic dataset.
+Prepare Notebook import arviz as az import matplotlib.pyplot as plt import numpy as np import pandas as pd import pymc as pm import pymc.sampling_jax import seaborn as sns from sklearn.datasets import make_moons from sklearn.metrics import accuracy_score from sklearn.model_selection import train_test_split plt.</description>
+    </item>
+    
     <item>
       <title>Synthetic Control in PyMC</title>
       <link>/synthetic_control_pymc/</link>

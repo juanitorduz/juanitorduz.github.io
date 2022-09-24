@@ -88,6 +88,7 @@
 <li>This current implementation does not allow for time-invariant external covariates even though is an easy extension an shown in the paper <a href="http://brucehardie.com/notes/019/time_invariant_covariates.pdf">Incorporating Time-Invariant Covariates into the Pareto/NBD and BG/NBD Models</a> by Peter S. Fader and Bruce G. S. Hardie. There is actually an <a href="https://github.com/CamDavidsonPilon/lifetimes/pull/342">open PR</a> to att his feature into the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package, but it is highly unlikely to be merged. Hence, as in practice time-invariant covariates could further segment user purchase patterns, writing this model explicitly can allow for more flexibility.</li>
 <li>We can take advantage of the powerful bayesian machinery to have better uncertainty estimation and the possibility to use extend the base BG/NBD model to more complex ones, e.g. hierarchical models.</li>
 </ol>
+<p><strong>Remark:</strong> The content of this post was presented at the <a href="https://www.meetup.com/berlinbayesians/">Berlin Bayesians MeetUp</a> in <a href="https://www.meetup.com/berlinbayesians/events/288023821/">September 2022</a>. <a href="../html/berlin_bayesians_btyd.html">Here</a> you can find the slides.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import arviz as az
