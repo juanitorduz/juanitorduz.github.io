@@ -1564,7 +1564,7 @@ r
 fig = axes[0][0].get_figure()
 fig.suptitle(&quot;BG/NBD Model (Time-Invariant Covariates) Trace&quot;, fontsize=16);</code></pre>
 <center>
-<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_51_1.png" style="width: 1000px;"/>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_55_1.png" style="width: 1000px;"/>
 </center>
 <p>We indeed see a difference in the model parameters as compared with the model without covariates <code>bgf_cov</code> (note specially the shift in <span class="math inline">\(r\)</span>).</p>
 <pre class="python"><code>axes = az.plot_pair(data=trace_cov, var_names=[&quot;~alpha&quot;], figsize=(12, 12))
