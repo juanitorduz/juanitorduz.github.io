@@ -94,12 +94,15 @@ sns.set_style(
 )
 sns.set_palette(palette=&#39;deep&#39;)
 sns_c = sns.color_palette(palette=&#39;deep&#39;)
-%matplotlib inline
-from pandas.plotting import register_matplotlib_converters
-register_matplotlib_converters()
 
-plt.rcParams[&#39;figure.figsize&#39;] = [12, 6]
-plt.rcParams[&#39;figure.dpi&#39;] = 100</code></pre>
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext rich
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
 <p><strong>Remark:</strong> I usually store the <a href="https://seaborn.pydata.org/tutorial/color_palettes.html">seaborn palette</a> as a list <code>sns_c</code> which allows me to select colors efficiently.</p>
 </div>
 <div id="generate-sample-data" class="section level2">
@@ -304,13 +307,13 @@ dayofyear_cc
 sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=data_df, color=sns_c[0], ax=ax)
 ax.set(title=&#39;Sample Data&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_7_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_7_0.png" style="width: 1000px;"/>
 </center>
 </div>
 <div id="train-test-split" class="section level2">
 <h2>Train-Test Split</h2>
 <p>We split our data intro a training and a test set (no random shuffle for time series data!).</p>
-<pre class="python"><code>threshold_date = &#39;2020-01-04&#39;
+<pre class="python"><code>threshold_date = pd.to_datetime(&#39;2020-01-04&#39;)
 
 data_train_df = data_df.query(f&#39;date &lt; &quot;{threshold_date}&quot;&#39;)
 data_test_df = data_df.query(f&#39;date &gt;= &quot;{threshold_date}&quot;&#39;)</code></pre>
@@ -321,7 +324,7 @@ ax.axvline(x=threshold_date, color=&#39;black&#39;, linestyle=&#39;--&#39;, labe
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=&#39;Sample Data - Train Test Split&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_10_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_10_0.png" style="width: 1000px;"/>
 </center>
 </div>
 <div id="plot-features" class="section level2">
@@ -340,7 +343,7 @@ ax2.grid(None)
 ax2.tick_params(axis=&#39;y&#39;, labelcolor=sns_c[9])
 ax2.set_ylabel(&#39;y&#39;, fontdict={&#39;color&#39;: sns_c[9]});</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_12_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_12_0.png" style="width: 1000px;"/>
 </center>
 <p>Scatter plots are also very handy as we can encode various dimensions via color and size encoding.</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(7, 7))
@@ -360,7 +363,7 @@ sns.scatterplot(
 ax.legend(loc=&#39;upper left&#39;)
 ax.set(title=r&#39;y ~ $x_2$ (training data)&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_14_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_14_0.png" style="width: 700px;"/>
 </center>
 <p>Correlation analysis is another powerful technique to study potential predictors and to detect multicollinearity. We can use a <a href="https://seaborn.pydata.org/generated/seaborn.heatmap.html">heatmap</a> plot to represent the correlation matrix (see <a href="https://seaborn.pydata.org/examples/many_pairwise_correlations.html">here</a>).</p>
 <pre class="python"><code>corr_mat = data_train_df.drop(&#39;date&#39;, axis=1).corr()
@@ -387,7 +390,7 @@ ax.set_yticklabels(ax.get_yticklabels(), rotation=0, horizontalalignment=&#39;ri
 ax.set_xticklabels(ax.get_yticklabels(), horizontalalignment=&#39;center&#39;)
 ax.set(title=&#39;Correlarion Matrix (training data)&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_16_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_16_0.png" style="width: 800px;"/>
 </center>
 <p><strong>Warning:</strong> If the target variable has a trend and/or a strong seasonal pattern, it is a good practice to run a correlation analysis on each component of the time series decomposition, see for example the analysis on <a href="https://juanitorduz.github.io/intro_sts_tfp/">this post</a>.</p>
 <p>In order to test for mulicollinearity (besides the one-to-one relation via correlation), we can compute the <a href="https://www.statsmodels.org/stable/generated/statsmodels.stats.outliers_influence.variance_inflation_factor.html">Variance Inflation Factor</a> which is calculated <em>by taking the the ratio of the variance of all a given model’s betas divide by the variance of a single beta if it were fit alone.</em><a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> <em>A rule of thumb is that if <span class="math inline">\(VIF(\beta_i)&gt; 10\)</span> then multicollinearity is high.</em><a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
@@ -419,7 +422,7 @@ sns.barplot(
 ax.axhline(y=1, color=&#39;black&#39;, linestyle=&#39;--&#39;)
 ax.set(title=&#39;Variance Inflation Factor&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_19_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_19_0.png" style="width: 700px;"/>
 </center>
 <p>The all the values are close to one so there is no strong evidence of multicollinearity.</p>
 </div>
@@ -535,7 +538,7 @@ ax.fill_between(
     y2=train_pred_df[&#39;pred_obs_ci_upper&#39;],
     color=sns_c[3], 
     alpha=0.10,
-    label=&#39;Confidence Interval (mean_pred)&#39;
+    label=&#39;Confidence Interval (obs_pred)&#39;
 )
 sns.lineplot(x=&#39;date&#39;, y=&#39;y&#39;, data=test_pred_df, color=sns_c[1], label=&#39;y_test&#39;, ax=ax)
 sns.lineplot(x=&#39;date&#39;, y=&#39;pred_mean&#39;, data=test_pred_df, color=sns_c[2], label=&#39;y_test_pred&#39;, ax=ax)
@@ -545,7 +548,7 @@ ax.fill_between(
     y2=test_pred_df[&#39;pred_mean_ci_upper&#39;],
     color=sns_c[2], 
     alpha=0.5,
-    label=&#39;Confidence Interval (obs_pred)&#39;
+    label=&#39;Confidence Interval (mean_pred)&#39;
 )
 ax.fill_between(
     x=test_pred_df[&#39;date&#39;],
@@ -558,14 +561,14 @@ ax.fill_between(
 ax.legend(bbox_to_anchor=(1.3, 0.65))
 ax.set(title=&#39;Linear Model Prediction (train-Test Split)&#39;, ylabel=&#39;y&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_28_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_28_0.png" style="width: 1000px;"/>
 </center>
 <p>Another useful way to visualize the predictions is using a scatter plot them against the true values.</p>
 <pre class="python"><code>g = sns.lmplot(x=&#39;y&#39;, y =&#39;pred_mean&#39;, data=pred_df, hue=&#39;tag&#39;)
 g.fig.suptitle(&#39;True Vs Pred&#39;, y=1.02)
 g.set_axis_labels(&#39;y_true&#39;, &#39;y_pred&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_30_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_30_0.png" style="width: 700px;"/>
 </center>
 </div>
 <div id="error-analysis" class="section level2">
@@ -578,7 +581,7 @@ ax[0].set(title=&#39;Absolute&#39;)
 ax[1].set(title=&#39;Percentaje&#39;)
 plt.suptitle(f&#39;Linear Model Errors Distribution&#39;, y=0.94);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_32_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_32_0.png" style="width: 1000px;"/>
 </center>
 <p>The distributions look comparable. Note however that there is point on which the percent error is very high:</p>
 <pre class="python"><code>pred_df.query(&#39;abs(p_error) &gt; 1.0&#39;).T</code></pre>
@@ -765,11 +768,11 @@ ax31 = fig.add_subplot(grid[3, 1])
 ax40 = fig.add_subplot(grid[4, 0])
 ax41 = fig.add_subplot(grid[4, 1])
 # Add data.
-sns.distplot(a=train_pred_df[&#39;error&#39;], color=sns_c[0], rug=True, ax=ax00)
+sns.histplot(data=train_pred_df[&#39;error&#39;], color=sns_c[0], kde=True, ax=ax00)
 ax00.axvline(x=error_mean, color=sns_c[0], linestyle=&#39;--&#39;, label=f&#39;error mean = {error_mean: 0.2f}&#39;, alpha=0.8)
 ax00.axvline(x=error_mean + 2*error_std, color=sns_c[0], linestyle=&#39;--&#39;, alpha=0.5)
 ax00.axvline(x=error_mean - 2*error_std, color=sns_c[0], linestyle=&#39;--&#39;, alpha=0.5)
-sns.distplot(a=train_pred_df[&#39;p_error&#39;], color=sns_c[3], rug=True, ax=ax01)
+sns.histplot(data=train_pred_df[&#39;p_error&#39;], color=sns_c[3], kde=True, ax=ax01)
 ax01.axvline(x=p_error_mean , color=sns_c[3], linestyle=&#39;--&#39;, label=f&#39;p_error mean = {p_error_mean: 0.2%}&#39;, alpha=0.8)
 ax01.axvline(x=p_error_mean + 2*p_error_std, color=sns_c[3], linestyle=&#39;--&#39;, alpha=0.5)
 ax01.axvline(x=p_error_mean - 2*p_error_std, color=sns_c[3], linestyle=&#39;--&#39;, alpha=0.5)
@@ -816,7 +819,7 @@ ax40.set(title=&#39;Partial Autocorrelation (Errors)&#39;)
 ax41.set(title=&#39;Partial Autocorrelation (Percent Errors)&#39;)
 plt.suptitle(f&#39;Linear Model Errors (Training) - (mape = {mape: 0.2%}, wape = {wape: 0.2%}))&#39;, y=0.905);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_37_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_37_1.png" style="width: 1000px;"/>
 </center>
 <ul>
 <li>Test Errors</li>
@@ -841,11 +844,11 @@ ax31 = fig.add_subplot(grid[3, 1])
 ax40 = fig.add_subplot(grid[4, 0])
 ax41 = fig.add_subplot(grid[4, 1])
 # Add data.
-sns.distplot(a=test_pred_df[&#39;error&#39;], color=sns_c[1], rug=True, ax=ax00)
+sns.histplot(data=test_pred_df[&#39;error&#39;], color=sns_c[1], kde=True, ax=ax00)
 ax00.axvline(x=error_mean, color=sns_c[1], linestyle=&#39;--&#39;, label=f&#39;error mean = {error_mean: 0.2f}&#39;, alpha=0.8)
 ax00.axvline(x=error_mean + 2*error_std, color=sns_c[1], linestyle=&#39;--&#39;, alpha=0.5)
 ax00.axvline(x=error_mean - 2*error_std, color=sns_c[1], linestyle=&#39;--&#39;, alpha=0.5)
-sns.distplot(a=test_pred_df[&#39;p_error&#39;], color=sns_c[2], rug=True, ax=ax01)
+sns.histplot(data=test_pred_df[&#39;p_error&#39;], color=sns_c[2], kde=True, ax=ax01)
 ax01.axvline(x=p_error_mean , color=sns_c[2], linestyle=&#39;--&#39;, label=f&#39;p_error mean = {p_error_mean: 0.2%}&#39;, alpha=0.8)
 ax01.axvline(x=p_error_mean + 2*p_error_std, color=sns_c[2], linestyle=&#39;--&#39;, alpha=0.5)
 ax01.axvline(x=p_error_mean - 2*p_error_std, color=sns_c[2], linestyle=&#39;--&#39;, alpha=0.5)
@@ -892,7 +895,7 @@ ax40.set(title=&#39;Partial Autocorrelation (Errors)&#39;)
 ax41.set(title=&#39;Partial Autocorrelation (Percent Errors)&#39;)
 plt.suptitle(f&#39;Linear Model Errors (Test) - (mape = {mape: 0.2%}, wape = {wape: 0.2%}))&#39;, y=0.905);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_39_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_39_1.png" style="width: 1000px;"/>
 </center>
 <p>Finally, we can use quantile plots to see who similar/different are the (percent) errors distributions.</p>
 <pre class="python"><code>q_grid = np.linspace(start=0.0, stop=1.0, num=100)
@@ -911,7 +914,7 @@ ax[0].set(title=&#39;Quantile Plot (Errors)&#39;, xlabel=&#39;q&#39;, ylabel=&#3
 ax[1].legend(loc=&#39;upper left&#39;)
 ax[1].set(title=&#39;Quantile Plot (Percentaje Errors)&#39;, xlabel=&#39;q&#39;, ylabel=&#39;quantile&#39;);</code></pre>
 <center>
-<img src="../images/lm_viz_files/lm_viz_41_0.svg" title="fig:" alt="svg" />
+<img src="../images/lm_viz_files/lm_viz_41_0.png" style="width: 1000px;"/>
 </center>
 <p>Note for example that we can distinguish the long tail on the percent errors distribution of the training data (green line for <span class="math inline">\(q&gt;0.8\)</span>).</p>
 <hr />
@@ -925,7 +928,7 @@ ax[1].set(title=&#39;Quantile Plot (Percentaje Errors)&#39;, xlabel=&#39;q&#39;,
 <li>In addition, I have found in practice that these types of visualizations can be very effective in communicating results.</li>
 </ul>
 </div>
-<div class="footnotes">
+<div class="footnotes footnotes-end-of-document">
 <hr />
 <ol>
 <li id="fn1"><p><a href="https://etav.github.io/python/vif_factor_python.html">https://etav.github.io/python/vif_factor_python.html</a><a href="#fnref1" class="footnote-back">↩︎</a></p></li>
