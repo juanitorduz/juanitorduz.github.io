@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Geo-Experimentation via Time Based Regression in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Geo-Experimentation via Time Based Regression in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0077B5;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">15 min read</span>
+    
+
+    <h1 class="article-title">Geo-Experimentation via Time Based Regression in PyMC</h1>
+
+    
+    <span class="article-date">2022-12-01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<div id="introduction" class="section level2">
+<h2>Introduction</h2>
+<p>In this notebook I describe and present an implementation of the <strong>time based regression</strong> (TBR) approach to marketing campaign analysis in the context of geo experimentation presented in the paper <a href="https://research.google/pubs/pub45950/">Estimating Ad Effectiveness using Geo Experiments in a Time-Based Regression Framework</a> by Jouni Kerman, Peng Wang and Jon Vaver (Google, Inc. 2017). I strongly recommend reading the paper as it is quite clear in the exposition of the approach and presents some simulation results. Here I will focus on the basic model specification and on the implementation in PyMC.</p>
+</div>
+<div id="the-data" class="section level2">
+<h2>The Data</h2>
+<p>The motivating example of this case is study was presented in the talk I gave at the <a href="https://dainstudios.com/event/data-science-at-wolt/">Helsinki Data Science Meetup</a> hosted by <strong>Wolt</strong>. <a href="https://juanitorduz.github.io/wolt_ds_meetup/">Here</a> you can find the recording of the talk and the data generating process. <a href="https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/zipcodes_data.csv">Here</a> you can find the raw data.</p>
+<p>We generated an artificial dataset for a geo-experiment with the following characteristics: We have a city with <span class="math inline">\(40\)</span> zip codes where we ran a marketing campaign for a subset of them (treated geos). The campaign period was <span class="math inline">\(30\)</span> days and it began at the same time. Our objective is to estimate the effect of the campaign on the number of orders.</p>
+</div>
+<div id="the-model" class="section level2">
+<h2>The Model</h2>
+<p>Let <span class="math inline">\(G=\{g_1, g_2, \cdots, g_{n_{c}}, \cdots , g_{n_c + n_t}\}\)</span> denote the set of geos (zip codes) of our city. Without loss of generality we assume that the first <span class="math inline">\(n_c\)</span> geos are part of the control group (<span class="math inline">\(\mathcal{C} \subset G\)</span>)and the rest are the treated ones (<span class="math inline">\(\mathcal{T} \subset G\)</span>). We would like to find a subset <span class="math inline">\(\mathcal{C&#39;} \subseteq \mathcal{C}\)</span> of geos in he the control group which are similar to the treated ones in the pre-campaign period. In the <strong>time based regression</strong> model “similar” means that there is a linear relationship between the number of orders in the pre-campaign period. Concretely, if <span class="math inline">\(y_{g_{i}, t}\)</span> denotes the number of orders at time <span class="math inline">\(t\)</span> for the geo <span class="math inline">\(g_i\)</span> then we assume that</p>
+<p><span class="math display">\[
+\sum_{g_{i} \in \mathcal{T}} y_{g_{i}, t} = \alpha + \beta \sum_{g_{j} \in \mathcal{C&#39;}} y_{g_{j}, t} + \varepsilon_t, \quad \text{$t$ in pretest period}
+\]</span></p>
+<p>where <span class="math inline">\(\alpha\)</span> is the intercept and <span class="math inline">\(\beta\)</span> the regression coefficient <em>which are both independent on t and the geos</em>. We further assume that the errors <span class="math inline">\(\varepsilon_t\)</span> are independent Normal errors with standard deviation <span class="math inline">\(\sigma\)</span>. The objective is now to estimate <span class="math inline">\(\alpha\)</span>, <span class="math inline">\(\beta\)</span> and <span class="math inline">\(\sigma\)</span> so that we can estimate the effect of the campaign comparing with the predicted counterfactual number of orders in the treated geos. That is, we use the fitted parameters of the model to predict the number of orders in the treated geos in the post-campaign period and compare it with the actual number of orders. The difference between the actual and the predicted number of orders is the estimated effect of the campaign. For details, please see <a href="https://research.google/pubs/pub45950/">Section 3.2 - TBR Causal Effect Analysis</a> from the original paper.</p>
+</div>
+<div id="remarks" class="section level2">
+<h2>Remarks</h2>
+<ul>
+<li>This approach is similar to the <a href="https://google.github.io/CausalImpact/CausalImpact.html">CausalImpact</a> model by Google where a bayesian structural time series model is used to estimate the counterfactual. In practice, one is often faced with geos which are relative new and there is no enough data to estimate a time series model. In this case, the time based regression model is a good alternative (another alternative is to transfer the trend an seasonality from other geos as described in <a href="https://juanitorduz.github.io/short_time_series_pymc/">Modeling Short Time Series with Prior Knowledge in PyMC</a>, but this is a bit trickier to implement for real datasets).</li>
+<li>One interesting feature of the paper is the uncertainty estimation. The author suggest to generate a sequence of prediction intervals by simulating artificial test sets (see <a href="https://research.google/pubs/pub45950/">Section 4 - Design Process for TBR</a>). We will go through the details later in this in the notebook.</li>
+<li>This approach is sometimes known as <em>interrupted time series analysis</em>. A PyMC implementation is presented by <a href="https://github.com/drbenvincent">Benjamin T. Vincent</a> on <a href="https://www.pymc.io/projects/examples/en/latest/causal_inference/interrupted_time_series.html#interrupted-time-series-analysis">this example notebook</a> (also see the <a href="https://github.com/pymc-labs/CausalPy"><code>CausalPy</code></a> python package). Here we focus in the uncertainty estimation approach of the original paper.</li>
+<li>There are methods to efficiently select the geos to treat. See for example <a href="https://storage.googleapis.com/pub-tools-public-publication-data/pdf/b1976d70ccf7119f2193ece2d3d378d5dd0dd7be.pdf">A Time-Based Regression Matched Markets Approach for Designing Geo Experiments</a> with the python implementation <a href="https://github.com/google/matched_markets">https://github.com/google/matched_markets</a>.</li>
+</ul>
+<p>Now, let’s move to the concrete example.</p>
+<hr />
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+from datetime import datetime
+from itertools import chain
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+import pymc as pm
+import pymc.sampling_jax
+from sklearn.preprocessing import StandardScaler 
+import seaborn as sns
+from tqdm.notebook import tqdm
+from xarray import DataArray, Dataset
+
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/zipcodes_data.csv&quot;
+
+data_df = pd.read_csv(data_path, parse_dates=[&quot;date&quot;])</code></pre>
+<p>Let’s take a look at the data for each zip code:</p>
+<pre class="python"><code>start_campaign = datetime(2022, 7, 1)
+
+fig, ax = plt.subplots()
+
+for i, variant in enumerate([&quot;control&quot;, &quot;treatment&quot;]):
+    for j, (_, df) in enumerate(
+        data_df.query(&quot;variant == @variant&quot;).groupby(&quot;zipcode&quot;)
+    ):
+        label = variant if j == 0 else None
+        sns.lineplot(
+            x=&quot;date&quot;, y=&quot;orders&quot;, data=df, color=f&quot;C{i}&quot;, alpha=0.8, label=label, ax=ax
+        )
+
+ax.axvline(x=start_campaign, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;campaign start&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Orders per day per zipcode&quot;, xlabel=&quot;date&quot;, ylabel=&quot;orders&quot;);</code></pre>
+<center>
+<img src="../images//time_based_regression_pymc_files/time_based_regression_pymc_6_0.png" style="width: 1000px;"/>
+</center>
+<p>We see a mild positive trend and a weekly seasonality (which is no surprise given the data generation process).</p>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare Data</h2>
+<p>Now we prepare the data for the model, which in this case is a simple aggregation over all geos. In practice, the selection of the control geos can be done manually (given some business requirements and constraints) or semi-automatic (using some optimization algorithm as for example <a href="https://storage.googleapis.com/pub-tools-public-publication-data/pdf/b1976d70ccf7119f2193ece2d3d378d5dd0dd7be.pdf">A Time-Based Regression Matched Markets Approach for Designing Geo Experiments</a>). Note that one has to “prove” the pre-campaign linearity assumption. There are many options to do this. There are some statistical test (see the main reference for details) or one could use a time-varying coefficients model (like Uber’s <a href="https://juanitorduz.github.io/orbit_mmm/">Orbit-KTR</a> model or with a simple Gaussian random walk as described <a href="https://juanitorduz.github.io/bikes_pymc/">here</a>).</p>
+<pre class="python"><code>agg_data_df = (
+    data_df
+    .groupby([&quot;date&quot;, &quot;is_campaign&quot;, &quot;variant&quot;], as_index=False)
+    .agg({&quot;orders&quot;: np.sum})
+)
+
+data_train = (
+    agg_data_df.query(&quot;~ is_campaign&quot;)
+    .pivot(index=&quot;date&quot;, columns=&quot;variant&quot;, values=&quot;orders&quot;)
+    .reset_index()
+)
+
+data_test = (
+    agg_data_df.query(&quot;is_campaign&quot;)
+    .pivot(index=&quot;date&quot;, columns=&quot;variant&quot;, values=&quot;orders&quot;)
+    .reset_index()
+)</code></pre>
+<p>Next, we do a pre and post campaign split of the data.</p>
+<pre class="python"><code>date_train = data_train[&quot;date&quot;].to_numpy()
+y_control_train = data_train[&quot;control&quot;].to_numpy()
+y_treatment_train = data_train[&quot;treatment&quot;].to_numpy()
+
+date_test = data_test[&quot;date&quot;].to_numpy()
+y_control_test = data_test[&quot;control&quot;].to_numpy()
+y_treatment_test = data_test[&quot;treatment&quot;].to_numpy()
+
+n_train = data_train.shape[0]
+n_test = data_test.shape[0]
+n = n_train + n_test
+idx_train = range(n_train)
+idx_test = range(n_train, n)</code></pre>
+<p>In order to stablish suitable priors we scale the data (as suggested by <a href="https://xcelab.net/rm/">Richard McElreath</a> in <a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking</a>):</p>
+<pre class="python"><code>scaler_control = StandardScaler()
+scaler_treatment = StandardScaler()
+
+scaler_control.fit(X=y_control_train[..., None])
+scaler_treatment.fit(X=y_treatment_train[..., None])
+
+y_control_train_scaled = scaler_control.transform(
+    X=y_control_train[..., None]
+).flatten()
+y_treatment_train_scaled = scaler_treatment.transform(
+    X=y_treatment_train[..., None]
+).flatten()
+
+y_control_test_scaled = scaler_control.transform(X=y_control_test[..., None]).flatten()
+y_treatment_test_scaled = scaler_treatment.transform(
+    X=y_treatment_test[..., None]
+).flatten()</code></pre>
+<p>Let’s take a look at the scaled data:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(
+    x=date_train, y=y_control_train_scaled, color=&quot;C0&quot;, label=&quot;control (train)&quot;, ax=ax
+)
+sns.lineplot(
+    x=date_train,
+    y=y_treatment_train_scaled,
+    color=&quot;C1&quot;,
+    label=&quot;treatment (train)&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=date_test, y=y_control_test_scaled, color=&quot;C2&quot;, label=&quot;control (test)&quot;, ax=ax
+)
+sns.lineplot(
+    x=date_test,
+    y=y_treatment_test_scaled,
+    color=&quot;C3&quot;,
+    label=&quot;treatment (test)&quot;,
+    ax=ax,
+)
+ax.axvline(x=start_campaign, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;campaign start&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Orders (Scaled)&quot;);</code></pre>
+<center>
+<img src="../images//time_based_regression_pymc_files/time_based_regression_pymc_15_0.png" style="width: 900px;"/>
+</center>
+<p>In this simulated example the pre-campaign linearity assumption seems to hold.</p>
+</div>
+<div id="define-model" class="section level2">
+<h2>Define Model</h2>
+<p>Now we define the linear regression model. One of the benefits of the Bayesian approach is the ability to encode domain knowledge. In this example we impose the regression coefficient <span class="math inline">\(\beta\)</span> to be positive, which is reasonable given the pre-campaign data. In addition, we use a Student-t likelihood to account for potential outliers in the data.</p>
+<pre class="python"><code>with pm.Model() as model:
+    # --- Data Containers ---
+    model.add_coord(name=&quot;date&quot;, values=date_train, mutable=True)
+    y_control_data = pm.MutableData(
+        name=&quot;y_control_data&quot;, value=y_control_train_scaled, dims=&quot;date&quot;
+    )
+    y_treatment_data = pm.MutableData(
+        name=&quot;y_treatment_data&quot;, value=y_treatment_train_scaled, dims=&quot;date&quot;
+    )
+    # --- Priors ---
+    intercept = pm.Normal(name=&quot;intercept&quot;, mu=0, sigma=1)
+    beta = pm.HalfNormal(name=&quot;beta&quot;, sigma=2)
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=2)
+    nu = pm.Gamma(name=&quot;nu&quot;, alpha=20, beta=2)
+    # --- Model Parametrization ---
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=intercept + beta * y_control_data, dims=&quot;date&quot;)
+    # --- Likelihood ---
+    likelihood = pm.StudentT(
+        &quot;likelihood&quot;, mu=mu, nu=nu, sigma=sigma, observed=y_treatment_data, dims=&quot;date&quot;
+    )
+
+pm.model_to_graphviz(model=model)</code></pre>
+<center>
+<img src="../images//time_based_regression_pymc_files/time_based_regression_pymc_18_0.svg" style="width: 700px;"/>
+</center>
+</div>
+<div id="prior-predictive-check" class="section level2">
+<h2>Prior Predictive Check</h2>
+<p>Before fitting the model, we run some prior predictive checks. This is a good way to check that the model is well defined and that the priors are reasonable.</p>
+<pre class="python"><code>with model:
+    prior_predictive: az.InferenceData = pm.sample_prior_predictive(samples=1000)</code></pre>
+<pre class="python"><code>palette = &quot;Spectral_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+fig, ax = plt.subplots()
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(prior_predictive.prior_predictive[&quot;likelihood&quot;], p, axis=1)
+    lower = np.percentile(
+        prior_predictive.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
+    )
+    color_val = colors[i]
+    ax.fill_between(
+        x=date_train,
+        y1=upper.flatten(),
+        y2=lower.flatten(),
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+
+sns.lineplot(
+    x=date_train,
+    y=y_treatment_train_scaled,
+    label=&quot;orders (scaled)&quot;,
+    color=&quot;black&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Prior Predictive Samples&quot;, xlabel=&quot;date&quot;, ylabel=&quot;orders (scaled)&quot;);</code></pre>
+<center>
+<img src="../images//time_based_regression_pymc_files/time_based_regression_pymc_21_0.png" style="width: 900px;"/>
+</center>
+<p>The prior predictive check looks good!</p>
+</div>
+<div id="fit-model" class="section level2">
+<h2>Fit Model</h2>
+<pre class="python"><code>with model:
+    idata: az.InferenceData = pm.sampling_jax.sample_numpyro_nuts(draws=5000, chains=4)
+    posterior_predictive: az.InferenceData = pm.sample_posterior_predictive(trace=idata)</code></pre>
+</div>
+<div id="model-diagnostics" class="section level2">
+<h2>Model Diagnostics</h2>
+<p>We can now look into some model diagnostics.</p>
+<pre class="python"><code>var_names: list[str] = [&quot;intercept&quot;,&quot;beta&quot;, &quot;sigma&quot;, &quot;nu&quot;]
+
+az.summary(data=idata, var_names=var_names)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+intercept
+</th>
+<td>
+0.003
+</td>
+<td>
+0.018
+</td>
+<td>
+-0.031
+</td>
+<td>
+0.036
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+20287.0
+</td>
+<td>
+14796.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta
+</th>
+<td>
+0.985
+</td>
+<td>
+0.018
+</td>
+<td>
+0.951
+</td>
+<td>
+1.018
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+21524.0
+</td>
+<td>
+15726.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.157
+</td>
+<td>
+0.014
+</td>
+<td>
+0.132
+</td>
+<td>
+0.184
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+19883.0
+</td>
+<td>
+15327.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+10.356
+</td>
+<td>
+2.230
+</td>
+<td>
+6.320
+</td>
+<td>
+14.570
+</td>
+<td>
+0.016
+</td>
+<td>
+0.011
+</td>
+<td>
+19400.0
+</td>
+<td>
+13328.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=var_names,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_27_0.png" style="width: 1000px;"/>
+</center>
+<p>The model posterior distributions look good. In particular, note that the intercept and the regression coefficient are centered around zero and one respectively. This is to be expected given the scaling of the data.</p>
+</div>
+<div id="posterior-predictive-train" class="section level2">
+<h2>Posterior Predictive (Train)</h2>
+<p>We now look at the posterior predictive distribution for the training (pre-campaign) data</p>
+<pre class="python"><code>posterior_predictive_likelihood_train: DataArray = az.extract(
+    data=posterior_predictive, group=&quot;posterior_predictive&quot;, var_names=[&quot;likelihood&quot;]
+)
+
+fig, ax = plt.subplots()
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(posterior_predictive_likelihood_train, p, axis=1)
+    lower = np.percentile(posterior_predictive_likelihood_train, 100 - p, axis=1)
+    color_val = colors[i]
+    ax.fill_between(
+        x=date_train,
+        y1=upper,
+        y2=lower,
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+
+sns.lineplot(
+    x=date_train,
+    y=posterior_predictive_likelihood_train.mean(axis=1),
+    color=&quot;C1&quot;,
+    label=&quot;posterior predictive mean&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=date_train,
+    y=y_treatment_train_scaled,
+    color=&quot;black&quot;,
+    label=&quot;orders (scaled)&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Posterior Predictive Samples (Train) - Orders (Scaled)&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=&quot;orders (scaled)&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_30_0.png" style="width: 900px;"/>
+</center>
+<p>We can visualize the predictions in a different way to clearly see linear relationship.</p>
+<pre class="python"><code>hdi_train_likelihood: DataArray = az.hdi(
+    ary=posterior_predictive, group=&quot;posterior_predictive&quot;
+)[&quot;likelihood&quot;]
+
+hdi_train_mu: DataArray = az.hdi(ary=idata, group=&quot;posterior&quot;)[&quot;mu&quot;]
+
+idx_train_sorted = np.argsort(a=y_control_train_scaled)
+
+fig, ax = plt.subplots(figsize=(9, 8))
+ax.fill_between(
+    x=y_control_train_scaled[idx_train_sorted],
+    y1=hdi_train_likelihood[:, 0][idx_train_sorted],
+    y2=hdi_train_likelihood[:, 1][idx_train_sorted],
+    color=&quot;C0&quot;,
+    alpha=0.2,
+    label=&quot;posterior predictive HDI&quot;,
+)
+ax.fill_between(
+    x=y_control_train_scaled[idx_train_sorted],
+    y1=hdi_train_mu[:, 0][idx_train_sorted],
+    y2=hdi_train_mu[:, 1][idx_train_sorted],
+    color=&quot;C0&quot;,
+    alpha=0.4,
+    label=r&quot;$\mu$ HDI&quot;,
+)
+sns.scatterplot(
+    x=y_control_train_scaled[idx_train_sorted],
+    y=y_treatment_train_scaled[idx_train_sorted],
+    color=&quot;black&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Posterior Predictive HDI (Train) - Orders (Scaled)&quot;,
+    xlabel=&quot;orders control (scaled)&quot;,
+    ylabel=&quot;orders treatment (scaled)&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_32_0.png" style="width: 700px;"/>
+</center>
+<p>We can compute the errors distribution of the model:</p>
+<pre class="python"><code>errors_train: DataArray = (
+    posterior_predictive_likelihood_train - y_treatment_train_scaled[..., None]
+)
+
+fig, ax = plt.subplots(figsize=(15, 7))
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(a=errors_train, q=p, axis=1)
+    lower = np.percentile(a=errors_train, q=100 - p, axis=1)
+    color_val = colors[i]
+    ax.fill_between(x=date_train, y1=upper, y2=lower, color=cmap(color_val), alpha=0.2)
+
+ax.axhline(y=0, color=&quot;C1&quot;, linestyle=&quot;--&quot;)
+ax.set(
+    title=&quot;Posterior Errors Distribution (Train)&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=r&quot;$\hat{y} - y$&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_34_0.png" style="width: 900px;"/>
+</center>
+<p>We do not see any patterns or weird behavior in the errors distribution.</p>
+</div>
+<div id="uncertainty-quantification" class="section level2">
+<h2>Uncertainty Quantification</h2>
+<p>Even though the bayesian framework provides a transparent uncertainty quantification on out-of-sample predictions, the paper suggest a cross-validation approach to have a clearer way to measure uncertainty by simulating <em>pseudo geo experiment data sets</em> from the historical data. I think the motivation behind it is that in real applications the data is very noisy and the linear relationship will probably to hold true completely.</p>
+<div id="cross-validation-folds-generation" class="section level3">
+<h3>Cross Validation: Folds Generation</h3>
+<p><strong>Idea:</strong> Generate a sequence of simulated “pseudo geo experiment data sets,” that is, full data sets of length the length of the experiment <span class="math inline">\(N_{exp}\)</span>, constructed from intervals extracted from the available historical time series data. Each of these simulated data sets represents a possible outcome in the future experiment</p>
+<p><strong>How?</strong> To generate the sequence of such data sets, we use the following procedure. Let <span class="math inline">\(t = 1, \cdots, T\)</span> index each available date in the historical time series.</p>
+<p>We extract a data set <span class="math inline">\(D_i\)</span> , indexed similarly by <span class="math inline">\(i = 1, \cdots, T\)</span> starting from a date <span class="math inline">\(t = i\)</span> onward consisting of <span class="math inline">\(N_{exp}\)</span> days.</p>
+<p>When the end date of the pseudo geo experiment extends beyond date <span class="math inline">\(T\)</span>, complement the time series by adding dates starting from <span class="math inline">\(t = 1\)</span>, thus “recycling” data points as necessary. For example, assuming daily data, a data set <span class="math inline">\(D_{T − 1}\)</span> contains data from days <span class="math inline">\(\{T −1, T, 1, 2, 3, . . . , N_{exp} − 2\}\)</span>.</p>
+<p>Each of the data sets <span class="math inline">\(i\)</span> is assigned a new, consecutive range of dates. Thus we obtain <span class="math inline">\(T\)</span> unique data sets in total.</p>
+<p>Let’s encode this logic in a function:</p>
+<pre class="python"><code>def generate_folds_indices(n_train: int, n_test: int) -&gt; npt.NDArray[np.int_]:
+    &quot;&quot;&quot;Generate cyclic folds indices.&quot;&quot;&quot;
+    return np.array(
+        [np.arange(start=i, stop=i + n_test) % n_train for i in range(n_train)]
+    )
+
+
+folds_indices: npt.NDArray[np.int_] = generate_folds_indices(n_train=n_train, n_test=n_test)
+
+# Let&#39;s see the folds indices
+folds_indices</code></pre>
+<pre><code>array([[ 0,  1,  2, ..., 28, 29, 30],
+       [ 1,  2,  3, ..., 29, 30, 31],
+       [ 2,  3,  4, ..., 30, 31, 32],
+       ...,
+       [88, 89, 90, ..., 25, 26, 27],
+       [89, 90,  0, ..., 26, 27, 28],
+       [90,  0,  1, ..., 27, 28, 29]])</code></pre>
+<p>The following figure shows the folds as in a continuous color palette.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 7))
+sns.heatmap(data=folds_indices.T, cmap=&quot;Spectral_r&quot;, ax=ax)
+ax.set(title=&quot;Folds Indices&quot;, xlabel=&quot;train index&quot;, ylabel=&quot;fold index&quot;);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_40_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="generate-predictions-for-each-fold" class="section level3">
+<h3>Generate predictions for each fold</h3>
+<p>We now generate predictions (in the original scale!) for each fold using the same fitted model. We also compute the errors and HDI intervals.</p>
+<pre class="python"><code>folds_errors_list: list[npt.NDArray[np.float_]] = []
+# generate prediction for each fold and compute the errors (original scale).
+for i in tqdm(range(n_train)):
+    idx = folds_indices[i, :]
+    likelihood_fold = posterior_predictive_likelihood_train[idx, :]
+    y_control_fold_scaled_pred = scaler_control.inverse_transform(X=likelihood_fold)
+    y_control_fold_scaled = y_control_train[idx]
+    error_control_fold = y_control_fold_scaled[..., None] - y_control_fold_scaled_pred
+    folds_errors_list.append(error_control_fold)
+
+folds_errors = np.array(folds_errors_list)
+
+# compute the HDI and the median across folds.
+folds_hdi = az.hdi(ary=np.moveaxis(a=folds_errors, source=0, destination=2))
+folds_hdi_median = np.median(a=folds_hdi, axis=0)</code></pre>
+<p>Let’s visualize the errors distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for i in range(n_train):
+    ax.vlines(
+        x=i,
+        ymin=folds_hdi[i, 0],
+        ymax=folds_hdi[i, 1],
+        linestyle=&quot;solid&quot;,
+        linewidth=0.5,
+    )
+ax.plot(
+    np.median(folds_errors.reshape(n_train, -1), axis=1),
+    color=&quot;C0&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;errors median&quot;,
+)
+ax.axhline(
+    y=folds_hdi_median[0], color=&quot;C1&quot;, linestyle=&quot;dashed&quot;, label=&quot;Median HDI (lower)&quot;
+)
+ax.axhline(
+    y=folds_hdi_median[1], color=&quot;C3&quot;, linestyle=&quot;dashed&quot;, label=&quot;Median HDI (upper)&quot;
+)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;HDI Folds Errors&quot;, xlabel=&quot;fold&quot;, ylabel=&quot;error&quot;);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_44_0.png" style="width: 900px;"/>
+</center>
+<p>We do not see any patterns or weird behavior in the errors distribution. Also, the median error is close to zero (which is not always the case for real data). We can now take a look into the cumulative errors distribution.</p>
+<pre class="python"><code>folds_errors_cumsum = folds_errors.cumsum(axis=1)
+folds_cumsum_hdi = az.hdi(ary=np.moveaxis(a=folds_errors_cumsum, source=0, destination=2))
+folds_cumsum_hdi_median = np.median(a=folds_cumsum_hdi, axis=0)</code></pre>
+<pre class="python"><code>median_folds_errors_cumsum = np.median(folds_errors_cumsum.reshape(n_train, -1), axis=1)
+
+
+fig, ax = plt.subplots()
+
+for i in range(n_train):
+    ax.vlines(
+        x=i,
+        ymin=folds_cumsum_hdi[i, 0],
+        ymax=folds_cumsum_hdi[i, 1],
+        linestyle=&quot;solid&quot;,
+        linewidth=0.5,
+    )
+ax.plot(
+    median_folds_errors_cumsum,
+    color=&quot;C0&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;errors cumsum median&quot;,
+)
+ax.axhline(
+    y=folds_cumsum_hdi_median[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;Median HDI (lower)&quot;,
+)
+ax.axhline(
+    y=folds_cumsum_hdi_median[1],
+    color=&quot;C3&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;Median HDI (upper)&quot;,
+)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;HDI Cumsum Errors Folds&quot;, xlabel=&quot;fold&quot;, ylabel=&quot;cumulative error&quot;);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_47_0.png" style="width: 900px;"/>
+</center>
+<p>The cumulative errors distribution looks also quite even and centered around zero. We can also sort the errors by the median to study the trend.</p>
+<pre class="python"><code>sorted_idx = np.argsort(a=median_folds_errors_cumsum)
+
+
+fig, ax = plt.subplots()
+
+for i in range(n_train):
+    ymin = folds_cumsum_hdi[sorted_idx][i, 0]
+    ymax = folds_cumsum_hdi[sorted_idx][i, 1]
+    outside_condition = (ymin &lt; folds_cumsum_hdi_median[0]) or (
+        ymax &gt; folds_cumsum_hdi_median[1]
+    )
+    ax.vlines(
+        x=i + 1,
+        ymin=ymin,
+        ymax=ymax,
+        color=&quot;C0&quot;,
+        linestyle=&quot;solid&quot;,
+        linewidth=0.5,
+    )
+ax.plot(
+    median_folds_errors_cumsum[sorted_idx],
+    color=&quot;C0&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;errors cumsum median&quot;,
+)
+ax.axhline(
+    y=folds_cumsum_hdi_median[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;Median HDI (lower)&quot;,
+)
+ax.axhline(
+    y=folds_cumsum_hdi_median[1],
+    color=&quot;C3&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;Median HDI (upper)&quot;,
+)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;HDI Cumsum Errors Folds (Sorted)&quot;, xlabel=&quot;fold (sorted)&quot;, ylabel=&quot;cumulative error&quot;);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_49_0.png" style="width: 900px;"/>
+</center>
+<p>After we compare with the counterfactual predictions against the true values we will revisit these uncertainty plots.</p>
+</div>
+</div>
+<div id="posterior-predictive-test" class="section level2">
+<h2>Posterior Predictive (Test)</h2>
+<p>Now generate predictions for the test (post-campaign) period.</p>
+<pre class="python"><code>with model:
+    pm.set_data(
+        new_data={
+            &quot;y_control_data&quot;: y_control_test_scaled,
+            &quot;y_treatment_data&quot;: y_treatment_test_scaled,
+        },
+        coords={&quot;date&quot;: date_test},
+    )
+    idata.extend(
+        pm.sample_posterior_predictive(
+            trace=idata,
+            var_names=[&quot;likelihood&quot;, &quot;mu&quot;],
+            idata_kwargs={&quot;coords&quot;: {&quot;date&quot;: date_test}},
+        )
+    )</code></pre>
+<p>Now we compare the counterfactual predictions against the true values in the original scale.</p>
+<pre class="python"><code>posterior_predictive_likelihood_test = az.extract(
+    data=idata, group=&quot;posterior_predictive&quot;, var_names=[&quot;likelihood&quot;]
+)
+
+posterior_predictive_likelihood_test_inv = scaler_treatment.inverse_transform(
+    X=posterior_predictive_likelihood_test
+)
+
+fig, ax = plt.subplots()
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(a=posterior_predictive_likelihood_test_inv, q=p, axis=1)
+    lower = np.percentile(a=posterior_predictive_likelihood_test_inv, q=100 - p, axis=1)
+    color_val = colors[i]
+    ax.fill_between(
+        x=date_test,
+        y1=upper,
+        y2=lower,
+        color=cmap(color_val),
+        alpha=0.1,
+    )
+
+sns.lineplot(
+    x=date_test,
+    y=posterior_predictive_likelihood_test_inv.mean(axis=1),
+    color=&quot;C1&quot;,
+    label=&quot;posterior predictive mean&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=date_test,
+    y=y_treatment_test,
+    color=&quot;black&quot;,
+    label=&quot;orders (scaled)&quot;,
+    ax=ax,
+)
+ax.axvline(x=start_campaign, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;campaign start&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Posterior Predictive Samples (Test) - Orders&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=&quot;orders&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_54_0.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>errors_test_inv = y_treatment_test[..., None] - posterior_predictive_likelihood_test_inv
+
+
+fig, ax = plt.subplots()
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(a=errors_test_inv, q=p, axis=1)
+    lower = np.percentile(a=errors_test_inv, q=100 - p, axis=1)
+    color_val = colors[i]
+    ax.fill_between(x=date_test, y1=upper, y2=lower, color=cmap(color_val), alpha=0.2)
+
+ax.axhline(y=0, color=&quot;C1&quot;, linestyle=&quot;--&quot;)
+ax.axvline(x=start_campaign, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;campaign start&quot;)
+ax.set(
+    title=&quot;Posterior Errors Distribution (Test) - Orders&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=r&quot;$\hat{y} - y$&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_55_0.png" style="width: 900px;"/>
+</center>
+<p>Finally, we are mainly interested in the cumulative effect:</p>
+<pre class="python"><code>errors_test_cumsum = errors_test_inv.cumsum(axis=0)
+errors_test_cumsum_hdi = az.hdi(ary=errors_test_cumsum.T)[-1, :]
+
+
+fig, ax = plt.subplots()
+
+for i, p in enumerate(percs[::-1]):
+    upper = np.percentile(a=errors_test_cumsum, q=p, axis=1)
+    lower = np.percentile(a=errors_test_cumsum, q=100 - p, axis=1)
+    color_val = colors[i]
+    ax.fill_between(x=date_test, y1=upper, y2=lower, color=cmap(color_val), alpha=0.2)
+
+ax.axhline(y=0, color=&quot;C1&quot;, linestyle=&quot;--&quot;)
+ax.axvline(x=start_campaign, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;campaign start&quot;)
+ax.set(
+    title=&quot;Posterior Cumulative Errors Distribution (Test) - Orders&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=r&quot;$\hat{y} - y$&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_57_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>g = sns.displot(data=errors_test_cumsum[-1, :],  kde=True, rug=True, height=4.5, aspect=2)
+g.fig.suptitle(&quot;Posterior Cumulative Errors Distribution (Test) - Orders&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_58_0.png" style="width: 900px;"/>
+</center>
+<p>Lastly, we can take a look into the uncertainty plots again against the estimated cumulative effect.</p>
+<pre class="python"><code>sorted_idx = np.argsort(a=median_folds_errors_cumsum)
+
+
+fig, ax = plt.subplots()
+
+for i in range(n_train):
+    ymin = folds_cumsum_hdi[sorted_idx][i, 0]
+    ymax = folds_cumsum_hdi[sorted_idx][i, 1]
+    outside_condition = (ymin &lt; folds_cumsum_hdi_median[0]) or (
+        ymax &gt; folds_cumsum_hdi_median[1]
+    )
+    ax.vlines(
+        x=i + 1,
+        ymin=ymin,
+        ymax=ymax,
+        color=&quot;C0&quot;,
+        linestyle=&quot;solid&quot;,
+        linewidth=0.5,
+    )
+ax.plot(
+    median_folds_errors_cumsum[sorted_idx],
+    color=&quot;C0&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;errors cumsum median&quot;,
+)
+ax.axhline(
+    y=folds_cumsum_hdi_median[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;Median HDI (lower)&quot;,
+)
+ax.axhline(
+    y=folds_cumsum_hdi_median[1],
+    color=&quot;C3&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;Median HDI (upper)&quot;,
+)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;zero&quot;)
+ax.vlines(
+        x=0,
+        ymin=errors_test_cumsum_hdi[0],
+        ymax=errors_test_cumsum_hdi[1],
+        color=&quot;black&quot;,
+        linestyle=&quot;solid&quot;,
+        linewidth=3,
+        label=&quot;HDI test&quot;,
+    )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;HDI Cumsum Errors Folds (Sorted)&quot;, xlabel=&quot;fold (sorted)&quot;, ylabel=&quot;cumulative error&quot;);</code></pre>
+<center>
+<img src="../images/time_based_regression_pymc_files/time_based_regression_pymc_60_0.png" style="width: 900px;"/>
+</center>
+<p>This makes clear that we are certain about the effect of the campaign.</p>
+<hr />
+<p>Note however we are not done yet! We have estimated the effect in orders, but we need to factor in the costs. The true quantity of interest is the <strong>iROAS</strong> (incremental return on advertising spend).This should not be hard after having done the conterfactual estimation above. See <a href="https://research.google/pubs/pub45950/">Section 3.4 - TBR Incremental ROAS Analysis</a> for details.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-122570825-1', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

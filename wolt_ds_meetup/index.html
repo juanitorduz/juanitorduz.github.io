@@ -23,6 +23,11 @@
 
 
 
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
 <link rel="stylesheet" href="../css/fonts.css" media="all">
 <link rel="stylesheet" href="../css/main.css" media="all">
 
@@ -60,7 +65,7 @@
 
   <article class="article">
     
-    <span class="article-duration">1 min read</span>
+    <span class="article-duration">3 min read</span>
     
 
     <h1 class="article-title">Offline Campaign Analysis Measurement: A journey through causal impact, geo-experimentation and synthetic control</h1>
@@ -79,6 +84,187 @@
 <iframe width="800" height="500" src="https://www.youtube.com/embed/gMaxM8PAcpo?rel=0" frameborder="0" allowfullscreen>
 </iframe>
 </center>
+<hr />
+<div id="code-to-generate-data" class="section level2">
+<h2>Code to generate data</h2>
+<p>You can find the raw data <a href="https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/zipcodes_data.csv">here</a> and the code <a href="https://github.com/juanitorduz/website_projects/blob/master/Python/zipcode_data.py">here</a>.</p>
+<pre class="python"><code>import logging
+from datetime import datetime
+
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+from rich.logging import RichHandler
+from scipy.special import expit
+
+
+class ZipCodeDataGenerator:
+    &quot;&quot;&quot;Class to generate data for a simulated geo-experiment of orders by zipcode.
+
+    Orders are modeled as a binomial distribution over the zipcode population.
+    The order rate is a function of a trend, seasonal components, the zipcode strength
+    (unobserved variable) and the campaign effect for the treatment group.
+    &quot;&quot;&quot;
+
+    def __init__(
+        self,
+        n_zipcodes: int,
+        start_date: datetime,
+        end_date: datetime,
+        freq: str,
+        start_campaign: datetime,
+        rng: np.random.Generator,
+    ) -&gt; None:
+        self.n_zipcodes = n_zipcodes
+        self.start_date = start_date
+        self.end_date = end_date
+        self.freq = freq
+        self.start_campaign = start_campaign
+        self.rng = rng
+
+    def generate_zipcodes_ids(self) -&gt; npt.ArrayLike:
+        return np.arange(start=0, stop=self.n_zipcodes, step=1)
+
+    def generate_dates(self) -&gt; npt.ArrayLike:
+        return pd.date_range(start=self.start_date, end=self.end_date, freq=self.freq)
+
+    def generate_base_df(
+        self, zipcodes: npt.ArrayLike, date_range: npt.ArrayLike
+    ) -&gt; pd.DataFrame:
+        data_df: pd.DataFrame = pd.merge(
+            left=pd.DataFrame(data={&quot;date&quot;: date_range}),
+            right=pd.DataFrame(data={&quot;zipcode&quot;: zipcodes}),
+            how=&quot;cross&quot;,
+        )
+        data_df[&quot;is_campaign&quot;] = data_df[&quot;date&quot;] &gt;= self.start_campaign
+        return data_df
+
+    def add_seasonality_features(self, data_df: pd.DataFrame) -&gt; pd.DataFrame:
+        data_df[&quot;is_weekend&quot;] = data_df[&quot;date&quot;].dt.weekday &gt; 4
+        data_df[&quot;is_weekday&quot;] = ~data_df[&quot;is_weekend&quot;]
+        data_df[&quot;norm_trend&quot;] = np.linspace(start=0, stop=1, num=data_df.shape[0])
+        return data_df
+
+    def generate_zipcodes_population(
+        self, data_df: pd.DataFrame, zipcodes: npt.ArrayLike
+    ) -&gt; pd.DataFrame:
+        zipcodes_population_map: dict[int, int] = {
+            zipcode: int(10_000 * self.rng.gamma(shape=(zipcode % 3) + 1, scale=1))
+            for zipcode in zipcodes
+        }
+        data_df[&quot;population&quot;] = data_df[&quot;zipcode&quot;].map(zipcodes_population_map)
+        return data_df
+
+    def generate_strength_feature(
+        self, data_df: pd.DataFrame, zipcodes: npt.ArrayLike
+    ) -&gt; pd.DataFrame:
+        zipcodes_strength_map: dict[int, int] = {
+            zipcode: (zipcode &lt; (self.n_zipcodes // 2)).astype(int)
+            for zipcode in zipcodes
+        }
+        data_df[&quot;strength&quot;] = data_df[&quot;zipcode&quot;].map(zipcodes_strength_map)
+        return data_df
+
+    def generate_variant_tag(
+        self, data_df: pd.DataFrame, zipcodes: npt.ArrayLike
+    ) -&gt; pd.DataFrame:
+        zipcode_variant_map: dict[int, int] = {
+            zipcode: (zipcode &lt; (self.n_zipcodes // 3)).astype(int)
+            for zipcode in zipcodes
+        }
+        data_df[&quot;variant&quot;] = (
+            data_df[&quot;zipcode&quot;]
+            .map(zipcode_variant_map)
+            .map({0: &quot;control&quot;, 1: &quot;treatment&quot;})
+        )
+        mask = data_df[&quot;is_campaign&quot;] &amp; (data_df[&quot;variant&quot;] == &quot;treatment&quot;)
+        data_df[&quot;is_campaign_treatment&quot;] = mask
+        return data_df
+
+    def generate_order_rate(self, data_df: pd.DataFrame) -&gt; pd.DataFrame:
+
+        base_or: dict[int, float] = {
+            0: 0.4,
+            1: 0.6,
+        }  # base conversion rate depends on the strength level
+        treatment_effect: float = 7e-2
+
+        data_df[&quot;order_rate_true_logit&quot;] = (
+            data_df[&quot;strength&quot;].map(base_or)
+            + (data_df[&quot;is_campaign_treatment&quot;] * treatment_effect)
+            - 5e-2 * data_df[&quot;is_weekday&quot;]
+            + 6e-2 * data_df[&quot;norm_trend&quot;]
+            - 2.3
+        )
+
+        data_df[&quot;order_rate_true_logit_no_treatment&quot;] = data_df[
+            &quot;order_rate_true_logit&quot;
+        ] - (data_df[&quot;is_campaign_treatment&quot;] * treatment_effect)
+
+        data_df[&quot;order_rate_true&quot;] = expit(data_df[&quot;order_rate_true_logit&quot;])
+        data_df[&quot;order_rate_true_no_treatment&quot;] = expit(
+            data_df[&quot;order_rate_true_logit_no_treatment&quot;]
+        )
+        return data_df
+
+    def generate_orders(self, data_df: pd.DataFrame) -&gt; pd.DataFrame:
+        data_df[&quot;orders&quot;] = rng.binomial(
+            n=data_df[&quot;population&quot;], p=data_df[&quot;order_rate_true&quot;]
+        )
+        data_df[&quot;orders_no_treatment&quot;] = rng.binomial(
+            n=data_df[&quot;population&quot;], p=data_df[&quot;order_rate_true_no_treatment&quot;]
+        )
+        data_df[&quot;order_rate&quot;] = data_df[&quot;orders&quot;] / data_df[&quot;population&quot;]
+        data_df[&quot;order_rate_no_treatment&quot;] = (
+            data_df[&quot;orders_no_treatment&quot;] / data_df[&quot;population&quot;]
+        )
+        data_df[&quot;expected_orders&quot;] = data_df[&quot;population&quot;] * data_df[&quot;order_rate_true&quot;]
+        return data_df
+
+    def run(self) -&gt; pd.DataFrame:
+        zipcodes = self.generate_zipcodes_ids()
+        date_range = self.generate_dates()
+        data_df = self.generate_base_df(zipcodes=zipcodes, date_range=date_range)
+        data_df = self.add_seasonality_features(data_df=data_df)
+        data_df = self.generate_zipcodes_population(data_df=data_df, zipcodes=zipcodes)
+        data_df = self.generate_strength_feature(data_df=data_df, zipcodes=zipcodes)
+        data_df = self.generate_variant_tag(data_df=data_df, zipcodes=zipcodes)
+        data_df = self.generate_order_rate(data_df=data_df)
+        data_df = self.generate_orders(data_df=data_df)
+        return data_df
+
+
+if __name__ == &quot;__main__&quot;:
+
+    FORMAT: str = &quot;%(message)s&quot;
+    logging.basicConfig(
+        level=&quot;INFO&quot;, format=FORMAT, datefmt=&quot;[%X]&quot;, handlers=[RichHandler()]
+    )
+
+    logging.info(&quot;Generating data...&quot;)
+    seed: int = sum(map(ord, &quot;wolt&quot;))
+    rng: np.random.Generator = np.random.default_rng(seed=seed)
+    n_zipcodes: int = 100
+    start_date: datetime = datetime(year=2022, month=4, day=1)
+    end_date: datetime = datetime(year=2022, month=7, day=31)
+    freq: str = &quot;D&quot;
+    start_campaign: datetime = datetime(year=2022, month=7, day=1)
+
+    zipcode_data_generator = ZipCodeDataGenerator(
+        n_zipcodes=n_zipcodes,
+        start_date=start_date,
+        end_date=end_date,
+        freq=freq,
+        start_campaign=start_campaign,
+        rng=rng,
+    )
+
+    data_df: pd.DataFrame = zipcode_data_generator.run()
+    logging.info(&quot;Data generation complete!&quot;)
+
+    data_df.to_csv(&quot;data/zipcodes_data.csv&quot;, index=False)
+    logging.info(&quot;Data saved to data/zipcodes_data.csv&quot;)</code></pre>
+</div>
 
     </div>
   </article>
@@ -101,6 +287,21 @@
 
     </div>
     
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
 
     
 
