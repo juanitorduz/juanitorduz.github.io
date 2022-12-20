@@ -6,7 +6,17 @@
     <description>Recent content in Bayesian, Causal Inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 01 Dec 2022 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 20 Dec 2022 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>A Simple Cohort Retention Analysis in PyMC</title>
+      <link>/retention/</link>
+      <pubDate>Tue, 20 Dec 2022 00:00:00 +0000</pubDate>
+      
+      <guid>/retention/</guid>
+      <description>In this notebook we present a simple approach to study cohort retention analysis through a simulated data set. The aim is to understand how retention rates change over time and provide a simple model to predict them (with uncertainty estimates!). We do not expect this technique to be a silver bullet for all retention problems, but rather a simple approach to get started with the problem.
+Remark: A motivation for this notebook was the great post Bayesian Age/Period/Cohort Models in Python with PyMC by Austin Rochford.</description>
+    </item>
+    
     <item>
       <title>Geo-Experimentation via Time Based Regression in PyMC</title>
       <link>/time_based_regression_pymc/</link>
