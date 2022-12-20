@@ -220,12 +220,19 @@ data_df.head()</code></pre>
         vertical-align: middle;
     }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
     }
 
-    .dataframe thead th {
-        text-align: right;
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
     }
 </style>
 <table border="1" class="dataframe">
@@ -564,15 +571,12 @@ ax.set(title=&quot;Retention by Cohort and Period&quot;);</code></pre>
 <h2>Model</h2>
 <p>We now want to model the retention rates based in the EDA above. We use a generalized linear model with binomial likelihood and a logit link function. Concretely,</p>
 <p><span class="math display">\[\begin{align*}
-N_{\text{active}} &amp; \sim \text{Binomial}(N_{\text{total}}, p) \\
-p &amp; = \text{logit}(\mu) \\
-\mu &amp; = \left(
-    \text{intercept}
-    + \beta_{\text{cohort age}} \text{cohort age}
-    + \beta_{\text{age}} \text{age}
-    + \beta_{\text{cohort age} \times \text{age}} \text{cohort age} \times \text{age}
-    + \beta_{\text{seasonality}} \text{seasonality}
-\right)
+N_{\text{active}} \sim &amp;\text{Binomial}(N_{\text{total}}, p) \\
+\textrm{logit}(p) = (&amp; \text{intercept} \\
+    &amp; + \beta_{\text{cohort age}} \text{cohort age} \\
+    &amp; + \beta_{\text{age}} \text{age} \\
+    &amp; + \beta_{\text{cohort age} \times \text{age}} \text{cohort age} \times \text{age} \\
+    &amp; + \beta_{\text{seasonality}} \text{seasonality} )
 \end{align*}\]</span></p>
 <p>We also choose normal priors which are not very informative.</p>
 <p><strong>Remarks</strong></p>
@@ -589,12 +593,19 @@ p &amp; = \text{logit}(\mu) \\
         vertical-align: middle;
     }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
     }
 
-    .dataframe thead th {
-        text-align: right;
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
     }
 </style>
 <table border="1" class="dataframe">
@@ -909,13 +920,18 @@ pm.model_to_graphviz(model=model)
         vertical-align: middle;
     }
 
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
     .dataframe tbody tr th {
         vertical-align: top;
         font-size: 16px;
     }
-
-    .dataframe thead th {
-        text-align: right;
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
         font-size: 16px;
     }
 </style>
