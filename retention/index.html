@@ -844,7 +844,7 @@ coords: dict[str, npt.NDArray] = {
 </div>
 <div id="model-specification" class="section level3">
 <h3>Model Specification</h3>
-<p>Thw following PyMC model implements the model specification above. We use <a href="https://www.pymc.io/projects/docs/en/latest/api/generated/pymc.MutableData.html"><code>pm.MutableData</code></a> wrappers so that we can update the model with new data when generating predictions.</p>
+<p>The following PyMC model implements the model specification above. We use <a href="https://www.pymc.io/projects/docs/en/latest/api/generated/pymc.MutableData.html"><code>pm.MutableData</code></a> wrappers so that we can update the model with new data when generating predictions.</p>
 <pre class="python"><code>with pm.Model(coords=coords) as model:
     # --- Data ---
     model.add_coord(name=&quot;obs&quot;, values=train_obs_idx, mutable=True)
