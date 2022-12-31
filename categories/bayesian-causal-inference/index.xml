@@ -6,7 +6,17 @@
     <description>Recent content in Bayesian, Causal Inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 20 Dec 2022 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 02 Jan 2023 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Cohort Retention Analysis in with BART</title>
+      <link>/retention_bart/</link>
+      <pubDate>Mon, 02 Jan 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/retention_bart/</guid>
+      <description>In this notebook we study an alternative approach for the cohort analysis problem presented in A Simple Cohort Retention Analysis in PyMC. Instead of using a linear model to estimate the retention rate, we use a Bayesian Additive Regression Tree (BART) model(see pymc-bart). The BART model is a flexible non-parametric model that can be used to model complex relationships between the response and the predictors.
+Prepare Notebook import arviz as az import matplotlib.</description>
+    </item>
+    
     <item>
       <title>A Simple Cohort Retention Analysis in PyMC</title>
       <link>/retention/</link>

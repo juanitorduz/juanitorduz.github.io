@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Cohort Retention Analysis in with BART - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Cohort Retention Analysis in with BART - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">9 min read</span>
+    
+
+    <h1 class="article-title">Cohort Retention Analysis in with BART</h1>
+
+    
+    <span class="article-date">2023-01-02</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we study an alternative approach for the cohort analysis problem presented in <a href="https://juanitorduz.github.io/retention/"><em>A Simple Cohort Retention Analysis in PyMC</em></a>. Instead of using a linear model to estimate the retention rate, we use a Bayesian Additive Regression Tree (BART) model(see <a href="https://www.pymc.io/projects/bart/en/latest/"><code>pymc-bart</code></a>). The BART model is a flexible non-parametric model that can be used to model complex relationships between the response and the predictors.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+import pymc as pm
+import pymc_bart as pmb
+import pymc.sampling_jax
+import pytensor.tensor as pt
+import seaborn as sns
+from scipy.special import logit
+from sklearn.preprocessing import LabelEncoder
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;retention&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+random_seed_int: int = rng.integers(low=0, high=100, size=1).item()
+</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>Here we simply read the data from the previous post.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/retention_data.csv&quot;
+
+data_df = pd.read_csv(data_path, parse_dates=[&quot;cohort&quot;, &quot;period&quot;])
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+cohort
+</th>
+<th>
+n_users
+</th>
+<th>
+period
+</th>
+<th>
+age
+</th>
+<th>
+cohort_age
+</th>
+<th>
+retention_true_mu
+</th>
+<th>
+retention_true
+</th>
+<th>
+n_active_users
+</th>
+<th>
+retention
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-01-01
+</td>
+<td>
+1430
+</td>
+<td>
+0
+</td>
+<td>
+-1.807373
+</td>
+<td>
+0.140956
+</td>
+<td>
+150
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-02-01
+</td>
+<td>
+1430
+</td>
+<td>
+31
+</td>
+<td>
+-1.474736
+</td>
+<td>
+0.186224
+</td>
+<td>
+25
+</td>
+<td>
+0.166667
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-03-01
+</td>
+<td>
+1430
+</td>
+<td>
+60
+</td>
+<td>
+-2.281286
+</td>
+<td>
+0.092685
+</td>
+<td>
+13
+</td>
+<td>
+0.086667
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-04-01
+</td>
+<td>
+1430
+</td>
+<td>
+91
+</td>
+<td>
+-3.206610
+</td>
+<td>
+0.038918
+</td>
+<td>
+6
+</td>
+<td>
+0.040000
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-05-01
+</td>
+<td>
+1430
+</td>
+<td>
+121
+</td>
+<td>
+-3.112983
+</td>
+<td>
+0.042575
+</td>
+<td>
+2
+</td>
+<td>
+0.013333
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We make a data train-test split.</p>
+<pre class="python"><code>period_train_test_split = &quot;2022-11-01&quot;
+
+train_data_df = data_df.query(&quot;period &lt;= @period_train_test_split&quot;)
+test_data_df = data_df.query(&quot;period &gt; @period_train_test_split&quot;)
+test_data_df = test_data_df[
+    test_data_df[&quot;cohort&quot;].isin(train_data_df[&quot;cohort&quot;].unique())
+]</code></pre>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>For a detailed EDA of the data, please refer to the previous post. Here we simply display the most important plots. First, here is the retention matrix:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 7))
+
+fmt = lambda y, _: f&quot;{y :0.0%}&quot;
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;retention&quot;])
+    .pivot(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;retention&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        fmt=&quot;0.0%&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(fmt)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Retention by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_9_1.png" style="width: 1000px;"/>
+</center>
+<p>Next we plot the retention rate by cohort over time (period):</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
+sns.lineplot(
+    x=&quot;period&quot;,
+    y=&quot;retention&quot;,
+    hue=&quot;cohort&quot;,
+    palette=&quot;viridis_r&quot;,
+    alpha=0.8,
+    data=train_data_df.query(&quot;cohort_age &gt; 0&quot;).assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;)
+    ),
+    ax=ax,
+)
+ax.legend(title=&quot;cohort&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5), fontsize=7.5)
+ax.set(title=&quot;Retention by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_11_1.png" style="width: 1000px;"/>
+</center>
+<p>As mentioned in the previous post, we see the following:</p>
+<ul>
+<li>It seems that for a given period, the retention rates of the new cohorts are higher than the retention rates of the older cohorts. This is a clear indication that the retention rate is a function of the absolute cohort age.</li>
+<li>We also see a clear seasonality component in the retention rates.</li>
+<li>For a given cohort, seasonality peaks are decreasing as a function of time (period).</li>
+</ul>
+</div>
+<div id="model" class="section level2">
+<h2>Model</h2>
+<p>The model we want to test is the following:</p>
+<p><span class="math display">\[\begin{align*}
+N_{\text{active}} &amp; \sim \text{Binomial}(N_{\text{total}}, p) \\
+\textrm{logit}(p) &amp; = \text{BART}(\text{cohort age}, \text{age}, \text{month})
+\end{align*}\]</span></p>
+<p>That is, we want to use a BART model to estimate the retention rate as a function of the absolute cohort age, the cohort age and the month. Note that we do not need to specify the relation between variables, the BART model will learn it from the data.</p>
+<div id="data-transformations" class="section level3">
+<h3>Data Transformations</h3>
+<p>We do similar transformations to the data as for the linear model.</p>
+<pre class="python"><code>eps = np.finfo(float).eps
+train_data_red_df = train_data_df.query(&quot;cohort_age &gt; 0&quot;).reset_index(drop=True)
+train_obs_idx = train_data_red_df.index.to_numpy()
+train_n_users = train_data_red_df[&quot;n_users&quot;].to_numpy()
+train_n_active_users = train_data_red_df[&quot;n_active_users&quot;].to_numpy()
+train_retention = train_data_red_df[&quot;retention&quot;].to_numpy()
+train_retention_logit = logit(train_retention + eps)
+train_data_red_df[&quot;month&quot;] = train_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+
+train_cohort = train_data_red_df[&quot;cohort&quot;].to_numpy()
+train_cohort_encoder = LabelEncoder()
+train_cohort_idx = train_cohort_encoder.fit_transform(train_cohort).flatten()
+train_period = train_data_red_df[&quot;period&quot;].to_numpy()
+train_period_encoder = LabelEncoder()
+train_period_idx = train_period_encoder.fit_transform(train_period).flatten()
+
+features: list[str] = [&quot;age&quot;, &quot;cohort_age&quot;, &quot;month&quot;]
+x_train = train_data_red_df[features]</code></pre>
+</div>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>We strongly recommend to take a look into the <a href="https://www.pymc.io/projects/bart/en/latest/examples/BART_introduction.html">BART Overview</a> section presented in the <code>pymc-bart</code> documentation. One thing to note is that in all examples presented, the BART model is used to model the expected value of the response variable. In our case, we have a Binomial likelihood, so we need to apply the logit link function to the BART component (Thank you <a href="https://github.com/aloctavodia">Osvaldo A Martin</a> for the support and indication on some numerical tips and tricks!, see <a href="https://github.com/pymc-devs/pymc-bart/issues/31">this issue</a>). Let’s see how to do it:</p>
+<pre class="python"><code>with pm.Model(coords={&quot;feature&quot;: features}) as model:
+
+    # --- Data ---
+    model.add_coord(name=&quot;obs&quot;, values=train_obs_idx, mutable=True)
+    x = pm.MutableData(name=&quot;x&quot;, value=x_train, dims=(&quot;obs&quot;, &quot;feature&quot;))
+    n_users = pm.MutableData(name=&quot;n_users&quot;, value=train_n_users, dims=&quot;obs&quot;)
+    n_active_users = pm.MutableData(
+        name=&quot;n_active_users&quot;, value=train_n_active_users, dims=&quot;obs&quot;
+    )
+
+    # --- Parametrization ---
+    # The BART component models the image of the retention rate under the
+    # logit transform so that the range is not constrained to [0, 1].
+    mu = pmb.BART(name=&quot;mu&quot;, X=x, Y=train_retention_logit, m=30, dims=&quot;obs&quot;)
+    # We use the inverse logit transform to get the retention rate back into [0, 1].
+    p = pm.Deterministic(name=&quot;p&quot;, var=pm.math.invlogit(mu), dims=&quot;obs&quot;)
+    # We add a small epsilon to avoid numerical issues.
+    p = pt.switch(pt.eq(p, 0), eps, p)
+    p = pt.switch(pt.eq(p, 1), 1 - eps, p)
+
+    # --- Likelihood ---
+    pm.Binomial(
+        name=&quot;likelihood&quot;,
+        n=n_users,
+        p=p,
+        observed=n_active_users,
+        dims=&quot;obs&quot;,
+    )
+
+pm.model_to_graphviz(model=model)</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_17_0.svg" style="width: 400px;"/>
+</center>
+</div>
+<div id="model-fitting" class="section level3">
+<h3>Model Fitting</h3>
+<p>Now we are ready to fit the model.</p>
+<pre class="python"><code>with model:
+    idata = pm.sample(draws=2_000, chains=4, random_seed=rng)
+    posterior_predictive = pm.sample_posterior_predictive(trace=idata, random_seed=rng)
+</code></pre>
+</div>
+<div id="model-diagnostics" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>We look into the posterior predictive check:</p>
+<pre class="python"><code>ax = az.plot_ppc(
+    data=posterior_predictive,
+    kind=&quot;cumulative&quot;,
+    observed_rug=True,
+    random_seed=random_seed_int,
+)
+ax.set(
+    title=&quot;Posterior Predictive Check&quot;,
+    xscale=&quot;log&quot;,
+    xlabel=&quot;likelihood (n_active_users) - log scale&quot;,
+);</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_21_0.png" style="width: 900px;"/>
+</center>
+<p>The model seems to be doing a good job 🙂 !</p>
+</div>
+<div id="retention-rate-in-sample-predictions" class="section level3">
+<h3>Retention Rate In-Sample Predictions</h3>
+<p>Let’s see how the model performs in-sample. We plot the retention rate posterior mean predictions for the training data:</p>
+<pre class="python"><code>train_posterior_retention = (
+    posterior_predictive.posterior_predictive / train_n_users[np.newaxis, None]
+)
+train_posterior_retention_mean = az.extract(
+    data=train_posterior_retention, var_names=[&quot;likelihood&quot;]
+).mean(&quot;sample&quot;)
+
+fig, ax = plt.subplots(figsize=(10, 9))
+sns.scatterplot(
+    x=&quot;retention&quot;,
+    y=&quot;posterior_retention_mean&quot;,
+    data=train_data_red_df.assign(
+        posterior_retention_mean=train_posterior_retention_mean
+    ),
+    hue=&quot;age&quot;,
+    palette=&quot;viridis_r&quot;,
+    size=&quot;n_users&quot;,
+    ax=ax,
+)
+ax.axline(xy1=(0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend()
+ax.set(title=&quot;Posterior Predictive - Retention Mean&quot;);</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_24_1.png" style="width: 900px;"/>
+</center>
+<p>The results look quite good and similar to the linear model!</p>
+<p>Next, we look into the uncertainty estimates for a subset of individual cohorts:</p>
+<pre class="python"><code>train_retention_hdi = az.hdi(ary=train_posterior_retention)[&quot;likelihood&quot;]
+
+
+def plot_train_retention_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+
+    mask = train_cohort_idx == cohort_index
+
+    ax.fill_between(
+        x=train_period[train_period_idx[mask]],
+        y1=train_retention_hdi[mask, :][:, 0],
+        y2=train_retention_hdi[mask, :][:, 1],
+        alpha=0.3,
+        color=&quot;C0&quot;,
+        label=&quot;94% HDI (train)&quot;,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=train_retention[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed retention (train)&quot;,
+        ax=ax,
+    )
+    cohort_name = (
+        pd.to_datetime(train_cohort_encoder.classes_[cohort_index]).date().isoformat()
+    )
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set(title=f&quot;Retention HDI - Cohort {cohort_name}&quot;)
+    return ax
+
+
+cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohort_index_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(15, 10),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
+    plot_train_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_26_0.png" style="width: 1000px;"/>
+</center>
+<p>As in the linear model case, we are capturing the retention rate development over time. The uncertainty estimates are also quite similar to the linear model.</p>
+</div>
+<div id="pdp-ice-plots" class="section level3">
+<h3>PDP / ICE Plots</h3>
+<p>One of the nice features of the <code>pymc-bart</code> implementation is that it allows to compute partial dependence plots (PDP) and individual conditional expectation (ICE) plots. These plots help to understand relationships between the response and the predictors. For more details, please refer to the great book <a href="https://christophm.github.io/interpretable-ml-book/pdp.html">Interpretable Machine Learning</a> by Christoph Molnar. For a specific example in python with <code>scikit-learn</code>, please refer to the blog post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>.</p>
+<pre class="python"><code>axes = pmb.plot_dependence(
+    bartrv=mu,
+    X=x_train,
+    Y=train_retention_logit,
+    xs_interval=&quot;quantiles&quot;,
+    kind=&quot;ice&quot;,
+    grid=&quot;wide&quot;,
+    color=&quot;C2&quot;,
+    color_mean=&quot;C2&quot;,
+    var_discrete=[2],
+    figsize=(12, 7),
+    random_seed=random_seed_int,
+)
+plt.gcf().suptitle(
+    &quot;Individual Conditional Expectation (ICE) Plots - Retention (Logit)&quot;,
+    fontsize=16,
+    y=1.02,
+);</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_29_0.png" style="width: 900px;"/>
+</center>
+<ul>
+<li>The PDP / ICE plots how the retention rate (logit) decreases with both <code>cohort_age</code> and <code>age</code>. This is not surprising as we saw in the EDA.</li>
+<li>We see that the ICE plots have a similar trend to the PDP plots. This hints that the interaction effects are not so important in this case (this is also something wee see in the linear model where the interaction coefficient was relatively small).</li>
+<li>We clearly see the seasonality component of the PDP / ICE plots resemble the regression coefficients in the linear model. This iis simply representing the strong seasonal component of the data.</li>
+</ul>
+</div>
+<div id="variable-importance" class="section level3">
+<h3>Variable Importance</h3>
+<p>BART models <code>pymc</code> implementation also provide a measure of variable importance. According to the documentation:</p>
+<blockquote>
+<p><em>BART itself leads to a simple heuristic to estimate variable importance. That is simple count how many times a variable is included in all the regression trees. The intuition is that if a variable is important they it should appears more often in the fitted trees that less important variables. While this heuristic seems to provide reasonable results in practice, there is not too much theory justifying this procedure, at least not yet.</em></p>
+</blockquote>
+<p>In addition, this BART implementation also provides a measure of variable importance based the contribution to the <span class="math inline">\(R^2\)</span>. For more details, please refer to the <a href="https://www.pymc.io/projects/bart/en/latest/examples/BART_introduction.html#Variable-importance">documentation</a> regarding variable importance.</p>
+<pre class="python"><code>indices, axes = pmb.plot_variable_importance(
+    idata=idata, bartrv=mu, X=x_train, random_seed=random_seed_int
+)
+plt.gcf().suptitle(&quot;Variable Importance&quot;, fontsize=16, y=1.02);</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_32_1.png" style="width: 900px;"/>
+</center>
+<p>These plots suggest that the once we know the seasonal component and the <code>cohort_age</code>, the <code>age</code> variable is not so important.</p>
+</div>
+</div>
+<div id="predictions" class="section level2">
+<h2>Predictions</h2>
+<p>Now we transform the test data to the same format as the training data and use the model to predict the retention rates. Note that we are using the scalers and encoders from the training data.</p>
+<div id="data-transformations-1" class="section level3">
+<h3>Data Transformations</h3>
+<pre class="python"><code>test_data_red_df = test_data_df.query(&quot;cohort_age &gt; 0&quot;)
+test_data_red_df = test_data_red_df[
+    test_data_red_df[&quot;cohort&quot;].isin(train_data_red_df[&quot;cohort&quot;].unique())
+].reset_index(drop=True)
+test_obs_idx = test_data_red_df.index.to_numpy()
+test_n_users = test_data_red_df[&quot;n_users&quot;].to_numpy()
+test_n_active_users = test_data_red_df[&quot;n_active_users&quot;].to_numpy()
+test_retention = test_data_red_df[&quot;retention&quot;].to_numpy()
+
+test_cohort = test_data_red_df[&quot;cohort&quot;].to_numpy()
+test_cohort_idx = train_cohort_encoder.transform(test_cohort).flatten()
+
+test_data_red_df[&quot;month&quot;] = test_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+x_test = test_data_red_df[features]
+</code></pre>
+</div>
+<div id="out-of-sample-posterior-predictions" class="section level3">
+<h3>Out-of-Sample Posterior Predictions</h3>
+<p>Now we want to see out-of-sample predictions from this model. To begin, we need to compute the posterior predictive distribution for the test data.</p>
+<pre class="python"><code>with model:
+    pm.set_data(
+        new_data={
+            &quot;x&quot;: x_test,
+            &quot;n_users&quot;: test_n_users,
+            &quot;n_active_users&quot;: test_n_active_users,
+        },
+        coords={&quot;obs&quot;: test_obs_idx},
+    )
+    idata.extend(
+        pm.sample_posterior_predictive(
+            trace=idata,
+            var_names=[&quot;likelihood&quot;, &quot;p&quot;, &quot;mu&quot;],
+            idata_kwargs={&quot;coords&quot;: {&quot;obs&quot;: test_obs_idx}},
+        )
+    )</code></pre>
+</div>
+<div id="retention-rate-out-of-sample-predictions" class="section level3">
+<h3>Retention Rate Out-of-Sample Predictions</h3>
+<p>Finally we compute the posterior retention rate distributions for the test data and visualize the results.</p>
+<pre class="python"><code>test_posterior_retention = (
+    idata.posterior_predictive[&quot;likelihood&quot;] / test_n_users[np.newaxis, None]
+)
+
+test_retention_hdi = az.hdi(ary=test_posterior_retention)[&quot;likelihood&quot;]
+</code></pre>
+<pre class="python"><code>def plot_test_retention_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+    mask = test_cohort_idx == cohort_index
+
+    test_period_range = test_data_red_df.query(
+        f&quot;cohort == &#39;{train_cohort_encoder.classes_[cohort_index]}&#39;&quot;
+    )[&quot;period&quot;]
+
+    ax.fill_between(
+        x=test_period_range,
+        y1=test_retention_hdi[mask, :][:, 0],
+        y2=test_retention_hdi[mask, :][:, 1],
+        alpha=0.3,
+        color=&quot;C1&quot;,
+        label=&quot;94% HDI (test)&quot;,
+    )
+    sns.lineplot(
+        x=test_period_range,
+        y=test_retention[mask],
+        color=&quot;C1&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed retention (test)&quot;,
+        ax=ax,
+    )
+    return ax</code></pre>
+<pre class="python"><code>cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=len(cohort_index_to_plot),
+    ncols=1,
+    figsize=(12, 15),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
+    plot_train_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    plot_test_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    ax.axvline(
+        x=pd.to_datetime(period_train_test_split),
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+fig.suptitle(&quot;Retention Predictions&quot;, y=1.03, fontsize=16);</code></pre>
+<center>
+<img src="../images/retention_bart_files/retention_bart_42_1.png" style="width: 1000px;"/>
+</center>
+<p>These predictions look quite good as well! They actually do not differ much from linear model. The reason might be that the interaction effects do not seem strong (according to the PDP / ICE plots). That being said, the BART model is more flexible and can capture more complex relationships between the response and the predictors. This could be useful in real-world applications where the data and relationships are more complex.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
