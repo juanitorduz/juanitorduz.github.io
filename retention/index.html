@@ -435,8 +435,8 @@ retention
 <p>Now we do a train test split to evaluate our model out-of-sample predictions.</p>
 <pre class="python"><code>period_train_test_split = &quot;2022-11-01&quot;
 
-train_data_df = data_df.query(&#39;period &lt;= @period_train_test_split&#39;)
-test_data_df = data_df.query(&#39;period &gt; @period_train_test_split&#39;)
+train_data_df = data_df.query(&quot;period &lt;= @period_train_test_split&quot;)
+test_data_df = data_df.query(&quot;period &gt; @period_train_test_split&quot;)
 test_data_df = test_data_df[test_data_df[&quot;cohort&quot;].isin(train_data_df[&#39;cohort&#39;].unique())]</code></pre>
 </div>
 <div id="eda" class="section level2">
