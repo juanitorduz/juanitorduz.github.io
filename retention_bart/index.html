@@ -662,7 +662,9 @@ x_test = test_data_red_df[features]
         new_data={
             &quot;x&quot;: x_test,
             &quot;n_users&quot;: test_n_users,
-            &quot;n_active_users&quot;: test_n_active_users,
+            &quot;n_active_users&quot;: np.ones_like(
+                test_n_active_users
+            ),  # Dummy data to make coords work! We are not using this at prediction time!
         },
         coords={&quot;obs&quot;: test_obs_idx},
     )
