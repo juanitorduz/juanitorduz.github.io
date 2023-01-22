@@ -6,7 +6,16 @@
     <description>Recent content in python, bayes, pymc, marketing on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 02 Jan 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-marketing/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 23 Jan 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-marketing/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Cohort Revenue &amp; Retention Analysis: A Bayesian Approach</title>
+      <link>/revenue_retention/</link>
+      <pubDate>Mon, 23 Jan 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/revenue_retention/</guid>
+      <description>In this notebook we extend the cohort retention model presented in the post Cohort Retention Analysis with BART so that we just model retention and per cohort simultaneously (we recommend to read the referenced post before this one). The idea is to keep modeling the retention using a Bayesian Additive Regression Tree (BART) model (see pymc-bart) and model the revenue per cohort linearly using a Gamma distribution. We couple the retention and revenue components in a similar way as presented in notebook Introduction to Bayesian A/B Testing.</description>
+    </item>
+    
     <item>
       <title>Cohort Retention Analysis with BART</title>
       <link>/retention_bart/</link>

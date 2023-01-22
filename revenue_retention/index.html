@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Cohort Revenue &amp; Retention Analysis: A Bayesian Approach - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Cohort Revenue &amp; Retention Analysis: A Bayesian Approach - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">13 min read</span>
+    
+
+    <h1 class="article-title">Cohort Revenue &amp; Retention Analysis: A Bayesian Approach</h1>
+
+    
+    <span class="article-date">2023-01-23</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we extend the cohort retention model presented in the post <a href="https://juanitorduz.github.io/retention_bart/">Cohort Retention Analysis with BART</a> so that we just model retention <strong>and</strong> per cohort simultaneously (we recommend to read the referenced post before this one). The idea is to keep modeling the retention using a Bayesian Additive Regression Tree (BART) model (see <a href="https://www.pymc.io/projects/bart/en/latest/"><code>pymc-bart</code></a>) and model the revenue per cohort linearly using a Gamma distribution. We couple the retention and revenue components in a similar way as presented in notebook <a href="https://www.pymc.io/projects/examples/en/latest/case_studies/bayesian_ab_testing_introduction.html">Introduction to Bayesian A/B Testing</a>. For this simulated example we use synthetic data set, see the blog post <a href="https://juanitorduz.github.io/retention/">A Simple Cohort Retention Analysis in PyMC</a> For more details. <a href="https://github.com/juanitorduz/website_projects/blob/master/data/retention_data.csv">Here</a> you can find the data to reproduce the results.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pymc_bart as pmb
+import pytensor.tensor as pt
+import seaborn as sns
+from scipy.special import logit
+from sklearn.preprocessing import MaxAbsScaler, LabelEncoder
+
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;retention&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+random_seed_int: int = rng.integers(low=0, high=100, size=1).item()</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We start by reading the data from previous posts (see <a href="https://github.com/juanitorduz/website_projects/blob/master/Python/retention_data.py">here</a> for the code to generate the data).</p>
+<pre class="python"><code>data_df = pd.read_csv(&quot;../data/retention_data.csv&quot;, parse_dates=[&quot;cohort&quot;, &quot;period&quot;])
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+cohort
+</th>
+<th>
+n_users
+</th>
+<th>
+period
+</th>
+<th>
+age
+</th>
+<th>
+cohort_age
+</th>
+<th>
+retention_true_mu
+</th>
+<th>
+retention_true
+</th>
+<th>
+n_active_users
+</th>
+<th>
+revenue
+</th>
+<th>
+retention
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-01-01
+</td>
+<td>
+1430
+</td>
+<td>
+0
+</td>
+<td>
+-1.807373
+</td>
+<td>
+0.140956
+</td>
+<td>
+150
+</td>
+<td>
+14019.256906
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-02-01
+</td>
+<td>
+1430
+</td>
+<td>
+31
+</td>
+<td>
+-1.474736
+</td>
+<td>
+0.186224
+</td>
+<td>
+25
+</td>
+<td>
+1886.501237
+</td>
+<td>
+0.166667
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-03-01
+</td>
+<td>
+1430
+</td>
+<td>
+60
+</td>
+<td>
+-2.281286
+</td>
+<td>
+0.092685
+</td>
+<td>
+13
+</td>
+<td>
+1098.136314
+</td>
+<td>
+0.086667
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-04-01
+</td>
+<td>
+1430
+</td>
+<td>
+91
+</td>
+<td>
+-3.206610
+</td>
+<td>
+0.038918
+</td>
+<td>
+6
+</td>
+<td>
+477.852458
+</td>
+<td>
+0.040000
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-05-01
+</td>
+<td>
+1430
+</td>
+<td>
+121
+</td>
+<td>
+-3.112983
+</td>
+<td>
+0.042575
+</td>
+<td>
+2
+</td>
+<td>
+214.667937
+</td>
+<td>
+0.013333
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The new component that we have is <code>revenue</code> which represents the revenue per cohort.</p>
+<pre class="python"><code>data_df[&quot;revenue&quot;].describe()</code></pre>
+<pre><code>count    1.176000e+03
+mean     2.783869e+04
+std      1.292528e+05
+min      0.000000e+00
+25%      8.304124e+02
+50%      2.807035e+03
+75%      1.099646e+04
+max      1.999798e+06
+Name: revenue, dtype: float64</code></pre>
+</div>
+<div id="data-preprocessing" class="section level2">
+<h2>Data Preprocessing</h2>
+<p>In order to understand the user vs revenue relation, let’s compute the revenue per users and per <em>active</em> users. The former represent the overall cohort contribution and the latter the contribution of the active users.</p>
+<pre class="python"><code>data_df[&quot;revenue_per_users&quot;] = data_df[&quot;revenue&quot;] / data_df[&quot;n_users&quot;]
+data_df[&quot;revenue_per_active_users&quot;] = data_df[&quot;revenue&quot;] / data_df[&quot;n_active_users&quot;]</code></pre>
+<p>Observe that we have certain <code>periods</code> where we do not have active users. This induces <code>NaN</code> values in the <code>revenue_per_active_users</code>.</p>
+<pre class="python"><code>data_df.query(&quot;revenue_per_active_users.isna()&quot;)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 11px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 11px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 11px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+cohort
+</th>
+<th>
+n_users
+</th>
+<th>
+period
+</th>
+<th>
+age
+</th>
+<th>
+cohort_age
+</th>
+<th>
+retention_true_mu
+</th>
+<th>
+retention_true
+</th>
+<th>
+n_active_users
+</th>
+<th>
+revenue
+</th>
+<th>
+retention
+</th>
+<th>
+revenue_per_users
+</th>
+<th>
+revenue_per_active_users
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+53
+</th>
+<td>
+2020-02-01
+</td>
+<td>
+62
+</td>
+<td>
+2020-07-01
+</td>
+<td>
+1399
+</td>
+<td>
+151
+</td>
+<td>
+-3.542850
+</td>
+<td>
+0.028117
+</td>
+<td>
+0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+55
+</th>
+<td>
+2020-02-01
+</td>
+<td>
+62
+</td>
+<td>
+2020-09-01
+</td>
+<td>
+1399
+</td>
+<td>
+213
+</td>
+<td>
+-3.111235
+</td>
+<td>
+0.042646
+</td>
+<td>
+0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+78
+</th>
+<td>
+2020-02-01
+</td>
+<td>
+62
+</td>
+<td>
+2022-08-01
+</td>
+<td>
+1399
+</td>
+<td>
+912
+</td>
+<td>
+-4.465784
+</td>
+<td>
+0.011365
+</td>
+<td>
+0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+87
+</th>
+<td>
+2020-02-01
+</td>
+<td>
+62
+</td>
+<td>
+2023-05-01
+</td>
+<td>
+1399
+</td>
+<td>
+1185
+</td>
+<td>
+-3.877776
+</td>
+<td>
+0.020277
+</td>
+<td>
+0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+90
+</th>
+<td>
+2020-02-01
+</td>
+<td>
+62
+</td>
+<td>
+2023-08-01
+</td>
+<td>
+1399
+</td>
+<td>
+1277
+</td>
+<td>
+-4.726498
+</td>
+<td>
+0.008780
+</td>
+<td>
+0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+NaN
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We fill these missing values with zero.</p>
+<pre class="python"><code>data_df.fillna(value={&quot;revenue_per_active_users&quot;: 0.0}, inplace=True)</code></pre>
+<p>We make a data train-test split.</p>
+<pre class="python"><code>period_train_test_split = &quot;2022-11-01&quot;
+
+train_data_df = data_df.query(&quot;period &lt;= @period_train_test_split&quot;)
+test_data_df = data_df.query(&quot;period &gt; @period_train_test_split&quot;)
+test_data_df = test_data_df[
+    test_data_df[&quot;cohort&quot;].isin(train_data_df[&quot;cohort&quot;].unique())
+]</code></pre>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>For a detailed EDA of the data, please refer to the previous posts (<a href="https://juanitorduz.github.io/retention/">A Simple Cohort Retention Analysis in PyMC</a> and <a href="https://juanitorduz.github.io/retention_bart/">Cohort Retention Analysis with BART</a>). Here we want to focus in the retention and revenue relation. First, let’s recall how the retention matrix looks like.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 7))
+
+fmt = lambda y, _: f&quot;{y :0.0%}&quot;
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;retention&quot;])
+    .pivot(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;retention&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        fmt=&quot;0.0%&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(fmt)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Retention by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_17_0.png" style="width: 1000px;"/>
+</center>
+<p>The key observation is that the retention matrix has a clear seasonality pattern (in the <code>period</code>, i.e. observation variable) and seems to be changing as a function of the <code>cohort</code> (i.e. the group variable). This motivates using is a BART model to capture complex interactions between the <code>period</code>, <code>cohort</code> and seasonal variables. In the next figure we plot the retention rate by cohort over time (period) to future illustrate the seasonality pattern.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
+sns.lineplot(
+    x=&quot;period&quot;,
+    y=&quot;retention&quot;,
+    hue=&quot;cohort&quot;,
+    palette=&quot;viridis_r&quot;,
+    alpha=0.8,
+    data=train_data_df.query(&quot;cohort_age &gt; 0&quot;).assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;)
+    ),
+    ax=ax,
+)
+ax.legend(title=&quot;cohort&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5), fontsize=7.5)
+ax.set(title=&quot;Retention by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_19_0.png" style="width: 1000px;"/>
+</center>
+<p>Note that the retention rate by itself hides how <em>big</em> is the cohort. At the very end, one os not just interested in the retention rate but in the value of the cohort. We can start by looking into absolute number of active users per cohort.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 7))
+
+fmt = lambda y, _: f&quot;{y :0.0f}&quot;
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;n_active_users&quot;])
+    .pivot(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;n_active_users&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        annot_kws={&quot;fontsize&quot;:8},
+        fmt=&quot;0.0f&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(fmt)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Active Users by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_21_0.png" style="width: 1000px;"/>
+</center>
+<p>The younger cohorts are much smaller than the older cohorts. Next, we plot the revenue absolute values.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 7))
+
+fmt = lambda y, _: f&quot;{y :0.0f}&quot;
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;revenue&quot;])
+    .pivot(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;revenue&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        annot_kws={&quot;fontsize&quot;: 6},
+        fmt=&quot;0.0f&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(fmt)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Revenue by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_23_0.png" style="width: 1000px;"/>
+</center>
+<p>The pattern looks very similar as the number of active users. Hence, we expect the quotient <code>revenue_per_active_users</code> to be relatively stable across cohorts.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 7))
+
+fmt = lambda y, _: f&quot;{y :0.0f}&quot;
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;revenue_per_active_users&quot;])
+    .pivot(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;revenue_per_active_users&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        annot_kws={&quot;fontsize&quot;: 9},
+        fmt=&quot;0.0f&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(fmt)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Revenue by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_25_0.png" style="width: 1000px;"/>
+</center>
+<p>Observe that this ratio does not show a strong seasonality pattern. This suggest that for revenue the model we can simply add the seasonality pattern into the retention rate component. In addition, note that the <code>revenue_per_active_users</code> seems to decrease with the <code>cohort_age</code> linearly. In a similar manner, it seems to increase with the <code>age</code> of the cohort linearly as well.</p>
+<p>Finally, we plot the <code>revenue_per_users</code> which includes also users which are not active.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 7))
+
+fmt = lambda y, _: f&quot;{y :0.0f}&quot;
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;revenue_per_users&quot;])
+    .pivot(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;revenue_per_users&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        annot_kws={&quot;fontsize&quot;: 9},
+        fmt=&quot;0.0f&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(fmt)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Revenue by Cohort and Period&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_27_0.png" style="width: 1000px;"/>
+</center>
+<p>It is no surprise that we observe the seasonal component again (as the cohort size is fixed).</p>
+</div>
+<div id="model" class="section level2">
+<h2>Model</h2>
+<p>Motivates by the analysis above we suggest the following retention-revenue model.</p>
+<p><span class="math display">\[\begin{align*}
+\text{Revenue} &amp; \sim \text{Gamma}(N_{\text{active}}, \lambda) \\
+\log(\lambda) = (&amp; \text{intercept} \\
+    &amp; + \beta_{\text{cohort age}} \text{cohort age} \\
+    &amp; + \beta_{\text{age}} \text{age} \\
+    &amp; + \beta_{\text{cohort age} \times \text{age}} \text{cohort age} \times \text{age} ) \\
+N_{\text{active}} &amp; \sim \text{Binomial}(N_{\text{total}}, p) \\
+\textrm{logit}(p) &amp; = \text{BART}(\text{cohort age}, \text{age}, \text{month})
+\end{align*}\]</span></p>
+<div id="data-transformations" class="section level3">
+<h3>Data Transformations</h3>
+<p>We do similar transformations as in the previous posts.</p>
+<pre class="python"><code>eps = np.finfo(float).eps
+train_data_red_df = train_data_df.query(&quot;cohort_age &gt; 0&quot;).reset_index(drop=True)
+train_obs_idx = train_data_red_df.index.to_numpy()
+train_n_users = train_data_red_df[&quot;n_users&quot;].to_numpy()
+train_n_active_users = train_data_red_df[&quot;n_active_users&quot;].to_numpy()
+train_retention = train_data_red_df[&quot;retention&quot;].to_numpy()
+train_retention_logit = logit(train_retention + eps)
+train_data_red_df[&quot;month&quot;] = train_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+train_data_red_df[&quot;cohort_month&quot;] = (
+    train_data_red_df[&quot;cohort&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+)
+train_data_red_df[&quot;period_month&quot;] = (
+    train_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+)
+train_revenue = train_data_red_df[&quot;revenue&quot;].to_numpy() + eps
+train_revenue_per_user = train_revenue / (train_n_active_users + eps)
+
+train_cohort = train_data_red_df[&quot;cohort&quot;].to_numpy()
+train_cohort_encoder = LabelEncoder()
+train_cohort_idx = train_cohort_encoder.fit_transform(train_cohort).flatten()
+train_period = train_data_red_df[&quot;period&quot;].to_numpy()
+train_period_encoder = LabelEncoder()
+train_period_idx = train_period_encoder.fit_transform(train_period).flatten()
+
+features: list[str] = [&quot;age&quot;, &quot;cohort_age&quot;, &quot;month&quot;]
+x_train = train_data_red_df[features]
+
+train_age = train_data_red_df[&quot;age&quot;].to_numpy()
+train_age_scaler = MaxAbsScaler()
+train_age_scaled = train_age_scaler.fit_transform(train_age.reshape(-1, 1)).flatten()
+train_cohort_age = train_data_red_df[&quot;cohort_age&quot;].to_numpy()
+train_cohort_age_scaler = MaxAbsScaler()
+train_cohort_age_scaled = train_cohort_age_scaler.fit_transform(
+    train_cohort_age.reshape(-1, 1)
+).flatten()</code></pre>
+</div>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>Now we are ready to specify the model in PyMC.
+- For the retention component please see the details presented in the post <a href="https://juanitorduz.github.io/retention_bart/">Cohort Retention Analysis with BART</a>.
+- The retention-revenue coupling is motivates by the model presented in the example notebook the post <a href="https://www.pymc.io/projects/examples/en/latest/case_studies/bayesian_ab_testing_introduction.html">Introduction to Bayesian A/B Testing</a>.</p>
+<pre class="python"><code>with pm.Model(coords={&quot;feature&quot;: features}) as model:
+
+    # --- Data ---
+    model.add_coord(name=&quot;obs&quot;, values=train_obs_idx, mutable=True)
+    age_scaled = pm.MutableData(name=&quot;age_scaled&quot;, value=train_age_scaled, dims=&quot;obs&quot;)
+    cohort_age_scaled = pm.MutableData(
+        name=&quot;cohort_age_scaled&quot;, value=train_cohort_age_scaled, dims=&quot;obs&quot;
+    )
+    x = pm.MutableData(name=&quot;x&quot;, value=x_train, dims=(&quot;obs&quot;, &quot;feature&quot;))
+    n_users = pm.MutableData(name=&quot;n_users&quot;, value=train_n_users, dims=&quot;obs&quot;)
+    n_active_users = pm.MutableData(
+        name=&quot;n_active_users&quot;, value=train_n_active_users, dims=&quot;obs&quot;
+    )
+    revenue = pm.MutableData(name=&quot;revenue&quot;, value=train_revenue, dims=&quot;obs&quot;)
+
+    # --- Priors ---
+    intercept = pm.Normal(name=&quot;intercept&quot;, mu=0, sigma=1)
+    b_age_scaled = pm.Normal(name=&quot;b_age_scaled&quot;, mu=0, sigma=1)
+    b_cohort_age_scaled = pm.Normal(name=&quot;b_cohort_age_scaled&quot;, mu=0, sigma=1)
+    b_age_cohort_age_interaction = pm.Normal(
+        name=&quot;b_age_cohort_age_interaction&quot;, mu=0, sigma=1
+    )
+
+    # --- Parametrization ---
+    # The BART component models the image of the retention rate under the
+    # logit transform so that the range is not constrained to [0, 1].
+    mu = pmb.BART(name=&quot;mu&quot;, X=x, Y=train_retention_logit, m=50, dims=&quot;obs&quot;)
+    # We use the inverse logit transform to get the retention rate back into [0, 1].
+    p = pm.Deterministic(name=&quot;p&quot;, var=pm.math.invlogit(mu), dims=&quot;obs&quot;)
+    # We add a small epsilon to avoid numerical issues.
+    p = pt.switch(pt.eq(p, 0), eps, p)
+    p = pt.switch(pt.eq(p, 1), 1 - eps, p)
+
+    # For the revenue component we use a Gamma distribution where we combine the number
+    # of estimated active users with the average revenue per user.
+    lam_log = pm.Deterministic(
+        name=&quot;lam_log&quot;,
+        var=intercept
+        + b_age_scaled * age_scaled
+        + b_cohort_age_scaled * cohort_age_scaled
+        + b_age_cohort_age_interaction * age_scaled * cohort_age_scaled,
+        dims=&quot;obs&quot;,
+    )
+
+    lam = pm.Deterministic(name=&quot;lam&quot;, var=pm.math.exp(lam_log), dims=&quot;obs&quot;)
+
+    # --- Likelihood ---
+    n_active_users_estimated = pm.Binomial(
+        name=&quot;n_active_users_estimated&quot;,
+        n=n_users,
+        p=p,
+        observed=n_active_users,
+        dims=&quot;obs&quot;,
+    )
+
+    x = pm.Gamma(
+        name=&quot;revenue_estimated&quot;,
+        alpha=n_active_users_estimated + eps,
+        beta=lam,
+        observed=revenue,
+        dims=&quot;obs&quot;,
+    )
+
+    mean_revenue_per_user = pm.Deterministic(
+        name=&quot;mean_revenue_per_user&quot;, var=(1 / lam), dims=&quot;obs&quot;
+    )
+    pm.Deterministic(
+        name=&quot;mean_revenue_per_active_user&quot;, var=p * mean_revenue_per_user, dims=&quot;obs&quot;
+    )
+
+pm.model_to_graphviz(model=model)</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_33_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="model-fitting" class="section level3">
+<h3>Model Fitting</h3>
+<p>Now we proceed to fit the model.</p>
+<pre class="python"><code>with model:
+    idata = pm.sample(draws=4_000, chains=4, random_seed=rng)
+    posterior_predictive = pm.sample_posterior_predictive(trace=idata, random_seed=rng)</code></pre>
+</div>
+<div id="model-diagnostics" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>We look into the posterior predictive check:</p>
+<pre class="python"><code>ax = az.plot_ppc(
+    data=posterior_predictive,
+    kind=&quot;cumulative&quot;,
+    observed_rug=True,
+    random_seed=random_seed_int,
+)
+ax[0].set(
+    title=&quot;Posterior Predictive Check (Retention)&quot;,
+    xscale=&quot;log&quot;,
+    xlabel=&quot;likelihood (n_active_users) - log scale&quot;,
+)
+ax[1].set(
+    title=&quot;Posterior Predictive Check (Revenue)&quot;,
+    xscale=&quot;log&quot;,
+    xlabel=&quot;likelihood (revenue) - log scale&quot;,
+    xlim=(1, None), # to avoid plotting the clipped value `eps`.
+);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_37_0.png" style="width: 1000px;"/>
+</center>
+<p>The model fit looks quite good 🚀! Let’s verify we do not have any divergences.</p>
+<pre class="python"><code>assert idata.sample_stats[&quot;diverging&quot;].sum().item() == 0</code></pre>
+<p>We can also look into the posterior distribution for the revenue parameters.</p>
+<pre class="python"><code>_ = az.plot_trace(
+    data=idata,
+    var_names=[
+        &quot;intercept&quot;,
+        &quot;b_age_scaled&quot;,
+        &quot;b_cohort_age_scaled&quot;,
+        &quot;b_age_cohort_age_interaction&quot;,
+    ],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 10), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Model Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_41_0.png" style="width: 1000px;"/>
+</center>
+<p>Note that the posterior distribution for the interaction term does not contain zero! We could even try to use another BART model for the revenue component 🤔.</p>
+</div>
+<div id="in-sample-predictions" class="section level3">
+<h3>In-Sample Predictions</h3>
+<p>Before jumping into the model predictions, we start by looking into the in-sample fit. First we consider the posterior means for retention and revenue.</p>
+<div id="retention" class="section level4">
+<h4>Retention</h4>
+<pre class="python"><code>train_posterior_retention = (
+    posterior_predictive.posterior_predictive[&quot;n_active_users_estimated&quot;]
+    / train_n_users[np.newaxis, None]
+)
+train_posterior_retention_mean = az.extract(
+    data=train_posterior_retention, var_names=[&quot;n_active_users_estimated&quot;]
+).mean(&quot;sample&quot;)
+
+fig, ax = plt.subplots(figsize=(10, 9))
+sns.scatterplot(
+    x=&quot;retention&quot;,
+    y=&quot;posterior_retention_mean&quot;,
+    data=train_data_red_df.assign(
+        posterior_retention_mean=train_posterior_retention_mean
+    ),
+    hue=&quot;age&quot;,
+    palette=&quot;viridis_r&quot;,
+    size=&quot;n_users&quot;,
+    ax=ax,
+)
+ax.axline(xy1=(0.3, 0.3), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend()
+ax.set(title=&quot;Posterior Predictive - Retention Mean&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_45_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="revenue" class="section level4">
+<h4>Revenue</h4>
+<pre class="python"><code>train_posterior_revenue_mean = az.extract(
+    data=posterior_predictive,
+    group=&quot;posterior_predictive&quot;,
+    var_names=[&quot;revenue_estimated&quot;],
+).mean(&quot;sample&quot;)
+
+fig, ax = plt.subplots(figsize=(10, 9))
+sns.scatterplot(
+    x=&quot;revenue&quot;,
+    y=&quot;posterior_revenue_mean&quot;,
+    data=train_data_red_df.assign(posterior_revenue_mean=train_posterior_revenue_mean),
+    hue=&quot;age&quot;,
+    palette=&quot;viridis_r&quot;,
+    size=&quot;n_users&quot;,
+    ax=ax,
+)
+ax.axline(xy1=(1e5, 1e5), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend()
+ax.set(
+    title=&quot;Posterior Predictive - Revenue Mean&quot;,
+    xscale=&quot;log&quot;,
+    yscale=&quot;log&quot;,
+    xlabel=&quot;revenue (log)&quot;,
+    ylabel=&quot;posterior_revenue_mean (log)&quot;,
+);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_47_0.png" style="width: 800px;"/>
+</center>
+<p>Both results look good!</p>
+<p>We continue by looking into the uncertainty estimates for a subset of individual cohorts:</p>
+</div>
+<div id="retention-1" class="section level4">
+<h4>Retention</h4>
+<pre class="python"><code>train_retention_hdi = az.hdi(ary=train_posterior_retention)[&quot;n_active_users_estimated&quot;]
+
+
+def plot_train_retention_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+
+    mask = train_cohort_idx == cohort_index
+
+    ax.fill_between(
+        x=train_period[train_period_idx[mask]],
+        y1=train_retention_hdi[mask, :][:, 0],
+        y2=train_retention_hdi[mask, :][:, 1],
+        alpha=0.3,
+        color=&quot;C0&quot;,
+        label=&quot;94% HDI (train)&quot;,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=train_retention[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed retention (train)&quot;,
+        ax=ax,
+    )
+    cohort_name = (
+        pd.to_datetime(train_cohort_encoder.classes_[cohort_index]).date().isoformat()
+    )
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set(title=f&quot;Retention HDI - Cohort {cohort_name}&quot;)
+    return ax
+
+
+cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohort_index_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(15, 10),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
+    plot_train_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_51_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="revenue-1" class="section level4">
+<h4>Revenue</h4>
+<pre class="python"><code>train_revenue_hdi = az.hdi(ary=posterior_predictive.posterior_predictive)[&quot;revenue_estimated&quot;]
+
+
+def plot_train_revenue_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+
+    mask = train_cohort_idx == cohort_index
+
+    ax.fill_between(
+        x=train_period[train_period_idx[mask]],
+        y1=train_revenue_hdi[mask, :][:, 0],
+        y2=train_revenue_hdi[mask, :][:, 1],
+        alpha=0.3,
+        color=&quot;C0&quot;,
+        label=&quot;94% HDI (train)&quot;,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=train_revenue[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed revenue (train)&quot;,
+        ax=ax,
+    )
+    cohort_name = (
+        pd.to_datetime(train_cohort_encoder.classes_[cohort_index]).date().isoformat()
+    )
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set(title=f&quot;revenue HDI - Cohort {cohort_name}&quot;)
+    return ax
+
+
+cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohort_index_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(15, 10),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
+    plot_train_revenue_hdi_cohort(cohort_index=cohort_index, ax=ax)
+
+fig.suptitle(&quot;Revenue Predictions&quot;, y=1.03, fontsize=16);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_53_0.png" style="width: 1000px;"/>
+</center>
+<p>The model seems to be capturing the seasonality pattern in the revenue component quite well 🙌! Specially for the cohorts with a larger number of base users.</p>
+</div>
+</div>
+<div id="revenue-per-user" class="section level3">
+<h3>Revenue per User</h3>
+<p>We now deep dive into the revenue per user and revenue per active user. For visualization purposes, we analyze the posterior means.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(10, 8),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+(
+    train_data_red_df.assign(
+        mean_revenue_per_user_mean=idata.posterior[&quot;mean_revenue_per_user&quot;].mean(
+            dim=[&quot;chain&quot;, &quot;draw&quot;]
+        ),
+    ).pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;cohort_age&quot;,
+        y=&quot;mean_revenue_per_user_mean&quot;,
+        hue=&quot;age&quot;,
+        palette=&quot;viridis_r&quot;,
+        size=&quot;n_users&quot;,
+        ax=ax[0],
+    )
+)
+ax[0].legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax[0].set(title=&quot;Mean Revenue Per User&quot;)
+
+(
+    train_data_red_df.assign(
+        mean_revenue_per_active_user_mean=idata.posterior[
+            &quot;mean_revenue_per_active_user&quot;
+        ].mean(dim=[&quot;chain&quot;, &quot;draw&quot;]),
+    ).pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;cohort_age&quot;,
+        y=&quot;mean_revenue_per_active_user_mean&quot;,
+        hue=&quot;age&quot;,
+        palette=&quot;viridis_r&quot;,
+        size=&quot;n_users&quot;,
+        ax=ax[1],
+    )
+)
+ax[1].legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax[1].set(title=&quot;Mean Revenue Per Active User&quot;);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_56_0.png" style="width: 1000px;"/>
+</center>
+<p>Here are some takeaways:</p>
+<ul>
+<li>The revenue per user decreases with the <code>cohort_age</code>.</li>
+<li>For a given <code>cohort_age</code>, the revenue per user increases with the <code>age</code>.</li>
+<li>The revenue per active user also decreases with the <code>cohort_age</code>. Hence, active customers are spending less money.</li>
+</ul>
+</div>
+</div>
+<div id="predictions" class="section level2">
+<h2>Predictions</h2>
+<p>Finally, we look into the model out-of-sample predictions so that we can compare with our test set. As in previous posts, it is crucial to have a proper handling of the data transformations.</p>
+<div id="data-transformations-1" class="section level3">
+<h3>Data Transformations</h3>
+<pre class="python"><code>test_data_red_df = test_data_df.query(&quot;cohort_age &gt; 0&quot;)
+test_data_red_df = test_data_red_df[
+    test_data_red_df[&quot;cohort&quot;].isin(train_data_red_df[&quot;cohort&quot;].unique())
+].reset_index(drop=True)
+test_obs_idx = test_data_red_df.index.to_numpy()
+test_n_users = test_data_red_df[&quot;n_users&quot;].to_numpy()
+test_n_active_users = test_data_red_df[&quot;n_active_users&quot;].to_numpy()
+test_retention = test_data_red_df[&quot;retention&quot;].to_numpy()
+test_revenue = test_data_red_df[&quot;revenue&quot;].to_numpy()
+
+test_cohort = test_data_red_df[&quot;cohort&quot;].to_numpy()
+test_cohort_idx = train_cohort_encoder.transform(test_cohort).flatten()
+
+test_data_red_df[&quot;month&quot;] = test_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+test_data_red_df[&quot;cohort_month&quot;] = test_data_red_df[&quot;cohort&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+test_data_red_df[&quot;period_month&quot;] = test_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+x_test = test_data_red_df[features]
+
+test_age = test_data_red_df[&quot;age&quot;].to_numpy()
+test_age_scaled = train_age_scaler.transform(test_age.reshape(-1, 1)).flatten()
+test_cohort_age = test_data_red_df[&quot;cohort_age&quot;].to_numpy()
+test_cohort_age_scaled = train_cohort_age_scaler.transform(
+    test_cohort_age.reshape(-1, 1)
+).flatten()</code></pre>
+</div>
+<div id="out-of-sample-posterior-predictions" class="section level3">
+<h3>Out-of-Sample Posterior Predictions</h3>
+<p>We now calculate the posterior predictive distribution for the test data.</p>
+<pre class="python"><code>with model:
+    pm.set_data(
+        new_data={
+            &quot;age_scaled&quot;: test_age_scaled,
+            &quot;cohort_age_scaled&quot;: test_cohort_age_scaled,
+            &quot;x&quot;: x_test,
+            &quot;n_users&quot;: test_n_users,
+            &quot;n_active_users&quot;: np.ones_like(
+                test_n_active_users
+            ),  # Dummy data to make coords work! We are not using this at prediction time!
+            &quot;revenue&quot;: np.ones_like(
+                test_revenue
+            ),  # Dummy data to make coords work! We are not using this at prediction time!
+        },
+        coords={&quot;obs&quot;: test_obs_idx},
+    )
+    idata.extend(
+        pm.sample_posterior_predictive(
+            trace=idata,
+            var_names=[
+                &quot;p&quot;,
+                &quot;mu&quot;,
+                &quot;n_active_users_estimated&quot;,
+                &quot;revenue_estimated&quot;,
+                &quot;mean_revenue_per_user&quot;,
+                &quot;mean_revenue_per_active_user&quot;,
+            ],
+            idata_kwargs={&quot;coords&quot;: {&quot;obs&quot;: test_obs_idx}},
+            random_seed=rng,
+        )
+    )</code></pre>
+</div>
+<div id="retention-and-revenue-out-of-sample-predictions" class="section level3">
+<h3>Retention and Revenue Out-of-Sample Predictions</h3>
+<p>Similarly as above, we plot the posterior predictive distribution for the retention and revenue components for a subset of cohorts.</p>
+<pre class="python"><code>test_posterior_retention = (
+    idata.posterior_predictive[&quot;n_active_users_estimated&quot;] / test_n_users[np.newaxis, None]
+)
+
+test_retention_hdi = az.hdi(ary=test_posterior_retention)[&quot;n_active_users_estimated&quot;]
+test_revenue_hdi = az.hdi(ary=idata.posterior_predictive)[&quot;revenue_estimated&quot;]</code></pre>
+<pre class="python"><code>def plot_test_retention_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+    mask = test_cohort_idx == cohort_index
+
+    test_period_range = test_data_red_df.query(
+        f&quot;cohort == &#39;{train_cohort_encoder.classes_[cohort_index]}&#39;&quot;
+    )[&quot;period&quot;]
+
+    ax.fill_between(
+        x=test_period_range,
+        y1=test_retention_hdi[mask, :][:, 0],
+        y2=test_retention_hdi[mask, :][:, 1],
+        alpha=0.3,
+        color=&quot;C1&quot;,
+        label=&quot;94% HDI (test)&quot;,
+    )
+    sns.lineplot(
+        x=test_period_range,
+        y=test_retention[mask],
+        color=&quot;C1&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed retention (test)&quot;,
+        ax=ax,
+    )
+    return ax</code></pre>
+<pre class="python"><code>cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=len(cohort_index_to_plot),
+    ncols=1,
+    figsize=(12, 15),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
+    plot_train_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    plot_test_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    ax.axvline(
+        x=pd.to_datetime(period_train_test_split),
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+fig.suptitle(&quot;Retention Predictions&quot;, y=1.03, fontsize=16);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_66_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>def plot_test_revenue_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+    mask = test_cohort_idx == cohort_index
+
+    test_period_range = test_data_red_df.query(
+        f&quot;cohort == &#39;{train_cohort_encoder.classes_[cohort_index]}&#39;&quot;
+    )[&quot;period&quot;]
+
+    ax.fill_between(
+        x=test_period_range,
+        y1=test_revenue_hdi[mask, :][:, 0],
+        y2=test_revenue_hdi[mask, :][:, 1],
+        alpha=0.3,
+        color=&quot;C1&quot;,
+        label=&quot;94% HDI (test)&quot;,
+    )
+    sns.lineplot(
+        x=test_period_range,
+        y=test_revenue[mask],
+        color=&quot;C1&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed revenue (test)&quot;,
+        ax=ax,
+    )
+    return ax</code></pre>
+<pre class="python"><code>cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=len(cohort_index_to_plot),
+    ncols=1,
+    figsize=(12, 15),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
+    plot_train_revenue_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    plot_test_revenue_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    ax.axvline(
+        x=pd.to_datetime(period_train_test_split),
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/pred split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+fig.suptitle(&quot;revenue Predictions&quot;, y=1.03, fontsize=16);</code></pre>
+<center>
+<img src="../images/revenue_retention_files/revenue_retention_68_0.png" style="width: 1000px;"/>
+</center>
+<p>We clearly see how the out-of-sample predictions replicate the behavior of the test set 😎!</p>
+<p>We of course do not expect this specific model to work for <strong>all</strong> data sets! Still, it could be a baseline to model more complex interactions between the retention and revenue components. Also, note that the model structure allows to easily add more regressors.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
