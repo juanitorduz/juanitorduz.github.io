@@ -13,7 +13,8 @@
       <pubDate>Mon, 20 Feb 2023 00:00:00 +0000</pubDate>
       
       <guid>/iv_pymc/</guid>
-      <description>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables. By non-compliance we means that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can nos simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the times not random and may introduce confounders.</description>
+      <description>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables.
+By non-compliance we mean that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can not simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the time not at random and may introduce confounders.</description>
     </item>
     
   </channel>

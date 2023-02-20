@@ -89,7 +89,9 @@
       
 
 
-<p>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables. By non-compliance we means that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can nos simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the times not random and may introduce confounders. For a more detailed discussion of the problem see <a href="https://matheusfacure.github.io/python-causality-handbook/09-Non-Compliance-and-LATE.html">Chapter 9</a> in the (amazing!) book <a href="https://matheusfacure.github.io/python-causality-handbook/landing-page.html"><em>Causal Inference for The Brave and True</em></a> by <a href="https://github.com/matheusfacure">Matheus Facure Alves</a>. One very common tool to tackle such problem are instrumental variables (see <a href="https://matheusfacure.github.io/python-causality-handbook/08-Instrumental-Variables.html">Chapter 8</a>) for a nice introduction. In essence, we can use the variant assignment as an instrument to control for confounders introduced by the non-compliance mechanism. To illustrate the concepts we are going to use the example worked out in Matheus’ book (for a simulated example see <a href="https://dpananos.github.io/posts/2023-02-11-iv-risk-ratio/">here</a>). Ok! So why bother to present the same example? Well, we are going to do it the bayesian way 😄 ! The main motivation is to include prior experiments information to have a more precise and informed estimate as described in the great blog post <a href="https://khakieconomics.github.io/2017/11/26/Bayesian_iv.html">Bayesian Instrumental variables (with a hierarchical prior) in Stan</a> by <a href="https://khakieconomics.github.io/about/">Jim Savage</a>. For a great introduction to bayesian instrumental variables see the article <a href="https://hedibert.org/wp-content/uploads/2013/12/lopes-polson-ER.pdf">Bayesian instrumental variables: priors and likelihoods</a> by Hedibert F. Lopes and Nicholas G. Polson.
+<p>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables.</p>
+<p>By non-compliance we mean that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can not simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the time not at random and may introduce confounders. For a more detailed discussion of the problem see <a href="https://matheusfacure.github.io/python-causality-handbook/09-Non-Compliance-and-LATE.html">Chapter 9</a> in the (amazing!) book <a href="https://matheusfacure.github.io/python-causality-handbook/landing-page.html"><em>Causal Inference for The Brave and True</em></a> by <a href="https://github.com/matheusfacure">Matheus Facure Alves</a>. One very common tool to tackle such problem are instrumental variables (see <a href="https://matheusfacure.github.io/python-causality-handbook/08-Instrumental-Variables.html">Chapter 8</a>) for a nice introduction. In essence, we can use the variant assignment as an instrument to control for confounders introduced by the non-compliance mechanism.</p>
+<p>To illustrate the concepts we are going to use the example worked out in Matheus’ book (for a simulated example see <a href="https://dpananos.github.io/posts/2023-02-11-iv-risk-ratio/">here</a>). Ok! So why bother to present the same example? Well, we are going to do it the bayesian way 😄 ! The main motivation is to include prior experiments information to have a more precise and informed estimate as described in the great blog post <a href="https://khakieconomics.github.io/2017/11/26/Bayesian_iv.html">Bayesian Instrumental variables (with a hierarchical prior) in Stan</a> by <a href="https://khakieconomics.github.io/about/">Jim Savage</a>. For a great introduction to bayesian instrumental variables see the article <a href="https://hedibert.org/wp-content/uploads/2013/12/lopes-polson-ER.pdf">Bayesian instrumental variables: priors and likelihoods</a> by Hedibert F. Lopes and Nicholas G. Polson.
 In the first part of this notebook we replicate the example using PyMC and in the second part we extend it to include a hierarchical prior to encode previous experiments data (If you are Stan user I strongly recommend to read Jim’s blog in parallel).</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
@@ -238,14 +240,25 @@ push_delivered
 </div>
 <div id="eda" class="section level2">
 <h2>EDA</h2>
-<p>First, let’s do an initial EDA to get a sense of the data. First, we count how many users received the push notification when assigned.</p>
+<p>First, let’s do an initial EDA to get a sense of the data. First, we compare the <code>in_app_purchase</code> distribution between the two groups.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(9, 7), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+sns.histplot(x=&quot;in_app_purchase&quot;, hue=&quot;push_assigned&quot;, kde=True, data=df, ax=ax[0])
+sns.histplot(x=&quot;in_app_purchase&quot;, hue=&quot;push_delivered&quot;, kde=True, data=df, ax=ax[1])
+fig.suptitle(&quot;Histogram of in-app purchases&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_12_0.png" style="width: 900px;"/>
+</center>
+<p>We clearly see the difference! When filtering for users that received the push notification we see higher values of <code>in_app_purchase</code> than the users in the assignment group. This would be a quick win for the experiment! However, <strong>we should not overlook the non-compliance mechanism</strong>! It could hide confounders that are not controlled for in the experiment. Let’s look into how big the non-compliance is.</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
 df.query(&quot;push_assigned == 1&quot;)[&quot;push_delivered&quot;].value_counts().plot(kind=&quot;bar&quot;, ax=ax)
 ax.set(title=&quot;Push Delivered Count Among Push Assigned&quot;, xlabel=&quot;Push delivered&quot;, ylabel=&quot;Count&quot;);</code></pre>
 <center>
 <img src="../images/iv_pymc_files/iv_pymc_8_0.png" style="width: 700px;"/>
 </center>
-<p>We see that roughly <span class="math inline">\(30%\)</span> of users which were assigned to the push did not get it. What could be the reason? Well, Matheus suggest this could be related to the fact users with old phones are less likely to receive the push notification. This naturally induces a bias if we analyze the effect of the push notification on purchases by filtering out only the ones that get it as these users are more likely to have higher income (new phones) that the control. Think about it in the context of the potential outcomes 😉. Here is the DAG we are going to use to model the problem.</p>
+<p>We see that roughly <span class="math inline">\(30\%\)</span> of users which were assigned to the push did not get it. What could be the reason? Well, Matheus suggest this could be related to the fact users with old phones are less likely to receive the push notification. This naturally induces a bias if we analyze the effect of the push notification on purchases by filtering out only the ones that get it as these users are more likely to have higher income (new phones) that the control. Think about it in the context of the potential outcomes 😉.</p>
+<p>Here is the DAG we are going to use to model the problem.</p>
 <pre class="python"><code>g = gr.Digraph()
 
 g.edge(&quot;push assigned&quot;, &quot;push delivered&quot;)
@@ -257,17 +270,7 @@ g</code></pre>
 <center>
 <img src="../images/iv_pymc_files/iv_pymc_10_0.svg" style="width: 400px;"/>
 </center>
-<p>We can compare the <code>in_app_purchase</code> distribution between the two groups.</p>
-<pre class="python"><code>fig, ax = plt.subplots(
-    nrows=2, ncols=1, figsize=(9, 7), sharex=True, sharey=True, layout=&quot;constrained&quot;
-)
-sns.histplot(x=&quot;in_app_purchase&quot;, hue=&quot;push_assigned&quot;, kde=True, data=df, ax=ax[0])
-sns.histplot(x=&quot;in_app_purchase&quot;, hue=&quot;push_delivered&quot;, kde=True, data=df, ax=ax[1])
-fig.suptitle(&quot;Histogram of in-app purchases&quot;, fontsize=16);</code></pre>
-<center>
-<img src="../images/iv_pymc_files/iv_pymc_12_0.png" style="width: 900px;"/>
-</center>
-<p>We clearly see the difference! When filtering for users that received the push notification we see higher values of <code>in_app_purchase</code> than the users in the assignment group.</p>
+<p>The unobserved <em>income</em> confounder opens a path (it is a fork!) which we can not close directly.</p>
 </div>
 <div id="ols-approach" class="section level2">
 <h2>OLS Approach</h2>
