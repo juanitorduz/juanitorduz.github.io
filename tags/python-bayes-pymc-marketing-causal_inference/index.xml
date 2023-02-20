@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>python, bayes, pymc, marketing, causal_inference on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-bayes-pymc-marketing-causal_inference/</link>
+    <description>Recent content in python, bayes, pymc, marketing, causal_inference on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 20 Feb 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-marketing-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Experimentation, Non-Compliance and Instrumental Variables with PyMC</title>
+      <link>/iv_pymc/</link>
+      <pubDate>Mon, 20 Feb 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/iv_pymc/</guid>
+      <description>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables. By non-compliance we means that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can nos simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the times not random and may introduce confounders.</description>
+    </item>
+    
+  </channel>
+</rss>

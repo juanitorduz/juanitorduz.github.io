@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Experimentation, Non-Compliance and Instrumental Variables with PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Experimentation, Non-Compliance and Instrumental Variables with PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">14 min read</span>
+    
+
+    <h1 class="article-title">Experimentation, Non-Compliance and Instrumental Variables with PyMC</h1>
+
+    
+    <span class="article-date">2023-02-20</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables. By non-compliance we means that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can nos simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the times not random and may introduce confounders. For a more detailed discussion of the problem see <a href="https://matheusfacure.github.io/python-causality-handbook/09-Non-Compliance-and-LATE.html">Chapter 9</a> in the (amazing!) book <a href="https://matheusfacure.github.io/python-causality-handbook/landing-page.html"><em>Causal Inference for The Brave and True</em></a> by <a href="https://github.com/matheusfacure">Matheus Facure Alves</a>. One very common tool to tackle such problem are instrumental variables (see <a href="https://matheusfacure.github.io/python-causality-handbook/08-Instrumental-Variables.html">Chapter 8</a>) for a nice introduction. In essence, we can use the variant assignment as an instrument to control for confounders introduced by the non-compliance mechanism. To illustrate the concepts we are going to use the example worked out in Matheus’ book (for a simulated example see <a href="https://dpananos.github.io/posts/2023-02-11-iv-risk-ratio/">here</a>). Ok! So why bother to present the same example? Well, we are going to do it the bayesian way 😄 ! The main motivation is to include prior experiments information to have a more precise and informed estimate as described in the great blog post <a href="https://khakieconomics.github.io/2017/11/26/Bayesian_iv.html">Bayesian Instrumental variables (with a hierarchical prior) in Stan</a> by <a href="https://khakieconomics.github.io/about/">Jim Savage</a>. For a great introduction to bayesian instrumental variables see the article <a href="https://hedibert.org/wp-content/uploads/2013/12/lopes-polson-ER.pdf">Bayesian instrumental variables: priors and likelihoods</a> by Hedibert F. Lopes and Nicholas G. Polson.
+In the first part of this notebook we replicate the example using PyMC and in the second part we extend it to include a hierarchical prior to encode previous experiments data (If you are Stan user I strongly recommend to read Jim’s blog in parallel).</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import os
+import arviz as az
+import graphviz as gr
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pymc.sampling_jax
+import pytensor.tensor as pt
+import seaborn as sns
+
+from linearmodels.iv import IV2SLS
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;instrumental_variables&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We read the <code>app_engagement_push.csv</code> data directly from the repository.</p>
+<pre class="python"><code>root_path = &quot;https://raw.githubusercontent.com/matheusfacure/python-causality-handbook/master/causal-inference-for-the-brave-and-true/data/&quot;
+data_path = os.path.join(root_path, &quot;app_engagement_push.csv&quot;)
+
+df = pd.read_csv(data_path)
+
+n = df.shape[0]
+
+df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+in_app_purchase
+</th>
+<th>
+push_assigned
+</th>
+<th>
+push_delivered
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+47
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+43
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+51
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+49
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+79
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Here we have data regarding in-app purchases from an experiment. The columns <code>push_assigned</code> and <code>push_received</code> indicate whether the user was assigned to the treatment group and whether the user actually received the push notification.</p>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>First, let’s do an initial EDA to get a sense of the data. First, we count how many users received the push notification when assigned.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+df.query(&quot;push_assigned == 1&quot;)[&quot;push_delivered&quot;].value_counts().plot(kind=&quot;bar&quot;, ax=ax)
+ax.set(title=&quot;Push Delivered Count Among Push Assigned&quot;, xlabel=&quot;Push delivered&quot;, ylabel=&quot;Count&quot;);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_8_0.png" style="width: 700px;"/>
+</center>
+<p>We see that roughly <span class="math inline">\(30%\)</span> of users which were assigned to the push did not get it. What could be the reason? Well, Matheus suggest this could be related to the fact users with old phones are less likely to receive the push notification. This naturally induces a bias if we analyze the effect of the push notification on purchases by filtering out only the ones that get it as these users are more likely to have higher income (new phones) that the control. Think about it in the context of the potential outcomes 😉. Here is the DAG we are going to use to model the problem.</p>
+<pre class="python"><code>g = gr.Digraph()
+
+g.edge(&quot;push assigned&quot;, &quot;push delivered&quot;)
+g.edge(&quot;push delivered&quot;, &quot;in app purchase&quot;)
+g.edge(&quot;income&quot;, &quot;in app purchase&quot;)
+g.edge(&quot;income&quot;, &quot;push delivered&quot;)
+g.node(&quot;income&quot;, color=&quot;blue&quot;)
+g</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_10_0.svg" style="width: 400px;"/>
+</center>
+<p>We can compare the <code>in_app_purchase</code> distribution between the two groups.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(9, 7), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+sns.histplot(x=&quot;in_app_purchase&quot;, hue=&quot;push_assigned&quot;, kde=True, data=df, ax=ax[0])
+sns.histplot(x=&quot;in_app_purchase&quot;, hue=&quot;push_delivered&quot;, kde=True, data=df, ax=ax[1])
+fig.suptitle(&quot;Histogram of in-app purchases&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_12_0.png" style="width: 900px;"/>
+</center>
+<p>We clearly see the difference! When filtering for users that received the push notification we see higher values of <code>in_app_purchase</code> than the users in the assignment group.</p>
+</div>
+<div id="ols-approach" class="section level2">
+<h2>OLS Approach</h2>
+<p>Let’s take the last plot as a starting point for a more quantitative analysis. We are going to run an OLS regression to estimate the effect of the push notification on purchases.</p>
+<div id="push-assigned-group" class="section level3">
+<h3>Push Assigned Group</h3>
+<p>We start with the assignment group. First, we simply compute some statistics.</p>
+<pre class="python"><code>df.groupby(&quot;push_assigned&quot;).agg({&quot;in_app_purchase&quot;: [&quot;mean&quot;, &quot;std&quot;]})</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead tr th {
+        text-align: left;
+    }
+
+    .dataframe thead tr:last-of-type th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+</th>
+<th colspan="2" halign="left">
+in_app_purchase
+</th>
+</tr>
+<tr>
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+std
+</th>
+</tr>
+<tr>
+<th>
+push_assigned
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+69.291675
+</td>
+<td>
+25.771624
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+71.655270
+</td>
+<td>
+26.310248
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The average difference seems relatively small. We can quantify it through and OLS regression.</p>
+<pre class="python"><code>ols_formula = &quot;in_app_purchase ~ 1 + push_assigned&quot;
+ols = IV2SLS.from_formula(formula=ols_formula, data=df).fit()
+ols.summary.tables[1]</code></pre>
+<table class="simpletable">
+<caption>
+Parameter Estimates
+</caption>
+<tr>
+<td>
+</td>
+<th>
+Parameter
+</th>
+<th>
+Std. Err.
+</th>
+<th>
+T-stat
+</th>
+<th>
+P-value
+</th>
+<th>
+Lower CI
+</th>
+<th>
+Upper CI
+</th>
+</tr>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+69.292
+</td>
+<td>
+0.3624
+</td>
+<td>
+191.22
+</td>
+<td>
+0.0000
+</td>
+<td>
+68.581
+</td>
+<td>
+70.002
+</td>
+</tr>
+<tr>
+<th>
+push_assigned
+</th>
+<td>
+2.3636
+</td>
+<td>
+0.5209
+</td>
+<td>
+4.5376
+</td>
+<td>
+0.0000
+</td>
+<td>
+1.3427
+</td>
+<td>
+3.3845
+</td>
+</tr>
+</table>
+<p>The estimates effect is <span class="math inline">\(2.36\)</span> with a <span class="math inline">\(95\%\)</span> confidence interval of <span class="math inline">\([1.34, 3.38]\)</span>.</p>
+</div>
+<div id="push-received-group" class="section level3">
+<h3>Push Received Group</h3>
+<p>We run a a similar analysis for users that received the push notification.</p>
+<pre class="python"><code>df.groupby(&quot;push_delivered&quot;).agg({&quot;in_app_purchase&quot;: [&quot;mean&quot;, &quot;std&quot;]})</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead tr th {
+        text-align: left;
+    }
+
+    .dataframe thead tr:last-of-type th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+</th>
+<th colspan="2" halign="left">
+in_app_purchase
+</th>
+</tr>
+<tr>
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+std
+</th>
+</tr>
+<tr>
+<th>
+push_delivered
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+65.518519
+</td>
+<td>
+25.111324
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+79.449958
+</td>
+<td>
+25.358723
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>ols_formula = &quot;in_app_purchase ~ 1 + push_delivered&quot;
+ols = IV2SLS.from_formula(formula=ols_formula, data=df).fit()
+ols.summary.tables[1]</code></pre>
+<table class="simpletable">
+<caption>
+Parameter Estimates
+</caption>
+<tr>
+<td>
+</td>
+<th>
+Parameter
+</th>
+<th>
+Std. Err.
+</th>
+<th>
+T-stat
+</th>
+<th>
+P-value
+</th>
+<th>
+Lower CI
+</th>
+<th>
+Upper CI
+</th>
+</tr>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+65.519
+</td>
+<td>
+0.3126
+</td>
+<td>
+209.61
+</td>
+<td>
+0.0000
+</td>
+<td>
+64.906
+</td>
+<td>
+66.131
+</td>
+</tr>
+<tr>
+<th>
+push_delivered
+</th>
+<td>
+13.931
+</td>
+<td>
+0.5282
+</td>
+<td>
+26.377
+</td>
+<td>
+0.0000
+</td>
+<td>
+12.896
+</td>
+<td>
+14.967
+</td>
+</tr>
+</table>
+<p>The estimate effect is much higher (as expected)!</p>
+<p>We could even try to control for the assignment group by including it as a covariate in the regression.</p>
+<pre class="python"><code>ols_formula = &quot;in_app_purchase ~ 1 + push_assigned + push_delivered&quot;
+ols = IV2SLS.from_formula(formula=ols_formula, data=df).fit()
+ols.summary.tables[1]</code></pre>
+<table class="simpletable">
+<caption>
+Parameter Estimates
+</caption>
+<tr>
+<td>
+</td>
+<th>
+Parameter
+</th>
+<th>
+Std. Err.
+</th>
+<th>
+T-stat
+</th>
+<th>
+P-value
+</th>
+<th>
+Lower CI
+</th>
+<th>
+Upper CI
+</th>
+</tr>
+<tr>
+<th>
+Intercept&lt;
+</th>
+<td>
+69.292
+</td>
+<td>
+0.3624
+</td>
+<td>
+191.22
+</td>
+<td>
+0.0000
+</td>
+<td>
+68.581
+</td>
+<td>
+70.002
+</td>
+</tr>
+<tr>
+<th>
+push_assigned
+</th>
+<td>
+-17.441
+</td>
+<td>
+0.5702
+</td>
+<td>
+-30.590
+</td>
+<td>
+0.0000
+</td>
+<td>
+-18.559
+</td>
+<td>
+-16.324
+</td>
+</tr>
+<tr>
+<th>
+push_delivered
+</th>
+<td>
+27.600
+</td>
+<td>
+0.6124
+</td>
+<td>
+45.069
+</td>
+<td>
+0.0000
+</td>
+<td>
+26.399
+</td>
+<td>
+28.800
+</td>
+</tr>
+</table>
+<p>In this case we get a much higher effect 😒. From the book:</p>
+<blockquote>
+<p><em>We have reasons to believe this is a biased estimate. We know that older phones are having trouble in receiving the push, so, probably, richer customers, with newer phones, are the compilers.</em></p>
+</blockquote>
+<p>In summary, the problem are the unobserved confounders that are correlated with the assignment and the outcome. We can use instrumental variables to get better estimates!</p>
+</div>
+</div>
+<div id="instrumental-variables-estimation" class="section level2">
+<h2>Instrumental Variables Estimation</h2>
+<p>As described in <a href="https://matheusfacure.github.io/python-causality-handbook/09-Non-Compliance-and-LATE.html">Chapter 9</a>, we can use the push assignment as an instrument to control for confounders. Why is in an instrument? Well, note that the push assignment has both an effect on getting a push notification and in in-app purchases. The key point is that the effect on in-app purchases is only due through the push notification path and therefore the effect of the assignment is easy to estimate as there are no confounders (e.g. income does not have an impact on the push assignment since it was done as random). A common to use instruments as a way of estimating effect is via 2-stage regression. The <a href="https://bashtage.github.io/linearmodels/"><code>linearmodels</code></a> package has a convenient implementation of this approach.</p>
+<pre class="python"><code>iv_formula = &quot;in_app_purchase ~ 1 + [push_delivered ~ push_assigned]&quot;
+iv = IV2SLS.from_formula(formula=iv_formula, data=df).fit()
+iv.summary.tables[1]</code></pre>
+<table class="simpletable">
+<caption>
+Parameter Estimates
+</caption>
+<tr>
+<td>
+</td>
+<th>
+Parameter
+</th>
+<th>
+Std. Err.
+</th>
+<th>
+T-stat
+</th>
+<th>
+P-value
+</th>
+<th>
+Lower CI
+</th>
+<th>
+Upper CI
+</th>
+</tr>
+<tr>
+<th>
+Intercept
+</th>
+<pre><code> &lt;td&gt;69.292&lt;/td&gt;    &lt;td&gt;0.3624&lt;/td&gt;   &lt;td&gt;191.22&lt;/td&gt; &lt;td&gt;0.0000&lt;/td&gt;   &lt;td&gt;68.581&lt;/td&gt;   &lt;td&gt;70.002&lt;/td&gt; </code></pre>
+</tr>
+<tr>
+<th>
+push_delivered
+</th>
+<td>
+3.2938
+</td>
+<td>
+0.7165
+</td>
+<td>
+4.5974
+</td>
+<td>
+0.0000
+</td>
+<td>
+1.8896
+</td>
+<td>
+4.6981
+</td>
+</tr>
+</table>
+<p>The estimated effect is <span class="math inline">\(3.29\)</span>. How to interpret this effect? (again from the book):
+&gt; <em>We also need to remember about Local Average Treatment Effect (LATE) <span class="math inline">\(3.29\)</span> is the average causal effect on compliers. Unfortunately, we can’t say anything about those never takers. This means that we are estimating the effect on the richer segment of the population that have newer phones.</em></p>
+</div>
+<div id="bayesian-instrumental-variables-estimation" class="section level2">
+<h2>Bayesian Instrumental Variables Estimation</h2>
+<p>In his section we want to describe to replicate the analysis using PyMC.Again, the motivation is to extend it in a later section to add prior knowledge from previous experiments. The main references for the sections below are:
+- <a href="https://khakieconomics.github.io/2017/11/26/Bayesian_iv.html">Bayesian Instrumental variables (with a hierarchical prior) in Stan</a> by <a href="https://khakieconomics.github.io/about/">Jim Savage</a>.
+- <a href="https://hedibert.org/wp-content/uploads/2013/12/lopes-polson-ER.pdf">Bayesian instrumental variables: priors and likelihoods</a> by Hedibert F. Lopes and Nicholas G. Polson.</p>
+<p>Recall that the main challenge of the problem at hand is that the errors of OLS approach are not independent of the treatment. What if we model this correlation explicitly while fitting the model? This is the idea behind the bayesian instrumental variables approach. Concretely, let’s consider the structural formulation (instead of the 2-stage form). This is nothing else as a regression model with a <span class="math inline">\(2\)</span>-dimensional outcome:</p>
+<ul>
+<li>We model the <code>in_app_purchase</code> (<span class="math inline">\(y\)</span>) as a function of <code>push_delivered</code> (treatment) <span class="math inline">\(t\)</span> and the error term <span class="math inline">\(\varepsilon_y\)</span>.</li>
+<li>Simultaneously, we model treatment as a function of <code>push_assigned</code> (instrument) <span class="math inline">\(z\)</span> and and error term <span class="math inline">\(\varepsilon_t\)</span>.</li>
+</ul>
+<p>W e assume that the joint distribution of the errors can be parametrized by a multi-variate normal distribution with mean zero and covariance matrix <span class="math inline">\(\Sigma\)</span>.</p>
+<p><span class="math display">\[\begin{align*}
+\left(
+\begin{array}{cc}
+y \\
+t
+\end{array}
+\right)
+&amp; \sim
+\text{MultiNormal}(\mu, \Sigma) \\
+\mu &amp; = \left(
+\begin{array}{cc}
+\mu_{y} \\
+\mu_{t}
+\end{array}
+\right)
+=
+\left(
+\begin{array}{cc}
+\beta_{t}t + a_{y} \\
+\beta_{z}z + a_{t}
+\end{array}
+\right)
+\end{align*}\]</span></p>
+<p>We choose fairly uninformative priors (while still constraining them to plausible values) for the parameters. We use the <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.LKJCholeskyCov.html"><code>LKJCholeskyCov</code></a> distribution to model the covariance matrix.</p>
+<pre class="python"><code># Prepare data
+y = df[&quot;in_app_purchase&quot;].to_numpy()
+t = df[&quot;push_delivered&quot;].to_numpy()
+z = df[&quot;push_assigned&quot;].to_numpy()</code></pre>
+<pre class="python"><code>with pm.Model() as model:
+    # --- Priors ---
+    intercept_y = pm.Normal(name=&quot;intercept_y&quot;, mu=50, sigma=10)
+    intercept_t = pm.Normal(name=&quot;intercept_t&quot;, mu=0, sigma=1)
+    beta_t = pm.Normal(name=&quot;beta_t&quot;, mu=0, sigma=10)
+    beta_z = pm.Normal(name=&quot;beta_z&quot;, mu=0, sigma=10)
+    sd_dist = pm.HalfCauchy.dist(beta=2, shape=2)
+    chol, corr, sigmas = pm.LKJCholeskyCov(name=&quot;chol_cov&quot;, eta=2, n=2, sd_dist=sd_dist)
+    # compute and store the covariance matrix
+    pm.Deterministic(name=&quot;cov&quot;, var=pt.dot(l=chol, r=chol.T))
+
+    # --- Parameterization ---
+    mu_y = pm.Deterministic(name=&quot;mu_y&quot;, var=beta_t * t + intercept_y)
+    mu_t = pm.Deterministic(name=&quot;mu_t&quot;, var=beta_z * z + intercept_t)
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=pt.stack(tensors=(mu_y, mu_t), axis=1))
+
+    # --- Likelihood ---
+    likelihood = pm.MvNormal(
+        name=&quot;likelihood&quot;,
+        mu=mu,
+        chol=chol,
+        observed=np.stack(arrays=(y, t), axis=1),
+        shape=(n, 2),
+    )
+
+pm.model_to_graphviz(model=model)</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_32_0.svg" style="width: 800px;"/>
+</center>
+<p>Now we fit the model.</p>
+<pre class="python"><code>with model:
+    idata = pm.sampling_jax.sample_numpyro_nuts(draws=4_000, chains=4, random_seed=rng)</code></pre>
+<p>Let’s inspect the posterior distributions of the parameters.</p>
+<pre class="python"><code>var_names = [&quot;beta_t&quot;, &quot;beta_z&quot;, &quot;intercept_y&quot;, &quot;intercept_t&quot;]
+
+az.summary(data=idata, var_names=var_names)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+beta_t
+</th>
+<td>
+3.340
+</td>
+<td>
+0.722
+</td>
+<td>
+1.975
+</td>
+<td>
+4.682
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+6493.0
+</td>
+<td>
+9732.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_z
+</th>
+<td>
+0.718
+</td>
+<td>
+0.006
+</td>
+<td>
+0.705
+</td>
+<td>
+0.729
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10286.0
+</td>
+<td>
+11549.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_y
+</th>
+<td>
+69.262
+</td>
+<td>
+0.363
+</td>
+<td>
+68.590
+</td>
+<td>
+69.939
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+7635.0
+</td>
+<td>
+11097.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_t
+</th>
+<td>
+-0.000
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.009
+</td>
+<td>
+0.008
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11250.0
+</td>
+<td>
+12108.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Note that we have recovered a very similar result as in the 2-stage approach above 🚀 ! Next we look into the traces.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=var_names,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;IV Model - Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_38_0.png" style="width: 900px;"/>
+</center>
+<p>Everything looks good! Let’s look deeper into the posterior distribution of the effect estimation <span class="math inline">\(\beta_{t}\)</span>. In particular, we can compare the <span class="math inline">\(94%\)</span> HDI of the posterior distribution with the <span class="math inline">\(94\%\)</span> confidence interval of the 2-stage approach.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 6))
+hdi_prob = 0.94
+az.plot_posterior(
+    data=idata,
+    var_names=[&quot;beta_t&quot;],
+    ref_val=iv.params[&quot;push_delivered&quot;],
+    hdi_prob=hdi_prob,
+    ax=ax,
+)
+ax.axvline(
+    x=iv.conf_int(level=hdi_prob).loc[&quot;push_delivered&quot;, &quot;lower&quot;],
+    color=&quot;C1&quot;,
+    ls=&quot;--&quot;,
+    lw=1,
+    label=f&quot;{hdi_prob: .0%} CI (lower)&quot;,
+)
+ax.axvline(
+    x=iv.conf_int(level=hdi_prob).loc[&quot;push_delivered&quot;, &quot;upper&quot;],
+    color=&quot;C1&quot;,
+    ls=&quot;--&quot;,
+    lw=1,
+    label=f&quot;{hdi_prob: .0%} CI (upper)&quot;,
+)
+ax.legend()
+ax.set(title=&quot;IV Model - Posterior Distribution Effect&quot;);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_40_0.png" style="width: 700px;"/>
+</center>
+<p>The results are very similar!</p>
+<p>In addition, we can also get the correlation of the treatment and the errors from the OLS approach.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 6))
+sns.histplot(
+    x=az.extract(data=idata, var_names=[&quot;chol_cov_corr&quot;])[0, 1, :],
+    kde=True,
+    color=&quot;C2&quot;,
+    ax=ax,
+)
+ax.set(title=&quot;IV Model - Posterior Distribution Correlation&quot;);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_42_0.png" style="width: 700px;"/>
+</center>
+<p>The correlation is around <span class="math inline">\(0.3\)</span>, which is definitively not negligible. Finally, we can look into the posterior mean of the correlation matrix.</p>
+<pre class="python"><code>cov_mean = idata.posterior[&quot;cov&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+
+cov_samples = np.random.multivariate_normal(
+    mean=np.zeros(shape=(2)), cov=cov_mean, size=5_000
+)
+
+g = sns.jointplot(
+    x=cov_samples[:, 0],
+    y=cov_samples[:, 1],
+    kind=&quot;kde&quot;,
+    color=&quot;C2&quot;,
+    fill=True,
+    height=6,
+)
+g.fig.suptitle(&quot;IV Model - Covariance Samples&quot;, fontsize=16, y=1.05);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_44_0.png" style="width: 700px;"/>
+</center>
+<p>All of these results are consistent wih the discussion regarding the positive bias when filtering for users which received the push notification as a result of unobserved confounders like income.</p>
+</div>
+<div id="hierarchical-model-adding-past-experiments-as-priors" class="section level2">
+<h2>Hierarchical Model: Adding past experiments as priors</h2>
+<p>Now, we look into a very interesting extension. Imagine we have access to previous experiments results (not-uncommon in the tech industry) where we have the med effects <span class="math inline">\(b_j\)</span> and the corresponding standard errors <span class="math inline">\(\sigma_{j}\)</span>. We would like to pass this information to the model as trough the prior distributions. One approach suggested in the great post <a href="https://khakieconomics.github.io/2017/11/26/Bayesian_iv.html">Bayesian Instrumental variables (with a hierarchical prior) in Stan</a> by <a href="https://khakieconomics.github.io/about/">Jim Savage</a> is t use a hierarchical model to include there previous experiments. The idea is to have a “hyper-prior” distribution <span class="math inline">\(\text{Normal}(\bar{\beta}_{t}, \bar{\sigma}_{t})\)</span> so that</p>
+<p><span class="math display">\[\begin{align*}
+\beta_j &amp; \sim \text{Normal}(\bar{\beta}_{t}, \bar{\sigma}_{t}) \\
+b_j  &amp; \sim \text{Normal}(\bar{\beta}, \sigma_{j})
+\end{align*}\]</span></p>
+<p>so that the current treatment effect has as a prior <span class="math inline">\(\beta_t \sim \text{Normal}(\bar{\beta}_{t}, \bar{\sigma}_{t})\)</span>. The PyMC implementation is fairly similar to the base case. One thing to consider in the hierarchical model is that we need to use a non-centered parametrization to make the sampling more efficient (see the example <a href="https://www.pymc.io/projects/examples/en/latest/case_studies/multilevel_modeling.html#non-centered-parameterization">A Primer on Bayesian Methods for Multilevel Modeling</a> for implementation details).</p>
+<pre class="python"><code># previous experiment data
+b_j = np.array([3.4, 3.6, 4.25, 4.0, 3.9])
+se_j = np.array([0.5, 0.55, 0.6, 0.45, 0.44])</code></pre>
+<pre class="python"><code>with pm.Model() as hierarchical_model:
+    # --- Priors ---
+    beta_t_bar = pm.Normal(name=&quot;beta_t_bar&quot;, mu=4, sigma=2)
+    sigma_t_bar = pm.HalfCauchy(name=&quot;sigma_t_bar&quot;, beta=2)
+
+    intercept_y = pm.Normal(name=&quot;intercept_y&quot;, mu=50, sigma=10)
+    intercept_t = pm.Normal(name=&quot;intercept_t&quot;, mu=0, sigma=1)
+
+    beta_z = pm.Normal(name=&quot;beta_z&quot;, mu=0, sigma=10)
+    sd_dist = pm.HalfCauchy.dist(beta=2, shape=2)
+    chol, corr, sigmas = pm.LKJCholeskyCov(name=&quot;chol_cov&quot;, eta=2, n=2, sd_dist=sd_dist)
+    # compute and store the covariance matrix
+    pm.Deterministic(name=&quot;cov&quot;, var=pt.dot(l=chol, r=chol.T))
+
+    # --- Parameterization ---
+    # previous experiment model
+    # set standard normals to use in the non-centered parameterization
+    w_j = pm.Normal(name=&quot;w_j&quot;, mu=0, sigma=1, shape=b_j.size)
+    beta_j = pm.Deterministic(name=&quot;beta_j&quot;, var=beta_t_bar + sigma_t_bar * w_j)
+    pm.Normal(name=&quot;beta_j_observed&quot;, mu=beta_j, sigma=se_j, observed=b_j)
+    
+    # current experiment model
+    # set standard normals to use in the non-centered parameterization
+    w = pm.Normal(name=&quot;w&quot;, mu=0, sigma=1)
+    beta_t = pm.Deterministic(name=&quot;beta_t&quot;, var=beta_t_bar + sigma_t_bar * w)
+    
+    mu_y = pm.Deterministic(name=&quot;mu_y&quot;, var=beta_t * t + intercept_y)
+    mu_t = pm.Deterministic(name=&quot;mu_t&quot;, var=beta_z * z + intercept_t)
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=pt.stack(tensors=(mu_y, mu_t), axis=1))
+    
+    # --- Likelihood ---
+    likelihood = pm.MvNormal(
+        name=&quot;likelihood&quot;,
+        mu=mu,
+        chol=chol,
+        observed=np.stack(arrays=(y, t), axis=1),
+        shape=(n, 2),
+    )
+
+pm.model_to_graphviz(model=hierarchical_model)</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_48_0.svg" style="width: 800px;"/>
+</center>
+<p>We sample from the model (it takes a bit longer than the previous one).</p>
+<pre class="python"><code>with hierarchical_model:
+    hierarchical_idata = pm.sampling_jax.sample_numpyro_nuts(
+        target_accept=0.95, draws=4_000, chains=4, random_seed=rng
+    )</code></pre>
+<pre class="python"><code># verify we do not have divergences
+print(f&quot;Divergences = {hierarchical_idata.sample_stats.diverging.sum().item()}&quot;)</code></pre>
+<pre><code>Divergences = 0</code></pre>
+<p>We now look into the posterior distributions of the parameters.</p>
+<pre class="python"><code>var_names = [
+    &quot;beta_t_bar&quot;,
+    &quot;sigma_t_bar&quot;,
+    &quot;beta_t&quot;,
+    &quot;beta_z&quot;,
+    &quot;intercept_y&quot;,
+    &quot;intercept_t&quot;,
+]
+
+az.summary(data=hierarchical_idata, var_names=var_names)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+beta_t_bar
+</th>
+<td>
+3.776
+</td>
+<td>
+0.262
+</td>
+<td>
+3.278
+</td>
+<td>
+4.275
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+8943.0
+</td>
+<td>
+7629.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_t_bar
+</th>
+<td>
+0.302
+</td>
+<td>
+0.271
+</td>
+<td>
+0.000
+</td>
+<td>
+0.771
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+6148.0
+</td>
+<td>
+6112.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_t
+</th>
+<td>
+3.709
+</td>
+<td>
+0.363
+</td>
+<td>
+2.990
+</td>
+<td>
+4.398
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+10025.0
+</td>
+<td>
+9744.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_z
+</th>
+<td>
+0.719
+</td>
+<td>
+0.006
+</td>
+<td>
+0.707
+</td>
+<td>
+0.730
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+14523.0
+</td>
+<td>
+12656.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_y
+</th>
+<td>
+69.132
+</td>
+<td>
+0.287
+</td>
+<td>
+68.581
+</td>
+<td>
+69.671
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+12511.0
+</td>
+<td>
+10777.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_t
+</th>
+<td>
+-0.001
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+14341.0
+</td>
+<td>
+12822.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=hierarchical_idata,
+    var_names=var_names,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;IV Model - Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_54_0.png" style="width: 900px;"/>
+</center>
+<p>Note that the estimated effect is now <span class="math inline">\(3.77\)</span>, which is higher than the previous case as it is using the prior information from the previous experiments. Let’s zoom in into the posterior distribution of the effect.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(9, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+hdi_prob = 0.94
+
+az.plot_posterior(
+    data=idata,
+    var_names=[&quot;beta_t&quot;],
+    ref_val=iv.params[&quot;push_delivered&quot;],
+    hdi_prob=hdi_prob,
+    ax=ax[0],
+)
+ax[0].axvline(
+    x=iv.conf_int(level=hdi_prob).loc[&quot;push_delivered&quot;, &quot;lower&quot;],
+    color=&quot;C1&quot;,
+    ls=&quot;--&quot;,
+    lw=1,
+    label=f&quot;{hdi_prob: .0%} CI (lower)&quot;,
+)
+ax[0].axvline(
+    x=iv.conf_int(level=hdi_prob).loc[&quot;push_delivered&quot;, &quot;upper&quot;],
+    color=&quot;C1&quot;,
+    ls=&quot;--&quot;,
+    lw=1,
+    label=f&quot;{hdi_prob: .0%} CI (upper)&quot;,
+)
+ax[0].legend()
+ax[0].set(title=&quot;IV Model - Posterior Distribution Effect&quot;)
+
+az.plot_posterior(
+    data=hierarchical_idata,
+    var_names=[&quot;beta_t&quot;],
+    hdi_prob=hdi_prob,
+    ax=ax[1],
+
+)
+
+for j, (b, se) in enumerate(zip(b_j, se_j)):
+    ax[1].axvline(x=b, color=f&quot;C{j + 1}&quot;, ls=&quot;--&quot;, lw=1, label=f&quot;b_{j}&quot;)
+
+ax[1].legend(title=&quot;previous experiemnts&quot;, loc=&quot;upper left&quot;)
+ax[1].set(title=&quot;IV Hierarchical Model - Posterior Distribution Effect&quot;);</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_56_0.png" style="width: 900px;"/>
+</center>
+<p>Note that the variance of the estimation is lower than the base case. This is one of the advantages of using the hierarchical model to pass prior information from previous experiments since we are also providing, the model with information about the expected uncertainty.</p>
+<p>Finally, we can compare the posterior distribution of the effect with the hyper-prior distribution.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    data=hierarchical_idata,
+    var_names=[&quot;beta_t_bar&quot;, &quot;beta_t&quot;],
+    combined=True,
+)
+
+ax.axvline(x=iv.params[&quot;push_delivered&quot;], color=&quot;C0&quot;, ls=&quot;--&quot;, label=&quot;IV estimate&quot;)
+
+for j, (b, se) in enumerate(zip(b_j, se_j)):
+    ax.axvline(x=b, color=f&quot;C{j + 1}&quot;, ls=&quot;--&quot;, lw=1, label=f&quot;b_{j}&quot;)
+
+ax.legend(loc=&quot;center left&quot;,  bbox_to_anchor=(1, 0.5));</code></pre>
+<center>
+<img src="../images/iv_pymc_files/iv_pymc_58_0.png" style="width: 900px;"/>
+</center>
+<p>As expected, the posterior distribution of the effect is closer to the base case 🙂.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
