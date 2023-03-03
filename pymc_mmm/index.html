@@ -90,6 +90,7 @@
 
 
 <p>In this notebook we present a concrete example of estimating the media effects via bayesian methods, following the strategy outlined in Google’s paper <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>. This example can be considered the continuation of the post <a href="https://juanitorduz.github.io/orbit_mmm/">Media Effect Estimation with Orbit’s KTR Model</a>. However, it is not strictly necessary to read before as we make this notebook self-contained. In addition, we provide some remarks and references regarding MMM projects in practice.</p>
+<p><strong>Remark:</strong> If you are interested in this topic (and other applications of bayesian methods in marketing!) please take a look into the <a href="https://github.com/pymc-labs/pymc-marketing"><code>pymc-marketing</code></a> project. I am working together with <a href="https://www.pymc-labs.io/">PyMC Labs</a> and other contributors to open source some interesting models (including MMMs)!</p>
 <div id="data-generation-process" class="section level2">
 <h2>Data Generation Process</h2>
 <p>In <a href="https://juanitorduz.github.io/orbit_mmm/">Part I</a> of the post <a href="https://juanitorduz.github.io/orbit_mmm/">Media Effect Estimation with Orbit’s KTR Model</a>, we generated a synthetic dataset where we modeled a target variable <code>y</code> (sales) as a function of a trend, a seasonal component and an external regressor <code>z</code> (media spend). The effect of <code>z</code> on <code>y</code> was specified by the composition two transformations: a carryover effect (adstock) and a shape (saturation) effect.These two transformations have proven successful in practical Media Mix Modeling.</p>
@@ -173,31 +174,25 @@ y(t) = \beta_{0} + \beta_{\text{trend}}\:\text{trend} + \beta_{\text{seasonality
 
 dag &lt;- dagitty( x = &quot;dag {
   TV -&gt; Search -&gt; Conversions
-  TV -&gt; Facebook -&gt; Conversions
   TV -&gt; Conversions
-  Radio -&gt; Search -&gt; Conversions
-  Radio -&gt; Facebook -&gt; Conversions
-  Radio -&gt; Conversions
   Seasonality -&gt; Conversions
   Seasonality -&gt; Search
-  Seasonality -&gt; Facebook
+  Seasonality -&gt; Facebook -&gt; Search
 }&quot; )
 
 coordinates( x = dag ) &lt;- list(
   x = c(
-    &quot;Seasonality&quot; = 0,
+    &quot;Seasonality&quot; = -1,
     &quot;TV&quot; = 0,
-    &quot;Radio&quot; = 0,
     &quot;Search&quot; = 1,
-    &quot;Facebook&quot; = 1,
+    &quot;Facebook&quot; = 0,
     &quot;Conversions&quot; = 2
   ),
   y = c(
     &quot;Seasonality&quot; = 1,
     &quot;TV&quot; = -1,
-    &quot;Radio&quot; = 0,
-    &quot;Search&quot; = 1,
-    &quot;Facebook&quot; = -1,
+    &quot;Search&quot; = 0,
+    &quot;Facebook&quot; = 0,
     &quot;Conversions&quot; = 0
   )
 )
@@ -206,25 +201,25 @@ plot( dag )</code></pre>
 <p><img src="../post/pymc_mmm_files/figure-html/unnamed-chunk-1-1.png" width="672" style="display: block; margin: auto;" /></p>
 <p>We would like to estimate the effect of <code>TV</code> on <code>Conversions</code>. To begin, we can get the <em>list of conditional independence statements that must hold in every probability distribution compatible with the given model</em>.</p>
 <pre class="r"><code>impliedConditionalIndependencies( x = dag )</code></pre>
-<pre><code>## Fcbk _||_ Srch | Radi, Ssnl, TV
-## Radi _||_ Ssnl
-## Radi _||_ TV
+<pre><code>## Cnvr _||_ Fcbk | Srch, Ssnl, TV
+## Fcbk _||_ TV
 ## Ssnl _||_ TV</code></pre>
 <p>We can use the data to test these implications. Next, we can get the <em>sets of covariates that (asymptotically) allow unbiased estimation of causal effects from observational data, assuming that the input causal graph is correct</em> (by looking into the back-door criterion). For example to estimate the direct effect of <code>TV</code> on <code>Conversions</code> we run:</p>
-<pre class="r"><code>adjustmentSets( x = dag , exposure = &quot;TV&quot;, outcome = &quot;Conversions&quot; )</code></pre>
-<pre><code>##  {}</code></pre>
+<pre class="r"><code>adjustmentSets( x = dag , exposure = &quot;TV&quot;, outcome = &quot;Conversions&quot;, type = &quot;canonical&quot;)</code></pre>
+<pre><code>## { Facebook, Seasonality }</code></pre>
 <p>This shows that the regression model structure should be</p>
 <center>
-<code>Conversions ~ Intercept + TV</code>.
+<code>Conversions ~ Intercept + TV + Facebook + Seasonality</code>.
 </center>
 <p>On the other hand, if we want the effect of <code>Facebook</code> to <code>Conversions</code> we run:</p>
-<pre class="r"><code>adjustmentSets( x = dag , exposure = &quot;Facebook&quot;, outcome = &quot;Conversions&quot; )</code></pre>
-<pre><code>## { Radio, Seasonality, TV }</code></pre>
+<pre class="r"><code>adjustmentSets( x = dag , exposure = &quot;Facebook&quot;, outcome = &quot;Conversions&quot;, type = &quot;canonical&quot;)</code></pre>
+<pre><code>## { Seasonality, TV }</code></pre>
 <p>Hence, the correct model (given the graph causal model!) is</p>
 <center>
-<code>Conversions ~ Intercept + Facebook + TV + Radio + Seasonality</code>
+<code>Conversions ~ Intercept + Facebook + TV + Seasonality</code>
 </center>
-<p>Again, no need to be clever, just specify the causal model. One could argue that for digital channels (like <code>Facebook</code>) the impressions data is already driven by seasonality, so adding additional Fourier modes can be counterproductive. However, given a causal graph as above this is actually not the case. One can extend this type of analysis for additional external factors to be consider in the media mix model.</p>
+<p>That is, we can use the model <code>Conversions ~ Intercept + Facebook + TV + Seasonality</code> to estimate the effects of both <code>TV</code> and <code>Facebook</code> in conversions. Note that we should <strong>not</strong> include <code>Search</code> in the regression model!</p>
+<p>Again, no need to be clever, just specify the causal model. One could argue that for digital channels (like <code>Facebook</code>) the media data is already driven by seasonality, so adding additional Fourier modes can be counterproductive. However, given a causal graph as above this is actually not the case. One can extend this type of analysis for additional external factors to be consider in the media mix model.</p>
 <p><strong>Remark:</strong> There are of course other strategies to model seasonality. Certain modelers suggest to add time-variant coefficients to encode seasonality via Gaussian processes (see for example the post <a href="https://getrecast.com/seasonality/">You’re probably modeling seasonality the wrong way</a>).</p>
 <p><strong>Remark</strong>: To estimate the cost of incremental sales by considering the funnels effects (causal graph) please refer to the excellent blog post <a href="https://engineering.hellofresh.com/bayesian-media-mix-modeling-using-pymc3-for-fun-and-profit-2bd4667504e6">Bayesian Media Mix Modeling using PyMC3, for Fun and Profit</a></p>
 <p>For more examples and details about <em>good and bad controls</em> you can look into the article <a href="https://ftp.cs.ucla.edu/pub/stat_ser/r493.pdf">A Crash Course in Good and Bad Controls</a>.</p>
@@ -503,8 +498,9 @@ ax.set(title=&quot;Base Model - Prior Predictive Samples&quot;);</code></pre>
 <li>Fit Model</li>
 </ul>
 <pre class="python"><code>with base_model:
-    base_model_trace = pm.sampling_jax.sample_numpyro_nuts(
-        draws=6000,
+    base_model_trace = pm.sample(
+        nuts_sampler=&quot;numpyro&quot;,
+        draws=6_000,
         chains=4,
         idata_kwargs={&quot;log_likelihood&quot;: True},
     )
@@ -1166,8 +1162,9 @@ ax.set(title=&quot;Adstock Saturation Model - Prior Predictive&quot;);</code></p
 <li>Fit Model</li>
 </ul>
 <pre class="python"><code>with adstock_saturation_model:
-    adstock_saturation_model_trace = pm.sampling_jax.sample_numpyro_nuts(
-        draws=6000,
+    adstock_saturation_model_trace = pm.sample(
+        nuts_sampler=&quot;numpyro&quot;,
+        draws=6_000,
         chains=4,
         idata_kwargs={&quot;log_likelihood&quot;: True},
     )
@@ -1819,7 +1816,7 @@ ax.set(title=f&quot;Adstock Saturation Model MROAS ({eta:.0%} increase)&quot;);<
     slopes = pm.GaussianRandomWalk(
         name=&quot;slopes&quot;,
         sigma=sigma_slope,
-        init_dist=pymc.distributions.continuous.Normal.dist(
+        init_dist=pm.distributions.continuous.Normal.dist(
             name=&quot;init_dist&quot;, mu=0, sigma=2
         ),
         dims=&quot;date&quot;,
@@ -1878,6 +1875,7 @@ ax.set(title=&quot;Adstock-Saturation-Diminishing-Returns Model - Prior Predicti
 </ul>
 <pre class="python"><code>with asdr_model:
     asdr_model_trace = pm.sample(
+        nuts_sampler=&quot;numpyro&quot;,
         draws=6_000,
         chains=4,
         idata_kwargs={&quot;log_likelihood&quot;: True},
@@ -1885,7 +1883,6 @@ ax.set(title=&quot;Adstock-Saturation-Diminishing-Returns Model - Prior Predicti
     asdr_model_posterior_predictive = pm.sample_posterior_predictive(
         trace=asdr_model_trace
     )</code></pre>
-<p><strong>Remark:</strong> In <code>pymc &gt;= 5.0</code> it seems we can not use the JAX samplers with a <a href="https://docs.pymc.io/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html"><code>pm.GaussianRandomWalk</code></a>, see <a href="https://github.com/pymc-devs/pymc/issues/6467">this issue</a> for more details.</p>
 <ul>
 <li>Model Diagnostics</li>
 </ul>
