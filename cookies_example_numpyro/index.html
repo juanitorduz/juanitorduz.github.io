@@ -1,0 +1,1652 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Simple Hierarchical Model with NumPyro: Cookie Chips Example - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Simple Hierarchical Model with NumPyro: Cookie Chips Example - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">11 min read</span>
+    
+
+    <h1 class="article-title">Simple Hierarchical Model with NumPyro: Cookie Chips Example</h1>
+
+    
+    <span class="article-date">2023-04-24</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This notebook presents a simple example of a hierarchical model using <a href="https://num.pyro.ai/en/latest/index.html#"><code>NumPyro</code></a>. The example is based on the cookie chips example in presented in the post <a href="https://juanitorduz.github.io/intro_pymc3/">Introduction to Bayesian Modeling with PyMC3</a>. There are many great resources regarding bayesian hierarchical model and probabilistic programming <a href="https://num.pyro.ai/en/latest/index.html#"><code>NumPyro</code></a>. This notebook aims to provide a succinct simple example to get started.</p>
+<p><strong>Remark:</strong> Well, the real reason is that I want to get acquainted other probabilistic programming libraries in order to abstract the core principles of probabilistic programming.</p>
+<p><strong>References:</strong></p>
+<ul>
+<li><a href="https://num.pyro.ai/en/latest/getting_started.html"><code>NumPyro</code> Getting Started</a></li>
+<li><a href="https://num.pyro.ai/en/latest/index.html#introductory-tutorials"><code>NumPyro</code> Examples and Tutorials</a></li>
+<li><a href="https://dfm.io/posts/intro-to-numpyro/">An astronomer’s introduction to NumPyro</a></li>
+<li><a href="https://florianwilhelm.info/2020/10/bayesian_hierarchical_modelling_at_scale/">Finally! Bayesian Hierarchical Modelling at Scale</a></li>
+</ul>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import pandas as pd
+import seaborn as sns
+from jax import random
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.infer import MCMC, NUTS, Predictive
+from sklearn.preprocessing import LabelEncoder
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=0)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>The data set is described in the post <a href="https://juanitorduz.github.io/intro_pymc3/">Introduction to Bayesian Modeling with PyMC3</a>. It contains a sample the number of chocolate <code>chips</code> cookies have when produced in different <code>locations</code>. There is a global recipe for the cookies, but each location might influence the number of chips in the cookies. Out objective is to understand the difference per location and, eventually, estimate the number of cookies for a new location not present in the dataset.</p>
+<pre class="python"><code>cookies = pd.read_csv(&quot;../data/cookies.dat&quot;, sep=&quot; &quot;)
+
+cookies[&quot;location&quot;] = pd.Categorical(values=cookies[&quot;location&quot;])
+
+n_locations = cookies[&quot;location&quot;].nunique()
+
+cookies.head()
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+chips
+</th>
+<th>
+location
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+12
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+12
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+6
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+13
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+12
+</td>
+<td>
+1
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>We start by exploring the data. First, we plot the distribution of the number of chips per cookie on for all locations together.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(7, 5))
+sns.histplot(x=cookies[&quot;chips&quot;], ax=ax)
+ax.set(title=&quot;Cookie Chips&quot;, xlabel=&quot;chips&quot;, ylabel=&quot;count&quot;)
+</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_6_1.png" style="width: 700px;"/>
+</center>
+<p>It seems we do not have an unimodal distribution. Let’s look into some statistics.</p>
+<pre class="python"><code>cookies[&quot;chips&quot;].describe()
+</code></pre>
+<pre><code>count    150.000000
+mean       9.153333
+std        3.829831
+min        1.000000
+25%        6.000000
+50%        9.000000
+75%       12.000000
+max       21.000000
+Name: chips, dtype: float64</code></pre>
+<p>The variance is different from the mean:</p>
+<pre class="python"><code>cookies[&quot;chips&quot;].describe()[&quot;std&quot;] ** 2
+</code></pre>
+<pre><code>14.667606263982103</code></pre>
+<p>This hints that a Poisson distribution might not be the best choice because this over dispersion. An alternative is to use a Negative Binomial distribution. However, for the sake of simplicity, we will use a Poisson distribution (see below).</p>
+<p>We can see that there are <span class="math inline">\(5\)</span> locations and <span class="math inline">\(30\)</span> samples per location.</p>
+<pre class="python"><code>g = sns.displot(
+    data=cookies,
+    x=&quot;chips&quot;,
+    kind=&quot;hist&quot;,
+    hue=&quot;location&quot;,
+    col=&quot;location&quot;,
+    col_wrap=2,
+    height=2.5,
+    aspect=2,
+)
+g.set_xlabels(&quot;chips&quot;)
+g.set_ylabels(&quot;count&quot;)
+g.fig.suptitle(&quot;Cookies Chips by Location&quot;, y=1.03, fontsize=16)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_13_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.violinplot(
+    data=cookies,
+    x=&quot;location&quot;,
+    y=&quot;chips&quot;,
+    ax=ax,
+)
+ax.set(title=&quot;Cookies Chips by Location&quot;, xlabel=&quot;location&quot;, ylabel=&quot;chips&quot;)
+</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_14_1.png" style="width: 900px;"/>
+</center>
+<p>Again, let’s look into some statistics.</p>
+<pre class="python"><code>cookies.groupby(&quot;location&quot;).agg(
+    {&quot;chips&quot;: [&quot;count&quot;, &quot;min&quot;, &quot;max&quot;, &quot;median&quot;, &quot;mean&quot;, &quot;var&quot;]}
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead tr th {
+        text-align: left;
+    }
+
+    .dataframe thead tr:last-of-type th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+</th>
+<th colspan="6" halign="left">
+chips
+</th>
+</tr>
+<tr>
+<th>
+</th>
+<th>
+count
+</th>
+<th>
+min
+</th>
+<th>
+max
+</th>
+<th>
+median
+</th>
+<th>
+mean
+</th>
+<th>
+var
+</th>
+</tr>
+<tr>
+<th>
+location
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+1
+</th>
+<td>
+30
+</td>
+<td>
+4
+</td>
+<td>
+14
+</td>
+<td>
+9.5
+</td>
+<td>
+9.300000
+</td>
+<td>
+8.010345
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+30
+</td>
+<td>
+1
+</td>
+<td>
+11
+</td>
+<td>
+6.0
+</td>
+<td>
+5.966667
+</td>
+<td>
+6.447126
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+30
+</td>
+<td>
+4
+</td>
+<td>
+18
+</td>
+<td>
+10.0
+</td>
+<td>
+9.566667
+</td>
+<td>
+13.012644
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+30
+</td>
+<td>
+1
+</td>
+<td>
+21
+</td>
+<td>
+8.0
+</td>
+<td>
+8.933333
+</td>
+<td>
+15.029885
+</td>
+</tr>
+<tr>
+<th>
+5
+</th>
+<td>
+30
+</td>
+<td>
+6
+</td>
+<td>
+20
+</td>
+<td>
+11.0
+</td>
+<td>
+12.000000
+</td>
+<td>
+13.724138
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>In this case we see that besides locations <span class="math inline">\(3\)</span> and <span class="math inline">\(4\)</span>, the means and the variances are similar.</p>
+<p>For modeling purposes, we use a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.LabelEncoder.html"><code>LabelEncoder</code></a> to encode the locations as integers.</p>
+<pre class="python"><code>location_encoder = LabelEncoder()
+
+locations = location_encoder.fit_transform(cookies[&quot;location&quot;])
+locations = jnp.array(locations)
+
+chips = cookies[&quot;chips&quot;].to_numpy()
+chips = jnp.array(chips)
+</code></pre>
+</div>
+<div id="pooled-model" class="section level2">
+<h2>Pooled Model</h2>
+<p>We start with a simple baseline model where we assume that all locations have the same mean number of chips per cookie. We use a Poisson distribution to model the number of chips per cookie. To specify the model we need to wrap the model specification in a function, which takes as arguments the input data. We also choose a gamma prior for the rate parameter of the Poisson distribution.</p>
+<p><span class="math display">\[\begin{align*}
+\text{chips} &amp; \sim \text{Poisson}(\text{rate}) \\
+\text{rate}  &amp; \sim \text{Gamma}(\alpha=2, \beta=1/5)
+\end{align*}\]</span></p>
+<pre class="python"><code>def pooled_model(locations: ArrayImpl, chips: ArrayImpl | None = None) -&gt; None:
+    &quot;&quot;&quot;Pooled model for cookie chips. We model the number of chips as a Poisson
+    distribution and we assume that the rate is the same for all locations.
+    &quot;&quot;&quot;
+    # priors
+    rate = numpyro.sample(name=&quot;rate&quot;, fn=dist.Gamma(concentration=2, rate=1 / 5))
+
+    n_obs = locations.size
+    # likelihood
+    with numpyro.plate(name=&quot;data&quot;, size=n_obs):
+        numpyro.sample(name=&quot;obs&quot;, fn=dist.Poisson(rate=rate), obs=chips)
+</code></pre>
+<p>We can visualize the model structure.</p>
+<pre class="python"><code>numpyro.render_model(
+    model=pooled_model,
+    model_args=(chips,),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_23_0.svg" style="width: 400px;"/>
+</center>
+<p>Before inference, let’s check the model specification by sampling from the prior.</p>
+<pre class="python"><code># prior predictive samples
+pooled_prior_predictive = Predictive(model=pooled_model, num_samples=1_000)
+rng_key, rng_subkey = random.split(rng_key)
+pooled_prior_predictive_samples = pooled_prior_predictive(
+    rng_key=rng_subkey, locations=locations
+)
+# plot
+fig, ax = plt.subplots(
+    nrows=1, ncols=2, figsize=(10, 5), sharex=False, sharey=False, layout=&quot;constrained&quot;
+)
+sns.histplot(x=pooled_prior_predictive_samples[&quot;rate&quot;], color=&quot;C0&quot;, ax=ax[0])
+ax[0].set(title=&quot;Rate&quot;, xlabel=&quot;rate&quot;, ylabel=&quot;count&quot;)
+sns.histplot(x=pooled_prior_predictive_samples[&quot;obs&quot;].flatten(), color=&quot;C1&quot;, ax=ax[1])
+ax[1].set(title=&quot;Chips&quot;, xlabel=&quot;chips&quot;, ylabel=&quot;count&quot;)
+fig.suptitle(&quot;Pooled Model Prior Predictive Samples&quot;, y=1.05, fontsize=16)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_25_1.png" style="width: 900px;"/>
+</center>
+<p>Overall, we see that the priors are reasonable as they bound the number of chips to a realistic domain without being too restrictive.</p>
+<p>Now we are ready to perform inference using the <a href="https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo#No_U-Turn_Sampler">NUTS sampler</a>.</p>
+<pre class="python"><code># set sampler
+pooled_nuts_kernel = NUTS(model=pooled_model, target_accept_prob=0.9)
+pooled_mcmc = MCMC(
+    sampler=pooled_nuts_kernel, num_samples=4_000, num_warmup=2_000, num_chains=4
+)
+# run sampler
+rng_key, rng_subkey = random.split(key=rng_key)
+pooled_mcmc.run(rng_subkey, locations, chips)
+# get posterior samples
+pooled_posterior_samples = pooled_mcmc.get_samples()
+# get posterior predictive samples
+pooled_posterior_predictive = Predictive(
+    model=pooled_model, posterior_samples=pooled_posterior_samples
+)
+rng_key, rng_subkey = random.split(rng_key)
+pooled_posterior_predictive_samples = pooled_posterior_predictive(rng_subkey, locations)
+# convert to arviz inference data object
+pooled_idata = az.from_numpyro(
+    posterior=pooled_mcmc, posterior_predictive=pooled_posterior_predictive_samples
+)</code></pre>
+<p>Let’s check the estimated rate parameter.</p>
+<pre class="python"><code>az.summary(data=pooled_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+rate
+</th>
+<td>
+9.158
+</td>
+<td>
+0.243
+</td>
+<td>
+8.712
+</td>
+<td>
+9.62
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+6014.0
+</td>
+<td>
+6225.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We can also look into the trace:</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=pooled_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 3), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Pooled Model Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_32_1.png" style="width: 900px;"/>
+</center>
+<p>Overall, it looks good! Let’s look into the posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_ppc(
+    data=pooled_idata,
+    observed_rug=True,
+    ax=ax,
+)
+ax.set(
+    title=&quot;Pooled Model Posterior Predictive Check&quot;,
+    xlabel=&quot;chips&quot;,
+    ylabel=&quot;count&quot;,
+)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_34_1.png" style="width: 700px;"/>
+</center>
+<p>Note that the posterior distribution misses the two apparent modes in the sample distribution. This is no surprise as the model does not capture the difference between locations.</p>
+</div>
+<div id="unpooled-model" class="section level2">
+<h2>Unpooled Model</h2>
+<p>Now we consider the opposite approach and fit independent rate parameters for each location. That is, we forget about the global recipe and assume that each location has its own recipe.</p>
+<p><span class="math display">\[\begin{align*}
+\text{chips}_{\ell} &amp; \sim \text{Poisson}(\text{rate}_{\ell}) \\
+\text{rate}_{\ell}  &amp; \sim \text{Gamma}(\alpha=2, \beta=1/5), \quad \ell = 1, \ldots, 5
+\end{align*}\]</span></p>
+<pre class="python"><code>def unpooled_model(locations: ArrayImpl, chips: ArrayImpl | None = None) -&gt; None:
+    &quot;&quot;&quot;Unpooled model for cookie chips. We model the number of chips as a Poisson
+    distribution and we assume that each location has its own independent rate.
+    &quot;&quot;&quot;
+    n_locations = np.unique(locations).size
+
+    with numpyro.plate(name=&quot;location&quot;, size=n_locations):
+        lam = numpyro.sample(name=&quot;lam&quot;, fn=dist.Gamma(concentration=2, rate=1 / 5))
+
+    n_obs = locations.size
+    rate = numpyro.deterministic(name=&quot;rate&quot;, value=lam[locations])
+
+    with numpyro.plate(name=&quot;data&quot;, size=n_obs):
+        numpyro.sample(name=&quot;obs&quot;, fn=dist.Poisson(rate=rate), obs=chips)
+</code></pre>
+<pre class="python"><code>numpyro.render_model(
+    model=unpooled_model,
+    model_args=(locations, chips),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_38_0.svg" style="width: 400px;"/>
+</center>
+<p>We start by looking into the prior predictive distributions per location.</p>
+<pre class="python"><code># prior predictive samples
+unpooled_prior_predictive = Predictive(model=unpooled_model, num_samples=1_000)
+rng_key, rng_subkey = random.split(rng_key)
+unpooled_prior_predictive_samples = unpooled_prior_predictive(
+    rng_key=rng_subkey, locations=locations
+)
+
+# plot
+fig, axes = plt.subplots(
+    nrows=2, ncols=3, figsize=(10, 6), sharex=False, sharey=False, layout=&quot;constrained&quot;
+)
+
+axes = axes.flatten()
+
+for location in range(1, n_locations + 1):
+    ax = axes[location - 1]
+    sns.histplot(
+        x=unpooled_prior_predictive_samples[&quot;lam&quot;][:, location - 1],
+        color=f&quot;C{location - 1}&quot;,
+        ax=ax,
+    )
+    ax.set(title=f&quot;Location {location}&quot;, xlabel=&quot;rate&quot;, ylabel=&quot;count&quot;)
+
+fig.suptitle(&quot;Unpooled Model Prior Predictive Samples&quot;, y=1.05, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_40_1.png" style="width: 900px;"/>
+</center>
+<p>They also look very reasonable. Let’s now perform inference on the parameters.</p>
+<pre class="python"><code># set sampler
+unpooled_nuts_kernel = NUTS(model=unpooled_model, target_accept_prob=0.9)
+unpooled_mcmc = MCMC(
+    sampler=unpooled_nuts_kernel, num_samples=4_000, num_warmup=2_000, num_chains=4
+)
+# run sampler
+rng_key, rng_subkey = random.split(key=rng_key)
+unpooled_mcmc.run(rng_subkey, locations, chips)
+# get posterior samples
+unpooled_posterior_samples = unpooled_mcmc.get_samples()
+# get posterior predictive samples
+unpooled_posterior_predictive = Predictive(
+    model=unpooled_model, posterior_samples=unpooled_posterior_samples
+)
+rng_key, rng_subkey = random.split(rng_key)
+unpooled_posterior_predictive_samples = unpooled_posterior_predictive(
+    rng_subkey, locations
+)
+# convert to arviz inference data object
+unpooled_idata = az.from_numpyro(
+    posterior=unpooled_mcmc, posterior_predictive=unpooled_posterior_predictive_samples
+)
+</code></pre>
+<pre class="python"><code>az.summary(data=unpooled_idata, var_names=[&quot;lam&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+lam[0]
+</th>
+<td>
+9.304
+</td>
+<td>
+0.557
+</td>
+<td>
+8.310
+</td>
+<td>
+10.389
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+21462.0
+</td>
+<td>
+11876.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[1]
+</th>
+<td>
+5.992
+</td>
+<td>
+0.449
+</td>
+<td>
+5.121
+</td>
+<td>
+6.817
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+20704.0
+</td>
+<td>
+11988.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[2]
+</th>
+<td>
+9.570
+</td>
+<td>
+0.559
+</td>
+<td>
+8.520
+</td>
+<td>
+10.624
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+22239.0
+</td>
+<td>
+11470.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[3]
+</th>
+<td>
+8.944
+</td>
+<td>
+0.544
+</td>
+<td>
+7.919
+</td>
+<td>
+9.971
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+21051.0
+</td>
+<td>
+12612.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[4]
+</th>
+<td>
+11.992
+</td>
+<td>
+0.630
+</td>
+<td>
+10.844
+</td>
+<td>
+13.203
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+22277.0
+</td>
+<td>
+11997.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=unpooled_idata,
+    var_names=[&quot;lam&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 3), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Unpooled Model Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_44_1.png" style="width: 900px;"/>
+</center>
+<p>We do se some differences in the rate parameters across locations. Let’s look into the posterior predictive distributions.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+az.plot_ppc(
+    data=unpooled_idata,
+    observed_rug=True,
+    ax=ax,
+)
+ax.set(
+    title=&quot;Unpooled Model Posterior Predictive Check&quot;,
+    xlabel=&quot;chips&quot;,
+    ylabel=&quot;count&quot;,
+)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_46_1.png" style="width: 700px;"/>
+</center>
+</div>
+<div id="hierarchical-model" class="section level2">
+<h2>Hierarchical Model</h2>
+<p>In the hierarchical approach we do assume each location has its own rate, but we also assume that the rate parameters are drawn from a common distribution. This is a way to share information across locations. The model is specified as follows:</p>
+<p><span class="math display">\[\begin{align*}
+\text{chips}_{\ell} &amp; \sim \text{Poisson}(\text{rate}_{\ell}) \\
+\text{rate}_{\ell}  &amp; \sim \text{Gamma}(\alpha=, \beta), \quad \ell = 1, \ldots, 5 \\
+\alpha &amp; = \frac{\mu^2}{\sigma^2} \\
+\beta &amp; = \frac{\mu}{\sigma^2} \\
+\mu &amp; \sim \text{Gamma}(2, 1/5) \\
+\sigma &amp; \sim \text{Exponential}(1)
+\end{align*}\]</span></p>
+<pre class="python"><code>def hierarchical_model(locations: ArrayImpl, chips: ArrayImpl | None = None) -&gt; None:
+    mu = numpyro.sample(name=&quot;mu&quot;, fn=dist.Gamma(concentration=2, rate=1 / 5))
+    sigma = numpyro.sample(name=&quot;sigma&quot;, fn=dist.Exponential(rate=1))
+    alpha = numpyro.deterministic(name=&quot;alpha&quot;, value=mu**2 / sigma**2)
+    beta = numpyro.deterministic(name=&quot;beta&quot;, value=mu / sigma**2)
+
+    n_locations = np.unique(locations).size
+
+    with numpyro.plate(name=&quot;location&quot;, size=n_locations):
+        lam = numpyro.sample(
+            name=&quot;lam&quot;,
+            fn=dist.Gamma(concentration=alpha, rate=beta),
+        )
+
+    n_obs = locations.size
+    rate = numpyro.deterministic(name=&quot;rate&quot;, value=lam[locations])
+
+    with numpyro.plate(name=&quot;data&quot;, size=n_obs):
+        numpyro.sample(name=&quot;obs&quot;, fn=dist.Poisson(rate=rate), obs=chips)
+</code></pre>
+<pre class="python"><code>numpyro.render_model(
+    hierarchical_model,
+    model_args=(locations, chips),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_49_0.svg" style="width: 400px;"/>
+</center>
+<p>We start by looking into the prior predictive distributions per location as we did before.</p>
+<pre class="python"><code># prior predictive samples
+hierarchical_prior_predictive = Predictive(model=hierarchical_model, num_samples=1_000)
+rng_key, rng_subkey = random.split(rng_key)
+hierarchical_prior_predictive_samples = hierarchical_prior_predictive(
+    rng_key=rng_subkey, locations=locations
+)
+
+# plot
+fig, axes = plt.subplots(
+    nrows=2, ncols=3, figsize=(10, 6), sharex=False, sharey=False, layout=&quot;constrained&quot;
+)
+
+axes = axes.flatten()
+
+for location in range(1, n_locations + 1):
+    ax = axes[location - 1]
+    sns.histplot(
+        x=hierarchical_prior_predictive_samples[&quot;lam&quot;][:, location - 1],
+        color=f&quot;C{location - 1}&quot;,
+        ax=ax,
+    )
+    ax.set(title=f&quot;Location {location}&quot;, xlabel=&quot;rate&quot;, ylabel=&quot;count&quot;)
+
+fig.suptitle(&quot;Hierarchical Model Prior Predictive Samples&quot;, y=1.05, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_51_1.png" style="width: 900px;"/>
+</center>
+<p>The resulting distributions look plausible. We continue running the sampler to estimate the parameters.</p>
+<pre class="python"><code># set sampler
+hierarchical_nuts_kernel = NUTS(model=hierarchical_model, target_accept_prob=0.9)
+hierarchical_mcmc = MCMC(
+    sampler=hierarchical_nuts_kernel, num_samples=4_000, num_warmup=2_000, num_chains=4
+)
+# run sampler
+rng_key, rng_subkey = random.split(key=rng_key)
+hierarchical_mcmc.run(rng_subkey, locations, chips)
+# get posterior samples
+hierarchical_posterior_samples = hierarchical_mcmc.get_samples()
+# get posterior predictive samples
+hierarchical_posterior_predictive = Predictive(
+    model=hierarchical_model, posterior_samples=hierarchical_posterior_samples
+)
+rng_key, rng_subkey = random.split(rng_key)
+hierarchical_posterior_predictive_samples = hierarchical_posterior_predictive(
+    rng_subkey, locations
+)
+# convert to arviz inference data object
+hierarchical_idata = az.from_numpyro(
+    posterior=hierarchical_mcmc,
+    posterior_predictive=hierarchical_posterior_predictive_samples,
+)
+</code></pre>
+<pre class="python"><code>az.summary(data=hierarchical_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+lam[0]
+</th>
+<td>
+9.283
+</td>
+<td>
+0.540
+</td>
+<td>
+8.286
+</td>
+<td>
+10.320
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+20168.0
+</td>
+<td>
+10898.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[1]
+</th>
+<td>
+6.224
+</td>
+<td>
+0.467
+</td>
+<td>
+5.355
+</td>
+<td>
+7.105
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+18481.0
+</td>
+<td>
+11851.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[2]
+</th>
+<td>
+9.527
+</td>
+<td>
+0.553
+</td>
+<td>
+8.497
+</td>
+<td>
+10.568
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+21564.0
+</td>
+<td>
+11655.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[3]
+</th>
+<td>
+8.947
+</td>
+<td>
+0.526
+</td>
+<td>
+8.031
+</td>
+<td>
+9.998
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+20912.0
+</td>
+<td>
+12649.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+lam[4]
+</th>
+<td>
+11.759
+</td>
+<td>
+0.617
+</td>
+<td>
+10.611
+</td>
+<td>
+12.911
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+19434.0
+</td>
+<td>
+12391.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=hierarchical_idata,
+    var_names=[&quot;mu&quot;, &quot;sigma&quot;, &quot;alpha&quot;, &quot;beta&quot;, &quot;lam&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Hierarchical Model Trace&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_55_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+az.plot_ppc(
+    data=hierarchical_idata,
+    observed_rug=True,
+    ax=ax,
+)
+ax.set(
+    title=&quot;Hierarchical Model Posterior Predictive Check&quot;,
+    xlabel=&quot;chips&quot;,
+    ylabel=&quot;count&quot;,
+)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_56_1.png" style="width: 700px;"/>
+</center>
+</div>
+<div id="model-comparison" class="section level2">
+<h2>Model Comparison</h2>
+<p>Let’s start by comparing the posterior predictive distributions for the three models.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1, ncols=3, figsize=(12, 5), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+az.plot_ppc(
+    data=pooled_idata,
+    observed_rug=True,
+    ax=ax[0],
+)
+ax[0].set(
+    title=&quot;Pooled Model&quot;,
+    xlabel=&quot;chips&quot;,
+    ylabel=&quot;count&quot;,
+)
+az.plot_ppc(
+    data=unpooled_idata,
+    observed_rug=True,
+    ax=ax[1],
+)
+ax[1].set(
+    title=&quot;Unpooled&quot;,
+    xlabel=&quot;chips&quot;,
+    ylabel=&quot;count&quot;,
+)
+az.plot_ppc(
+    data=hierarchical_idata,
+    observed_rug=True,
+    ax=ax[2],
+)
+ax[2].set(
+    title=&quot;Hierarchical&quot;,
+    xlabel=&quot;chips&quot;,
+    ylabel=&quot;count&quot;,
+)
+
+fig.suptitle(&quot;Posterior Predictive Checks&quot;, y=1.06, fontsize=16)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_58_2.png" style="width: 1000px;"/>
+</center>
+<p>The unpooled and hierarchical models are quite similar and overall better that the pooled model. Next, we can compare them through some statistics.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+az.compare(
+    compare_dict={
+        &quot;pooled&quot;: pooled_idata,
+        &quot;unpooled&quot;: unpooled_idata,
+        &quot;hierarchical&quot;: hierarchical_idata,
+    },
+    seed=rng_subkey,
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+rank
+</th>
+<th>
+elpd_loo
+</th>
+<th>
+p_loo
+</th>
+<th>
+elpd_diff
+</th>
+<th>
+weight
+</th>
+<th>
+se
+</th>
+<th>
+dse
+</th>
+<th>
+warning
+</th>
+<th>
+scale
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+unpooled
+</th>
+<td>
+0
+</td>
+<td>
+-394.783500
+</td>
+<td>
+5.981711
+</td>
+<td>
+0.000000
+</td>
+<td>
+0.942403
+</td>
+<td>
+10.655966
+</td>
+<td>
+0.000000
+</td>
+<td>
+False
+</td>
+<td>
+log
+</td>
+</tr>
+<tr>
+<th>
+hierarchical
+</th>
+<td>
+1
+</td>
+<td>
+-394.870999
+</td>
+<td>
+5.827696
+</td>
+<td>
+0.087500
+</td>
+<td>
+0.000000
+</td>
+<td>
+10.676146
+</td>
+<td>
+0.680974
+</td>
+<td>
+False
+</td>
+<td>
+log
+</td>
+</tr>
+<tr>
+<th>
+pooled
+</th>
+<td>
+2
+</td>
+<td>
+-421.937956
+</td>
+<td>
+1.544491
+</td>
+<td>
+27.154456
+</td>
+<td>
+0.057597
+</td>
+<td>
+13.355439
+</td>
+<td>
+8.665326
+</td>
+<td>
+False
+</td>
+<td>
+log
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The results indeed show that the unpooled and hierarchical models are better than the pooled model. However, the difference between the unpooled and hierarchical models is not that big.</p>
+<p>We can compare the estimated means of the rate parameters for each location across the three models.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 7))
+
+pd.DataFrame(
+    data={
+        &quot;unpooled_lam_mean&quot;: unpooled_posterior_samples[&quot;lam&quot;].mean(axis=0),
+        &quot;hierarchical_lam_mean&quot;: hierarchical_posterior_samples[&quot;lam&quot;].mean(axis=0),
+        &quot;location&quot;: pd.Categorical(range(1, n_locations + 1)),
+    }
+).pipe(
+    (sns.scatterplot, &quot;data&quot;),
+    x=&quot;unpooled_lam_mean&quot;,
+    y=&quot;hierarchical_lam_mean&quot;,
+    hue=&quot;location&quot;,
+    s=100,
+    ax=ax,
+)
+ax.axhline(
+    y=pooled_posterior_samples[&quot;rate&quot;].mean(),
+    color=&quot;C5&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;pooled model rate mean&quot;,
+)
+ax.axline((9, 9), slope=1, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.set(
+    title=&quot;Rates Comparison&quot;,
+    xlabel=&quot;unpooled model rate mean&quot;,
+    ylabel=&quot;hierarchical model rate mean&quot;,
+)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_63_1.png" style="width: 700px;"/>
+</center>
+<p>We clearly see the <em>shrinkage phenomenon</em> where the hierarchical model estimates are closer to the global mean than the unpooled model estimates. This is a consequence of the hierarchical model sharing information across locations. It serves as a regularization mechanism.</p>
+</div>
+<div id="chips-distribution-new-location" class="section level2">
+<h2>Chips Distribution: New Location</h2>
+<p>Finally, we can estimate the chips distribution for a new location. We use the hierarchical model to estimate the distribution by sampling over the <em>hyper-priors</em> of <span class="math inline">\(\mu\)</span> and <span class="math inline">\(\sigma\)</span> and then passing the rate samples through the Poisson distribution.</p>
+<pre class="python"><code>lam_dist = dist.Gamma(
+    concentration=hierarchical_posterior_samples[&quot;alpha&quot;],
+    rate=hierarchical_posterior_samples[&quot;beta&quot;],
+)
+rng_key, rng_subkey = random.split(rng_key)
+lam_samples = lam_dist.sample(key=rng_subkey)
+rng_key, rng_subkey = random.split(rng_key)
+chips_samples = dist.Poisson(rate=lam_samples).sample(key=rng_subkey)
+
+fig, ax = plt.subplots(figsize=(9, 7))
+sns.histplot(x=chips_samples, kde=True, stat=&quot;density&quot;, color=&quot;C7&quot;, ax=ax)
+ax.set(title=&quot;Chips Distribution for a New Location&quot;, xlabel=&quot;chips&quot;, ylabel=&quot;density&quot;)
+</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_66_1.png" style="width: 700px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
