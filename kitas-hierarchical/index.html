@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Counting the Number of Kitas per PLZ in Berlin using a Hierarchical Bayesian Model - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Counting the Number of Kitas per PLZ in Berlin using a Hierarchical Bayesian Model - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">11 min read</span>
+    
+
+    <h1 class="article-title">Counting the Number of Kitas per PLZ in Berlin using a Hierarchical Bayesian Model</h1>
+
+    
+    <span class="article-date">2023-04-28</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This notebook is the continuation of data gathering and data analysis post <a href="https://juanitorduz.github.io/kitas_berlin/">Open Data: Berlin Kitas</a>. In this second part we use the data gathered to model the number of Kitas per PLZ in Berlin using a hierarchical bayesian model. The hierarchy is defined by the Berlin districts. The objective is to develop a sound basic model which can be enhanced in the future with a richer data set.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import geopandas as gpd
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import pandas as pd
+import seaborn as sns
+from jax import random
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.infer import MCMC, NUTS, Predictive
+from sklearn.preprocessing import LabelEncoder
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=0)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>Let’s start by reading the data we gathered in the previous post.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data//kitas_data.geojson&quot;
+
+plz_df: gpd.GeoDataFrame = gpd.read_file(data_path)
+
+plz_df = plz_df.sort_values(by=[&quot;district&quot;, &quot;plz&quot;])
+
+plz_df.info()</code></pre>
+<pre><code>&lt;class &#39;geopandas.geodataframe.GeoDataFrame&#39;&gt;
+Int64Index: 214 entries, 46 to 213
+Data columns (total 8 columns):
+ #   Column                Non-Null Count  Dtype   
+---  ------                --------------  -----   
+ 0   plz                   214 non-null    object  
+ 1   einwohner             214 non-null    int64   
+ 2   district              214 non-null    object  
+ 3   num_kitas_plz         214 non-null    int64   
+ 4   spots_plz             214 non-null    float64 
+ 5   num_kitas_plz_pc      214 non-null    float64 
+ 6   num_kitas_plz_pc_log  214 non-null    float64 
+ 7   geometry              214 non-null    geometry
+dtypes: float64(3), geometry(1), int64(2), object(2)
+memory usage: 15.0+ KB</code></pre>
+<p>Recall that the features of interest are:</p>
+<ul>
+<li><code>plz</code>: Postal code</li>
+<li><code>einwohner</code>: Number of inhabitants</li>
+<li><code>district</code>: Berlin district (there are 12 districts in Berlin)</li>
+<li><code>num_kitas_plz</code>: Number of Kitas per postal code</li>
+</ul>
+<p>We start by looking into the relationship between the number of inhabitants and the number of Kitas per postal code when grouping by district.</p>
+<pre class="python"><code>g = sns.relplot(
+    data=plz_df,
+    x=&quot;einwohner&quot;,
+    y=&quot;num_kitas_plz&quot;,
+    col=&quot;district&quot;,
+    col_wrap=4,
+    height=3.5,
+    aspect=1,
+)
+</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_7_0.png" style="width: 1000px;"/>
+</center>
+<p>We do see a positive correlation, but the relationship does not seem to be linear.</p>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare Data</h2>
+<p>Besides the existing features in the dataset, we extract the area of the geometry defined by the postal code. This will be used as a feature in the model since postal codes with the same number of inhabitants but different area might have different number of Kitas (think about distance to get to the Kitas, for example).</p>
+<pre class="python"><code>num_kitas_plz = jnp.array(plz_df[&quot;num_kitas_plz&quot;].to_numpy())
+
+# https://geopandas.org/en/stable/docs/user_guide/projections.html
+plz_df[&quot;area&quot;] = plz_df[&quot;geometry&quot;].to_crs(&quot;EPSG:3395&quot;).area
+area_normalization = 1e8
+area = jnp.array(plz_df[&quot;area&quot;].to_numpy() / area_normalization)
+
+einwohner_normalization = 1e4
+einwohner = jnp.array(plz_df[&quot;einwohner&quot;].to_numpy() / einwohner_normalization)
+
+districts_encoder = LabelEncoder()
+districts = districts_encoder.fit_transform(plz_df[&quot;district&quot;])</code></pre>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>The model we use is relative straightforward and is a solid baseline. Let’s look into the specification:</p>
+<ul>
+<li>We use a <a href="https://en.wikipedia.org/wiki/Negative_binomial_distribution">negative binomial</a> likelihood function as we are modeling count data. We also what to account for overdispersion in the data 9that is why we do not use a Poisson distribution).</li>
+<li>We model the mean of the negative binomial distribution as a linear combination of the features in the dataset. Concretely, we include a an intercept and linear term in the number of inhabitants through a hierarchy defined by the districts. We also include the area of the postal code as a global feature.</li>
+</ul>
+<p><span class="math display">\[\begin{align*}
+\text{num_kitas_plz} &amp;\sim \text{NegativeBinomial}(\mu, \phi) \\
+\phi &amp; =  \frac{1}{\sqrt{\tilde{\phi}}} \\
+\mu &amp; = \exp(\alpha_{[i]} + \beta_{[i]}\times{\text{einwohner}} + \gamma \times \text{area}), \quad i = 1, \ldots, 12 \\
+\tilde{\phi} &amp; \sim \text{HalfCauchy}(3) \\
+\gamma &amp; \sim \text{Normal}(0, 1.5) \\
+\alpha_{[i]} &amp; \sim \text{Normal}(\mu_{\alpha}, \sigma_{\alpha}), \quad i = 1, \ldots, 12 \\
+\beta_{[i]} &amp; \sim \text{Normal}(\mu_{\beta}, \sigma_{\beta}), \quad i = 1, \ldots, 12 \\
+\mu_{\alpha} &amp; \sim \text{Normal}(0, 1.5) \\
+\mu_{\beta} &amp; \sim \text{Normal}(0, 1.5) \\
+\sigma_{\alpha} &amp; \sim \text{HalfCauchy}(3) \\
+\sigma_{\beta} &amp; \sim \text{HalfCauchy}(3) \\
+\end{align*}\]</span></p>
+<p>Next, we define the model in <a href="https://num.pyro.ai/en/latest/index.html#"><code>NumPyro</code></a>. See my previous post <a href="https://juanitorduz.github.io/cookies_example_numpyro/">Simple Hierarchical Model with NumPyro: Cookie Chips Example</a> for an introduction to <code>NumPyro</code> hierarchical models (please look into the <a href="https://num.pyro.ai/en/latest/index.html#introductory-tutorials">official documentation</a> as well!).</p>
+<p><strong>Remarks [Model]:</strong></p>
+<ul>
+<li>Why shall we have district specific intercepts? Shouldn’t no-inhabitants imply no Kitas? Well, not really! There is a spill over effect as some less residential areas can still have Kitas conveniently located so that parents can pick up their kids on their way back from work. This is the reason why we have district specific intercepts. We can of course see the difference across them once we pass the data. Before seeing the data, we still give the benefit of the doubt to the model and let it learn the intercepts.</li>
+<li>We need to wrap the linear combination of features in an exponential “link” function to ensure the mean of the negative binomial distribution is positive.</li>
+<li>For a negative binomial likelihood, there is a recommended way to set priors on the <em>concentration</em> parameter, see <a href="https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations#story-when-the-generic-prior-fails-the-case-of-the-negative-binomial">here</a>.</li>
+<li>We use <code>NumPyros</code> nice re-parametrization capabilities to use a non-centered parametrization so that the model samples better, see the example <a href="https://num.pyro.ai/en/latest/tutorials/bad_posterior_geometry.html">Bad posterior geometry and how to deal with it</a>.</li>
+</ul>
+<p><strong>Remarks [Related Work]:</strong></p>
+<ul>
+<li><a href="https://www.samples-of-thoughts.com/">Corrie Bartelheimer</a> presented a has a nice example where she uses a hierarchical bayesian model to predict housing price in Berlin, see <a href="https://github.com/corriebar/Bayesian-Workflow-with-PyMC">here</a></li>
+<li>There is a nice approach to encode the geo-location proximity using Gaussian Processes. See for example the great post by <a href="https://github.com/lucianopaz">Luciano Paz</a>, <a href="https://www.pymc-labs.io/blog-posts/spatial-gaussian-process-01/">Modeling spatial data with Gaussian processes in PyMC</a>. We do not use this approach here as the number of Kitas does not seem to be continuous in the geo-location space since most of the times these number depends on postal codes specific features (how busy or residential the area is, for example) and the district where the postal code is located. Nevertheless, it would be interesting to explore this approach in the future (maybe a one-dimensional Gaussian Process in the postal code names itself?).</li>
+</ul>
+<pre class="python"><code>def model(
+    area: ArrayImpl,
+    einwohner: ArrayImpl,
+    districts: ArrayImpl,
+    num_kitas_plz: ArrayImpl | None = None,
+) -&gt; None:
+    &quot;&quot;&quot;Hierarchical model for the number of kitas per plz as a function of the number
+    of inhabitants (eihnwohner) and the district.
+
+    Parameters
+    ----------
+    area : ArrayImpl
+        Area of the plz.
+    einwohner : ArrayImpl
+        Number of inhabitants per plz.
+    districts : ArrayImpl
+        Districts of the plz.
+    num_kitas_plz : ArrayImpl | None, optional
+        Number of Kitas per plz, by default None
+    &quot;&quot;&quot;
+    # Priors
+    intercept_loc = numpyro.sample(
+        name=&quot;intercept_loc&quot;, fn=dist.Normal(loc=0, scale=1.5)
+    )
+    intercept_scale = numpyro.sample(
+        name=&quot;intercept_scale&quot;, fn=dist.HalfCauchy(scale=3)
+    )
+    slope_einwohner_loc = numpyro.sample(
+        name=&quot;slope_einwohner_loc&quot;, fn=dist.Normal(loc=0, scale=1.5)
+    )
+    slope_einwohner_scale = numpyro.sample(
+        name=&quot;slope_einwohner_scale&quot;, fn=dist.HalfCauchy(scale=3)
+    )
+    beta_area = numpyro.sample(name=&quot;beta_area&quot;, fn=dist.Normal(loc=0, scale=1.5))
+
+    # We set the prior for the concentration parameter of the Negative Binomial
+    # distribution on a transformed variable as suggested in
+    # https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations#story-when-the-generic-prior-fails-the-case-of-the-negative-binomial
+    concentration_tilde = numpyro.sample(
+        name=&quot;concentration_tilde&quot;, fn=dist.HalfCauchy(scale=3)
+    )
+    concentration = numpyro.deterministic(
+        name=&quot;concentration&quot;, value=1 / jnp.square(concentration_tilde)
+    )
+
+    # Variables parametrization
+    n_districts = np.unique(districts).size
+
+    with numpyro.plate(name=&quot;districts&quot;, size=n_districts):
+        intercept_district = numpyro.sample(
+            name=&quot;intercept_district&quot;,
+            fn=dist.Normal(loc=intercept_loc, scale=intercept_scale),
+        )
+        slope_einwohner = numpyro.sample(
+            name=&quot;slope_einwohner&quot;,
+            fn=dist.Normal(loc=slope_einwohner_loc, scale=slope_einwohner_scale),
+        )
+
+    log_mu = numpyro.deterministic(
+        name=&quot;log_mu&quot;,
+        value=intercept_district[districts]
+        + slope_einwohner[districts] * einwohner
+        + beta_area * area,
+    )
+    # We apply an exponential (link) function to make sure that mu is positive
+    mu = numpyro.deterministic(name=&quot;mu&quot;, value=jnp.exp(log_mu))
+
+    n_obs: int = einwohner.size
+
+    # Likelihood
+    with numpyro.plate(name=&quot;data&quot;, size=n_obs):
+        numpyro.sample(
+            name=&quot;obs&quot;,
+            fn=dist.NegativeBinomial2(
+                mean=mu,
+                concentration=concentration,
+            ),
+            obs=num_kitas_plz,
+        )</code></pre>
+<p>We can take a look into the model diagram to get a more visual representation of the model.</p>
+<pre class="python"><code>numpyro.render_model(
+    model=model,
+    model_args=(area, einwohner, districts, num_kitas_plz),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_14_0.svg" style="width: 1000px;"/>
+</center>
+<p>Now, we run the re-parametrization procedure. Note how easy is to do it in <code>NumPyro</code>! Most of the times is safer than doing it by hand. Still, it is important to understand the logic behind it. See the seminal post <a href="https://twiecki.io/blog/2017/02/08/bayesian-hierchical-non-centered/">Why hierarchical models are awesome, tricky, and Bayesian</a> by <a href="https://www.pymc-labs.io/team/thomas-wiecki/">Thomas Wiecki</a>.</p>
+<pre class="python"><code>from numpyro.handlers import reparam
+from numpyro.infer.reparam import LocScaleReparam
+
+reparam_config = {
+    &quot;intercept_district&quot;: LocScaleReparam(centered=0),
+    &quot;slope_einwohner&quot;: LocScaleReparam(centered=0),
+}
+
+reparam_model = reparam(fn=model, config=reparam_config)</code></pre>
+<p>Let’s see the diagram of the re-parametrized model.</p>
+<pre class="python"><code>numpyro.render_model(
+    model=reparam_model,
+    model_args=(area, einwohner, districts, num_kitas_plz),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_18_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="model-fitting" class="section level2">
+<h2>Model Fitting</h2>
+<p>Now we run the <a href="https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo#No_U-Turn_Sampler">NUTS sampler</a>!</p>
+<pre class="python"><code># set sampler
+nuts_kernel = NUTS(model=reparam_model, target_accept_prob=0.95)
+mcmc = MCMC(sampler=nuts_kernel, num_samples=6_000, num_warmup=2_000, num_chains=4)
+# run sampler
+rng_key, rng_subkey = random.split(key=rng_key)
+mcmc.run(rng_subkey, area, einwohner, districts, num_kitas_plz)
+# get posterior samples
+posterior_samples = mcmc.get_samples()
+# get posterior predictive samples
+posterior_predictive = Predictive(
+    model=reparam_model, posterior_samples=posterior_samples
+)
+rng_key, rng_subkey = random.split(rng_key)
+posterior_predictive_samples = posterior_predictive(
+    rng_subkey, area, einwohner, districts
+)
+# convert to arviz inference data object
+idata = az.from_numpyro(
+    posterior=mcmc,
+    posterior_predictive=posterior_predictive_samples,
+    coords={&quot;districts&quot;: districts_encoder.classes_, &quot;plz&quot;: plz_df[&quot;plz&quot;].to_numpy()},
+    dims={
+        &quot;intercept_district&quot;: [&quot;districts&quot;],
+        &quot;slope_einwohner&quot;: [&quot;districts&quot;],
+        &quot;intercept_district_decentered&quot;: [&quot;districts&quot;],
+        &quot;slope_einwohner_decentered&quot;: [&quot;districts&quot;],
+        &quot;mu&quot;: [&quot;plz&quot;],
+        &quot;obs&quot;: [&quot;plz&quot;],
+    },
+)</code></pre>
+<p>The model samples in less than a minute!</p>
+</div>
+<div id="diagnostics" class="section level2">
+<h2>Diagnostics</h2>
+<p>We now inspect the diagnostics of the model.</p>
+<pre class="python"><code>idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+</code></pre>
+<pre><code>0</code></pre>
+<p>No divergences 🚀 ! We now look into the summary of the model parameters.</p>
+<pre class="python"><code>az.summary(
+    data=idata,
+    var_names=[
+        &quot;~mu&quot;,
+        &quot;~log_mu&quot;,
+        &quot;~intercept_district_decentered&quot;,
+        &quot;~slope_einwohner_decentered&quot;,
+    ],
+)
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+beta_area
+</th>
+<td>
+-0.129
+</td>
+<td>
+0.269
+</td>
+<td>
+-0.642
+</td>
+<td>
+0.375
+</td>
+<td>
+0.001
+</td>
+<td>
+0.002
+</td>
+<td>
+33491.0
+</td>
+<td>
+17233.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+concentration
+</th>
+<td>
+6.118
+</td>
+<td>
+0.967
+</td>
+<td>
+4.459
+</td>
+<td>
+8.015
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+33436.0
+</td>
+<td>
+18081.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+concentration_tilde
+</th>
+<td>
+0.408
+</td>
+<td>
+0.032
+</td>
+<td>
+0.348
+</td>
+<td>
+0.468
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+33436.0
+</td>
+<td>
+18081.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Charlottenburg-Wilmersdorf]
+</th>
+<td>
+1.460
+</td>
+<td>
+0.133
+</td>
+<td>
+1.209
+</td>
+<td>
+1.709
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+20419.0
+</td>
+<td>
+19216.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Friedrichshain-Kreuzberg]
+</th>
+<td>
+1.504
+</td>
+<td>
+0.166
+</td>
+<td>
+1.192
+</td>
+<td>
+1.817
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+15002.0
+</td>
+<td>
+17306.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Lichtenberg]
+</th>
+<td>
+1.411
+</td>
+<td>
+0.159
+</td>
+<td>
+1.114
+</td>
+<td>
+1.712
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+16552.0
+</td>
+<td>
+17938.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Marzahn-Hellersdorf]
+</th>
+<td>
+1.362
+</td>
+<td>
+0.179
+</td>
+<td>
+0.999
+</td>
+<td>
+1.670
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+11985.0
+</td>
+<td>
+15803.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Mitte]
+</th>
+<td>
+1.483
+</td>
+<td>
+0.149
+</td>
+<td>
+1.210
+</td>
+<td>
+1.771
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+16131.0
+</td>
+<td>
+18535.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Neukölln]
+</th>
+<td>
+1.460
+</td>
+<td>
+0.149
+</td>
+<td>
+1.174
+</td>
+<td>
+1.736
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+20154.0
+</td>
+<td>
+19153.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Pankow]
+</th>
+<td>
+1.421
+</td>
+<td>
+0.156
+</td>
+<td>
+1.131
+</td>
+<td>
+1.720
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+18569.0
+</td>
+<td>
+19533.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Reinickendorf]
+</th>
+<td>
+1.388
+</td>
+<td>
+0.160
+</td>
+<td>
+1.075
+</td>
+<td>
+1.678
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+15167.0
+</td>
+<td>
+16842.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Spandau]
+</th>
+<td>
+1.420
+</td>
+<td>
+0.155
+</td>
+<td>
+1.131
+</td>
+<td>
+1.715
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+19484.0
+</td>
+<td>
+19027.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Steglitz-Zehlendorf]
+</th>
+<td>
+1.407
+</td>
+<td>
+0.151
+</td>
+<td>
+1.118
+</td>
+<td>
+1.686
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+17198.0
+</td>
+<td>
+19315.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Tempelhof-Schöneberg]
+</th>
+<td>
+1.414
+</td>
+<td>
+0.142
+</td>
+<td>
+1.149
+</td>
+<td>
+1.684
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+18189.0
+</td>
+<td>
+19432.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_district[Treptow-Köpenick]
+</th>
+<td>
+1.456
+</td>
+<td>
+0.151
+</td>
+<td>
+1.172
+</td>
+<td>
+1.744
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+20445.0
+</td>
+<td>
+18898.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_loc
+</th>
+<td>
+1.432
+</td>
+<td>
+0.131
+</td>
+<td>
+1.180
+</td>
+<td>
+1.670
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+16696.0
+</td>
+<td>
+17034.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_scale
+</th>
+<td>
+0.096
+</td>
+<td>
+0.072
+</td>
+<td>
+0.000
+</td>
+<td>
+0.218
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6045.0
+</td>
+<td>
+9993.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Charlottenburg-Wilmersdorf]
+</th>
+<td>
+0.660
+</td>
+<td>
+0.096
+</td>
+<td>
+0.480
+</td>
+<td>
+0.843
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+19660.0
+</td>
+<td>
+18843.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Friedrichshain-Kreuzberg]
+</th>
+<td>
+0.685
+</td>
+<td>
+0.081
+</td>
+<td>
+0.539
+</td>
+<td>
+0.840
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+15782.0
+</td>
+<td>
+17753.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Lichtenberg]
+</th>
+<td>
+0.590
+</td>
+<td>
+0.084
+</td>
+<td>
+0.429
+</td>
+<td>
+0.743
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+17940.0
+</td>
+<td>
+19259.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Marzahn-Hellersdorf]
+</th>
+<td>
+0.554
+</td>
+<td>
+0.086
+</td>
+<td>
+0.391
+</td>
+<td>
+0.711
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+12052.0
+</td>
+<td>
+15789.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Mitte]
+</th>
+<td>
+0.694
+</td>
+<td>
+0.087
+</td>
+<td>
+0.537
+</td>
+<td>
+0.863
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+14784.0
+</td>
+<td>
+18599.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Neukölln]
+</th>
+<td>
+0.625
+</td>
+<td>
+0.082
+</td>
+<td>
+0.475
+</td>
+<td>
+0.784
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+21606.0
+</td>
+<td>
+19849.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Pankow]
+</th>
+<td>
+0.650
+</td>
+<td>
+0.070
+</td>
+<td>
+0.520
+</td>
+<td>
+0.783
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+21289.0
+</td>
+<td>
+20818.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Reinickendorf]
+</th>
+<td>
+0.592
+</td>
+<td>
+0.087
+</td>
+<td>
+0.427
+</td>
+<td>
+0.753
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+16873.0
+</td>
+<td>
+18218.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Spandau]
+</th>
+<td>
+0.603
+</td>
+<td>
+0.087
+</td>
+<td>
+0.441
+</td>
+<td>
+0.766
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+21131.0
+</td>
+<td>
+19737.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Steglitz-Zehlendorf]
+</th>
+<td>
+0.581
+</td>
+<td>
+0.090
+</td>
+<td>
+0.410
+</td>
+<td>
+0.747
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+16616.0
+</td>
+<td>
+19037.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Tempelhof-Schöneberg]
+</th>
+<td>
+0.603
+</td>
+<td>
+0.087
+</td>
+<td>
+0.441
+</td>
+<td>
+0.769
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+18575.0
+</td>
+<td>
+19994.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner[Treptow-Köpenick]
+</th>
+<td>
+0.632
+</td>
+<td>
+0.083
+</td>
+<td>
+0.474
+</td>
+<td>
+0.788
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+22601.0
+</td>
+<td>
+19669.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner_loc
+</th>
+<td>
+0.623
+</td>
+<td>
+0.069
+</td>
+<td>
+0.489
+</td>
+<td>
+0.750
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+16143.0
+</td>
+<td>
+17296.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+slope_einwohner_scale
+</th>
+<td>
+0.074
+</td>
+<td>
+0.040
+</td>
+<td>
+0.000
+</td>
+<td>
+0.140
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6428.0
+</td>
+<td>
+6642.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Everything looks good! We can also visualize the posterior distributions of the parameters.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=[
+        &quot;~mu&quot;,
+        &quot;~log_mu&quot;,
+        &quot;~intercept_district_decentered&quot;,
+        &quot;~slope_einwohner_decentered&quot;,
+    ],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Model Trace&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_27_1.png" style="width: 1000px;"/>
+</center>
+<p>All the chains look good indeed!</p>
+<p><strong>Remarks:</strong></p>
+<ul>
+<li>We see a higher difference across districts in the inhabitants slope than in the intercept. This is telling us that for very small postal codes the baseline is very similar across postal codes, but as the number of inhabitants increases, the number of Kitas increases at a higher rate in some districts than in others.</li>
+<li>The contribution of the area feature is almost negligible.</li>
+</ul>
+</div>
+<div id="posterior-predictive-checks" class="section level2">
+<h2>Posterior Predictive Checks</h2>
+<p>Let’s look into the posterior predictive distribution.</p>
+<pre class="python"><code>ax = az.plot_ppc(
+    data=idata,
+    observed_rug=True,
+)
+ax.set(
+    title=&quot;Posterior Predictive Check&quot;,
+)</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_30_1.png" style="width: 900px;"/>
+</center>
+<p>It seems the model is over estimating the postal codes with few Kitas.</p>
+<p>Let’s not visualize the posterior predictive distribution of the number of Kitas per postal code as a function of the number of inhabitants.</p>
+<pre class="python"><code>plz_df[&quot;num_kitas_plz_pred_mean&quot;] = idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].mean(
+    dim=[&quot;chain&quot;, &quot;draw&quot;]
+)
+
+posterior_predictive_hdi = az.hdi(
+    ary=idata, group=&quot;posterior_predictive&quot;, hdi_prob=0.94
+)[&quot;obs&quot;]
+
+plz_df[&quot;num_kitas_plz_pred_hdi_lower&quot;] = posterior_predictive_hdi.sel(hdi=&quot;lower&quot;)
+plz_df[&quot;num_kitas_plz_pred_hdi_higher&quot;] = posterior_predictive_hdi.sel(hdi=&quot;higher&quot;)
+
+
+g = sns.relplot(
+    data=plz_df,
+    x=&quot;einwohner&quot;,
+    y=&quot;num_kitas_plz&quot;,
+    color=&quot;C0&quot;,
+    col=&quot;district&quot;,
+    col_wrap=4,
+    height=3.5,
+    aspect=1,
+)
+
+for district, ax in g.axes_dict.items():
+    mask = &quot;district == @district&quot;
+    district_df = plz_df.query(mask).sort_values(by=&quot;einwohner&quot;)
+
+    sns.lineplot(
+        data=district_df,
+        x=&quot;einwohner&quot;,
+        y=&quot;num_kitas_plz_pred_mean&quot;,
+        color=&quot;C1&quot;,
+        label=&quot;mean&quot;,
+        ax=ax,
+    )
+
+    ax.fill_between(
+        x=district_df[&quot;einwohner&quot;],
+        y1=district_df[&quot;num_kitas_plz_pred_hdi_lower&quot;],
+        y2=district_df[&quot;num_kitas_plz_pred_hdi_higher&quot;],
+        color=&quot;C1&quot;,
+        alpha=0.2,
+        label=&quot;94% HDI&quot;,
+    )
+    ax.legend(loc=&quot;upper left&quot;)
+</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_32_0.png" style="width: 1000px;"/>
+</center>
+<p>We indeed see how the model is capturing some reasonable district-level trend in the number of Kitas per postal code as a function of the number of inhabitants. The <em>growth strength</em> is encoded in the <code>slope_einwohner</code> parameter.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(data=idata, var_names=[&quot;slope_einwohner&quot;], combined=True)
+ax.set_title(&quot;Slope Einwohner Posterior&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_34_1.png" style="width: 900px;"/>
+</center>
+<p>The district with stronger growth (as a function of inhabitants) is Mitte followed very closely by Friedrichshain-Kreuzberg. The district with the lowest growth is Marzahn-Hellersdorf. We can verify this is consistent with the results above if we plot the posterior predictive mean of all districts in the same plot.</p>
+<pre class="python"><code>cmap = plt.get_cmap(&quot;tab20&quot;)
+colors = [cmap(i) for i, _ in enumerate(districts_encoder.classes_)]
+
+fig, ax = plt.subplots(figsize=(12, 8))
+
+for i, district in enumerate(districts_encoder.classes_):
+    district_df = plz_df.query(&quot;district == @district&quot;).sort_values(by=&quot;einwohner&quot;)
+
+    sns.lineplot(
+        data=district_df,
+        x=&quot;einwohner&quot;,
+        y=&quot;num_kitas_plz_pred_mean&quot;,
+        color=colors[i],
+        label=district,
+        ax=ax,
+    )
+
+ax.legend(title=&quot;Berlin District&quot;, loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Posterior Predictive Mean - Slope Einwohner&quot;,
+    xlabel=&quot;einwohner&quot;,
+    ylabel=&quot;number of kitas&quot;,
+)</code></pre>
+<center>
+<img src="../images/kitas_hierarchical_files/kitas_hierarchical_36_1.png" style="width: 900px;"/>
+</center>
+<p>In this plot we can also confirm that the intercept variation across postal codes is not very large. This mean that all of them have a very similar baseline. We can start seeing bigger differences once the postal code area has more than 15,000 inhabitants.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

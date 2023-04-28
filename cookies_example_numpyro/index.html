@@ -497,9 +497,10 @@ chips = jnp.array(chips)
     distribution and we assume that the rate is the same for all locations.
     &quot;&quot;&quot;
     # priors
-    rate = numpyro.sample(name=&quot;rate&quot;, fn=dist.Gamma(concentration=2, rate=1 / 5))
+    lam = numpyro.sample(name=&quot;lam&quot;, fn=dist.Gamma(concentration=2, rate=1 / 5))
 
     n_obs = locations.size
+    rate = numpyro.deterministic(name=&quot;rate&quot;, value=lam)
     # likelihood
     with numpyro.plate(name=&quot;data&quot;, size=n_obs):
         numpyro.sample(name=&quot;obs&quot;, fn=dist.Poisson(rate=rate), obs=chips)
@@ -675,8 +676,8 @@ ax.set(
 <h2>Unpooled Model</h2>
 <p>Now we consider the opposite approach and fit independent rate parameters for each location. That is, we forget about the global recipe and assume that each location has its own recipe.</p>
 <p><span class="math display">\[\begin{align*}
-\text{chips}_{\ell} &amp; \sim \text{Poisson}(\text{rate}_{\ell}) \\
-\text{rate}_{\ell}  &amp; \sim \text{Gamma}(\alpha=2, \beta=1/5), \quad \ell = 1, \ldots, 5
+\text{chips}_{[\ell]} &amp; \sim \text{Poisson}(\text{rate}_{[\ell]}) \\
+\text{rate}_{[\ell]}  &amp; \sim \text{Gamma}(\alpha=2, \beta=1/5), \quad \ell = 1, \ldots, 5
 \end{align*}\]</span></p>
 <pre class="python"><code>def unpooled_model(locations: ArrayImpl, chips: ArrayImpl | None = None) -&gt; None:
     &quot;&quot;&quot;Unpooled model for cookie chips. We model the number of chips as a Poisson
@@ -752,7 +753,10 @@ unpooled_posterior_predictive_samples = unpooled_posterior_predictive(
 )
 # convert to arviz inference data object
 unpooled_idata = az.from_numpyro(
-    posterior=unpooled_mcmc, posterior_predictive=unpooled_posterior_predictive_samples
+    posterior=unpooled_mcmc,
+    posterior_predictive=unpooled_posterior_predictive_samples,
+    coords={&quot;location&quot;: location_encoder.classes_},
+    dims={&quot;lam&quot;: [&quot;location&quot;]},
 )
 </code></pre>
 <pre class="python"><code>az.summary(data=unpooled_idata, var_names=[&quot;lam&quot;])</code></pre>
@@ -1001,8 +1005,8 @@ ax.set(
 <h2>Hierarchical Model</h2>
 <p>In the hierarchical approach we do assume each location has its own rate, but we also assume that the rate parameters are drawn from a common distribution. This is a way to share information across locations. The model is specified as follows:</p>
 <p><span class="math display">\[\begin{align*}
-\text{chips}_{\ell} &amp; \sim \text{Poisson}(\text{rate}_{\ell}) \\
-\text{rate}_{\ell}  &amp; \sim \text{Gamma}(\alpha=, \beta), \quad \ell = 1, \ldots, 5 \\
+\text{chips}_{[\ell]} &amp; \sim \text{Poisson}(\text{rate}_{[\ell]}) \\
+\text{rate}_{[\ell]}  &amp; \sim \text{Gamma}(\alpha, \beta), \quad \ell = 1, \ldots, 5 \\
 \alpha &amp; = \frac{\mu^2}{\sigma^2} \\
 \beta &amp; = \frac{\mu}{\sigma^2} \\
 \mu &amp; \sim \text{Gamma}(2, 1/5) \\
@@ -1089,6 +1093,8 @@ hierarchical_posterior_predictive_samples = hierarchical_posterior_predictive(
 hierarchical_idata = az.from_numpyro(
     posterior=hierarchical_mcmc,
     posterior_predictive=hierarchical_posterior_predictive_samples,
+    coords={&quot;location&quot;: location_encoder.classes_},
+    dims={&quot;lam&quot;: [&quot;location&quot;]},
 )
 </code></pre>
 <pre class="python"><code>az.summary(data=hierarchical_idata)</code></pre>
@@ -1569,6 +1575,17 @@ ax.set(
 <img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_63_1.png" style="width: 700px;"/>
 </center>
 <p>We clearly see the <em>shrinkage phenomenon</em> where the hierarchical model estimates are closer to the global mean than the unpooled model estimates. This is a consequence of the hierarchical model sharing information across locations. It serves as a regularization mechanism.</p>
+<p>Note we see the same phenomenon at the level of distributions.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    data=[pooled_idata, unpooled_idata, hierarchical_idata],
+    model_names=[&quot;pooled&quot;, &quot;unpooled&quot;, &quot;hierarchical&quot;],
+    var_names=[&quot;lam&quot;],
+    combined=True,
+)
+ax.set(title=&quot;Rates Comparison&quot;, xlabel=&quot;rate&quot;)</code></pre>
+<center>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_65_1.png" style="width: 500px;"/>
+</center>
 </div>
 <div id="chips-distribution-new-location" class="section level2">
 <h2>Chips Distribution: New Location</h2>
@@ -1587,7 +1604,7 @@ sns.histplot(x=chips_samples, kde=True, stat=&quot;density&quot;, color=&quot;C7
 ax.set(title=&quot;Chips Distribution for a New Location&quot;, xlabel=&quot;chips&quot;, ylabel=&quot;density&quot;)
 </code></pre>
 <center>
-<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_66_1.png" style="width: 700px;"/>
+<img src="../images/cookies_example_numpyro_files/cookies_example_numpyro_67_1.png" style="width: 700px;"/>
 </center>
 </div>
 

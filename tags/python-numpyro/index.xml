@@ -6,7 +6,16 @@
     <description>Recent content in python, numpyro on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 24 Apr 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 28 Apr 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Counting the Number of Kitas per PLZ in Berlin using a Hierarchical Bayesian Model</title>
+      <link>/kitas-hierarchical/</link>
+      <pubDate>Fri, 28 Apr 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/kitas-hierarchical/</guid>
+      <description>This notebook is the continuation of data gathering and data analysis post Open Data: Berlin Kitas. In this second part we use the data gathered to model the number of Kitas per PLZ in Berlin using a hierarchical bayesian model. The hierarchy is defined by the Berlin districts. The objective is to develop a sound basic model which can be enhanced in the future with a richer data set.</description>
+    </item>
+    
     <item>
       <title>Simple Hierarchical Model with NumPyro: Cookie Chips Example</title>
       <link>/cookies_example_numpyro/</link>
