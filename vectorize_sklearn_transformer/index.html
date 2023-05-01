@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>How to vectorize an scikit-learn transformer over a numpy array? - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="How to vectorize an scikit-learn transformer over a numpy array? - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">3 min read</span>
+    
+
+    <h1 class="article-title">How to vectorize an scikit-learn transformer over a numpy array?</h1>
+
+    
+    <span class="article-date">2023-05-01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this short post, I show how to vectorize an <a href="https://scikit-learn.org/stable/"><code>scikit-learn</code></a> transformer over a <a href="https://numpy.org/doc/stable/"><code>numpy</code></a> array. That is, how to apply a transformer along a specific axes of a <code>numpy</code> array. I have found this to be particularly useful when working with output sample posterior distributions from a bayesian model where I want to apply a transformer to each sample. This is not particularly difficult, but I always forget how to do it, so I thought I would write it down once and for all 😄.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.datasets import make_circles
+from sklearn.preprocessing import FunctionTransformer
+from numpy.random import RandomState
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>We generate a synthetic data set using the <a href="https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_circles.html"><code>make_circles</code></a> function from <code>scikit-learn</code>.</p>
+<pre class="python"><code>random_state = RandomState(seed=42)
+
+x, _ = make_circles(n_samples=100, factor=0.5, noise=0.05, random_state=random_state)
+x = x + 0.5
+
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.plot(x[:, 0], x[:, 1], &quot;o&quot;, c=&quot;C0&quot;)
+ax.set(
+    title=&quot;Raw Data&quot;,
+)
+</code></pre>
+<center>
+<img src="../images/vectorize_sklearn_transformer_files/vectorize_sklearn_transformer_4_1.png" height=600 />
+</center>
+<p>Let’s see the dimensions of our circles data set.</p>
+<pre class="python"><code>x.shape</code></pre>
+<pre><code>(100, 2)</code></pre>
+<p>Next, we generate another synthetic data set on which we have a bunch of these circles indexed by vectors in a <code>numpy</code> array</p>
+<pre class="python"><code>n = 6
+
+z = np.array(
+    [
+        [make_circles(n_samples=(60, 60), random_state=random_state)[0] + i * 0.8]
+        for i in range(n)
+    ]
+)
+
+z.shape</code></pre>
+<pre><code>(6, 1, 120, 2)</code></pre>
+<p>We can visualize the data set by coloring each circles subset according to the index of the array.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 8))
+
+for i in range(n):
+    ax.plot(z[i, :, :, 0], z[i, :, :, 1], &quot;o&quot;, c=f&quot;C{i + 1}&quot;)
+    ax.set(
+        title=&quot;Data Samples&quot;,
+    )</code></pre>
+<center>
+<img src="../images/vectorize_sklearn_transformer_files/vectorize_sklearn_transformer_10_0.png" height=600 />
+</center>
+</div>
+<div id="define-transformer" class="section level2">
+<h2>Define Transformer</h2>
+<p>We specify a simple custom transformer which maps any non-zero vector to the unit circle by normalizing it.</p>
+<pre class="python"><code>circle_transformer = FunctionTransformer(
+    func=lambda x: x / np.linalg.norm(x, axis=1)[..., None]
+)
+x_circle = circle_transformer.fit_transform(x)
+</code></pre>
+<p>We can plot the transformed data set.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 8))
+ax.plot(x_circle[:, 0], x_circle[:, 1], &quot;o&quot;, c=&quot;C0&quot;)
+ax.set(
+    title=&quot;Transformed Data (projected onto unit circle)&quot;,
+)</code></pre>
+<center>
+<img src="../images/vectorize_sklearn_transformer_files/vectorize_sklearn_transformer_14_1.png" height=600 />
+</center>
+</div>
+<div id="vectorize-transformer" class="section level2">
+<h2>Vectorize Transformer</h2>
+<p>First let’s see what happens if we apply the transformer to the entire array.</p>
+<pre class="python"><code>try:
+    circle_transformer.transform(z)
+except ValueError as e:
+    print(f&quot;ValueError: {e}&quot;)
+</code></pre>
+<pre><code>ValueError: operands could not be broadcast together with shapes (6,1,120,2) (6,120,2,1) </code></pre>
+<p>One could try to move some dimensions around:</p>
+<pre class="python"><code>z_shifted = np.moveaxis(a=z, source=[1], destination=[3])
+z_shifted.shape</code></pre>
+<pre><code>(6, 120, 2, 1)</code></pre>
+<pre class="python"><code>try:
+    circle_transformer.transform(z_shifted)
+except ValueError as e:
+    print(f&quot;ValueError: {e}&quot;)</code></pre>
+<pre><code>ValueError: operands could not be broadcast together with shapes (6,120,2,1) (6,2,1,1) </code></pre>
+<p>But things do not seem to work 😒. The problem is that the transformer does not understand how to brodcast the transformation over the array. We need to tell it how to do it. We can do this by using the <a href="https://numpy.org/doc/stable/reference/generated/numpy.vectorize.html"><code>np.vectorize</code></a> function.</p>
+<pre class="python"><code>vectorized_circle_transformer = np.vectorize(
+    pyfunc=circle_transformer.transform,  # &lt;- the function to vectorize
+    excluded=[2, 3],  # &lt;- the axes to exclude from the vectorization
+    signature=&quot;(m, n) -&gt; (m, n)&quot;,  # &lt;- the signature of the function (input and output matrices)
+)
+</code></pre>
+<p>Let’s apply the vectorized transformer to the entire array.</p>
+<pre class="python"><code>z_circle = vectorized_circle_transformer(z)
+
+z.shape</code></pre>
+<pre><code>(6, 1, 120, 2)</code></pre>
+<p>Yay! It works! 🎉</p>
+<p>Finally, we can plot the transformed data set.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 8))
+
+for i in range(n):
+    ax.plot(z_circle[i, :, :, 0], z_circle[i, :, :, 1], &quot;o&quot;, c=f&quot;C{i + 1}&quot;)
+    ax.set(
+        title=&quot;Data Samples Transformed&quot;,
+    )</code></pre>
+<center>
+<img src="../images/vectorize_sklearn_transformer_files/vectorize_sklearn_transformer_26_0.png" height=600 />
+</center>
+<p>As expected all the points are mapped to the unit circle centered at the origin.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
