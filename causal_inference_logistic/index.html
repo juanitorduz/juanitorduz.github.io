@@ -89,7 +89,7 @@
       
 
 
-<p>In this notebook, I want to reproduce some components of the extensive blog post <a href="https://solomonkurz.netlify.app/blog/2023-04-30-causal-inference-with-bayesian-models/">Causal inference with Bayesian models</a> by <a href="https://solomonkurz.netlify.app/">Solomon Kurz</a>. Specifically, I want to deep dive into the <em>logistic regression model</em> used to estimate the <em>average treatment effect</em> (ATE) of the study <a href="https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1002479"><em>Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial</em></a> by Wilson, et.al. I can only recommend to read the original sequences of posts Solomon has written on causal inference. They are very well written, easy to follow and provide a lot of insights into the topic.</p>
+<p>In this notebook, I want to reproduce some components of the extensive blog post <a href="https://solomonkurz.netlify.app/blog/2023-04-30-causal-inference-with-bayesian-models/">Causal inference with Bayesian models</a> by <a href="https://solomonkurz.netlify.app/">Solomon Kurz</a>. Specifically, I want to deep dive into the <em>logistic regression model</em> used to estimate the <em>average treatment effect</em> (ATE) of the study <a href="https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1002479"><em>Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial</em></a> by Wilson, et.al. I can only recommend to read the original sequence of posts Solomon has written on causal inference. They are very well written, easy to follow and provide a lot of insights into the topic.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import arviz as az
@@ -116,7 +116,7 @@ rng: np.random.Generator = np.random.default_rng(seed=seed)
 </div>
 <div id="read-data" class="section level2">
 <h2>Read Data</h2>
-<p><strong>About the data (from the abstract):</strong></p>
+<p><strong>About the data:</strong></p>
 <blockquote>
 <p><em>These data were from a randomized controlled trial in London (2014–2015), which was designed to assess the effectiveness of an internet-accessed sexually transmitted infection testing (e-STI testing) and results service on STI testing uptake and STI cases diagnosed in chlamydia, gonorrhoea, HIV, and syphilis. The 2,072 participants were fluent in English, each had at least 1 sexual partner in the past year, consented to take an STI test, and had access to the internet.</em></p>
 </blockquote>
@@ -280,6 +280,7 @@ NaN
 </div>
 </center>
 <p>For the sake of the exposition, we will dimply remove them (as in the original post). In a real world scenario, we would have to deal with them.</p>
+<p><strong>Remark:</strong> I will not subsample the data as Solomon did in his post. I will use the full dataset. Hence, exact numbers might differ.</p>
 <pre class="python"><code>df = (
     raw_df.copy()
     .filter(items=[&quot;anytest&quot;, &quot;group&quot;])
