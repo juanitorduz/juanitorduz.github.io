@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>python, bayes, pymc, causal_inference on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-bayes-pymc-causal_inference/</link>
+    <description>Recent content in python, bayes, pymc, causal_inference on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 04 Jun 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>ATE Estimation with Logistic Regression</title>
+      <link>/causal_inference_logistic/</link>
+      <pubDate>Sun, 04 Jun 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/causal_inference_logistic/</guid>
+      <description>In this notebook, I want to reproduce some components of the extensive blog post Causal inference with Bayesian models by Solomon Kurz. Specifically, I want to deep dive into the logistic regression model used to estimate the average treatment effect (ATE) of the study Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial by Wilson, et.al. I can only recommend to read the original sequences of posts Solomon has written on causal inference.</description>
+    </item>
+    
+  </channel>
+</rss>

@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>ATE Estimation with Logistic Regression - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="ATE Estimation with Logistic Regression - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">8 min read</span>
+    
+
+    <h1 class="article-title">ATE Estimation with Logistic Regression</h1>
+
+    
+    <span class="article-date">2023-06-04</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, I want to reproduce some components of the extensive blog post <a href="https://solomonkurz.netlify.app/blog/2023-04-30-causal-inference-with-bayesian-models/">Causal inference with Bayesian models</a> by <a href="https://solomonkurz.netlify.app/">Solomon Kurz</a>. Specifically, I want to deep dive into the <em>logistic regression model</em> used to estimate the <em>average treatment effect</em> (ATE) of the study <a href="https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1002479"><em>Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial</em></a> by Wilson, et.al. I can only recommend to read the original sequences of posts Solomon has written on causal inference. They are very well written, easy to follow and provide a lot of insights into the topic.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import bambi as bmb
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import seaborn as sns
+
+from scipy.special import expit
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;logistic&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p><strong>About the data (from the abstract):</strong></p>
+<blockquote>
+<p><em>These data were from a randomized controlled trial in London (2014–2015), which was designed to assess the effectiveness of an internet-accessed sexually transmitted infection testing (e-STI testing) and results service on STI testing uptake and STI cases diagnosed in chlamydia, gonorrhoea, HIV, and syphilis. The 2,072 participants were fluent in English, each had at least 1 sexual partner in the past year, consented to take an STI test, and had access to the internet.</em></p>
+</blockquote>
+<p>Solomon’s blog post has a rich a detailed description of the data. I will not repeat it here (but please look at it!). Instead, I will focus on the data preparation and the ATE estimation.</p>
+<pre class="python"><code>raw_df = pd.read_excel(
+    &quot;https://doi.org/10.1371/journal.pmed.1002479.s001&quot;, sheet_name=&quot;data&quot;
+)
+
+raw_df.info()
+</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 2063 entries, 0 to 2062
+Data columns (total 17 columns):
+ #   Column       Non-Null Count  Dtype  
+---  ------       --------------  -----  
+ 0   anon_id      2063 non-null   int64  
+ 1   group        2063 non-null   object 
+ 2   imd_decile   2063 non-null   int64  
+ 3   partners     2063 non-null   object 
+ 4   gender       2063 non-null   object 
+ 5   msm          2063 non-null   object 
+ 6   ethnicgrp    2063 non-null   object 
+ 7   age          2063 non-null   int64  
+ 8   anytest_sr   1880 non-null   float64
+ 9   anydiag_sr   1880 non-null   float64
+ 10  anytreat_sr  1875 non-null   float64
+ 11  anytest      1739 non-null   float64
+ 12  anydiag      1739 non-null   float64
+ 13  anytreat     1730 non-null   float64
+ 14  time_test    1739 non-null   float64
+ 15  time_treat   1730 non-null   float64
+ 16  sh24_launch  2063 non-null   object 
+dtypes: float64(8), int64(3), object(6)
+memory usage: 274.1+ KB</code></pre>
+<p>The variable of interest (target) is <code>anytest</code> which is categorical. The group variant feature is <code>group</code>. Not that we have some missing values.</p>
+</div>
+<div id="data-preprocessing" class="section level2">
+<h2>Data Preprocessing</h2>
+<pre class="python"><code>raw_df.groupby([&quot;group&quot;, &quot;anytest&quot;], as_index=False, dropna=False).agg(
+    {&quot;anon_id&quot;: &quot;count&quot;}
+)
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+group
+</th>
+<th>
+anytest
+</th>
+<th>
+anon_id
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+Control
+</td>
+<td>
+0.0
+</td>
+<td>
+645
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+Control
+</td>
+<td>
+1.0
+</td>
+<td>
+173
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+Control
+</td>
+<td>
+NaN
+</td>
+<td>
+214
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+SH:24
+</td>
+<td>
+0.0
+</td>
+<td>
+482
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+SH:24
+</td>
+<td>
+1.0
+</td>
+<td>
+439
+</td>
+</tr>
+<tr>
+<th>
+5
+</th>
+<td>
+SH:24
+</td>
+<td>
+NaN
+</td>
+<td>
+110
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>For the sake of the exposition, we will dimply remove them (as in the original post). In a real world scenario, we would have to deal with them.</p>
+<pre class="python"><code>df = (
+    raw_df.copy()
+    .filter(items=[&quot;anytest&quot;, &quot;group&quot;])
+    .dropna(axis=0)
+    .assign(tx=lambda x: x[&quot;group&quot;].map({&quot;Control&quot;: 0, &quot;SH:24&quot;: 1}))
+    .drop(columns=&quot;group&quot;)
+)
+
+pd.crosstab(index=df[&quot;tx&quot;], columns=df[&quot;anytest&quot;], margins=True)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+anytest
+</th>
+<th>
+0.0
+</th>
+<th>
+1.0
+</th>
+<th>
+All
+</th>
+</tr>
+<tr>
+<th>
+tx
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+645
+</td>
+<td>
+173
+</td>
+<td>
+818
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+482
+</td>
+<td>
+439
+</td>
+<td>
+921
+</td>
+</tr>
+<tr>
+<th>
+All
+</th>
+<td>
+1127
+</td>
+<td>
+612
+</td>
+<td>
+1739
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="difference-in-means" class="section level2">
+<h2>Difference in Means</h2>
+<p>As this data set comes from a randomized controlled trial (RCT), we can use the difference in means (DIM) as a baseline for the ATE estimation. The DIM is the difference in the mean of the target variable between the treatment and control group.</p>
+<pre class="python"><code>diff_means = (
+    df.query(&quot;tx == 1&quot;)[&quot;anytest&quot;].mean() - df.query(&quot;tx == 0&quot;)[&quot;anytest&quot;].mean()
+)
+
+print(f&quot;Sample ATE: {diff_means:.3f}&quot;)</code></pre>
+<pre><code>Sample ATE: 0.265</code></pre>
+<p>We would like to get some credible intervals around this sample ATE estimate. This motivates the use of Bayesian inference. We will use <a href="https://bambinos.github.io/bambi/"><code>bambi</code></a> for this purpose.</p>
+</div>
+<div id="logistic-regression-model" class="section level2">
+<h2>Logistic Regression Model</h2>
+<p>As Solomon points out, as the target variable is binary, it seems natural to use a logistic regression model. We will use the <code>group</code> variable as the only predictor. We use the same non-informative priors as in the original post.</p>
+<pre class="python"><code>logistic_model_priors = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=1.25),
+    &quot;tx&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=1),
+}
+
+logistic_model = bmb.Model(
+    formula=&quot;anytest ~ tx&quot;,
+    data=df,
+    family=&quot;bernoulli&quot;,
+    link=&quot;logit&quot;,
+    priors=logistic_model_priors,
+)
+
+logistic_model
+</code></pre>
+<pre><code>       Formula: anytest ~ tx
+        Family: bernoulli
+          Link: p = logit
+  Observations: 1739
+        Priors: 
+    target = p
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 1.25)
+            tx ~ Normal(mu: 0.0, sigma: 1.0)</code></pre>
+<p>Let’s see the model diagram:</p>
+<pre class="python"><code>logistic_model.build()
+logistic_model.graph()</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_17_0.svg" style="width: 300px;"/>
+</center>
+<p>Before fitting the model lets have a look at the priors:</p>
+<pre class="python"><code>axes = logistic_model.plot_priors(draws=10_000, figsize=(13, 6), random_seed=rng)
+plt.gcf().suptitle(&quot;Logistic Regression Priors (logit scale)&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_19_2.png" style="width: 900px;"/>
+</center>
+<p>These priors are in the logit scale. To map them to the probability scale, we can use the logistic function (which is non-linear so the intuition is not that straightforward):</p>
+<pre class="python"><code>normal_prior = pm.Normal.dist(mu=0, sigma=1.25)
+samples_normal_prior = pm.draw(vars=normal_prior, draws=10_000)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+sns.kdeplot(data=expit(samples_normal_prior), fill=True, alpha=0.3)
+ax.set(title=&quot;Logistic Regression Prior (original scale)&quot;)</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_21_1.png" style="width: 700px;"/>
+</center>
+<p>We indeed see that the prior probability is centered around <span class="math inline">\(0.5\)</span> and quite spread.</p>
+<p>Now we can fit the model (and generate posterior predictive samples):</p>
+<pre class="python"><code>logistic_idata = logistic_model.fit(
+    draws=4_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+)
+
+logistic_model.predict(idata=logistic_idata, kind=&quot;pps&quot;)</code></pre>
+<p>We can now look into the summary table and the trace plots:</p>
+<pre class="python"><code>az.summary(data=logistic_idata, var_names=[&quot;Intercept&quot;, &quot;tx&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+-1.308
+</td>
+<td>
+0.085
+</td>
+<td>
+-1.469
+</td>
+<td>
+-1.148
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+12932.0
+</td>
+<td>
+12774.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+tx
+</th>
+<td>
+1.209
+</td>
+<td>
+0.108
+</td>
+<td>
+1.003
+</td>
+<td>
+1.409
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+15083.0
+</td>
+<td>
+13192.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=logistic_idata,
+    var_names=[&quot;Intercept&quot;, &quot;tx&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 5), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Logistic Regression Model - Trace&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_26_1.png" style="width: 1000px;"/>
+</center>
+<p>Everything looks good! Note, however that the posterior distribution of the treatment variable does not match with the expected sample ATE. This is essentially because of the logit link function. We can use the inverse logit function to map the posterior distribution to the probability scale. The key observation is that, to compute the ATE, we need to compute the difference in means after the inverse logit transformation. That is, if we specify the model as:</p>
+<p><span class="math display">\[\begin{align*}
+\text{anytest} &amp;\sim \text{Bernoulli}(p) \\
+\text{logit}(p) &amp;= \beta_0 + \beta_1 \cdot \text{group} \\
+\beta_0 &amp;\sim \text{Normal}(0, 1.25) \\
+\beta_1 &amp;\sim \text{Normal}(0, 1)
+\end{align*}\]</span></p>
+<p>then the ATE is:
+<span class="math display">\[
+\text{logit}^{-1}(\beta_0 + \beta_1) - \text{logit}^{-1}(\beta_0)
+\]</span></p>
+<p>We can compute this from the posterior samples:</p>
+<pre class="python"><code>ate_samples = expit(
+    logistic_idata[&quot;posterior&quot;][&quot;Intercept&quot;] + logistic_idata[&quot;posterior&quot;][&quot;tx&quot;]
+) - expit(logistic_idata[&quot;posterior&quot;][&quot;Intercept&quot;])
+
+fig, ax = plt.subplots()
+az.plot_posterior(data=ate_samples, ref_val=diff_means, ax=ax)
+ax.set(title=&quot;Logistic Regression Model - ATE&quot;, xlabel=&quot;ATE&quot;)</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_29_1.png" style="width: 700px;"/>
+</center>
+<p>We indeed see how the sample ATE and the ATE posterior mean agree! We also get the <span class="math inline">\(94\%\)</span> highest density interval (HDI) for the ATE.</p>
+</div>
+<div id="linear-regression-model-ols" class="section level2">
+<h2>Linear Regression Model (OLS)</h2>
+<p>I was happily surprised when I read Solomon’s blog as in the vast majority of the literature about the topic, the recommended method for the ATE estimation is s simple linear regression model with no link function. It does make sense as at the very end a regression with a dummy variable is essentially compute the difference in means. However, I was always wondering how the results would differ if we use a logistic regression model (and if they could be adapted!). Now we can compare the results. We use a very simple linear regression model with similar priors as before.</p>
+<pre class="python"><code>gaussian_model_priors = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=1),
+    &quot;tx&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=1),
+    &quot;sigma&quot;: bmb.Prior(&quot;Exponential&quot;, lam=1),
+}
+gaussian_model = bmb.Model(
+    formula=&quot;anytest ~ tx&quot;,
+    data=df,
+    family=&quot;gaussian&quot;,
+    link=&quot;identity&quot;,
+    priors=gaussian_model_priors,
+)
+
+gaussian_model
+</code></pre>
+<pre><code>       Formula: anytest ~ tx
+        Family: gaussian
+          Link: mu = identity
+  Observations: 1739
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 1.0)
+            tx ~ Normal(mu: 0.0, sigma: 1.0)
+        
+        Auxiliary parameters
+            anytest_sigma ~ Exponential(lam: 1.0)</code></pre>
+<pre class="python"><code>gaussian_model.build()
+gaussian_model.graph()
+</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_33_0.svg" style="width: 500px;"/>
+</center>
+<p>We now fit the model and generate posterior predictive samples:</p>
+<pre class="python"><code>gaussian_idata = gaussian_model.fit(
+    draws=4_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+)
+
+gaussian_model.predict(idata=gaussian_idata, kind=&quot;pps&quot;)</code></pre>
+<p>As before, we look into the summary table and the trace plots:</p>
+<pre class="python"><code>az.summary(data=gaussian_idata, var_names=[&quot;Intercept&quot;, &quot;tx&quot;, &quot;anytest_sigma&quot;])
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+0.211
+</td>
+<td>
+0.016
+</td>
+<td>
+0.181
+</td>
+<td>
+0.241
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+22054.0
+</td>
+<td>
+16163.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+tx
+</th>
+<td>
+0.265
+</td>
+<td>
+0.022
+</td>
+<td>
+0.224
+</td>
+<td>
+0.306
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+19110.0
+</td>
+<td>
+13925.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+anytest_sigma
+</th>
+<td>
+0.459
+</td>
+<td>
+0.008
+</td>
+<td>
+0.445
+</td>
+<td>
+0.474
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+<td>
+21306.0
+</td>
+<td>
+15536.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gaussian_idata,
+    var_names=[&quot;Intercept&quot;, &quot;tx&quot;, &quot;anytest_sigma&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Linear Regression Model - Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_38_1.png" style="width: 1000px;"/>
+</center>
+<p>Note that in this case, the posterior distribution of the group variable matches with the expected sample ATE. This is because we do not use a link function.</p>
+</div>
+<div id="model-comparison" class="section level2">
+<h2>Model Comparison</h2>
+<p>Let’s proceed to compare the ATE estimation of the two models.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(10, 8), layout=&quot;constrained&quot;
+)
+az.plot_posterior(data=ate_samples, ref_val=diff_means, ax=ax[0])
+ax[0].set(title=&quot;Logistic Regression Model&quot;)
+az.plot_posterior(data=gaussian_idata, var_names=[&quot;tx&quot;], ref_val=diff_means, ax=ax[1])
+ax[1].set(title=&quot;Linear Regression Model&quot;, xlabel=&quot;ATE&quot;)
+fig.suptitle(&quot;ATE Comparison&quot;, y=1.05, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_41_1.png" style="width: 900px;"/>
+</center>
+<p>They are essentially the same!</p>
+<p>So the natural question is, which one to use? Well, as long we just care about the ATE I guess it does not matter. However, from a model concept point of view I personally like the logistic regression model more because the posterior predictive distribution makes a lot of sense whereas the linear regression one is simply wrong.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=False, figsize=(10, 8), layout=&quot;constrained&quot;
+)
+az.plot_ppc(data=logistic_idata, num_pp_samples=1_000, ax=ax[0])
+ax[0].set(title=&quot;Logistic Regression Model&quot;, xlabel=&quot;anytest&quot;)
+az.plot_ppc(data=gaussian_idata, num_pp_samples=1_000, ax=ax[1])
+ax[1].set(title=&quot;Linear Regression Model&quot;, xlabel=&quot;anytest&quot;)
+fig.suptitle(&quot;Posterior Predictive Check&quot;, y=1.05, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_logistic_files/causal_inference_logistic_43_1.png" style="width: 900px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
