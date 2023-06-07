@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>ATE Estimation for Count Data - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="ATE Estimation for Count Data - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">9 min read</span>
+    
+
+    <h1 class="article-title">ATE Estimation for Count Data</h1>
+
+    
+    <span class="article-date">2023-06-07</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This notebook is a continuation of the <a href="https://juanitorduz.github.io/causal_inference_logistic/">previous notebook</a> on ATE estimation for binary data with logistic regression based on the sequence of (great!) posts by <a href="https://solomonkurz.netlify.app/">Solomon Kurz</a>. In this notebook, we will focus on count data. We reproduce in python an example presented in the post <a href="https://solomonkurz.netlify.app/blog/2023-05-07-causal-inference-with-count-regression/"><em>Causal inference with count regression</em></a> by Solomon Kurz. Our intention is to simply show how to port these type of model to <a href="https://bambinos.github.io/bambi/"><code>bambi</code></a>. In addition, as in the previous post, we compare the ATE estimation with a simple linear regression model.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import bambi as bmb
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import seaborn as sns
+
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;logistic&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>The data used in this example is the <a href="https://github.com/paul-buerkner/brms/blob/master/data/epilepsy.rda"><code>epilepsy</code></a> data set available in the <a href="https://paul-buerkner.github.io/brms/"><code>bmrs</code></a> package. From the package documentation:</p>
+<blockquote>
+<p><em>Breslow and Clayton (1993) analyze data initially provided by Thall and Vail (1990) concerning seizure counts in a randomized trial of anti-convulsant therapy in epilepsy. Covariates are treatment, 8-week baseline seizure counts, and age of the patients in years.</em></p>
+</blockquote>
+<p>Solomon’s blog give us more detail on the data set:</p>
+<blockquote>
+<p><em>The original study was designed to see how well the anti-convulsant drug progabide reduced epileptic seizures in persons who experienced simple or complex partial seizures. After a baseline assessment, participants were randomized into treatment groups in which they received either progabide (<code>Trt</code> == 1) or a placebo (<code>Trt</code> == 0). The primary outcome variable in the data is count, which is the number of epileptic seizures each participant had had since their last visit. Following their baseline assessments, participants came back every two weeks for assessments, which are denoted by the factor variable <code>visit</code>.</em></p>
+</blockquote>
+<p>To reproduce the analysis we got the data from the <a href="https://paul-buerkner.github.io/brms/"><code>bmrs</code></a> package and save it in a csv file.</p>
+<pre class="python"><code>raw_df = pd.read_csv(&quot;../data/brms_epilepsy.csv&quot;)
+
+df = raw_df.copy()
+df.columns = df.columns.str.lower()
+
+df.head()
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+age
+</th>
+<th>
+base
+</th>
+<th>
+trt
+</th>
+<th>
+patient
+</th>
+<th>
+visit
+</th>
+<th>
+count
+</th>
+<th>
+obs
+</th>
+<th>
+zage
+</th>
+<th>
+zbase
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+31
+</td>
+<td>
+11
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+5
+</td>
+<td>
+1
+</td>
+<td>
+0.424995
+</td>
+<td>
+-0.757173
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+30
+</td>
+<td>
+11
+</td>
+<td>
+0
+</td>
+<td>
+2
+</td>
+<td>
+1
+</td>
+<td>
+3
+</td>
+<td>
+2
+</td>
+<td>
+0.265284
+</td>
+<td>
+-0.757173
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+25
+</td>
+<td>
+6
+</td>
+<td>
+0
+</td>
+<td>
+3
+</td>
+<td>
+1
+</td>
+<td>
+2
+</td>
+<td>
+3
+</td>
+<td>
+-0.533274
+</td>
+<td>
+-0.944403
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+36
+</td>
+<td>
+8
+</td>
+<td>
+0
+</td>
+<td>
+4
+</td>
+<td>
+1
+</td>
+<td>
+4
+</td>
+<td>
+4
+</td>
+<td>
+1.223553
+</td>
+<td>
+-0.869511
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+22
+</td>
+<td>
+66
+</td>
+<td>
+0
+</td>
+<td>
+5
+</td>
+<td>
+1
+</td>
+<td>
+7
+</td>
+<td>
+5
+</td>
+<td>
+-1.012408
+</td>
+<td>
+1.302363
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>df.info()
+</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 236 entries, 0 to 235
+Data columns (total 9 columns):
+ #   Column   Non-Null Count  Dtype  
+---  ------   --------------  -----  
+ 0   age      236 non-null    int64  
+ 1   base     236 non-null    int64  
+ 2   trt      236 non-null    int64  
+ 3   patient  236 non-null    int64  
+ 4   visit    236 non-null    int64  
+ 5   count    236 non-null    int64  
+ 6   obs      236 non-null    int64  
+ 7   zage     236 non-null    float64
+ 8   zbase    236 non-null    float64
+dtypes: float64(2), int64(7)
+memory usage: 16.7 KB</code></pre>
+<p>Let’s star by replicating one of the initial plots from the post where we see the count per visit for all the patients split by the treatment group.</p>
+<pre class="python"><code>g = sns.relplot(
+    data=df,
+    x=&quot;visit&quot;,
+    y=&quot;count&quot;,
+    col=&quot;trt&quot;,
+    kind=&quot;line&quot;,
+    units=&quot;patient&quot;,
+    estimator=None,
+    color=&quot;C0&quot;,
+    alpha=0.5,
+)
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_8_0.png" style="width: 900px;"/>
+</center>
+<p>Next we get some basic statistics about the target variable <code>count</code> split by the treatment group <code>trt</code> and the <code>visit</code>.</p>
+<pre class="python"><code>df.groupby([&quot;trt&quot;, &quot;visit&quot;]).agg({&quot;count&quot;: [np.mean, np.var, np.min, np.max]})</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead tr th {
+        text-align: left;
+    }
+
+    .dataframe thead tr:last-of-type th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+</th>
+<th>
+</th>
+<th colspan="4" halign="left">
+count
+</th>
+</tr>
+<tr>
+<th>
+</th>
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+var
+</th>
+<th>
+amin
+</th>
+<th>
+amax
+</th>
+</tr>
+<tr>
+<th>
+trt
+</th>
+<th>
+visit
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th rowspan="4" valign="top">
+0
+</th>
+<th>
+1
+</th>
+<td>
+9.357143
+</td>
+<td>
+102.756614
+</td>
+<td>
+0
+</td>
+<td>
+40
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+8.285714
+</td>
+<td>
+66.656085
+</td>
+<td>
+0
+</td>
+<td>
+29
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+8.714286
+</td>
+<td>
+213.322751
+</td>
+<td>
+0
+</td>
+<td>
+76
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+7.964286
+</td>
+<td>
+58.183862
+</td>
+<td>
+0
+</td>
+<td>
+29
+</td>
+</tr>
+<tr>
+<th rowspan="4" valign="top">
+1
+</th>
+<th>
+1
+</th>
+<td>
+8.580645
+</td>
+<td>
+332.718280
+</td>
+<td>
+0
+</td>
+<td>
+102
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+8.419355
+</td>
+<td>
+140.651613
+</td>
+<td>
+0
+</td>
+<td>
+65
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+8.129032
+</td>
+<td>
+193.049462
+</td>
+<td>
+0
+</td>
+<td>
+72
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+6.709677
+</td>
+<td>
+126.879570
+</td>
+<td>
+0
+</td>
+<td>
+63
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="data-preparation" class="section level2">
+<h2>Data Preparation</h2>
+<p>Fot the sake of this analysis we filter out the last visit.</p>
+<pre class="python"><code>data = df.query(&quot;visit == 4&quot;).reset_index(drop=True)
+
+data.head()
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+age
+</th>
+<th>
+base
+</th>
+<th>
+trt
+</th>
+<th>
+patient
+</th>
+<th>
+visit
+</th>
+<th>
+count
+</th>
+<th>
+obs
+</th>
+<th>
+zage
+</th>
+<th>
+zbase
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+31
+</td>
+<td>
+11
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+4
+</td>
+<td>
+3
+</td>
+<td>
+178
+</td>
+<td>
+0.424995
+</td>
+<td>
+-0.757173
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+30
+</td>
+<td>
+11
+</td>
+<td>
+0
+</td>
+<td>
+2
+</td>
+<td>
+4
+</td>
+<td>
+3
+</td>
+<td>
+179
+</td>
+<td>
+0.265284
+</td>
+<td>
+-0.757173
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+25
+</td>
+<td>
+6
+</td>
+<td>
+0
+</td>
+<td>
+3
+</td>
+<td>
+4
+</td>
+<td>
+5
+</td>
+<td>
+180
+</td>
+<td>
+-0.533274
+</td>
+<td>
+-0.944403
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+36
+</td>
+<td>
+8
+</td>
+<td>
+0
+</td>
+<td>
+4
+</td>
+<td>
+4
+</td>
+<td>
+4
+</td>
+<td>
+181
+</td>
+<td>
+1.223553
+</td>
+<td>
+-0.869511
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+22
+</td>
+<td>
+66
+</td>
+<td>
+0
+</td>
+<td>
+5
+</td>
+<td>
+4
+</td>
+<td>
+21
+</td>
+<td>
+182
+</td>
+<td>
+-1.012408
+</td>
+<td>
+1.302363
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We can verify the number of participants in each group.</p>
+<pre class="python"><code>data.groupby(&quot;trt&quot;).agg({&quot;patient&quot;: &quot;nunique&quot;})
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+patient
+</th>
+</tr>
+<tr>
+<th>
+trt
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+28
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+31
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="difference-in-means" class="section level2">
+<h2>Difference in Means</h2>
+<p>As in the previous post, since this data set comes from a randomized controlled trial (RCT), we can use the difference in means (DIM) as a baseline for the ATE estimation.</p>
+<pre class="python"><code>diff_means = (
+    data.query(&quot;trt == 1&quot;)[&quot;count&quot;].mean() - data.query(&quot;trt == 0&quot;)[&quot;count&quot;].mean()
+)
+
+print(f&quot;Sample ATE: {diff_means:.3f}&quot;)
+</code></pre>
+<pre><code>Sample ATE: -1.255</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.histplot(data=data, x=&quot;count&quot;, hue=&quot;trt&quot;, stat=&quot;density&quot;, ax=ax)
+sns.kdeplot(data=data, x=&quot;count&quot;, hue=&quot;trt&quot;, clip=(0, None), ax=ax)
+ax.set(title=&quot;Distribution of Counts by Treatment Group&quot;)
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_18_1.png" style="width: 900px;"/>
+</center>
+<p>We would like to estimate our uncertainty regarding this estimation.</p>
+</div>
+<div id="negative-binomial-model" class="section level2">
+<h2>Negative Binomial Model</h2>
+<p>To model count data a natural likelihood function is the <a href="https://en.wikipedia.org/wiki/Negative_binomial_distribution">negative binomial distribution</a>. We could have used a <a href="https://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a>, but looking into the statistics above we expect some overdispersion in the data.</p>
+<p>We define our model in the same manner as in Solomon’s post:</p>
+<pre class="python"><code>negative_binomial_priors = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=np.log(14), sigma=1),
+    &quot;trt&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=0.5),
+    &quot;alpha&quot;: bmb.Prior(&quot;Gamma&quot;, alpha=0.01, beta=0.01),
+}
+
+negative_binomial_model = bmb.Model(
+    formula=&quot;count ~ trt&quot;,
+    data=data,
+    family=&quot;negativebinomial&quot;,
+    link=&quot;log&quot;,
+    priors=negative_binomial_priors,
+)
+
+negative_binomial_model</code></pre>
+<pre><code>       Formula: count ~ trt
+        Family: negativebinomial
+          Link: mu = log
+  Observations: 59
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 2.6391, sigma: 1.0)
+            trt ~ Normal(mu: 0.0, sigma: 0.5)
+        
+        Auxiliary parameters
+            count_alpha ~ Gamma(alpha: 0.01, beta: 0.01)</code></pre>
+<pre class="python"><code>negative_binomial_model.build()
+negative_binomial_model.graph()
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_22_0.svg" style="width: 500px;"/>
+</center>
+<p>Before fitting the model, let’s take a look at the priors. One of the aspects I like the most about Solomon’s blogs are the discussion about prior selection. In this case:</p>
+<blockquote>
+<p><em>By centering the prior for (the intercept) <span class="math inline">\(\beta_{0}\)</span> on <span class="math inline">\(\log(14)\)</span>, I’m betting those in the control (placebo) condition will report about <span class="math inline">\(1\)</span> seizure at day (i.e., <span class="math inline">\(14\)</span> during the last 2-week period). But since I know very little about seizures, and even less about seizure medication trials, I’m very insure about that prior, which is why I’ve set the prior standard deviation to <span class="math inline">\(1\)</span>.</em></p>
+</blockquote>
+<p>Observe that we are using a <span class="math inline">\(\log\)</span> link function to make the mean of the negative binomial distribution positive. This explains the <span class="math inline">\(\log\)</span> transformation of the prior mean of intercept <span class="math inline">\(\beta_{0}\)</span>.</p>
+<p>In addition,</p>
+<blockquote>
+<p><em>The <span class="math inline">\(\text{Gamma}(0.01,0.01)\)</span> prior for <span class="math inline">\(\alpha\)</span> is the default in the <code>brms</code> package.</em></p>
+</blockquote>
+<p>For more tips and trick regarding prior specification for negative binomial models, please look into <a href="https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations#story-when-the-generic-prior-fails-the-case-of-the-negative-binomial">this Stan guide</a>.</p>
+<pre class="python"><code>negative_binomial_model.plot_priors(draws=10_000, figsize=(15, 7), random_seed=rng)
+plt.gcf().suptitle(&quot;Negative Binomial Model Priors&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_24_2.png" style="width: 900px;"/>
+</center>
+<p>Now we proceed to fit the model:</p>
+<pre class="python"><code>negative_binomial_idata = negative_binomial_model.fit(
+    draws=4_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+)
+
+negative_binomial_model.predict(idata=negative_binomial_idata, kind=&quot;pps&quot;)
+</code></pre>
+<p>Next, we now look into the summary table and the trace plots:</p>
+<pre class="python"><code>az.summary(data=negative_binomial_idata, var_names=[&quot;Intercept&quot;, &quot;trt&quot;, &quot;count_alpha&quot;])
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+2.079
+</td>
+<td>
+0.190
+</td>
+<td>
+1.732
+</td>
+<td>
+2.446
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+19192.0
+</td>
+<td>
+13083.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trt
+</th>
+<td>
+-0.132
+</td>
+<td>
+0.246
+</td>
+<td>
+-0.594
+</td>
+<td>
+0.327
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+18391.0
+</td>
+<td>
+14179.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+count_alpha
+</th>
+<td>
+1.038
+</td>
+<td>
+0.222
+</td>
+<td>
+0.645
+</td>
+<td>
+1.453
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+17646.0
+</td>
+<td>
+15257.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=negative_binomial_idata,
+    var_names=[&quot;Intercept&quot;, &quot;trt&quot;, &quot;count_alpha&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Negative Binomial Regression Model - Trace&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_29_1.png" style="width: 1000px;"/>
+</center>
+<p>As in explained in the <a href="https://juanitorduz.github.io/causal_inference_logistic/">previous post</a>, to recover the ATE estimation we need to compute the difference between the posterior mean of the treatment group and the posterior mean of the control group taking the inverse of the link function into account. In this case we need to take the exponential. If we denote by <span class="math inline">\(\beta_{0}\)</span> the intercept and <span class="math inline">\(\beta_1\)</span> the coefficient of the treatment group variable <code>trt</code>, then the posterior mean of the treatment group is given by <span class="math inline">\(\exp(\beta_{0} + \beta_{1})\)</span> and the posterior mean of the control group is given by <span class="math inline">\(\exp(\beta_{0})\)</span>. Therefore, the ATE estimation is given by</p>
+<p><span class="math display">\[\exp(\beta_{0} + \beta_{1}) - \exp(\beta_{1})\]</span></p>
+<p>We can easily compute this from the trace:</p>
+<pre class="python"><code>ate_samples = np.exp(
+    negative_binomial_idata[&quot;posterior&quot;][&quot;Intercept&quot;]
+    + negative_binomial_idata[&quot;posterior&quot;][&quot;trt&quot;]
+) - np.exp(negative_binomial_idata[&quot;posterior&quot;][&quot;Intercept&quot;])
+
+fig, ax = plt.subplots()
+az.plot_posterior(data=ate_samples, ref_val=diff_means, ax=ax)
+ax.set(title=&quot;Negative Binomial Model - ATE&quot;, xlabel=&quot;ATE&quot;)</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_31_1.png" style="width: 800px;"/>
+</center>
+<p>We see how the ATE posterior distribution is centered around the sample ATE computed from the difference in means.</p>
+</div>
+<div id="linear-regression-model-ols" class="section level2">
+<h2>Linear Regression Model (OLS)</h2>
+<p>We now run a similar model but using a linear regression model with an identity link function.</p>
+<pre class="python"><code>gaussian_model_priors = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=14, sigma=3),
+    &quot;trt&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=5),
+    &quot;sigma&quot;: bmb.Prior(&quot;Exponential&quot;, lam=1 / 10),
+}
+gaussian_model = bmb.Model(
+    formula=&quot;count ~ trt&quot;,
+    data=data,
+    family=&quot;gaussian&quot;,
+    link=&quot;identity&quot;,
+    priors=gaussian_model_priors,
+)
+
+gaussian_model</code></pre>
+<pre><code>       Formula: count ~ trt
+        Family: gaussian
+          Link: mu = identity
+  Observations: 59
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 14.0, sigma: 3.0)
+            trt ~ Normal(mu: 0.0, sigma: 5.0)
+        
+        Auxiliary parameters
+            count_sigma ~ Exponential(lam: 0.1)</code></pre>
+<pre class="python"><code>gaussian_model.build()
+gaussian_model.graph()
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_35_0.svg" style="width: 500px;"/>
+</center>
+<p>We fit the model and look into the results and diagnostics.</p>
+<pre class="python"><code>gaussian_idata = gaussian_model.fit(
+    draws=4_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+)
+
+gaussian_model.predict(idata=gaussian_idata, kind=&quot;pps&quot;)
+</code></pre>
+<pre class="python"><code>az.summary(data=gaussian_idata, var_names=[&quot;Intercept&quot;, &quot;trt&quot;, &quot;count_sigma&quot;])
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+8.877
+</td>
+<td>
+1.693
+</td>
+<td>
+5.712
+</td>
+<td>
+12.051
+</td>
+<td>
+0.012
+</td>
+<td>
+0.009
+</td>
+<td>
+18427.0
+</td>
+<td>
+13652.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trt
+</th>
+<td>
+-0.999
+</td>
+<td>
+2.265
+</td>
+<td>
+-5.148
+</td>
+<td>
+3.367
+</td>
+<td>
+0.017
+</td>
+<td>
+0.015
+</td>
+<td>
+18344.0
+</td>
+<td>
+14465.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+count_sigma
+</th>
+<td>
+9.879
+</td>
+<td>
+0.943
+</td>
+<td>
+8.165
+</td>
+<td>
+11.662
+</td>
+<td>
+0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+18528.0
+</td>
+<td>
+14232.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gaussian_idata,
+    var_names=[&quot;Intercept&quot;, &quot;trt&quot;, &quot;count_sigma&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Linear Regression Model - Trace&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_39_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(10, 8), layout=&quot;constrained&quot;
+)
+az.plot_posterior(data=ate_samples, ref_val=diff_means, ax=ax[0])
+ax[0].set(title=&quot;Logistic Regression Model&quot;)
+az.plot_posterior(data=gaussian_idata, var_names=[&quot;trt&quot;], ref_val=diff_means, ax=ax[1])
+ax[1].set(title=&quot;Negative Binomial Regression Model&quot;, xlabel=&quot;ATE&quot;)
+fig.suptitle(&quot;ATE Comparison&quot;, y=1.05, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_40_1.png" style="width: 900px;"/>
+</center>
+<p>The resulting ATE posterior distributions are very similar. Note however that the posterior means does not match the sample ATE computed from the difference in means. Still, in view of the posterior distribution uncertainty it looks compatible.</p>
+<p>Which model to choose? As discussed in the previous post, conceptually the negative binomial model seems is more appropriate. Moreover, by running some experiment I saw that the linear regression model is very sensitive to the prior specification of the group variable <code>trt</code>. It is actually easier to reason about the priors in the negative binomial model as one is really trying to model the underlying distribution. This is yet another reason to prefer the negative binomial model.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=False, figsize=(10, 8), layout=&quot;constrained&quot;
+)
+az.plot_ppc(data=negative_binomial_idata, num_pp_samples=1_000, ax=ax[0])
+ax[0].set(title=&quot;Negative Binomial Model&quot;, xlabel=&quot;count&quot;)
+az.plot_ppc(data=gaussian_idata, num_pp_samples=1_000, ax=ax[1])
+ax[1].set(title=&quot;Linear Regression Model&quot;, xlabel=&quot;count&quot;)
+fig.suptitle(&quot;Posterior Predictive Check&quot;, y=1.05, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_negative_binomial_files/causal_inference_negative_binomial_43_1.png" style="width: 900px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

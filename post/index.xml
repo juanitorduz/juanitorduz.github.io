@@ -6,7 +6,16 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 04 Jun 2023 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 07 Jun 2023 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>ATE Estimation for Count Data</title>
+      <link>/causal_inference_negative_binomial/</link>
+      <pubDate>Wed, 07 Jun 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/causal_inference_negative_binomial/</guid>
+      <description>This notebook is a continuation of the previous notebook on ATE estimation for binary data with logistic regression based on the sequence of (great!) posts by Solomon Kurz. In this notebook, we will focus on count data. We reproduce in python an example presented in the post Causal inference with count regression by Solomon Kurz. Our intention is to simply show how to port these type of model to bambi.</description>
+    </item>
+    
     <item>
       <title>ATE Estimation with Logistic Regression</title>
       <link>/causal_inference_logistic/</link>
