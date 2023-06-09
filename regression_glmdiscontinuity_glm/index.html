@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Regression Discontinuity with GLMs and Kernel Weighting - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Regression Discontinuity with GLMs and Kernel Weighting - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">18 min read</span>
+    
+
+    <h1 class="article-title">Regression Discontinuity with GLMs and Kernel Weighting</h1>
+
+    
+    <span class="article-date">2023-06-10</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we explore <a href="https://en.wikipedia.org/wiki/Regression_discontinuity_design">regression discontinuity design</a> using <a href="https://en.wikipedia.org/wiki/Generalized_linear_model">generalized linear models (GLMs)</a> and kernel weighting from a bayesian perspective. The motivation comes from applications when:</p>
+<ol style="list-style-type: decimal">
+<li>The data does not fit the usual linear regression OLS normal likelihood (e.g. modeling count data).</li>
+<li>The data size is limited.</li>
+</ol>
+<p>In addition, we experiment with kernel weighting to weight the data points near the cutoff more heavily. This is a common technique in RD analysis, but it is not always clear how to do this with GLMs in the bayesian framework. We show how to do this with the <a href="https://www.pymc.io/welcome.html">PyMC</a>.</p>
+<p><strong>TL;DR:</strong> I took quite a while to run various experiments by changing the data size and the data generation process. Overall, my personal take is that the vanilla regression discontinuity approach via OLS is quite robust and might fit most of the cases (of course, it really depends on the data and the context). The power of the GLM bayesian approach comes when one (or both) of the conditions mentioned above hold. Moreover, the approach presented is quite flexible and can be tailored to the specific problem at hand.</p>
+<p><strong>Remark:</strong> There two main motivations to look into this topic:
+- A real life application in the context of epidemiology where I was an advisor.
+- The sequence of blog posts by <a href="https://solomonkurz.netlify.app/">Solomon Kruz</a> on causal inference and bayesian GLMs (strongly recommended!). For an introduction to the topic please see my two notes replicating Solomon’s great work in Python: <a href="https://juanitorduz.github.io/causal_inference_logistic/">ATE Estimation with Logistic Regression</a> and <a href="https://juanitorduz.github.io/causal_inference_negative_binomial/">ATE Estimation for Count Data</a>.</p>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Here we do not go into a detailed discussion of regression discontinuity, but we refer the reader to the following great online resources:</p>
+<ul>
+<li><a href="https://matheusfacure.github.io/python-causality-handbook/16-Regression-Discontinuity-Design.html">Causal Inference for The Brave and True - Chapter 16</a></li>
+<li><a href="https://mixtape.scunning.com/06-regression_discontinuity">Causal Inference: The Mixtape - Chapter 6</a></li>
+<li><a href="https://theeffectbook.net/ch-RegressionDiscontinuity.html">The Effect: An Introduction to Research Design and Causality - Chapter 20</a></li>
+</ul>
+<p>Please also check out <a href="https://causalpy.readthedocs.io/en/latest/"><code>CausalPy</code></a> for a basic bayesian implementation of regression discontinuity for normal likelihoods.</p>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import seaborn as sns
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code># set seed to make the results fully reproducible!
+seed: int = sum(map(ord, &quot;regression_discontinuity_glm&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+</code></pre>
+</div>
+<div id="data-generation" class="section level2">
+<h2>Data Generation</h2>
+<p>We use a synthetic data set to illustrate the ideas. The approach is an adaptation of the data generation process presented in the <a href="https://mixtape.scunning.com/06-regression_discontinuity#estimation-using-an-rdd">Causal Inference: The Mixtape - Chapter 6</a>. The main difference is that we add higher order polynomial terms to add non-linearity to the data.</p>
+<pre class="python"><code># number of observations
+n = 80
+# cutoff index
+c = 40
+# treatment effect
+delta = 40
+
+# running variable
+x = rng.uniform(low=-20, high=80, size=n)
+# treatment indicator
+d = (x &gt; c).astype(float)
+
+# polynomial coefficients
+intercept = 25
+slope = 2
+quadratic = -4e-3
+cubic = 3e-4
+
+# outcome without treatment
+y0 = (
+    intercept
+    + slope * x
+    + quadratic * x**2
+    + cubic * x**3
+    + 0 * d
+    + rng.normal(loc=0, scale=30, size=n)
+)
+# outcome with treatment
+y = y0 + delta * d
+
+data = pd.DataFrame(data={&quot;x&quot;: x, &quot;d&quot;: d, &quot;y0&quot;: y0, &quot;y&quot;: y})
+mask = &quot;0 &lt; y0 and 0 &lt; y&quot;
+data = data.query(expr=mask).sort_values(by=&quot;x&quot;).reset_index(drop=True)
+# add centered running variable
+data[&quot;x_c&quot;] = data[&quot;x&quot;] - c
+
+# (re)compute the true discontinuity
+y_minus = intercept + slope * c + quadratic * c**2
+y_plus = y_minus + delta
+delta_true = y_plus - y_minus
+
+print(
+    f&quot;&quot;&quot;
+Discontinuity at x = {c}
+-----------------------
+y_minus: {y_minus:.2f}
+-----------------------
+y_plus: {y_plus:.2f}
+-----------------------
+delta_true: {delta_true:.2f}
+-----------------------
+&quot;&quot;&quot;
+)
+</code></pre>
+<pre><code>Discontinuity at x = 40
+-----------------------
+y_minus: 98.60
+-----------------------
+y_plus: 138.60
+-----------------------
+delta_true: 40.00
+-----------------------</code></pre>
+<p>Let’s look into the data with and without the treatment effect.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(10, 9), layout=&quot;constrained&quot;
+)
+sns.scatterplot(data=data, x=&quot;x&quot;, y=&quot;y0&quot;, hue=&quot;d&quot;, ax=ax[0])
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(title=&quot;No Treatment Effect&quot;, xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+sns.scatterplot(data=data, x=&quot;x&quot;, y=&quot;y&quot;, hue=&quot;d&quot;, ax=ax[1])
+ax[1].axvline(x=c, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+ax[1].axhline(
+    y=y_minus,
+    xmax=0.6,
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;y_minus&quot;,
+)
+ax[1].axhline(
+    y=y_plus,
+    xmax=0.6,
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;y_plus&quot;,
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].set(title=&quot;Treatment Effect&quot;, xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_7_1.png" style="width:1000px;"/>
+</center>
+<p>Here are some comments and remarks about this synthetic data set:</p>
+<ul>
+<li>We do not have a lot of observations (not uncommon in real applications).</li>
+<li>We are assuming the <span class="math inline">\(y\)</span> variable is non-negative by nature (e.g. university scores). Hence, any model used to explain the data should ideally reflect this fact as there is some non-linearity in the data coming from this fact.</li>
+<li>We do see an apparent discontinuity in the data: both in the intercept and the slope. We are not interested in the point estimate of the treatment effect, but rather in the uncertainty around it.</li>
+</ul>
+<p>We can zoom in and focus on the variable <span class="math inline">\(y\)</span>. As explained below, it is convenient to work with the centered version of the running variable <span class="math inline">\(x\)</span>, so that the cutoff is at zero.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data, x=&quot;x_c&quot;, y=&quot;y&quot;, hue=&quot;d&quot;, ax=ax)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+ax.axhline(
+    y=y_minus,
+    xmax=0.6,
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;y_minus&quot;,
+)
+ax.axhline(
+    y=y_plus,
+    xmax=0.6,
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;y_plus&quot;,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=&quot;Centered Synthetic Data&quot;, xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_9_1.png" style="width: 900px;"/>
+</center>
+<p>Just to have an order of magnitude in our minds, let’s compute the consecutive differences when sorting out by <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span> respectively.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(9, 6), layout=&quot;constrained&quot;
+)
+(
+    data.sort_values(by=&quot;y&quot;)
+    .assign(
+        y_lag=lambda x: x[&quot;y&quot;].shift(1),
+        y_delta=lambda x: x[&quot;y&quot;] - x[&quot;y_lag&quot;],
+    )
+    .filter(items=[&quot;y_delta&quot;])
+    .plot(
+        kind=&quot;hist&quot;,
+        bins=20,
+        color=&quot;C2&quot;,
+        title=r&quot;Histogram of $y_{\Delta} = y_{t} - y_{t - 1}$ - Sorted by $y$&quot;,
+        ax=ax[0],
+    )
+)
+(
+    data.sort_values(by=&quot;x&quot;)
+    .assign(
+        y_lag=lambda x: x[&quot;y&quot;].shift(1),
+        y_delta=lambda x: x[&quot;y&quot;] - x[&quot;y_lag&quot;],
+    )
+    .filter(items=[&quot;y_delta&quot;])
+    .plot(
+        kind=&quot;hist&quot;,
+        bins=20,
+        color=&quot;C3&quot;,
+        title=r&quot;Histogram of $y_{\Delta} = y_{t} - y_{t - 1}$ - Sorted by $x$&quot;,
+        ax=ax[1],
+    )
+)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_11_1.png" style="width: 900px;"/>
+</center>
+<p>We see that a discontinuity estimation of more than <span class="math inline">\(70\)</span> is large in this context. This should guide us when setting priors in the bayesian models below.</p>
+<p>Now we present three models to estimate the treatment effect: OLS, GLM and GLM with kernel weighting.</p>
+</div>
+<div id="linear-regression-ols" class="section level2">
+<h2>Linear Regression (OLS)</h2>
+<p>Recall that the OLS estimator aims to fit straight lines for the pre and post intervention periods. The idea is to use a single model to achieve this. The strategy is well known: consider a linear model with an interaction term between the running variable <span class="math inline">\(x\)</span> and the treatment indicator <span class="math inline">\(d\)</span>. Specifically,</p>
+<p><span class="math display">\[\begin{align*}
+y &amp; \sim \text{Normal}(\mu, \sigma) \\
+\mu &amp; = \beta_0 + \beta_1 x + \beta_2 d + \beta_3 x d
+\end{align*}\]</span></p>
+<p>Note that the intercept <span class="math inline">\(\beta_2\)</span> is precisely the treatment effect as we are assuming the cutoff is at zero.</p>
+<p>Now that the strategy is clear, let’s prepare the data.</p>
+<pre class="python"><code>obs_idx = data.index.to_numpy()
+x_c = data[&quot;x_c&quot;].to_numpy()
+d = data[&quot;d&quot;].to_numpy()
+y = data[&quot;y&quot;].to_numpy()
+</code></pre>
+<p>Now we specify the model in PyMC.</p>
+<pre class="python"><code>with pm.Model(coords={&quot;obs&quot;: obs_idx}) as gaussian_model:
+    # --- Data Containers ---
+    x_ = pm.MutableData(name=&quot;x&quot;, value=x_c, dims=&quot;obs&quot;)
+    d_ = pm.MutableData(name=&quot;d&quot;, value=d, dims=&quot;obs&quot;)
+    y_ = pm.MutableData(name=&quot;y&quot;, value=y, dims=&quot;obs&quot;)
+    # --- Priors ---
+    b_intercept = pm.Normal(name=&quot;b_intercept&quot;, mu=120, sigma=50)
+    b_x = pm.Normal(name=&quot;b_x&quot;, mu=0, sigma=4)
+    b_d = pm.Normal(name=&quot;b_d&quot;, mu=0, sigma=50)
+    b_dx = pm.Normal(name=&quot;b_dx&quot;, mu=0, sigma=4)
+    sigma = pm.Exponential(name=&quot;sigma&quot;, lam=1 / 50)
+    # --- Deterministic Variables ---
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=b_intercept + b_x * x_ + b_d * d_ + b_dx * d_ * x_,
+        dims=&quot;obs&quot;,
+    )
+    # --- Likelihood ---
+    pm.Normal(
+        name=&quot;likelihood&quot;,
+        mu=mu,
+        sigma=sigma,
+        observed=y_,
+        dims=&quot;obs&quot;,
+    )
+
+pm.model_to_graphviz(model=gaussian_model)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_17_0.svg" style="width: 1000px;"/>
+</center>
+<p>A fundamental component of the model(s) are the prior specifications. This is one of the key advantages of the bayesian approach! For this model, use non-informative priors for the parameters. We can verify this through prior predictive checks.</p>
+<pre class="python"><code>with gaussian_model:
+    gaussian_prior_predictive = pm.sample_prior_predictive(
+        samples=1_000, random_seed=rng
+    )
+</code></pre>
+<p>Let’s visualize the prior predictive distribution.</p>
+<pre class="python"><code>alpha = 0.05
+
+fig, ax = plt.subplots()
+sns.scatterplot(data=data, x=&quot;x_c&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, alpha=0.5, ax=ax)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+az.plot_hdi(
+    x_c,
+    gaussian_prior_predictive[&quot;prior_predictive&quot;][&quot;likelihood&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;prior predictive obs ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.2,
+    },
+    ax=ax,
+)
+az.plot_hdi(
+    x_c,
+    gaussian_prior_predictive[&quot;prior&quot;][&quot;mu&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;prior predictive mean ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.4,
+    },
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Linear Regression Model - Prior Predictive Distribution&quot;)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_21_1.png" style="width: 900px;"/>
+</center>
+<p>Overall, it looks like a reasonable prior specification. Note however that the prior predictive distribution does allow for the negative values, which in view of the data context it makes no sense (so it should not be plausible!). This can not be fixed completely by constraining the priors as it is more of a fundamental consequence of the normal likelihood. We will see how to address this issue with the GLM approach below.</p>
+<p>Next, we proceed to sample from the posterior distribution.</p>
+<pre class="python"><code>with gaussian_model:
+    gaussian_idata = pm.sample(
+        tune=2_000, draws=6_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+    )
+    gaussian_posterior_predictive = pm.sample_posterior_predictive(
+        trace=gaussian_idata, random_seed=rng
+    )</code></pre>
+<p>We can now look into the diagnostics and resulting trace plots.</p>
+<pre class="python"><code>gaussian_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>az.summary(
+    data=gaussian_idata,
+    var_names=[&quot;b_intercept&quot;, &quot;b_x&quot;, &quot;b_d&quot;, &quot;b_dx&quot;, &quot;sigma&quot;],
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+b_intercept
+</th>
+<td>
+116.365
+</td>
+<td>
+7.863
+</td>
+<td>
+101.937
+</td>
+<td>
+131.648
+</td>
+<td>
+0.072
+</td>
+<td>
+0.051
+</td>
+<td>
+12104.0
+</td>
+<td>
+14376.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_x
+</th>
+<td>
+2.033
+</td>
+<td>
+0.267
+</td>
+<td>
+1.553
+</td>
+<td>
+2.555
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+12252.0
+</td>
+<td>
+15504.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_d
+</th>
+<td>
+28.270
+</td>
+<td>
+11.335
+</td>
+<td>
+7.427
+</td>
+<td>
+49.845
+</td>
+<td>
+0.092
+</td>
+<td>
+0.065
+</td>
+<td>
+15226.0
+</td>
+<td>
+17264.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dx
+</th>
+<td>
+2.831
+</td>
+<td>
+0.454
+</td>
+<td>
+1.982
+</td>
+<td>
+3.687
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+14803.0
+</td>
+<td>
+16801.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+26.969
+</td>
+<td>
+2.351
+</td>
+<td>
+22.706
+</td>
+<td>
+31.340
+</td>
+<td>
+0.017
+</td>
+<td>
+0.013
+</td>
+<td>
+18936.0
+</td>
+<td>
+16808.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gaussian_idata,
+    var_names=[&quot;b_intercept&quot;, &quot;b_x&quot;, &quot;b_d&quot;, &quot;b_dx&quot;, &quot;sigma&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Linear Regression Model - Trace&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_27_2.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the diagnostics look good. The parameter of interest, which encodes the discontinuity at the cutoff is <code>b_d</code>. The posterior predictive mean of the estimated treatment effect is <span class="math inline">\(\sim 28.3\)</span> (recall that the true value is <span class="math inline">\(40\)</span>).</p>
+<p>Finally, we can visualize the posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data, x=&quot;x_c&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, alpha=0.5, ax=ax)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+az.plot_hdi(
+    x_c,
+    gaussian_posterior_predictive[&quot;posterior_predictive&quot;][&quot;likelihood&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;posterior predictive obs ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.2,
+    },
+    ax=ax,
+)
+az.plot_hdi(
+    x_c,
+    gaussian_idata[&quot;posterior&quot;][&quot;mu&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;posterior predictive mean ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.4,
+    },
+    ax=ax,
+)
+sns.lineplot(
+    x=x_c,
+    y=gaussian_idata[&quot;posterior&quot;][&quot;mu&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C1&quot;,
+    label=&quot;posterior mean&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Linear Regression Model&quot;)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_30_1.png" style="width: 1000px;"/>
+</center>
+<p>Both linear fits look quite reasonable. Still, the fact that the model predictions are not constrained to be non-negative is a bit annoying. We will see how to address this issue with the GLM approach below.</p>
+</div>
+<div id="gamma-regression-model" class="section level2">
+<h2>Gamma Regression Model</h2>
+<p>Now we want to use a <a href="https://en.wikipedia.org/wiki/Gamma_distribution">Gamma</a> likelihood with a log link function. This is a common choice for positive data. The specification is as follows:</p>
+<p><span class="math display">\[\begin{align*}
+y &amp; \sim \text{Gamma}(\mu, \sigma) \\
+\log(\mu) &amp; = \beta_0 + \beta_1 x + \beta_2 d + \beta_3 x d
+\end{align*}\]</span></p>
+<p>In view of the log link function, the intercept <span class="math inline">\(\beta_2\)</span> is not the treatment effect. Instead, the treatment effect is given by</p>
+<p><span class="math display">\[
+\exp(\beta_0 + \beta_2) - \exp(\beta_0)
+\]</span></p>
+<p>This is similar as the estimation presented in the blog posts <a href="https://juanitorduz.github.io/causal_inference_logistic/">ATE Estimation with Logistic Regression</a> and <a href="https://juanitorduz.github.io/causal_inference_negative_binomial/">ATE Estimation for Count Data</a> (we are still assuming the running variable is centered!).</p>
+<p>Now let’s look into the PyMC model specification.</p>
+<pre class="python"><code>with pm.Model(coords={&quot;obs&quot;: obs_idx}) as gamma_model:
+    # --- Data Containers ---
+    x_ = pm.MutableData(name=&quot;x&quot;, value=x_c, dims=&quot;obs&quot;)
+    d_ = pm.MutableData(name=&quot;d&quot;, value=d, dims=&quot;obs&quot;)
+    y_ = pm.MutableData(name=&quot;y&quot;, value=y, dims=&quot;obs&quot;)
+    # --- Priors ---
+    b_intercept = pm.Normal(name=&quot;b_intercept&quot;, mu=np.log(100), sigma=np.log(2.2))
+    b_x = pm.Normal(name=&quot;b_x&quot;, mu=0, sigma=np.log(1 + 0.01))
+    b_d = pm.Normal(name=&quot;b_d&quot;, mu=0, sigma=np.log(1.5))
+    b_dx = pm.Normal(name=&quot;b_dx&quot;, mu=0, sigma=np.log(1 + 0.01))
+    sigma = pm.Exponential(name=&quot;sigma&quot;, lam=1 / 20)
+    # --- Deterministic Variables ---
+    log_mu = pm.Deterministic(
+        name=&quot;log_mu&quot;,
+        var=b_intercept + b_x * x_ + b_d * d_ + b_dx * d_ * x_,
+        dims=&quot;obs&quot;,
+    )
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=pm.math.exp(log_mu))
+    pm.Deterministic(
+        name=&quot;b_gap&quot;, var=pm.math.exp(b_intercept) * (pm.math.exp(b_d) - 1)
+    )
+    # --- Likelihood ---
+    pm.Gamma(
+        name=&quot;likelihood&quot;,
+        mu=mu,
+        sigma=sigma,
+        observed=y_,
+        dims=&quot;obs&quot;,
+    )
+
+pm.model_to_graphviz(model=gamma_model)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_34_0.svg" style="width: 1000px;"/>
+</center>
+<p>The prior specifications look a bit cumbersome. However they come from an prior predictive check iteration process. Note that as we need to take <span class="math inline">\(\exp\)</span> of the resulting linear model, if one is not careful these priors can lead to numerical issues. Let’s look into the prior predictive distribution.</p>
+<pre class="python"><code>with gamma_model:
+    gamma_prior_predictive = pm.sample_prior_predictive(samples=1_000, random_seed=rng)
+</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data, x=&quot;x_c&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, alpha=0.5, ax=ax)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+az.plot_hdi(
+    x_c,
+    gamma_prior_predictive[&quot;prior_predictive&quot;][&quot;likelihood&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;prior predictive obs ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.2,
+    },
+    ax=ax,
+)
+az.plot_hdi(
+    x_c,
+    gamma_prior_predictive[&quot;prior&quot;][&quot;mu&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;prior predictive mean ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.4,
+    },
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Gamma Regression Model - Prior Predictive Distribution&quot;)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_37_1.png" style="width: 900px;"/>
+</center>
+<p>The prior predictive distribution looks reasonable and not very restrictive. Also note that the predictions are constrained to be non-negative, which is a desirable property for this data set.</p>
+<p>It is also important to see the resulting prior for the treatment effect as it is not directly interpretable from the model specification.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 6))
+az.plot_dist(
+    values=az.extract(data=gamma_prior_predictive, group=&quot;prior&quot;, var_names=[&quot;b_gap&quot;]),
+    rug=True,
+    ax=ax,
+)
+ax.set(
+    title=&quot;Gamma Regression Model - Discontinuity Prior Predictive Distribution&quot;,
+    xlim=(-2e2, 2e2),
+)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_39_1.png" style="width: 800px;"/>
+</center>
+<p>Even though is centered around zero, it does not seem very restrictive in view of the scale and nature of the data.</p>
+<p><strong>Remark:</strong> Depending on the application and domain knowledge, this prior predictive check step can be crucial to constrain and fine-tune the model whenever we do not have enough data or if the data is very noisy!</p>
+<p>We now proceed to fit the model.</p>
+<pre class="python"><code>with gamma_model:
+    gamma_idata = pm.sample(
+        tune=2_000, draws=6_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+    )
+    gamma_posterior_predictive = pm.sample_posterior_predictive(
+        trace=gamma_idata, random_seed=rng
+    )
+</code></pre>
+<p>We now look into diagnostics and the resulting trace plots.</p>
+<pre class="python"><code>gamma_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>az.summary(
+    data=gamma_idata,
+    var_names=[&quot;b_intercept&quot;, &quot;b_x&quot;, &quot;b_d&quot;, &quot;b_dx&quot;, &quot;sigma&quot;, &quot;b_gap&quot;],
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+b_intercept
+</th>
+<td>
+4.810
+</td>
+<td>
+0.089
+</td>
+<td>
+4.643
+</td>
+<td>
+4.979
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7322.0
+</td>
+<td>
+9661.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_x
+</th>
+<td>
+0.026
+</td>
+<td>
+0.004
+</td>
+<td>
+0.020
+</td>
+<td>
+0.033
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7523.0
+</td>
+<td>
+10393.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_d
+</th>
+<td>
+0.237
+</td>
+<td>
+0.103
+</td>
+<td>
+0.043
+</td>
+<td>
+0.431
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7905.0
+</td>
+<td>
+10676.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dx
+</th>
+<td>
+-0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.013
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8680.0
+</td>
+<td>
+12628.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+31.405
+</td>
+<td>
+3.037
+</td>
+<td>
+26.098
+</td>
+<td>
+37.350
+</td>
+<td>
+0.027
+</td>
+<td>
+0.019
+</td>
+<td>
+13223.0
+</td>
+<td>
+14963.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_gap
+</th>
+<td>
+32.516
+</td>
+<td>
+13.557
+</td>
+<td>
+7.286
+</td>
+<td>
+58.195
+</td>
+<td>
+0.147
+</td>
+<td>
+0.106
+</td>
+<td>
+8475.0
+</td>
+<td>
+12103.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gamma_idata,
+    var_names=[&quot;b_intercept&quot;, &quot;b_x&quot;, &quot;b_d&quot;, &quot;b_dx&quot;, &quot;sigma&quot;, &quot;b_gap&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Gamma Regression Model - Trace&quot;, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_46_1.png" style="width: 1000px;"/>
+</center>
+<p>The estimated treatment effect posterior mean is <span class="math inline">\(\sim 32.5\)</span>, but the overall distribution is overall very similar to the linear regression model.</p>
+<p>Finally, we can visualize the posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data, x=&quot;x_c&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, alpha=0.5, ax=ax)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+az.plot_hdi(
+    x_c,
+    gamma_posterior_predictive[&quot;posterior_predictive&quot;][&quot;likelihood&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;posterior predictive obs ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.2,
+    },
+    ax=ax,
+)
+az.plot_hdi(
+    x_c,
+    gamma_idata[&quot;posterior&quot;][&quot;mu&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;posterior predictive mean ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.4,
+    },
+    ax=ax,
+)
+sns.lineplot(
+    x=x_c,
+    y=gamma_idata[&quot;posterior&quot;][&quot;mu&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C1&quot;,
+    label=&quot;posterior mean&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Gamma Regression Model&quot;)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_48_1.png" style="width: 1000px;"/>
+</center>
+<p>It is nice to see that the posterior predictive distribution is constrained to be non-negative. Moreover, due the fact we have a non-linear link function, we see that the posterior predictive mean is not a straight line. This could be a desirable property for this data set, but in practice it depends on the assumptions and domain knowledge.</p>
+</div>
+<div id="weighted-gamma-regression-model" class="section level2">
+<h2>Weighted Gamma Regression Model</h2>
+<p>In this last model we add weights to the previous gamma regression model so that we weight more points which are closer to the cutoff. This is a common strategy to improve the estimation of the treatment effect as we are actually trying to estimate a <em>local</em> treatment effect. Hence, points far away from the cutoff might not be as informative as points close to the cutoff. This, again, depends on the context of the problem.</p>
+<p>There are many families of <a href="https://en.wikipedia.org/wiki/Kernel_(statistics)"><em>kernels</em></a> used to define the relative importance of each point. Here we use the <em>triangular kernel</em> as it is simple and easy to implement and has a very transparent interpretation. The idea is to define a bandwidth <span class="math inline">\(h\)</span> and then define the weights decaying linearly and symmetrically from the cutoff. Specifically, the weights are defined as follows:</p>
+<p><span class="math display">\[\begin{align*}
+k(r, c, h) &amp; = 1\{|r - c| &lt; h\}\left(1 - \frac{|r - c|}{h}\right) \\
+\end{align*}\]</span></p>
+<p>where <span class="math inline">\(h &gt;0\)</span> is the bandwidth and <span class="math inline">\(c\)</span> is the cutoff. Let’s visualize the kernel function for <span class="math inline">\(h=80\)</span>.</p>
+<pre class="python"><code>def kernel(r, c, h):
+    indicator = (np.abs(r - c) &lt;= h).astype(float)
+    return indicator * (1 - np.abs(r - c) / h)
+
+
+data[&quot;kernel&quot;] = kernel(r=data[&quot;x_c&quot;], c=0, h=80)
+kernel = data[&quot;kernel&quot;].to_numpy()
+
+fig, ax = plt.subplots()
+sns.lineplot(data=data, x=&quot;x_c&quot;, y=&quot;kernel&quot;, color=&quot;C2&quot;, ax=ax)
+ax.set(title=&quot;Kernel Function&quot;, xlabel=&quot;time centered&quot;, ylabel=&quot;kernel value&quot;)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_51_1.png" style="width: 800px;"/>
+</center>
+<p>Note that this choice of <span class="math inline">\(h\)</span> ensures that the later point from the cutoff have a relative weight of around <span class="math inline">\(25\%\)</span> .</p>
+<p><strong>Remark:</strong> How to add weights to a bayesian GLM? There many ways of doing this, one which I find very intuitive is to scale the scale parameter of the likelihood through the weights as explained in the PyMC Discourse thread <a href="https://discourse.pymc.io/t/how-to-add-weights-to-data-in-bayesian-linear-regression/8362">How to add weights to data in bayesian linear regression?</a> (special thanks to <a href="https://cluhmann.github.io/">Christian Luhmann</a> for the tip!). The intuition is that:</p>
+<blockquote>
+<p><em>Adjusting the scale parameter of my observed variable, which allows for more heavily weighted observations to contribute more model’s logp.</em></p>
+</blockquote>
+<p><strong>Remark:</strong> I could have used <a href="https://bambinos.github.io/bambi/"><code>bambi</code></a> package to implement the models above in a much simpler way. However, as there is no straight forward way to add weights (but there is a way! see <a href="https://discourse.pymc.io/t/weights-for-model-in-bambi/11484">this Discourse thread</a>), I decided to work in PyMC directly.</p>
+<p>Let’s now look into the concrete implementation.</p>
+<pre class="python"><code>with pm.Model(coords={&quot;obs&quot;: obs_idx}) as weighted_gamma_model:
+    # --- Data Containers ---
+    x_ = pm.MutableData(name=&quot;x&quot;, value=x_c, dims=&quot;obs&quot;)
+    d_ = pm.MutableData(name=&quot;d&quot;, value=d, dims=&quot;obs&quot;)
+    y_ = pm.MutableData(name=&quot;y&quot;, value=y, dims=&quot;obs&quot;)
+    kernel_ = pm.MutableData(name=&quot;kernel&quot;, value=kernel, dims=&quot;obs&quot;)
+    # --- Priors ---
+    b_intercept = pm.Normal(name=&quot;b_intercept&quot;, mu=np.log(100), sigma=np.log(2.2))
+    b_x = pm.Normal(name=&quot;b_x&quot;, mu=0, sigma=np.log(1 + 0.01))
+    b_d = pm.Normal(name=&quot;b_d&quot;, mu=0, sigma=np.log(1.5))
+    b_dx = pm.Normal(name=&quot;b_dx&quot;, mu=0, sigma=np.log(1 + 0.01))
+    sigma = pm.Exponential(name=&quot;sigma&quot;, lam=1 / 20)
+    # --- Deterministic Variables ---
+    log_mu = pm.Deterministic(
+        name=&quot;log_mu&quot;,
+        var=b_intercept + b_x * x_ + b_d * d_ + b_dx * d_ * x_,
+        dims=&quot;obs&quot;,
+    )
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=pm.math.exp(log_mu))
+    pm.Deterministic(
+        name=&quot;b_gap&quot;, var=pm.math.exp(b_intercept) * (pm.math.exp(b_d) - 1)
+    )
+    eps = np.finfo(float).eps
+    sigma_weighted = pm.Deterministic(
+        name=&quot;sigma_weighted&quot;, var=sigma / (kernel_ + eps), dims=&quot;obs&quot;
+    )
+    # --- Likelihood ---
+    pm.Gamma(
+        name=&quot;likelihood&quot;,
+        mu=mu,
+        sigma=sigma_weighted,
+        observed=y_,
+        dims=&quot;obs&quot;,
+    )
+
+pm.model_to_graphviz(model=weighted_gamma_model)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_54_0.svg" style="width: 1000px;"/>
+</center>
+<p>We keep the same prior specifications as in the previous model. The prior predictive distribution remains overall stable.</p>
+<pre class="python"><code>with weighted_gamma_model:
+    weighted_gamma_prior_predictive = pm.sample_prior_predictive(
+        samples=1_000, random_seed=rng
+    )
+</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data, x=&quot;x_c&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, alpha=0.5, ax=ax)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+az.plot_hdi(
+    x_c,
+    weighted_gamma_prior_predictive[&quot;prior_predictive&quot;][&quot;likelihood&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;prior predictive obs ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.2,
+    },
+    ax=ax,
+)
+az.plot_hdi(
+    x_c,
+    weighted_gamma_prior_predictive[&quot;prior&quot;][&quot;mu&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;prior predictive mean ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.4,
+    },
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Weighted Gamma Regression Model - Prior Predictive Distribution&quot;)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_57_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 6))
+az.plot_dist(
+    values=az.extract(
+        data=weighted_gamma_prior_predictive, group=&quot;prior&quot;, var_names=[&quot;b_gap&quot;]
+    ),
+    rug=True,
+    ax=ax,
+)
+ax.set(
+    title=&quot;Weighted Gamma Regression Model - Discontinuity Prior Predictive Distribution&quot;,
+    xlim=(-2e2, 2e2),
+)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_58_1.png" style="width: 800px;"/>
+</center>
+<p>The prior for the treatment effect is also very similar to the previous model (and not very restrictive in view of the data).</p>
+<p>We proceed to fit our final model.</p>
+<pre class="python"><code>with weighted_gamma_model:
+    weighted_gamma_idata = pm.sample(
+        tune=2_000, draws=6_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+    )
+    weighted_gamma_posterior_predictive = pm.sample_posterior_predictive(
+        trace=weighted_gamma_idata, random_seed=rng
+    )
+</code></pre>
+<pre class="python"><code>weighted_gamma_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>az.summary(
+    data=weighted_gamma_idata,
+    var_names=[&quot;b_intercept&quot;, &quot;b_x&quot;, &quot;b_d&quot;, &quot;b_dx&quot;, &quot;sigma&quot;, &quot;b_gap&quot;],
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+b_intercept
+</th>
+<td>
+4.765
+</td>
+<td>
+0.080
+</td>
+<td>
+4.612
+</td>
+<td>
+4.911
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+8755.0
+</td>
+<td>
+10043.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_x
+</th>
+<td>
+0.020
+</td>
+<td>
+0.004
+</td>
+<td>
+0.013
+</td>
+<td>
+0.027
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+9046.0
+</td>
+<td>
+10834.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_d
+</th>
+<td>
+0.268
+</td>
+<td>
+0.092
+</td>
+<td>
+0.098
+</td>
+<td>
+0.446
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+9451.0
+</td>
+<td>
+10646.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_dx
+</th>
+<td>
+0.000
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.007
+</td>
+<td>
+0.008
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10170.0
+</td>
+<td>
+13089.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+23.767
+</td>
+<td>
+2.348
+</td>
+<td>
+19.580
+</td>
+<td>
+28.267
+</td>
+<td>
+0.021
+</td>
+<td>
+0.015
+</td>
+<td>
+13089.0
+</td>
+<td>
+14338.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_gap
+</th>
+<td>
+35.905
+</td>
+<td>
+11.684
+</td>
+<td>
+13.556
+</td>
+<td>
+57.531
+</td>
+<td>
+0.116
+</td>
+<td>
+0.083
+</td>
+<td>
+10188.0
+</td>
+<td>
+12396.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=weighted_gamma_idata,
+    var_names=[&quot;b_intercept&quot;, &quot;b_x&quot;, &quot;b_d&quot;, &quot;b_dx&quot;, &quot;sigma&quot;, &quot;b_gap&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Weighted Gamma Regression Model - Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_64_1.png" style="width: 1000px;"/>
+</center>
+<p>The estimated posterior predictive mean of the discontinuity estimate <span class="math inline">\(\sim 36\)</span> is the closest one to the real value.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data, x=&quot;x_c&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, alpha=0.5, ax=ax)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;cutoff&quot;)
+az.plot_hdi(
+    x_c,
+    weighted_gamma_posterior_predictive[&quot;posterior_predictive&quot;][&quot;likelihood&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;posterior predictive obs ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.2,
+    },
+    ax=ax,
+)
+az.plot_hdi(
+    x_c,
+    weighted_gamma_idata[&quot;posterior&quot;][&quot;mu&quot;],
+    hdi_prob=1 - alpha,
+    smooth=False,
+    fill_kwargs={
+        &quot;label&quot;: f&quot;posterior predictive mean ({1 - alpha: .0%} HDI)&quot;,
+        &quot;alpha&quot;: 0.4,
+    },
+    ax=ax,
+)
+sns.lineplot(
+    x=x_c,
+    y=weighted_gamma_idata[&quot;posterior&quot;][&quot;mu&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C1&quot;,
+    label=&quot;posterior mean&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Weighted Gamma Regression Model&quot;)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_66_2.png" style="width: 1000px;"/>
+</center>
+<p>Note how the variance increases as we get further away from the cutoff.</p>
+<p>In order to have a more visual comparison of the results of all three models, we can plot the posterior predictive distributions of the discontinuity all together.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3, ncols=1, sharex=True, sharey=True, figsize=(10, 8), layout=&quot;constrained&quot;
+)
+az.plot_posterior(data=gaussian_idata, var_names=[&quot;b_d&quot;], ref_val=delta_true, ax=ax[0])
+ax[0].set(title=&quot;Linear Regression Model&quot;)
+az.plot_posterior(data=gamma_idata, var_names=[&quot;b_gap&quot;], ref_val=delta_true, ax=ax[1])
+ax[1].set(title=&quot;Gamma Regression Model&quot;)
+az.plot_posterior(
+    data=weighted_gamma_idata, var_names=[&quot;b_gap&quot;], ref_val=delta_true, ax=ax[2]
+)
+ax[2].set(title=&quot;Weighted Gamma Regression Model&quot;)
+fig.suptitle(&quot;Estimated Discontinuity Posterior Distributions&quot;, fontsize=18, y=1.06)</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_69_1.png" style="width: 1000px;"/>
+</center>
+<p>We do see how using a GLM and adding weights improves the estimation of the treatment effect <strong>for this specific case</strong>. Note in particular that the estimation variance of the weighted gamma regression model is smaller than for the unweighted one. This is an effect of the weighting procedure.</p>
+<p>In spite of the results, by looking into the posterior predictive checks below we see how, conceptually speaking, using a GLM to model the data constrains can bring some benefit. In particular setting priors for the model parameters.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3, ncols=1, sharex=True, sharey=False, figsize=(10, 8), layout=&quot;constrained&quot;
+)
+az.plot_ppc(
+    data=gaussian_posterior_predictive, num_pp_samples=2_000, random_seed=seed, ax=ax[0]
+)
+ax[0].set(title=&quot;Linear Regression Model&quot;, xlabel=&quot;count&quot;)
+az.plot_ppc(
+    data=gamma_posterior_predictive, num_pp_samples=2_000, random_seed=seed, ax=ax[1]
+)
+ax[1].set(title=&quot;Gamma Regression Model&quot;, xlabel=&quot;count&quot;)
+az.plot_ppc(
+    data=weighted_gamma_posterior_predictive,
+    num_pp_samples=2_000,
+    random_seed=seed,
+    ax=ax[2],
+)
+ax[2].set(title=&quot;Weighted Gamma Regression Model&quot;, xlabel=&quot;count&quot;)
+fig.suptitle(&quot;Posterior Predictive Check&quot;, y=1.05, fontsize=18)
+</code></pre>
+<center>
+<img src="../images/regression_discontinuity_glm_files/regression_discontinuity_glm_71_1.png" style="width: 900px;"/>
+</center>
+<p>That being said, the linear regression model is not that far away from the other two models. For most applications, the linear regression approach should be tested as a a baseline model. <strong>There is no silver bullet for regression discontinuity estimation</strong>, that is what makes it so interesting!</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

@@ -6,7 +6,17 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 07 Jun 2023 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 10 Jun 2023 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Regression Discontinuity with GLMs and Kernel Weighting</title>
+      <link>/regression_glmdiscontinuity_glm/</link>
+      <pubDate>Sat, 10 Jun 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/regression_glmdiscontinuity_glm/</guid>
+      <description>In this notebook we explore regression discontinuity design using generalized linear models (GLMs) and kernel weighting from a bayesian perspective. The motivation comes from applications when:
+The data does not fit the usual linear regression OLS normal likelihood (e.g. modeling count data). The data size is limited.  In addition, we experiment with kernel weighting to weight the data points near the cutoff more heavily. This is a common technique in RD analysis, but it is not always clear how to do this with GLMs in the bayesian framework.</description>
+    </item>
+    
     <item>
       <title>ATE Estimation for Count Data</title>
       <link>/causal_inference_negative_binomial/</link>
