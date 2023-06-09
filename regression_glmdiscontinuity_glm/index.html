@@ -95,10 +95,16 @@
 <li>The data size is limited.</li>
 </ol>
 <p>In addition, we experiment with kernel weighting to weight the data points near the cutoff more heavily. This is a common technique in RD analysis, but it is not always clear how to do this with GLMs in the bayesian framework. We show how to do this with the <a href="https://www.pymc.io/welcome.html">PyMC</a>.</p>
-<p><strong>TL;DR:</strong> I took quite a while to run various experiments by changing the data size and the data generation process. Overall, my personal take is that the vanilla regression discontinuity approach via OLS is quite robust and might fit most of the cases (of course, it really depends on the data and the context). The power of the GLM bayesian approach comes when one (or both) of the conditions mentioned above hold. Moreover, the approach presented is quite flexible and can be tailored to the specific problem at hand.</p>
-<p><strong>Remark:</strong> There two main motivations to look into this topic:
-- A real life application in the context of epidemiology where I was an advisor.
-- The sequence of blog posts by <a href="https://solomonkurz.netlify.app/">Solomon Kruz</a> on causal inference and bayesian GLMs (strongly recommended!). For an introduction to the topic please see my two notes replicating Solomon’s great work in Python: <a href="https://juanitorduz.github.io/causal_inference_logistic/">ATE Estimation with Logistic Regression</a> and <a href="https://juanitorduz.github.io/causal_inference_negative_binomial/">ATE Estimation for Count Data</a>.</p>
+<p><strong>TL;DR:</strong></p>
+<ul>
+<li>I took quite a while to run various experiments by changing the data size and the data generation process. Overall, my personal take is that the vanilla regression discontinuity approach via OLS is quite robust and might fit most of the cases (of course, it really depends on the data and the context).</li>
+<li>The power of the GLM bayesian approach comes when one (or both) of the conditions mentioned above hold. Moreover, the approach presented is quite flexible and can be tailored to the specific problem at hand.</li>
+</ul>
+<p><strong>Remark:</strong> There were two main reasons that motivated to look into this topic:</p>
+<ul>
+<li>A real life application in the context of epidemiology where I was an adviser.</li>
+<li>The sequence of blog posts by <a href="https://solomonkurz.netlify.app/">Solomon Kruz</a> on causal inference and bayesian GLMs (strongly recommended!). For an introduction to the topic please see my two notes replicating Solomon’s great work in Python: <a href="https://juanitorduz.github.io/causal_inference_logistic/">ATE Estimation with Logistic Regression</a> and <a href="https://juanitorduz.github.io/causal_inference_negative_binomial/">ATE Estimation for Count Data</a>.</li>
+</ul>
 <div id="references" class="section level2">
 <h2>References</h2>
 <p>Here we do not go into a detailed discussion of regression discontinuity, but we refer the reader to the following great online resources:</p>
