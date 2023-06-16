@@ -89,7 +89,7 @@
       
 
 
-<p>You will probably be intrigued by the title of this post. In this notebook Ido not want to present a fancy data science trick or to test a novel technique. I would simply like to tell a story. A story about how data science can be used to make bad decisions. “How can this be?” you might ask. Everyone has been saying that data is the way to unlock insights to gain a competitive advantage. Well, it is true. But it is also true that data can be used decisions that can actually hurt your business. There are many possible reasons you could think of (and you might even have experienced some of them). The story I am about to tell won’t be about bad algorithms or bad data. It will be about thinking about data as simply</p>
+<p>You will probably be intrigued by the title of this post. In this notebook I do not want to present a fancy data science trick or to test a novel technique. I would simply like to tell a story. A story about how data science can be used to make bad decisions. “How can this be?” you might ask. Everyone has been saying that data is the way to unlock insights to gain a competitive advantage. Well, it is true. But it is also true that data can be used to make decisions that can actually hurt your business. There are many possible reasons you could think of (and you might even have experienced some of them). The story I am about to tell won’t be about bad algorithms or bad data. It will be about thinking about data as simply</p>
 <p><span class="math display">\[
 \text{data in} \rightarrow \text{ML model} \rightarrow \text{data out} \rightarrow \text{decision}
 \]</span></p>
@@ -828,7 +828,7 @@ g.fig.suptitle(
 )
 </code></pre>
 <pre><code>0.07705031597862955</code></pre>
-<p>However, how to interpret this value in terms of dollars? Shortly about start thinking about what and how to report the results to the marketing team, data scientist C came and strongly suggested to also control for loyalty as the discount strategy was designed to define (target?) loyal customers. Data scientist A and B agreed, but they were not sure about how to do this. To get some inspiration, they looked at some additional descriptive statsitics and plots splitting by loyalty level.</p>
+<p>However, how to interpret this value in terms of dollars? Shortly about start thinking about what and how to report the results to the marketing team, data scientist C came and strongly suggested to also control for loyalty as the discount strategy was designed to define (target?) loyal customers. Data scientist A and B agreed, but they were not sure about how to do this. To get some inspiration, they looked at some additional descriptive statitics and plots splitting by loyalty level.</p>
 <pre class="python"><code>g = sns.displot(
     data=data,
     x=&quot;sales&quot;,
@@ -863,7 +863,7 @@ g.fig.suptitle(&quot;Sales distribution by discount and loyalty&quot;, y=1.05, f
 )
 </code></pre>
 <pre><code>12.631180501353883</code></pre>
-<p>In view of the sales distribution and the expectation of the experiments, this looks way to good to be true. The data scientist were very hesitant to recommend pushing discount to non-loyal customers as a result of a <span class="math inline">\(12\$\)</span> uplift on sales. Stakeholders would probably not buy this as the overall sales per user mean was around <span class="math inline">\(20\$\)</span>.</p>
+<p>In view of the sales distribution and the expectation of the experiments, this looks way to good to be true. The data scientist were very hesitant to recommend pushing discount to non-loyal customers as a result of a <span class="math inline">\(12\$\)</span> uplift on sales. Stakeholders would probably not buy this as the overall average sales per user was around <span class="math inline">\(20\$\)</span>.</p>
 <p>Data scientist B noticed that the plots above did not factor in the <code>visits</code> variable. Hence, they decided to run the analogous plots on the <code>sales_per_visit</code> variable:</p>
 <pre class="python"><code>g = sns.displot(
     data=data,
@@ -899,9 +899,9 @@ g.fig.suptitle(
 <h2>A Simple Bayesian Linear Regression</h2>
 <p>At this points the three data scientist were very confused as they had found contradictory results regarding the discount effect on sales. At this point data scientist D came with a very reasonable suggestion:</p>
 <blockquote>
-<p>Instead of trying to find the best way to report the results, why don’t we try to model the data through a linear model? This way we can all the control variables as covariates. We can even use bayesian statistics to present our estimation with uncertainty.</p>
+<p>Instead of trying to find the best way to report the results, why don’t we try to model the data through a linear model? This way, we can include all the control variables as covariates. We can even use bayesian statistics to present our estimation with uncertainty.</p>
 </blockquote>
-<p>Everyone agreed and they decided to fit a simple bayesian linear regression model. The data scientist ere familiar with the <a href="https://arxiv.org/abs/2011.01808">bayesian workflow</a>. Here is what they did:</p>
+<p>Everyone agreed and they decided to fit a simple Bayesian linear regression model. The data scientist ere familiar with the <a href="https://arxiv.org/abs/2011.01808">bayesian workflow</a>. Here is what they did:</p>
 <div id="specify-the-model" class="section level3">
 <h3>Specify the Model</h3>
 <pre class="python"><code># set priors
@@ -1223,12 +1223,12 @@ ax.set(title=&quot;Complete Model - Posterior Predictive&quot;)
 </div>
 <div id="a-machine-learning-approach" class="section level2">
 <h2>A Machine Learning Approach</h2>
-<p>Fornutately, data scientist E came with an alternative approach:</p>
+<p>Fortunately, data scientist E came with an alternative approach:</p>
 <blockquote>
 <p>You folks are trying to make sense of complex relationships by looking at simple plots and summary statistics. Why don’t you try to fit a machine learning model to the data and see what happens? This way we can simply let the data and the model figure out the relationships between the variables. We can do a post-processing on the predictions using, for example, <a href="https://scikit-learn.org/stable/modules/partial_dependence.html">partial dependency plots</a>: which <em>show the marginal effect one or two features have on the predicted outcome of a machine learning model</em>. (see <a href="https://christophm.github.io/interpretable-ml-book/pdp.html">here</a>)</p>
 </blockquote>
 <p>Everyone was thrilled! They would impress everyone with a machine learning model 🤓!</p>
-<p>The strategy was now simple: train a non-linear machine learning model (as they were expecting complex relationships) and use partial dependency plots too estimate the discount effect. As good data scientists, they would also use cross-validation to avoid over-fitting, despite the fact they were not interested in out-of-sample predictions.</p>
+<p>The strategy was now simple: train a non-linear machine learning model (as they were expecting complex relationships) and use partial dependency plots to estimate the discount effect. As good data scientists, they would also use cross-validation to avoid over-fitting, despite the fact they were not interested in out-of-sample predictions.</p>
 <pre class="python"><code># specify variables.
 # we use all the variables in the dataset to reduce the variance of
 # the estimates (what could go wrong right ¯\_(ツ)_/¯ ?).
