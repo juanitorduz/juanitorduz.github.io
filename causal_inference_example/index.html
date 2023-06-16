@@ -1,0 +1,1965 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Using Data Science for Bad Decision-Making: A Case Study - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Using Data Science for Bad Decision-Making: A Case Study - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">26 min read</span>
+    
+
+    <h1 class="article-title">Using Data Science for Bad Decision-Making: A Case Study</h1>
+
+    
+    <span class="article-date">2023-06-16</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>You will probably be intrigued by the title of this post. In this notebook Ido not want to present a fancy data science trick or to test a novel technique. I would simply like to tell a story. A story about how data science can be used to make bad decisions. “How can this be?” you might ask. Everyone has been saying that data is the way to unlock insights to gain a competitive advantage. Well, it is true. But it is also true that data can be used decisions that can actually hurt your business. There are many possible reasons you could think of (and you might even have experienced some of them). The story I am about to tell won’t be about bad algorithms or bad data. It will be about thinking about data as simply</p>
+<p><span class="math display">\[
+\text{data in} \rightarrow \text{ML model} \rightarrow \text{data out} \rightarrow \text{decision}
+\]</span></p>
+<p>instead of thinking about the data generating process. In other words, it will be about not thinking about <strong>causality</strong>.</p>
+<div id="the-business-problem" class="section level3">
+<h3>The Business Problem</h3>
+<p>The story begins in a fast paced startup. The company is growing fast and the marketing team is looking for ways to increase the sales from existing customers by making them buy more. The main idea is to unlock the potential of the customer based through incentives, in this case a discount. We of course want to measure the effect of the discount on the customer’s behavior. Still, they do not want to waste money giving discounts to users which are not valuable. As always, it is about return on investment (ROI). Without going into specifics about the nature of the discount, it has been designed to provide a positive return on investment if the customer buys more than <span class="math inline">\(1\$\)</span> as a result of the discount. How can we measure the effect of the discount and make sure our experiment has a positive ROI? The marketing team came up with the following strategy:</p>
+<ul>
+<li>Select a sample of existing customers from the same cohort.</li>
+<li>Set a test window of 1 month.</li>
+<li>Look into the historical data of web visits from the last month. The hypothesis is that web visits are a good proxy for the customer’s interest in the product.</li>
+<li>For customers with a high number of web visits, send them a discount. There will be a hold out group which will not receive the discount within the potential valuable customers based on the number of web visits. For customers with a low number of web visits, do not send them a discount (the marketing team wants to report a positive ROI, so they do not want to waste money on customers which are not valuable). Still, they want to use them to measure the effect of the discount.</li>
+<li>We also want to use the results of the test to cluster tag <em>loyal</em> customers. These are customers which got a discount (since they showed potential interest in the product) and customers with exceptional sales numbers even if they did not get a discount. The idea is to use this information to target them in the future if the discount strategy is positive.</li>
+</ul>
+</div>
+<div id="the-data" class="section level3">
+<h3>The Data</h3>
+<p>The team collected data from the experiment above and asked the data science team to analyze it and provide insights. In particular, they want to know if they should keep the discount strategy. The data consists of the following fields:</p>
+<ul>
+<li><code>visits</code>: Number of visits to the website during the test window.</li>
+<li><code>discount</code>: Whether the customer received a discount or not.</li>
+<li><code>is_loyal</code>: Whether the customer is loyal or not according to the definition above.</li>
+<li><code>sales</code>: Sales in <span class="math inline">\(\$\)</span> during the test window.</li>
+</ul>
+</div>
+<div id="the-analysis" class="section level3">
+<h3>The Analysis</h3>
+<p>Now that the context, objectives and data are clear, let’s look into the story about a relatively innocent analysis which turn out to be a pain and whose outcome and final decision was not the best one. But hey, do not worry, we will learn from it!</p>
+<hr />
+</div>
+<div id="part-1-the-analysis-story" class="section level1">
+<h1>Part 1: The Analysis Story</h1>
+<p>On this first part we describe the story behind the discount analysis by the data science team.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<p>Data scientist A was the one in charge of preparing the environment and collecting the data. As an important best practice, they fixed a global seed in order to make sure every part of the analysis was reproducible so that the outcomes are not affected by pure randomness. In addition all the required packages were listed from the start (reproducible python environment).</p>
+<pre class="python"><code>import arviz as az
+import bambi as bmb
+import graphviz as gr
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+import seaborn as sns
+from scipy.stats import randint, uniform
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.inspection import PartialDependenceDisplay
+from sklearn.model_selection import RandomizedSearchCV
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;causality&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>They pulled the data from a csv file.</p>
+<pre class="python"><code>data = pd.read_csv(&quot;../data/sales_dag.csv&quot;)
+
+data.head()
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+visits
+</th>
+<th>
+discount
+</th>
+<th>
+is_loyal
+</th>
+<th>
+sales
+</th>
+<th>
+sales_per_visit
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+12
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+13.348302
+</td>
+<td>
+1.112359
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+26
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+21.701250
+</td>
+<td>
+0.834663
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+13
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+14.700405
+</td>
+<td>
+1.130800
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+24
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+20.377336
+</td>
+<td>
+0.849056
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+14
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+12.633725
+</td>
+<td>
+0.902409
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>data.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 700 entries, 0 to 699
+Data columns (total 5 columns):
+ #   Column           Non-Null Count  Dtype  
+---  ------           --------------  -----  
+ 0   visits           700 non-null    int64  
+ 1   discount         700 non-null    int64  
+ 2   is_loyal         700 non-null    int64  
+ 3   sales            700 non-null    float64
+ 4   sales_per_visit  700 non-null    float64
+dtypes: float64(2), int64(3)
+memory usage: 27.5 KB</code></pre>
+<p>No missing values and features seem to be in the correct format.</p>
+</div>
+<div id="exploratory-data-analysis" class="section level2">
+<h2>Exploratory Data Analysis</h2>
+<p>As part of the project scope, the data science team in charge of the analysis was asked to provide a summary of the data. The team was also asked to provide a visualization of the data to help the marketing team understand the data better. Data scientist A took over this task. They started by looking at the share of customers which received a discount:</p>
+<pre class="python"><code>data[&quot;discount&quot;].value_counts() / len(data)</code></pre>
+<pre><code>discount
+1    0.74
+0    0.26
+Name: count, dtype: float64</code></pre>
+<p>Similarly for the share of customers which are loyal:</p>
+<pre class="python"><code>data[&quot;is_loyal&quot;].value_counts() / len(data)</code></pre>
+<pre><code>is_loyal
+1    0.75
+0    0.25
+Name: count, dtype: float64</code></pre>
+<p>To understand these features better, they also looked at a cross-tab table:</p>
+<pre class="python"><code>pd.crosstab(data[&quot;discount&quot;], data[&quot;is_loyal&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+is_loyal
+</th>
+<th>
+0
+</th>
+<th>
+1
+</th>
+</tr>
+<tr>
+<th>
+discount
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+175
+</td>
+<td>
+7
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+0
+</td>
+<td>
+518
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Note that all customers with discount are loyal (as required) and that there are loyal users which did not receive a discount. This is because they had exceptional sales numbers. Let’s verify this:</p>
+<pre class="python"><code>data.query(&quot;discount == 0&quot;).sort_values(by=&quot;sales&quot;, ascending=False).head(10)
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+visits
+</th>
+<th>
+discount
+</th>
+<th>
+is_loyal
+</th>
+<th>
+sales
+</th>
+<th>
+sales_per_visit
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+566
+</th>
+<td>
+33
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+31.721689
+</td>
+<td>
+0.961263
+</td>
+</tr>
+<tr>
+<th>
+204
+</th>
+<td>
+33
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+28.311111
+</td>
+<td>
+0.857912
+</td>
+</tr>
+<tr>
+<th>
+365
+</th>
+<td>
+33
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+28.081634
+</td>
+<td>
+0.850959
+</td>
+</tr>
+<tr>
+<th>
+49
+</th>
+<td>
+33
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+27.790644
+</td>
+<td>
+0.842141
+</td>
+</tr>
+<tr>
+<th>
+280
+</th>
+<td>
+29
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+27.581146
+</td>
+<td>
+0.951074
+</td>
+</tr>
+<tr>
+<th>
+545
+</th>
+<td>
+27
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+26.255330
+</td>
+<td>
+0.972420
+</td>
+</tr>
+<tr>
+<th>
+104
+</th>
+<td>
+29
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+26.217525
+</td>
+<td>
+0.904053
+</td>
+</tr>
+<tr>
+<th>
+361
+</th>
+<td>
+28
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+24.094104
+</td>
+<td>
+0.860504
+</td>
+</tr>
+<tr>
+<th>
+651
+</th>
+<td>
+28
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+24.064587
+</td>
+<td>
+0.859450
+</td>
+</tr>
+<tr>
+<th>
+493
+</th>
+<td>
+27
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+24.006295
+</td>
+<td>
+0.889122
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The loyal customers are the top ones in terms of sales. This is good news. It means that the definition of loyal customers is consistent with the data.</p>
+<p>In order to have orders of magnitude for the sales, the data scientist provided some summary statistics table:</p>
+<pre class="python"><code>data[&quot;sales&quot;].describe()</code></pre>
+<pre><code>count    700.000000
+mean      19.400159
+std        4.879144
+min        2.088539
+25%       16.443930
+50%       19.495469
+75%       22.500405
+max       36.136312
+Name: sales, dtype: float64</code></pre>
+<p>To have a better glimpse of the data, the data scientist also provided a histogram of the sales:</p>
+<pre class="python"><code>g = sns.displot(
+    data=data, x=&quot;sales&quot;, kind=&quot;hist&quot;, kde=True, fill=True, height=5, aspect=1.5
+)
+g.fig.suptitle(&quot;Sales Distribution&quot;, y=1.05, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_19_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="descriptive-statistics" class="section level2">
+<h2>Descriptive Statistics</h2>
+<p>Data scientist A feels comfortable with the data and decides to move on to the discount analysis. The first thing they did was to split the sales distribution by discount group:</p>
+<pre class="python"><code>g = sns.displot(
+    data=data,
+    x=&quot;sales&quot;,
+    kind=&quot;hist&quot;,
+    hue=&quot;discount&quot;,
+    kde=True,
+    fill=True,
+    height=5,
+    aspect=1.5,
+)
+g.fig.suptitle(&quot;Sales Distribution by Discount Group&quot;, y=1.05, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_22_1.png" style="width: 900px;"/>
+</center>
+<p>It looks customers with discount have higher sales. Data scientist A is optimistic with this initial result. To quantify this, they computed the difference in means:</p>
+<pre class="python"><code>data.groupby([&quot;discount&quot;]).agg({&quot;sales&quot;: &quot;mean&quot;})
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+sales
+</th>
+</tr>
+<tr>
+<th>
+discount
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+15.848788
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+20.647938
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>(
+    data.query(&quot;discount == 1&quot;)[&quot;sales&quot;].mean()
+    - data.query(&quot;discount == 0&quot;)[&quot;sales&quot;].mean()
+)</code></pre>
+<pre><code>4.799150094279289</code></pre>
+<p>Wow! We see <span class="math inline">\(4.8\$\)</span> mean uplift! This is great news. The discount strategy seems to be working. Data scientist A is happy with the results and decides to get feedback from the rest of the data science team.</p>
+<p>Data scientist B is not so happy with the results. They think that the uplift is too good to be true (based on domain knowledge and the sales distributions 🤔). When thinking about reasons for such a high uplift, they realized the discount assignment was not at random. It was based on the number of web visits (remember the marketing plan?). This means that the discount group is not comparable to the control group completely! They decide to plot sales against web visits per discount group:</p>
+<pre class="python"><code>g = sns.relplot(data=data, x=&quot;visits&quot;, y=&quot;sales&quot;, hue=&quot;is_loyal&quot;, col=&quot;discount&quot;)
+g.fig.suptitle(&quot;Sales vs. Visits&quot;, y=1.05, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_27_1.png" style="width: 1000px;"/>
+</center>
+<p>Indeed, they realize they should probably adjust for the number of web visits. A natural metric is sales per web visit. Let’s compute it:</p>
+<pre class="python"><code>data.groupby([&quot;discount&quot;]).agg({&quot;sales_per_visit&quot;: &quot;mean&quot;})
+</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+sales_per_visit
+</th>
+</tr>
+<tr>
+<th>
+discount
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+0.861243
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+0.938293
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The mean value is higher for the discount group. As always, they also looked at the distributions:</p>
+<pre class="python"><code>g = sns.displot(
+    data=data,
+    x=&quot;sales_per_visit&quot;,
+    kind=&quot;hist&quot;,
+    hue=&quot;discount&quot;,
+    kde=True,
+    fill=True,
+    height=5,
+    aspect=1.5,
+)
+g.fig.suptitle(
+    &quot;Sales per Web Visits Distribution by Discount Group&quot;, y=1.05, fontsize=16
+)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_31_1.png" style="width: 900px;"/>
+</center>
+<p>For both data scientist the results look much better, but they were unsure about which uplift to report. They thought about the difference in means:</p>
+<pre class="python"><code>(
+    data.query(&quot;discount == 1&quot;)[&quot;sales_per_visit&quot;].mean()
+    - data.query(&quot;discount == 0&quot;)[&quot;sales_per_visit&quot;].mean()
+)
+</code></pre>
+<pre><code>0.07705031597862955</code></pre>
+<p>However, how to interpret this value in terms of dollars? Shortly about start thinking about what and how to report the results to the marketing team, data scientist C came and strongly suggested to also control for loyalty as the discount strategy was designed to define (target?) loyal customers. Data scientist A and B agreed, but they were not sure about how to do this. To get some inspiration, they looked at some additional descriptive statsitics and plots splitting by loyalty level.</p>
+<pre class="python"><code>g = sns.displot(
+    data=data,
+    x=&quot;sales&quot;,
+    hue=&quot;discount&quot;,
+    row=&quot;is_loyal&quot;,
+    kde=True,
+    height=3.5,
+    aspect=2.5,
+)
+
+for i, ax in enumerate(g.axes.flatten()):
+    df = data.query(f&quot;is_loyal == {i}&quot;)
+    for discount in range(2):
+        mean = df.query(f&quot;discount == {discount}&quot;)[&quot;sales&quot;].mean()
+        ax.axvline(
+            x=df.query(f&quot;discount == {discount}&quot;)[&quot;sales&quot;].mean(),
+            color=f&quot;C{discount}&quot;,
+            linestyle=&quot;--&quot;,
+            label=f&quot;mean = {mean: .3f}&quot;,
+        )
+        ax.legend(loc=&quot;upper right&quot;)
+
+g.fig.suptitle(&quot;Sales distribution by discount and loyalty&quot;, y=1.05, fontsize=16)
+</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_35_1.png" style="width: 1000px;"/>
+</center>
+<p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the discounted group! How could this be? Could it be that the discount strategy is working only for non-loyal customers? According to the plot above, filtering for non loyal customers would yield to a positive uplift:</p>
+<pre class="python"><code>(
+    data.query(&quot;discount == 0 &amp; is_loyal == 1&quot;)[&quot;sales&quot;].mean()
+    - data.query(&quot;discount == 0 &amp; is_loyal == 0&quot;)[&quot;sales&quot;].mean()
+)
+</code></pre>
+<pre><code>12.631180501353883</code></pre>
+<p>In view of the sales distribution and the expectation of the experiments, this looks way to good to be true. The data scientist were very hesitant to recommend pushing discount to non-loyal customers as a result of a <span class="math inline">\(12\$\)</span> uplift on sales. Stakeholders would probably not buy this as the overall sales per user mean was around <span class="math inline">\(20\$\)</span>.</p>
+<p>Data scientist B noticed that the plots above did not factor in the <code>visits</code> variable. Hence, they decided to run the analogous plots on the <code>sales_per_visit</code> variable:</p>
+<pre class="python"><code>g = sns.displot(
+    data=data,
+    x=&quot;sales_per_visit&quot;,
+    hue=&quot;discount&quot;,
+    row=&quot;is_loyal&quot;,
+    kde=True,
+    height=3.5,
+    aspect=2.5,
+)
+
+for i, ax in enumerate(g.axes.flatten()):
+    df = data.query(f&quot;is_loyal == {i}&quot;)
+    for discount in range(2):
+        mean = df.query(f&quot;discount == {discount}&quot;)[&quot;sales_per_visit&quot;].mean()
+        ax.axvline(
+            x=mean,
+            color=f&quot;C{discount}&quot;,
+            linestyle=&quot;--&quot;,
+            label=f&quot;mean = {mean: .3f}&quot;,
+        )
+        ax.legend(loc=&quot;upper right&quot;)
+
+g.fig.suptitle(
+    &quot;Sales per visit distribution by discount and loyalty&quot;, y=1.05, fontsize=16
+)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_39_1.png" style="width: 1000px;"/>
+</center>
+<p>This plots shows a different story! It seems that loyal customers do react positively to the discount strategy. Also, when just looking to the non-discounted group, they saw the loyal customers had a higher <code>sales_per_visit</code> value.</p>
+</div>
+<div id="a-simple-bayesian-linear-regression" class="section level2">
+<h2>A Simple Bayesian Linear Regression</h2>
+<p>At this points the three data scientist were very confused as they had found contradictory results regarding the discount effect on sales. At this point data scientist D came with a very reasonable suggestion:</p>
+<blockquote>
+<p>Instead of trying to find the best way to report the results, why don’t we try to model the data through a linear model? This way we can all the control variables as covariates. We can even use bayesian statistics to present our estimation with uncertainty.</p>
+</blockquote>
+<p>Everyone agreed and they decided to fit a simple bayesian linear regression model. The data scientist ere familiar with the <a href="https://arxiv.org/abs/2011.01808">bayesian workflow</a>. Here is what they did:</p>
+<div id="specify-the-model" class="section level3">
+<h3>Specify the Model</h3>
+<pre class="python"><code># set priors
+complete_model_priors = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=10),
+    &quot;visits&quot;: bmb.Prior(
+        &quot;Gamma&quot;, mu=0.9, sigma=0.3
+    ),  # visits has s positive relation with sales
+    &quot;discount&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=5),
+    &quot;is_loyal&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=5),
+    &quot;sigma&quot;: bmb.Prior(&quot;Exponential&quot;, lam=1 / 2),
+}
+# model sales as a function of discount, visits and loyalty
+complete_model = bmb.Model(
+    formula=&quot;sales ~ discount + visits + is_loyal&quot;,
+    data=data,
+    family=&quot;gaussian&quot;,
+    link=&quot;identity&quot;,
+    priors=complete_model_priors,
+)
+
+complete_model</code></pre>
+<pre><code>       Formula: sales ~ discount + visits + is_loyal
+        Family: gaussian
+          Link: mu = identity
+  Observations: 700
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 10.0)
+            discount ~ Normal(mu: 0.0, sigma: 5.0)
+            visits ~ Gamma(mu: 0.9, sigma: 0.3)
+            is_loyal ~ Normal(mu: 0.0, sigma: 5.0)
+        
+        Auxiliary parameters
+            sales_sigma ~ Exponential(lam: 0.5)</code></pre>
+<pre class="python"><code>complete_model.build()
+complete_model.graph()</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_44_0.svg" style="width: 700px;"/>
+</center>
+</div>
+<div id="prior-predictive-checks" class="section level3">
+<h3>Prior Predictive checks</h3>
+<pre class="python"><code>complete_model_prior_predictive = complete_model.prior_predictive(
+    draws=1_000, random_seed=rng
+)
+</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(data=complete_model_prior_predictive, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
+ax.set(title=&quot;Complete Model - Prior Predictive&quot;)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_47_2.png" style="width: 900px;"/>
+</center>
+<p>The prior specification seems reasonable.</p>
+</div>
+<div id="model-fit" class="section level3">
+<h3>Model Fit</h3>
+<pre class="python"><code>complete_model_idata = complete_model.fit(
+    draws=4_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+)</code></pre>
+</div>
+<div id="posterior-distributions-and-diagnostics" class="section level3">
+<h3>Posterior Distributions and Diagnostics</h3>
+<p>We now look into the posterior distribution of the parameters and some model diagnostics.</p>
+<pre class="python"><code>az.summary(data=complete_model_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+1.113
+</td>
+<td>
+0.304
+</td>
+<td>
+0.562
+</td>
+<td>
+1.700
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+15908.0
+</td>
+<td>
+14157.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+discount
+</th>
+<td>
+-0.272
+</td>
+<td>
+0.719
+</td>
+<td>
+-1.612
+</td>
+<td>
+1.093
+</td>
+<td>
+0.007
+</td>
+<td>
+0.006
+</td>
+<td>
+9587.0
+</td>
+<td>
+9945.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+is_loyal
+</th>
+<td>
+2.258
+</td>
+<td>
+0.740
+</td>
+<td>
+0.855
+</td>
+<td>
+3.639
+</td>
+<td>
+0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+9773.0
+</td>
+<td>
+10658.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sales_sigma
+</th>
+<td>
+1.891
+</td>
+<td>
+0.051
+</td>
+<td>
+1.796
+</td>
+<td>
+1.986
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+17512.0
+</td>
+<td>
+12699.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+visits
+</th>
+<td>
+0.792
+</td>
+<td>
+0.015
+</td>
+<td>
+0.765
+</td>
+<td>
+0.821
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+15168.0
+</td>
+<td>
+11925.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=complete_model_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Complete Model - Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_53_1.png" style="width: 1000px;"/>
+</center>
+<p>It seems the discount distribution contains zero and the posterior predictive mean effect is slightly negative. We can zoom in into the posterior distribution of the discount effect:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(data=complete_model_idata, var_names=[&quot;discount&quot;], ref_val=0, ax=ax)
+</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_55_1.png" style="width: 900px;"/>
+</center>
+<p>The data scientist were puzzled about the result and unsure how to communicate this slight negative effect to the marketing team.</p>
+</div>
+<div id="posterior-predictive-checks" class="section level3">
+<h3>Posterior Predictive Checks</h3>
+<pre class="python"><code>complete_model.predict(idata=complete_model_idata, kind=&quot;pps&quot;, inplace=True)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(
+    data=complete_model_idata,
+    group=&quot;posterior&quot;,
+    kind=&quot;kde&quot;,
+    num_pp_samples=2_000,
+    random_seed=seed,
+    ax=ax,
+)
+ax.set(title=&quot;Complete Model - Posterior Predictive&quot;)
+</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_59_1.png" style="width: 900px;"/>
+</center>
+<p>The model posterior predictive looks good. The model seems to be able to capture the data.</p>
+</div>
+</div>
+<div id="a-machine-learning-approach" class="section level2">
+<h2>A Machine Learning Approach</h2>
+<p>Fornutately, data scientist E came with an alternative approach:</p>
+<blockquote>
+<p>You folks are trying to make sense of complex relationships by looking at simple plots and summary statistics. Why don’t you try to fit a machine learning model to the data and see what happens? This way we can simply let the data and the model figure out the relationships between the variables. We can do a post-processing on the predictions using, for example, <a href="https://scikit-learn.org/stable/modules/partial_dependence.html">partial dependency plots</a>: which <em>show the marginal effect one or two features have on the predicted outcome of a machine learning model</em>. (see <a href="https://christophm.github.io/interpretable-ml-book/pdp.html">here</a>)</p>
+</blockquote>
+<p>Everyone was thrilled! They would impress everyone with a machine learning model 🤓!</p>
+<p>The strategy was now simple: train a non-linear machine learning model (as they were expecting complex relationships) and use partial dependency plots too estimate the discount effect. As good data scientists, they would also use cross-validation to avoid over-fitting, despite the fact they were not interested in out-of-sample predictions.</p>
+<pre class="python"><code># specify variables.
+# we use all the variables in the dataset to reduce the variance of
+# the estimates (what could go wrong right ¯\_(ツ)_/¯ ?).
+numeric_features = [&quot;visits&quot;]
+categorical_features = [&quot;discount&quot;, &quot;is_loyal&quot;]
+features = numeric_features + categorical_features
+
+# define the model data.
+X = data.assign(
+    discount=lambda x: pd.Categorical(values=x[&quot;discount&quot;], categories=[0, 1]),
+    is_loyal=lambda x: pd.Categorical(values=x[&quot;is_loyal&quot;], categories=[0, 1]),
+).filter(items=features)
+
+y = data[&quot;sales&quot;].to_numpy()
+
+# specify model and hyperparameters.
+ml_model = RandomizedSearchCV(
+    estimator=GradientBoostingRegressor(random_state=seed),
+    param_distributions=dict(
+        learning_rate=uniform(loc=0.01, scale=0.1),
+        n_estimators=randint(low=100, high=1_000),
+        max_depth=randint(low=3, high=9),
+    ),
+    cv=8,
+    n_iter=12,
+    random_state=seed,
+)
+
+# fit the model.
+ml_model.fit(X=X, y=y)
+</code></pre>
+<center>
+<style>#sk-container-id-1 {color: black;background-color: white;}#sk-container-id-1 pre{padding: 0;}#sk-container-id-1 div.sk-toggleable {background-color: white;}#sk-container-id-1 label.sk-toggleable__label {cursor: pointer;display: block;width: 100%;margin-bottom: 0;padding: 0.3em;box-sizing: border-box;text-align: center;}#sk-container-id-1 label.sk-toggleable__label-arrow:before {content: "▸";float: left;margin-right: 0.25em;color: #696969;}#sk-container-id-1 label.sk-toggleable__label-arrow:hover:before {color: black;}#sk-container-id-1 div.sk-estimator:hover label.sk-toggleable__label-arrow:before {color: black;}#sk-container-id-1 div.sk-toggleable__content {max-height: 0;max-width: 0;overflow: hidden;text-align: left;background-color: #f0f8ff;}#sk-container-id-1 div.sk-toggleable__content pre {margin: 0.2em;color: black;border-radius: 0.25em;background-color: #f0f8ff;}#sk-container-id-1 input.sk-toggleable__control:checked~div.sk-toggleable__content {max-height: 200px;max-width: 100%;overflow: auto;}#sk-container-id-1 input.sk-toggleable__control:checked~label.sk-toggleable__label-arrow:before {content: "▾";}#sk-container-id-1 div.sk-estimator input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-1 div.sk-label input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-1 input.sk-hidden--visually {border: 0;clip: rect(1px 1px 1px 1px);clip: rect(1px, 1px, 1px, 1px);height: 1px;margin: -1px;overflow: hidden;padding: 0;position: absolute;width: 1px;}#sk-container-id-1 div.sk-estimator {font-family: monospace;background-color: #f0f8ff;border: 1px dotted black;border-radius: 0.25em;box-sizing: border-box;margin-bottom: 0.5em;}#sk-container-id-1 div.sk-estimator:hover {background-color: #d4ebff;}#sk-container-id-1 div.sk-parallel-item::after {content: "";width: 100%;border-bottom: 1px solid gray;flex-grow: 1;}#sk-container-id-1 div.sk-label:hover label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-1 div.sk-serial::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: 0;}#sk-container-id-1 div.sk-serial {display: flex;flex-direction: column;align-items: center;background-color: white;padding-right: 0.2em;padding-left: 0.2em;position: relative;}#sk-container-id-1 div.sk-item {position: relative;z-index: 1;}#sk-container-id-1 div.sk-parallel {display: flex;align-items: stretch;justify-content: center;background-color: white;position: relative;}#sk-container-id-1 div.sk-item::before, #sk-container-id-1 div.sk-parallel-item::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: -1;}#sk-container-id-1 div.sk-parallel-item {display: flex;flex-direction: column;z-index: 1;position: relative;background-color: white;}#sk-container-id-1 div.sk-parallel-item:first-child::after {align-self: flex-end;width: 50%;}#sk-container-id-1 div.sk-parallel-item:last-child::after {align-self: flex-start;width: 50%;}#sk-container-id-1 div.sk-parallel-item:only-child::after {width: 0;}#sk-container-id-1 div.sk-dashed-wrapped {border: 1px dashed gray;margin: 0 0.4em 0.5em 0.4em;box-sizing: border-box;padding-bottom: 0.4em;background-color: white;}#sk-container-id-1 div.sk-label label {font-family: monospace;font-weight: bold;display: inline-block;line-height: 1.2em;}#sk-container-id-1 div.sk-label-container {text-align: center;}#sk-container-id-1 div.sk-container {/* jupyter's `normalize.less` sets `[hidden] { display: none; }` but bootstrap.min.css set `[hidden] { display: none !important; }` so we also need the `!important` here to be able to override the default hidden behavior on the sphinx rendered scikit-learn.org. See: https://github.com/scikit-learn/scikit-learn/issues/21755 */display: inline-block !important;position: relative;}#sk-container-id-1 div.sk-text-repr-fallback {display: none;}</style>
+<div id="sk-container-id-1" class="sk-top-container">
+<div class="sk-text-repr-fallback">
+<pre>RandomizedSearchCV(cv=8, estimator=GradientBoostingRegressor(random_state=975),
+                   n_iter=12,
+                   param_distributions={&#x27;learning_rate&#x27;: &lt;scipy.stats._distn_infrastructure.rv_continuous_frozen object at 0x11221fca0&gt;,
+                                        &#x27;max_depth&#x27;: &lt;scipy.stats._distn_infrastructure.rv_discrete_frozen object at 0x14e3e1210&gt;,
+                                        &#x27;n_estimators&#x27;: &lt;scipy.stats._distn_infrastructure.rv_discrete_frozen object at 0x11221feb0&gt;},
+                   random_state=975)</pre>
+<b>In a Jupyter environment, please rerun this cell to show the HTML representation or trust the notebook. <br />On GitHub, the HTML representation is unable to render, please try loading this page with nbviewer.org.</b>
+</div>
+<div class="sk-container" hidden="">
+<div class="sk-item sk-dashed-wrapped">
+<div class="sk-label-container">
+<div class="sk-label sk-toggleable">
+<input class="sk-toggleable__control sk-hidden--visually" id="sk-estimator-id-1" type="checkbox" ><label for="sk-estimator-id-1" class="sk-toggleable__label sk-toggleable__label-arrow">RandomizedSearchCV</label>
+<div class="sk-toggleable__content">
+<pre>RandomizedSearchCV(cv=8, estimator=GradientBoostingRegressor(random_state=975),
+                   n_iter=12,
+                   param_distributions={&#x27;learning_rate&#x27;: &lt;scipy.stats._distn_infrastructure.rv_continuous_frozen object at 0x11221fca0&gt;,
+                                        &#x27;max_depth&#x27;: &lt;scipy.stats._distn_infrastructure.rv_discrete_frozen object at 0x14e3e1210&gt;,
+                                        &#x27;n_estimators&#x27;: &lt;scipy.stats._distn_infrastructure.rv_discrete_frozen object at 0x11221feb0&gt;},
+                   random_state=975)</pre>
+</div>
+</div>
+</div>
+<div class="sk-parallel">
+<div class="sk-parallel-item">
+<div class="sk-item">
+<div class="sk-label-container">
+<div class="sk-label sk-toggleable">
+<input class="sk-toggleable__control sk-hidden--visually" id="sk-estimator-id-2" type="checkbox" ><label for="sk-estimator-id-2" class="sk-toggleable__label sk-toggleable__label-arrow">estimator: GradientBoostingRegressor</label>
+<div class="sk-toggleable__content">
+<pre>GradientBoostingRegressor(random_state=975)</pre>
+</div>
+</div>
+</div>
+<div class="sk-serial">
+<div class="sk-item">
+<div class="sk-estimator sk-toggleable">
+<input class="sk-toggleable__control sk-hidden--visually" id="sk-estimator-id-3" type="checkbox" ><label for="sk-estimator-id-3" class="sk-toggleable__label sk-toggleable__label-arrow">GradientBoostingRegressor</label>
+<div class="sk-toggleable__content">
+<pre>GradientBoostingRegressor(random_state=975)</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</center>
+<p>The model was trained 🤖 successfully! Of course, it was important to at least check the model fit.</p>
+<pre class="python"><code># generate in-sample predictions
+y_pred = ml_model.predict(X=X)
+
+# plot true vs predicted values
+fig, ax = plt.subplots(figsize=(7, 6))
+sns.scatterplot(x=y, y=y_pred, color=&quot;C0&quot;, alpha=0.7, ax=ax)
+ax.axline(xy1=(10, 10), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.set(
+    title=&quot;ML Model - Actual vs Predicted Sales&quot;, xlabel=&quot;Actual&quot;, ylabel=&quot;Predicted&quot;
+)
+</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_64_1.png" style="width: 700px;"/>
+</center>
+<p>The predictions look ok. For example, the variance explained looks similar to the one from the linear model.</p>
+<p>Let’s move to the question of interest: the discount effect. The data scientist computed the partial dependency plot for the <code>discount</code> and <code>is_loyal</code> variables. They presented absolute and relative effects.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 6), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+for b in [False, True]:
+    PartialDependenceDisplay.from_estimator(
+        estimator=ml_model,
+        X=X,
+        features=categorical_features,
+        categorical_features=categorical_features,
+        centered=b,
+        random_state=seed,
+        ax=ax[int(b)],
+    )
+fig.suptitle(&quot;ML Model - Partial Dependence Plots&quot;, y=1.05, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_66_1.png" style="width: 1000px;"/>
+</center>
+<p>According to the machine learning model, the discount <strong>does have a positive effect on sales</strong>. The relative partial dependency plot hint that the additional sales driven by the discount are are around <span class="math inline">\(0.35\$\)</span>. This is less than the limit <span class="math inline">\(1\$\)</span> set by the marketing team to obtain a positive ROI.</p>
+</div>
+<div id="conclusions-and-recommendations" class="section level2">
+<h2>Conclusions and Recommendations</h2>
+<p>Based on the results from the linear model and the machine learning model, the data scientist decided to recommend the following:</p>
+<blockquote>
+<p><strong>Stop the discount strategy as on average it provides less than <span class="math inline">\(1\$\)</span> additional sales, which implies a negative ROI</strong>.</p>
+</blockquote>
+<hr />
+</div>
+</div>
+<div id="part-2-the-mistake-and-learnings" class="section level1">
+<h1>Part 2: The Mistake and Learnings</h1>
+<p>What if I told you that the true average discount effect is <span class="math inline">\(2\$\)</span> and therefore the best strategy is to keep the discount strategy? How do I know it? Well, I generated the data (see <a href="https://github.com/juanitorduz/website_projects/blob/master/Python/sales_dag.py">here</a>). Do not take me wrong, I generated the data exactly as it was designed to be from the requirements listed at the very beginning. So what went wrong? What did the data scientist miss? If you are thinking about using more sophisticated models, you are wrong. The problem is not the model, but the data understanding.</p>
+<p>Let me bring again the description of the campaign:</p>
+<ul>
+<li>Select a sample of existing customers from the same cohort.</li>
+<li>Set a test window of 1 month.</li>
+<li>Look into the historical data of web visits from the last month. The hypothesis is that web visits are a good proxy for the customer’s interest in the product.</li>
+<li>For customers with a high number of web visits, send them a discount. There will be a hold out group which will not receive the discount within the potential valuable customers based on the number of web visits. For customers with a low number of web visits, do not send them a discount (the marketing team wants to report a positive ROI, so they do not want to waste money on customers which are not valuable). Still, they want to use them to measure the effect of the discount.</li>
+<li>We also want to use the results of the test to cluster tag <em>loyal</em> customers. These are customers which got a discount (since they showed potential interest in the product) and customers with exceptional sales numbers even if they did not get a discount. The idea is to use this information to target them in the future if the discount strategy is positive.</li>
+</ul>
+<p>It is always recommended to truly understand the implications and assumptions of the data generating process. A data structure which visually an analytically can support this understanding is a DAG (directed acyclic graph). Here is the DAG for the data generating process of the campaign:</p>
+<pre class="python"><code>g = gr.Digraph()
+g.node(name=&quot;sales&quot;, label=&quot;sales&quot;, color=&quot;deepskyblue&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;discount&quot;, label=&quot;discount&quot;, color=&quot;deeppink&quot;, style=&quot;filled&quot;)
+g.edge(tail_name=&quot;discount&quot;, head_name=&quot;sales&quot;)
+g.edge(tail_name=&quot;visits&quot;, head_name=&quot;discount&quot;)
+g.edge(tail_name=&quot;visits&quot;, head_name=&quot;sales&quot;)
+g.edge(tail_name=&quot;discount&quot;, head_name=&quot;is_loyal&quot;)
+g.edge(tail_name=&quot;sales&quot;, head_name=&quot;is_loyal&quot;)
+g</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_70_0.svg" style="width: 300px;"/>
+</center>
+<p>The following are the main structural remarks from the DAG:</p>
+<ul>
+<li>Both the discounts (treatment) and sales (target) are affected by the number of web visits (proxy for customer’s interest in the product). This means that the number of web visits is a confounder variable.</li>
+<li>However, the loyalty of the customer is defined by both the discounts and the sales. This means that the loyalty is a collider variable.</li>
+</ul>
+<p>If this sounds strange to you, is ok, the causal inference jargon is not easy to understand at the beginning (please see the <strong>References</strong> section below). What is important is that the <code>visits</code> variable is a confounding variable which is important to control for because it is creating a bias as we are actively giving more discounts to more engaged users. However, on the other hand, the <code>is_loyal</code> variable is a collider variable which is creating an spurious relationship between the <code>discount</code> and <code>sales</code> variables. <strong>This was the data scientists mistake!</strong> Note that we do not care if we estimate effect with a linear model or a gradient boosting tree ensemble, the problem is the features we select for the model!</p>
+<div id="causal-bayesian-regression-model" class="section level2">
+<h2>Causal Bayesian Regression Model</h2>
+<p>In view of the remark above regarding <em>bad control</em> variables, let’s fit the same Bayesian linear regression model but now controlling for the <code>is_loyal</code> variable.</p>
+<div id="specify-the-model-1" class="section level3">
+<h3>Specify the Model</h3>
+<pre class="python"><code>causal_model_priors = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=10),
+    &quot;visits&quot;: bmb.Prior(
+        &quot;Gamma&quot;, mu=0.9, sigma=0.3
+    ),  # visits has s positive relation with sales
+    &quot;discount&quot;: bmb.Prior(&quot;Normal&quot;, mu=0, sigma=5),
+    &quot;sigma&quot;: bmb.Prior(&quot;Exponential&quot;, lam=1 / 2),
+}
+
+causal_model = bmb.Model(
+    formula=&quot;sales ~ discount + visits&quot;,
+    data=data,
+    family=&quot;gaussian&quot;,
+    link=&quot;identity&quot;,
+    priors=causal_model_priors,
+)
+
+causal_model
+</code></pre>
+<pre><code>       Formula: sales ~ discount + visits
+        Family: gaussian
+          Link: mu = identity
+  Observations: 700
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 10.0)
+            discount ~ Normal(mu: 0.0, sigma: 5.0)
+            visits ~ Gamma(mu: 0.9, sigma: 0.3)
+        
+        Auxiliary parameters
+            sales_sigma ~ Exponential(lam: 0.5)</code></pre>
+<pre class="python"><code>causal_model.build()
+causal_model.graph()</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_75_0.svg" style="width: 700px;"/>
+</center>
+</div>
+<div id="prior-predictive-checks-1" class="section level3">
+<h3>Prior Predictive Checks</h3>
+<p>For sanity checks, we look into the prior predictive distribution.</p>
+<pre class="python"><code>causal_model_prior_predictive = causal_model.prior_predictive(
+    draws=1_000, random_seed=rng
+)
+</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(data=causal_model_prior_predictive, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
+ax.set(title=&quot;Causal Model - Prior Predictive&quot;)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_78_1.png" style="width: 900px;"/>
+</center>
+<p>It looks ok!</p>
+</div>
+<div id="model-fit-1" class="section level3">
+<h3>Model Fit</h3>
+<p>We now fit the model.</p>
+<pre class="python"><code>causal_model_idata = causal_model.fit(
+    draws=4_000, chains=5, nuts_sampler=&quot;numpyro&quot;, random_seed=rng
+)</code></pre>
+</div>
+<div id="posterior-distributions-and-diagnostics-1" class="section level3">
+<h3>Posterior Distributions and Diagnostics</h3>
+<pre class="python"><code>az.summary(data=causal_model_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+0.986
+</td>
+<td>
+0.305
+</td>
+<td>
+0.389
+</td>
+<td>
+1.530
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+24630.0
+</td>
+<td>
+15742.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+discount
+</th>
+<td>
+1.852
+</td>
+<td>
+0.171
+</td>
+<td>
+1.541
+</td>
+<td>
+2.184
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+18262.0
+</td>
+<td>
+15417.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sales_sigma
+</th>
+<td>
+1.904
+</td>
+<td>
+0.051
+</td>
+<td>
+1.807
+</td>
+<td>
+1.999
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+19970.0
+</td>
+<td>
+14733.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+visits
+</th>
+<td>
+0.804
+</td>
+<td>
+0.015
+</td>
+<td>
+0.778
+</td>
+<td>
+0.833
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+20240.0
+</td>
+<td>
+15558.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=causal_model_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (10, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Causal Model - Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_84_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(data=causal_model_idata, var_names=[&quot;discount&quot;], ref_val=0, ax=ax)
+</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_85_1.png" style="width: 900px;"/>
+</center>
+<p>We see that the discount effect is now positive and the posterior predictive mean effect is around <span class="math inline">\(2\$\)</span> as expected!</p>
+</div>
+<div id="posterior-predictive-checks-1" class="section level3">
+<h3>Posterior Predictive Checks</h3>
+<pre class="python"><code>causal_model.predict(idata=causal_model_idata, kind=&quot;pps&quot;, inplace=True)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(
+    data=causal_model_idata,
+    group=&quot;posterior&quot;,
+    kind=&quot;kde&quot;,
+    num_pp_samples=2_000,
+    random_seed=seed,
+    ax=ax,
+)
+ax.set(title=&quot;Causal Model - Posterior Predictive&quot;)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_89_1.png" style="width: 900px;"/>
+</center>
+<p>Note that removing the collider variable <code>is_loyal</code> from the model does not affect the posterior predictive fit.</p>
+</div>
+</div>
+<div id="discount-estimation-comparison" class="section level2">
+<h2>Discount Estimation Comparison</h2>
+<p>We can now compare the discount effect estimates from the complete (non-causal) linear model and the causal linear model.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+
+az.plot_forest(
+    data=[complete_model_idata, causal_model_idata],
+    var_names=[&quot;discount&quot;],
+    model_names=[&quot;complete model&quot;, &quot;causal model&quot;],
+    combined=True,
+    ax=ax,
+)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_92_1.png" style="width: 800px;"/>
+</center>
+<p>Here we can appreciate the negative consequence of adding the bad control variable <code>is_loyal</code>. Moreover, observe that adding more features to the model does not translate to variance reduction!</p>
+</div>
+<div id="learnings" class="section level2">
+<h2>Learnings</h2>
+<p>Hopefully, this example shows the importance of understanding the data generating process and the assumptions behind it. In the example above, we saw how ignoring this aspect can lead to wrong conclusions which can actually hurt business decisions and potentially cost a lot of money. Here is a summary of the learnings:</p>
+<ul>
+<li>Understand the data generating process and the assumptions behind the causal relations (do not forget the potential unobservable variables, these can also create problems when ignored!).</li>
+<li>DAGs are a great tool for this.</li>
+<li>Adding all available features is generally not a good idea, specially for inference purposes.</li>
+<li>Nor simpler nor more complex models can save you from bad data understanding.</li>
+<li>Machine learning models are not always the solution for applied data science problems.</li>
+<li>Inference and prediction tasks are different (see <a href="https://matheusfacure.github.io/python-causality-handbook/18-Heterogeneous-Treatment-Effects-and-Personalization.html">here</a> for another use case showing this).</li>
+</ul>
+</div>
+<div id="appending-a-causal-inference-software" class="section level2">
+<h2>Appending A: Causal Inference Software</h2>
+<p>In this concrete example it was relatively easy to extract the subset of good control variables. In most complex cases (common in applications), this can be a very difficult task. Fortunately, there are some software packages which can help you with this task. Here I illustrate how to do it using the <a href="https://www.pywhy.org/dowhy/v0.9.1/"><code>dowhy</code></a> library (and the great book <a href="https://www.amazon.de/dp/1804612987?utm_term=2023_06&amp;utm_campaign=causalpython_links&amp;utm_medium=button&amp;ref_=as_li_ss_tl&amp;language=en_US&amp;utm_source=webpage&amp;linkCode=gg2&amp;linkId=842a3ff0187e800a338f20d3ce81352b&amp;tag=alxndrmlk00-20">Causal Inference and Discovery in Python: Unlock the secrets of modern causal machine learning with DoWhy, EconML, PyTorch and more</a>).</p>
+<p>As a first step we need to specify the DAG in <a href="https://gephi.org/users/supported-graph-formats/gml-format/">gml format</a>.</p>
+<pre class="python"><code>gml_graph = &quot;&quot;&quot;
+graph [
+    directed 1
+    
+    node [
+        id &quot;discount&quot;
+        label &quot;discount&quot;
+    ]
+    node [
+        id &quot;visits&quot;
+        label &quot;visits&quot;
+    ]
+    node [
+        id &quot;sales&quot;
+        label &quot;sales&quot;
+    ]
+    node [
+        id &quot;is_loyal&quot;
+        label &quot;is_loyal&quot;
+    ]
+    edge [
+        source &quot;discount&quot;
+        target &quot;sales&quot;
+    ]
+    edge [
+        source &quot;visits&quot;
+        target &quot;discount&quot;
+    ]
+    edge [
+        source &quot;visits&quot;
+        target &quot;sales&quot;
+    ]
+    edge [
+        source &quot;discount&quot;
+        target &quot;is_loyal&quot;
+    ]
+    edge [
+        source &quot;sales&quot;
+        target &quot;is_loyal&quot;
+    ]
+]
+&quot;&quot;&quot;</code></pre>
+<p>Next, we can simply initialize the <code>CausalModel</code> object.</p>
+<pre class="python"><code>from dowhy import CausalModel
+
+model = CausalModel(
+    data=data,
+    graph=gml_graph,
+    treatment=&quot;discount&quot;,
+    outcome=&quot;sales&quot;,
+)
+
+model.view_model()
+</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_98_0.png" style="width: 800px;"/>
+</center>
+<p>DoWhy provides a rich set of mechanisms to estimate the causal effects. We can use the <code>identify_effect</code> method to get a list of the potential methods.</p>
+<pre class="python"><code>estimand = model.identify_effect()
+
+print(estimand)
+</code></pre>
+<pre><code>Estimand type: nonparametric-ate
+
+### Estimand : 1
+Estimand name: backdoor
+Estimand expression:
+     d                      
+───────────(E[sales|visits])
+d[discount]                 
+Estimand assumption 1, Unconfoundedness: If U→{discount} and U→sales then P(sales|discount,visits,U) = P(sales|discount,visits)
+
+### Estimand : 2
+Estimand name: iv
+No such variable(s) found!
+
+### Estimand : 3
+Estimand name: frontdoor
+No such variable(s) found!</code></pre>
+<p>In this case we will use the <code>backdoor</code> method. In essence, this method will use the backdoor criterion to identify the set of good control variables and then run a (linear) regression model to estimate the causal effect. Let’s see how to get the list of good control variables we need to consider:</p>
+<pre class="python"><code>estimand.get_backdoor_variables()
+</code></pre>
+<pre><code>[&#39;visits&#39;]</code></pre>
+<p>As expected, the <code>is_loyal</code> variable does not appear in the list.</p>
+<p>Note that the backdoor criterion is a graph property. Hence, we can hack the API to access the graph attribute to obtain a rich set of methods to analyze it. For example, we can get all the valid backdoor paths:</p>
+<pre class="python"><code>model._graph.get_backdoor_paths(nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;])</code></pre>
+<pre><code>[[&#39;discount&#39;, &#39;visits&#39;, &#39;sales&#39;]]</code></pre>
+<p>We can also check for valid control sets:</p>
+<pre class="python"><code>model._graph.check_valid_backdoor_set(nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;], nodes3=[&quot;visits&quot;])</code></pre>
+<pre><code>{&#39;is_dseparated&#39;: True}</code></pre>
+<pre class="python"><code>model._graph.check_valid_backdoor_set(nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;], nodes3=[&quot;is_loyal&quot;])</code></pre>
+<pre><code>{&#39;is_dseparated&#39;: False}</code></pre>
+<p>After selecting the estimand, we can proceed to estimate the causal effect:</p>
+<pre class="python"><code>estimate = model.estimate_effect(
+    identified_estimand=estimand,
+    method_name=&quot;backdoor.linear_regression&quot;,
+    target_units=&quot;ate&quot;,
+    test_significance=True,
+    confidence_intervals=True,
+)
+
+print(f&quot;Estimate of causal effect (linear regression): {estimate.value}&quot;)
+print(f&quot;confidence interval: {estimate.get_confidence_intervals()}&quot;)</code></pre>
+<pre><code>Estimate of causal effect (linear regression): 1.855502783142704
+confidence interval: [[1.51720297 2.1938026 ]]</code></pre>
+<p>The results are very similar to what we obtained with the linear Bayesian linear regression model above.</p>
+<p>This library allow us to challenge the graph structure using the data though a family of <em>refuters</em>. See <a href="https://www.pywhy.org/dowhy/v0.8/user_guide/effect_inference/refute.html">Refute the obtained estimate</a> from the documentation for more details. For example, we can use the <em>data subset</em> refuter to check if the causal effect is robust when estimating it on a subset of the data:</p>
+<pre class="python"><code>refute_subset = model.refute_estimate(
+    estimand=estimand,
+    estimate=estimate,
+    method_name=&quot;data_subset_refuter&quot;,
+    subset_fraction=0.7,
+    random_state=rng,
+    verbose=0,
+)
+
+print(refute_subset)</code></pre>
+<pre><code>Refute: Use a subset of data
+Estimated effect:1.855502783142704
+New effect:1.8914110130354584
+p value:0.86</code></pre>
+<p>We do see that the causal effect is stable to the data subset.</p>
+<p>We can also add a common cause variable (for both the treatment and the target). The results should not change:</p>
+<pre class="python"><code>refute_random_common_cause = model.refute_estimate(
+    estimand=estimand,
+    estimate=estimate,
+    method_name=&quot;random_common_cause&quot;,
+    random_state=rng,
+    verbose=0,
+)
+
+print(refute_random_common_cause)</code></pre>
+<pre><code>Refute: Add a random common cause
+Estimated effect:1.855502783142704
+New effect:1.8554656228906183
+p value:0.94</code></pre>
+<p>The results are indeed the same.</p>
+<p>Please look into the the <a href="https://www.pywhy.org/dowhy/v0.9.1/"><code>dowhy</code></a> documentation for more details and examples.</p>
+</div>
+<div id="appendix-b-ml-model" class="section level2">
+<h2>Appendix B: ML Model</h2>
+<p>Here we revisit the machine learning model approach with the right set of features.</p>
+<pre class="python"><code>X_causal = X.drop(columns=[&quot;is_loyal&quot;])
+
+ml_model.fit(X=X_causal, y=y)
+
+fig, ax = plt.subplots()
+
+PartialDependenceDisplay.from_estimator(
+    estimator=ml_model,
+    X=X_causal,
+    features=[&quot;discount&quot;],
+    categorical_features=[&quot;discount&quot;],
+    centered=True,
+    random_state=seed,
+    ax=ax,
+)
+ax.set(title=&quot;ML Model (Causal) - Partial Dependence Plot (Centered)&quot;)</code></pre>
+<center>
+<img src="../images/causal_inference_example_files/causal_inference_example_119_1.png" style="width: 900px;"/>
+</center>
+<p>The result is much closer that the complete model. Note however that estimated effect through partial dependency plots is below the true effect. This is might because there there is a relationship between the <code>discount</code> and <code>visits</code> variable. This will induce non-realistic points to be evaluated during the marginalization. This is a common problem with partial dependency plots. In general, I do not recommend using them for causal inference purposes. I recommend to use them for post-processing/understanding of purely predictions models (acknowledging their limitations).</p>
+<hr />
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Here are some references which I have found useful to learn about causal inference:</p>
+<div id="causal-inference" class="section level3">
+<h3>Causal Inference</h3>
+<ul>
+<li><a href="https://www.amazon.de/dp/1804612987?utm_term=2023_06&amp;utm_campaign=causalpython_links&amp;utm_medium=button&amp;ref_=as_li_ss_tl&amp;language=en_US&amp;utm_source=webpage&amp;linkCode=gg2&amp;linkId=842a3ff0187e800a338f20d3ce81352b&amp;tag=alxndrmlk00-20">Causal Inference and Discovery in Python: Unlock the secrets of modern causal machine learning with DoWhy, EconML, PyTorch and more</a></li>
+<li><a href="https://www.wiley.com/en-us/Causal+Inference+in+Statistics%3A+A+Primer-p-9781119186847">Causal Inference in Statistics: A Primer</a></li>
+<li><a href="https://matheusfacure.github.io/python-causality-handbook/landing-page.html">Causal Inference for The Brave and True</a></li>
+<li><a href="https://mixtape.scunning.com/index.html">Causal Inference: The Mixtape</a></li>
+<li><a href="https://xcelab.net/rm/statistical-rethinking/">Statistical Rethinking: A Bayesian Course with Examples in R and Stan</a></li>
+<li><a href="https://theeffectbook.net/">The Effect: An Introduction to Research Design and Causality</a></li>
+</ul>
+</div>
+<div id="interpretable-machine-learning" class="section level3">
+<h3>Interpretable Machine Learning</h3>
+<ul>
+<li><a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning: A Guide for Making Black Box Models Explainable</a></li>
+<li><a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a></li>
+</ul>
+</div>
+</div>
+<div id="acknowledgements" class="section level2">
+<h2>Acknowledgements</h2>
+<p>I would like to thank <a href="https://www.linkedin.com/in/emartiro/">Dr. Eva Martinez Romero</a> for helping me design the analytics use case and revising the notebook.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
