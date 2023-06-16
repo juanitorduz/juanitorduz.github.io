@@ -102,7 +102,7 @@
 <li>Set a test window of 1 month.</li>
 <li>Look into the historical data of web visits from the last month. The hypothesis is that web visits are a good proxy for the customer’s interest in the product.</li>
 <li>For customers with a high number of web visits, send them a discount. There will be a hold out group which will not receive the discount within the potential valuable customers based on the number of web visits. For customers with a low number of web visits, do not send them a discount (the marketing team wants to report a positive ROI, so they do not want to waste money on customers which are not valuable). Still, they want to use them to measure the effect of the discount.</li>
-<li>We also want to use the results of the test to cluster tag <em>loyal</em> customers. These are customers which got a discount (since they showed potential interest in the product) and customers with exceptional sales numbers even if they did not get a discount. The idea is to use this information to target them in the future if the discount strategy is positive.</li>
+<li>We also want to use the results of the test to tag <em>loyal</em> customers. These are customers which got a discount (since they showed potential interest in the product) and customers with exceptional sales numbers even if they did not get a discount. The idea is to use this information to target them in the future if the discount strategy is positive.</li>
 </ul>
 </div>
 <div id="the-data" class="section level3">
@@ -828,7 +828,7 @@ g.fig.suptitle(
 )
 </code></pre>
 <pre><code>0.07705031597862955</code></pre>
-<p>However, how to interpret this value in terms of dollars? When thinking about what and how to report to the marketing team, data scientist C came and strongly suggested to also control for loyalty as the discount strategy was designed to define (target?) loyal customers. Data scientist A and B agreed, but they were not sure about how to do this. To get some inspiration, they looked at some additional descriptive statitics and plots splitting by loyalty level.</p>
+<p>However, how to interpret this value in terms of dollars? When thinking about what and how to report to the marketing team, data scientist C came and strongly suggested to also control for loyalty as the discount strategy was designed to define (target?) loyal customers. Data scientists A and B agreed, but they were not sure about how to do this. To get some inspiration, they looked at some additional descriptive statistics and plots splitting by loyalty level.</p>
 <pre class="python"><code>g = sns.displot(
     data=data,
     x=&quot;sales&quot;,
