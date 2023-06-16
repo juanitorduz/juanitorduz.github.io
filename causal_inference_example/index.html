@@ -76,7 +76,7 @@
 
   <article class="article">
     
-    <span class="article-duration">26 min read</span>
+    <span class="article-duration">25 min read</span>
     
 
     <h1 class="article-title">Using Data Science for Bad Decision-Making: A Case Study</h1>
@@ -828,7 +828,7 @@ g.fig.suptitle(
 )
 </code></pre>
 <pre><code>0.07705031597862955</code></pre>
-<p>However, how to interpret this value in terms of dollars? Shortly about start thinking about what and how to report the results to the marketing team, data scientist C came and strongly suggested to also control for loyalty as the discount strategy was designed to define (target?) loyal customers. Data scientist A and B agreed, but they were not sure about how to do this. To get some inspiration, they looked at some additional descriptive statitics and plots splitting by loyalty level.</p>
+<p>However, how to interpret this value in terms of dollars? When thinking about what and how to report to the marketing team, data scientist C came and strongly suggested to also control for loyalty as the discount strategy was designed to define (target?) loyal customers. Data scientist A and B agreed, but they were not sure about how to do this. To get some inspiration, they looked at some additional descriptive statitics and plots splitting by loyalty level.</p>
 <pre class="python"><code>g = sns.displot(
     data=data,
     x=&quot;sales&quot;,
@@ -897,7 +897,7 @@ g.fig.suptitle(
 </div>
 <div id="a-simple-bayesian-linear-regression" class="section level2">
 <h2>A Simple Bayesian Linear Regression</h2>
-<p>At this points the three data scientist were very confused as they had found contradictory results regarding the discount effect on sales. At this point data scientist D came with a very reasonable suggestion:</p>
+<p>At this point, the three data scientists were very confused as they had found contradictory results regarding the discount effect on sales. Data scientist D came with a very reasonable suggestion:</p>
 <blockquote>
 <p>Instead of trying to find the best way to report the results, why don’t we try to model the data through a linear model? This way, we can include all the control variables as covariates. We can even use bayesian statistics to present our estimation with uncertainty.</p>
 </blockquote>
@@ -1199,7 +1199,7 @@ az.plot_posterior(data=complete_model_idata, var_names=[&quot;discount&quot;], r
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_55_1.png" style="width: 900px;"/>
 </center>
-<p>The data scientist were puzzled about the result and unsure how to communicate this slight negative effect to the marketing team.</p>
+<p>The data scientists were puzzled about the result and unsure about how to communicate this slight negative effect to the marketing team.</p>
 </div>
 <div id="posterior-predictive-checks" class="section level3">
 <h3>Posterior Predictive Checks</h3>
