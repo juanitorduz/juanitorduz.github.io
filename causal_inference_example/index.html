@@ -856,7 +856,7 @@ g.fig.suptitle(&quot;Sales distribution by discount and loyalty&quot;, y=1.05, f
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_35_1.png" style="width: 1000px;"/>
 </center>
-<p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the discounted group! How could this be? Could it be that the discount strategy is working only for non-loyal customers? According to the plot above, filtering for non loyal customers would yield to a positive uplift:</p>
+<p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the non-discounted group! How could this be? Could it be that the discount strategy is working only for non-loyal customers? According to the plot above, filtering for non loyal customers would yield to a positive uplift:</p>
 <pre class="python"><code>(
     data.query(&quot;discount == 0 &amp; is_loyal == 1&quot;)[&quot;sales&quot;].mean()
     - data.query(&quot;discount == 0 &amp; is_loyal == 0&quot;)[&quot;sales&quot;].mean()
