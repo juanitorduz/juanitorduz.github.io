@@ -76,7 +76,7 @@
 
   <article class="article">
     
-    <span class="article-duration">25 min read</span>
+    <span class="article-duration">26 min read</span>
     
 
     <h1 class="article-title">Using Data Science for Bad Decision-Making: A Case Study</h1>
@@ -154,7 +154,8 @@ rng: np.random.Generator = np.random.default_rng(seed=seed)
 <div id="read-data" class="section level2">
 <h2>Read Data</h2>
 <p>They pulled the data from a csv file.</p>
-<pre class="python"><code>data = pd.read_csv(&quot;../data/sales_dag.csv&quot;)
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/sales_dag.csv&quot;
+data = pd.read_csv(data_path)
 
 data.head()
 </code></pre>
