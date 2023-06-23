@@ -716,7 +716,7 @@ ax.set(title=&quot;Retention by Cohort and Period&quot;);</code></pre>
 <center>
 <img src="../images/revenue_retention_files/revenue_retention_19_0.png" style="width: 1000px;"/>
 </center>
-<p>Note that the retention rate by itself hides how <em>big</em> is the cohort. At the very end, one os not just interested in the retention rate but in the value of the cohort. We can start by looking into absolute number of active users per cohort.</p>
+<p>Note that the retention rate by itself hides how <em>big</em> is the cohort. At the very end, one is not just interested in the retention rate but in the value of the cohort. We can start by looking into absolute number of active users per cohort.</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(18, 7))
 
 fmt = lambda y, _: f&quot;{y :0.0f}&quot;
@@ -1023,7 +1023,7 @@ plt.gcf().suptitle(&quot;Model Trace&quot;, fontsize=16);</code></pre>
 </div>
 <div id="in-sample-predictions" class="section level3">
 <h3>In-Sample Predictions</h3>
-<p>Before jumping into the model predictions, we start by looking into the in-sample fit. First we consider the posterior means for retention and revenue.</p>
+<p>Before jumping into the model predictions, we start by looking into the in-sample fit. First we consider the posterior mean for retention and revenue.</p>
 <div id="retention" class="section level4">
 <h4>Retention</h4>
 <pre class="python"><code>train_posterior_retention = (
