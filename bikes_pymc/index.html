@@ -76,7 +76,7 @@
 
   <article class="article">
     
-    <span class="article-duration">10 min read</span>
+    <span class="article-duration">14 min read</span>
     
 
     <h1 class="article-title">Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</h1>
@@ -90,7 +90,6 @@
 
 
 <p>In this notebook we want to illustrate how to use PyMC to fit a time-varying coefficient regression model. The motivation comes from post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a> where we studied a time series problem, regarding the <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">prediction of the number of bike rentals</a>, from a machine learning perspective. Concretely, we fitted and compared two machine learning models: a linear regression with interactions and a gradient boost model (XGBoost). The models regressors were mainly meteorological data and seasonality features. One interesting feature we saw, through <a href="https://christophm.github.io/interpretable-ml-book/pdp.html">PDP</a> and <a href="https://christophm.github.io/interpretable-ml-book/ice.html">ICE</a> plots was that the temperature feature had a non-constant effect over the bike rentals (see <a href="https://christophm.github.io/interpretable-ml-book/ice.html#examples-4">here</a>). Indeed, when the temperature is high (more than 25 degrees approximately), the bike rentals are negatively impacted by the temperature (to be fair, this is when controlling by other regressors) on average. What we want to do in this notebook is to tackle the same problem from a different perspective. Namely, use to use a <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html">GaussianRandomWalk</a> to model the interaction effect between the temperature and the bike rentals. We of course start with the simple regression baseline for comparison.</p>
-<p><strong>Remark:</strong> The content of this post was part of by talk on <a href="https://2022.pycon.co/Speakers/juan-orduz.html">Introduction to Bayesian Analysis with PyMC</a> at <a href="https://2022.pycon.co">PyCon Colombia 2022</a>. <a href="../html/pyconco22_orduz.html">Here</a> you can find the slides.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import arviz as az
@@ -98,9 +97,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc as pm
-import pymc.sampling_jax
 from pymc.distributions.continuous import Exponential
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 import seaborn as sns
 
 
@@ -111,27 +109,313 @@ plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
 
 %load_ext autoreload
 %autoreload 2
-%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;bikes&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
 </div>
 <div id="read-data" class="section level2">
 <h2>Read Data</h2>
 <p>For a detailed description of the data set please see <a href="https://christophm.github.io/interpretable-ml-book/bike-data.html">here</a> (from the book <a href="https://christophm.github.io/interpretable-ml-book/">Interpretable Machine Learning:A Guide for Making Black Box Models Explainable by Christoph Molnar</a>). For a detailed EDA see the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>.</p>
 <pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/christophM/interpretable-ml-book/master/data/bike.csv&quot;
 
-raw_data_df = pd.read_csv(data_path)
+raw_data_df = pd.read_csv(
+    data_path,
+    dtype={
+        &quot;season&quot;: &quot;category&quot;,
+        &quot;mnth&quot;: &quot;category&quot;,
+        &quot;holiday&quot;: &quot;category&quot;,
+        &quot;weekday&quot;: &quot;category&quot;,
+        &quot;workingday&quot;: &quot;category&quot;,
+        &quot;weathersit&quot;: &quot;category&quot;,
+        &quot;cnt&quot;: &quot;int&quot;,
+    },
+)
 
 raw_data_df.head()
 </code></pre>
 <center>
-<img src="../images/interpretable_ml_files/head.png" alt="glue" style="width: 1000px;"/>
-</center>
+<div>
+<style>
+    .dataframe thead tr:only-child th {
+        text-align: right;
+        font-size: 15px;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+season
+</th>
+<th>
+yr
+</th>
+<th>
+mnth
+</th>
+<th>
+holiday
+</th>
+<th>
+weekday
+</th>
+<th>
+workingday
+</th>
+<th>
+weathersit
+</th>
+<th>
+temp
+</th>
+<th>
+hum
+</th>
+<th>
+windspeed
+</th>
+<th>
+cnt
+</th>
+<th>
+days_since_2011
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+WINTER
+</td>
+<td>
+2011
+</td>
+<td>
+JAN
+</td>
+<td>
+NO HOLIDAY
+</td>
+<td>
+SAT
+</td>
+<td>
+NO WORKING DAY
+</td>
+<td>
+MISTY
+</td>
+<td>
+8.175849
+</td>
+<td>
+80.5833
+</td>
+<td>
+10.749882
+</td>
+<td>
+985
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+WINTER
+</td>
+<td>
+2011
+</td>
+<td>
+JAN
+</td>
+<td>
+NO HOLIDAY
+</td>
+<td>
+SUN
+</td>
+<td>
+NO WORKING DAY
+</td>
+<td>
+MISTY
+</td>
+<td>
+9.083466
+</td>
+<td>
+69.6087
+</td>
+<td>
+16.652113
+</td>
+<td>
+801
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+WINTER
+</td>
+<td>
+2011
+</td>
+<td>
+JAN
+</td>
+<td>
+NO HOLIDAY
+</td>
+<td>
+MON
+</td>
+<td>
+WORKING DAY
+</td>
+<td>
+GOOD
+</td>
+<td>
+1.229108
+</td>
+<td>
+43.7273
+</td>
+<td>
+16.636703
+</td>
+<td>
+1349
+</td>
+<td>
+2
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+WINTER
+</td>
+<td>
+2011
+</td>
+<td>
+JAN
+</td>
+<td>
+NO HOLIDAY
+</td>
+<td>
+TUE
+</td>
+<td>
+WORKING DAY
+</td>
+<td>
+GOOD
+</td>
+<td>
+1.400000
+</td>
+<td>
+59.0435
+</td>
+<td>
+10.739832
+</td>
+<td>
+1562
+</td>
+<td>
+3
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+WINTER
+</td>
+<td>
+2011
+</td>
+<td>
+JAN
+</td>
+<td>
+NO HOLIDAY
+</td>
+<td>
+WED
+</td>
+<td>
+WORKING DAY
+</td>
+<td>
+GOOD
+</td>
+<td>
+2.666979
+</td>
+<td>
+43.6957
+</td>
+<td>
+12.522300
+</td>
+<td>
+1600
+</td>
+<td>
+4
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<center>
 </div>
 <div id="data-formatting" class="section level2">
 <h2>Data Formatting</h2>
-<pre class="python"><code>data_df = raw_data_df.copy().assign(
-    date=pd.date_range(
-        start=pd.to_datetime(&quot;2011-01-01&quot;), end=pd.to_datetime(&quot;2012-12-31&quot;), freq=&quot;D&quot;
-    )
+<pre class="python"><code>data_df = raw_data_df.copy()
+
+data_df[&quot;date&quot;] = pd.to_datetime(&quot;2011-01-01&quot;) + data_df[&quot;days_since_2011&quot;].apply(
+    lambda z: pd.Timedelta(z, unit=&quot;D&quot;)
 )
 
 data_df.info()</code></pre>
@@ -140,21 +424,21 @@ RangeIndex: 731 entries, 0 to 730
 Data columns (total 13 columns):
  #   Column           Non-Null Count  Dtype         
 ---  ------           --------------  -----         
- 0   season           731 non-null    object        
+ 0   season           731 non-null    category      
  1   yr               731 non-null    int64         
- 2   mnth             731 non-null    object        
- 3   holiday          731 non-null    object        
- 4   weekday          731 non-null    object        
- 5   workingday       731 non-null    object        
- 6   weathersit       731 non-null    object        
+ 2   mnth             731 non-null    category      
+ 3   holiday          731 non-null    category      
+ 4   weekday          731 non-null    category      
+ 5   workingday       731 non-null    category      
+ 6   weathersit       731 non-null    category      
  7   temp             731 non-null    float64       
  8   hum              731 non-null    float64       
  9   windspeed        731 non-null    float64       
  10  cnt              731 non-null    int64         
  11  days_since_2011  731 non-null    int64         
  12  date             731 non-null    datetime64[ns]
-dtypes: datetime64[ns](1), float64(3), int64(3), object(6)
-memory usage: 74.4+ KB</code></pre>
+dtypes: category(6), datetime64[ns](1), float64(3), int64(3)
+memory usage: 45.6 KB</code></pre>
 <p>Let’s plot the time development of the bike rentals and temperature over time.</p>
 <pre class="python"><code>fig, ax = plt.subplots(
     nrows=2, ncols=1, figsize=(10, 6), sharex=True, sharey=False, layout=&quot;constrained&quot;
@@ -162,23 +446,35 @@ memory usage: 74.4+ KB</code></pre>
 sns.lineplot(x=&quot;date&quot;, y=&quot;cnt&quot;, data=data_df, color=&quot;black&quot;, ax=ax[0])
 sns.lineplot(x=&quot;date&quot;, y=&quot;temp&quot;, data=data_df, color=&quot;C0&quot;, ax=ax[1])
 ax[0].set(title=&quot;Count of bikes&quot;)
-ax[1].set(title=&quot;Temperature&quot;);</code></pre>
+ax[1].set(title=&quot;Temperature&quot;)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_7_0.svg" />
+<img src="../images/bikes_pymc_files/bikes_pymc_8_1.png" style="width: 1000px;"/>
+</center>
+<p>We add a Gaussian <a href="https://juanitorduz.github.io/bump_func/">bump function</a> to model the end-of-year seasonality.</p>
+<pre class="python"><code>is_december = data_df[&quot;date&quot;].dt.month == 12
+eoy_mu = 25
+eoy_sigma = 7
+eoy_arg = (data_df[&quot;date&quot;].dt.day - eoy_mu) / eoy_sigma
+data_df[&quot;eoy&quot;] = is_december * np.exp(-(eoy_arg**2))
+
+fig, ax = plt.subplots()
+sns.lineplot(x=&quot;date&quot;, y=&quot;eoy&quot;, data=data_df, color=&quot;C4&quot;, ax=ax)
+ax.set(title=&quot;End-of-Year Gaussian Bump&quot;)</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_10_1.png" style="width: 900px;"/>
 </center>
 <p>As we are going to fit a linear model is always good to scale the data.</p>
 <pre class="python"><code>target = &quot;cnt&quot;
 target_scaled = f&quot;{target}_scaled&quot;
 
-endog_scaler = StandardScaler()
-exog_scaler = StandardScaler()
+endog_scaler = MinMaxScaler()
+exog_scaler = MinMaxScaler()
 
 
 data_df[target_scaled] = endog_scaler.fit_transform(X=data_df[[target]])
 data_df[[&quot;temp_scaled&quot;, &quot;hum_scaled&quot;, &quot;windspeed_scaled&quot;]] = exog_scaler.fit_transform(
     X=data_df[[&quot;temp&quot;, &quot;hum&quot;, &quot;windspeed&quot;]]
-)
-</code></pre>
+)</code></pre>
 <p>Finally, we extract the features we want to include in the model.</p>
 <pre class="python"><code>n = data_df.shape[0]
 # target
@@ -193,7 +489,8 @@ windspeed_scaled = data_df[&quot;windspeed_scaled&quot;].to_numpy()
 holiday_idx, holiday = data_df[&quot;holiday&quot;].factorize(sort=True)
 workingday_idx, workingday = data_df[&quot;workingday&quot;].factorize(sort=True)
 weathersit_idx, weathersit = data_df[&quot;weathersit&quot;].factorize(sort=True)
-t = data_df[&quot;days_since_2011&quot;].to_numpy() / data_df[&quot;days_since_2011&quot;].max()</code></pre>
+t = data_df[&quot;days_since_2011&quot;].to_numpy() / data_df[&quot;days_since_2011&quot;].max()
+eoy = data_df[&quot;eoy&quot;].to_numpy()</code></pre>
 </div>
 <div id="base-model" class="section level2">
 <h2>Base Model</h2>
@@ -201,30 +498,29 @@ t = data_df[&quot;days_since_2011&quot;].to_numpy() / data_df[&quot;days_since_2
 <div id="model-specification" class="section level3">
 <h3>1. Model Specification</h3>
 <p>In a first step (after EDA and data pre-processing) we define the model structure. In particular we choose</p>
-<ul>
+<ol style="list-style-type: decimal">
 <li><strong>Prior</strong> distributions for the regression coefficients and the noise.</li>
-<li><strong>Model parametrization</strong>, i.e. the structure of the linear model.</li>
+<li><strong>Model parametrization</strong>, i.e. the structure of the linear model. Note that for the categorical variables we use a <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.ZeroSumNormal.html"><code>ZeroSumNormal</code></a> since we are adding an intercept term.</li>
 <li><strong>Likelihood function</strong>, which is this case we decide for a <a href="https://docs.pymc.io/en/latest/api/distributions/generated/pymc.StudentT.html">StudentT</a> distribution.</li>
-</ul>
+</ol>
 <pre class="python"><code>coords = {
     &quot;date&quot;: date,
     &quot;workingday&quot;: workingday,
     &quot;weathersit&quot;: weathersit,
 }
 
-
 with pm.Model(coords=coords) as base_model:
-
     # --- priors ---
     intercept = pm.Normal(name=&quot;intercept&quot;, mu=0, sigma=2)
-    b_temp = pm.Normal(name=&quot;b_temp&quot;, mu=0, sigma=2)
-    b_hum = pm.Normal(name=&quot;b_hum&quot;, mu=0, sigma=2)
-    b_windspeed = pm.Normal(name=&quot;b_windspeed&quot;, mu=0, sigma=2)
-    b_workingday = pm.Normal(name=&quot;b_workingday&quot;, mu=0, sigma=2, dims=&quot;workingday&quot;)
-    b_weathersit = pm.Normal(name=&quot;b_weathersit&quot;, mu=0, sigma=2, dims=&quot;weathersit&quot;)
+    b_temp = pm.Normal(name=&quot;b_temp&quot;, mu=0, sigma=1)
+    b_hum = pm.Normal(name=&quot;b_hum&quot;, mu=0, sigma=1)
+    b_windspeed = pm.Normal(name=&quot;b_windspeed&quot;, mu=0, sigma=1)
+    b_workingday = pm.ZeroSumNormal(name=&quot;b_workingday&quot;, sigma=1, dims=&quot;workingday&quot;)
+    b_weathersit = pm.ZeroSumNormal(name=&quot;b_weathersit&quot;, sigma=1, dims=&quot;weathersit&quot;)
     b_t = pm.Normal(name=&quot;b_t&quot;, mu=0, sigma=3)
+    b_eoy = pm.Normal(name=&quot;b_eoy&quot;, mu=0, sigma=1)
     nu = pm.Gamma(name=&quot;nu&quot;, alpha=8, beta=2)
-    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=2)
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=1)
 
     # --- model parametrization ---
     mu = pm.Deterministic(
@@ -237,6 +533,7 @@ with pm.Model(coords=coords) as base_model:
             + b_windspeed * windspeed_scaled
             + b_workingday[workingday_idx]
             + b_weathersit[weathersit_idx]
+            + b_eoy * eoy
         ),
         dims=&quot;date&quot;,
     )
@@ -250,16 +547,15 @@ with pm.Model(coords=coords) as base_model:
 pm.model_to_graphviz(base_model)
 </code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_14_0.svg" style="width: 1000px;"/>
+<img src="../images/bikes_pymc_files/bikes_pymc_17_0.svg" style="width: 1000px;"/>
 </center>
 </div>
 <div id="prior-predictive-analysis" class="section level3">
 <h3>2. Prior Predictive Analysis</h3>
 <p>We can analyze what the model <em>expects</em> before seeing the data.</p>
-<p><strong>Remark:</strong> The following plotting function was taken from <a href="https://github.com/pymc-devs/pymc/blob/main/pymc/gp/util.py">pymc/gp/util.py</a>, see <code>plot_gp_dist</code>.</p>
 <pre class="python"><code>with base_model:
     # --- prior samples ---
-    prior_predictive_base = pm.sample_prior_predictive(samples=200)
+    prior_predictive_base = pm.sample_prior_predictive(samples=200, random_seed=rng)
 
 
 palette = &quot;viridis_r&quot;
@@ -290,10 +586,10 @@ ax.set(
     title=&quot;Base Model - Prior Predictive Samples&quot;,
     xlabel=&quot;date&quot;,
     ylabel=target_scaled,
-);
+)
 </code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_16_0.svg" />
+<img src="../images/bikes_pymc_files/bikes_pymc_19_2.png" style="width: 1000px;"/>
 </center>
 <p>The chosen prior distributions are not very restrictive but they image of the predictions is still within a reasonable range.</p>
 </div>
@@ -301,18 +597,502 @@ ax.set(
 <h3>3. Model Fit</h3>
 <p>We sample from the posterior distributions using the <a href="https://www.pymc.io/projects/docs/en/latest/api/generated/pymc.sampling_jax.sample_numpyro_nuts.html">JAX based NUTS sampler from Numpyro</a>.</p>
 <pre class="python"><code>with base_model:
-    idata_base = pm.sampling_jax.sample_numpyro_nuts(
-        target_accept=0.8, draws=1000, chains=4
+    idata_base = pm.sample(
+        target_accept=0.9,
+        draws=2_000,
+        chains=5,
+        nuts_sampler=&quot;numpyro&quot;,
+        idata_kwargs={&quot;log_likelihood&quot;: True},
+        random_seed=rng,
     )
     posterior_predictive_base = pm.sample_posterior_predictive(trace=idata_base)
 </code></pre>
+<pre class="python"><code># get number of divergences
+idata_base[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
 </div>
 <div id="model-diagnostics" class="section level3">
 <h3>4. Model Diagnostics</h3>
 <p>Now wee look into some diagnostics metrics an plots.</p>
-<pre class="python"><code>az.summary(data=idata_base, var_names=[&quot;~mu&quot;])</code></pre>
+<pre class="python"><code>az.summary(data=idata_base, var_names=[&quot;~mu&quot;])
+</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/base_summary.png" style="width: 900px;"/>
+<div>
+<style>
+    .dataframe thead tr:only-child th {
+        text-align: right;
+        font-size: 15px;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+intercept
+</th>
+<td>
+0.121
+</td>
+<td>
+0.028
+</td>
+<td>
+0.069
+</td>
+<td>
+0.175
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5113.0
+</td>
+<td>
+6128.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_temp
+</th>
+<td>
+0.473
+</td>
+<td>
+0.016
+</td>
+<td>
+0.443
+</td>
+<td>
+0.504
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8125.0
+</td>
+<td>
+7069.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_hum
+</th>
+<td>
+-0.156
+</td>
+<td>
+0.031
+</td>
+<td>
+-0.216
+</td>
+<td>
+-0.098
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6027.0
+</td>
+<td>
+6729.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_windspeed
+</th>
+<td>
+-0.132
+</td>
+<td>
+0.023
+</td>
+<td>
+-0.173
+</td>
+<td>
+-0.087
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7157.0
+</td>
+<td>
+7410.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_t
+</th>
+<td>
+0.459
+</td>
+<td>
+0.012
+</td>
+<td>
+0.435
+</td>
+<td>
+0.481
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8498.0
+</td>
+<td>
+6867.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_eoy
+</th>
+<td>
+-0.312
+</td>
+<td>
+0.025
+</td>
+<td>
+-0.358
+</td>
+<td>
+-0.266
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8573.0
+</td>
+<td>
+7590.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_workingday[NO WORKING DAY]
+</th>
+<td>
+-0.009
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.016
+</td>
+<td>
+-0.002
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11820.0
+</td>
+<td>
+7394.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_workingday[WORKING DAY]
+</th>
+<td>
+0.009
+</td>
+<td>
+0.004
+</td>
+<td>
+0.002
+</td>
+<td>
+0.016
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11820.0
+</td>
+<td>
+7394.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[GOOD]
+</th>
+<td>
+0.085
+</td>
+<td>
+0.009
+</td>
+<td>
+0.067
+</td>
+<td>
+0.102
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5792.0
+</td>
+<td>
+6797.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[MISTY]
+</th>
+<td>
+0.044
+</td>
+<td>
+0.008
+</td>
+<td>
+0.029
+</td>
+<td>
+0.059
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7284.0
+</td>
+<td>
+7783.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[RAIN/SNOW/STORM]
+</th>
+<td>
+-0.129
+</td>
+<td>
+0.015
+</td>
+<td>
+-0.156
+</td>
+<td>
+-0.100
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5726.0
+</td>
+<td>
+6697.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+4.702
+</td>
+<td>
+0.761
+</td>
+<td>
+3.334
+</td>
+<td>
+6.102
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+7774.0
+</td>
+<td>
+7769.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.077
+</td>
+<td>
+0.003
+</td>
+<td>
+0.071
+</td>
+<td>
+0.083
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7783.0
+</td>
+<td>
+7169.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
 </center>
 <pre class="python"><code>axes = az.plot_trace(
     data=idata_base,
@@ -321,30 +1101,37 @@ ax.set(
     kind=&quot;rank_bars&quot;,
     backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
 )
-plt.gcf().suptitle(&quot;Base Model - Trace&quot;, fontsize=16);</code></pre>
+plt.gcf().suptitle(&quot;Base Model - Trace&quot;, fontsize=16)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_22_0.svg" style="width: 1000px;"/>
+<img src="../images/bikes_pymc_files/bikes_pymc_26_2.png" style="width: 1000px;"/>
 </center>
 <p>Overall, the model looks good.</p>
 <pre class="python"><code>axes = az.plot_forest(
     data=idata_base,
-    var_names=[&quot;~mu&quot;],
+    var_names=[&quot;~mu&quot;, &quot;~nu&quot;, &quot;~sigma&quot;],
     combined=True,
     r_hat=True,
     ess=True,
     figsize=(10, 6),
 )
 axes[0].axvline(x=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
-plt.gcf().suptitle(&quot;Base Model - Posterior Distributions&quot;, fontsize=16);</code></pre>
+plt.gcf().suptitle(&quot;Base Model - Posterior Distributions&quot;, fontsize=16)
+</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_24_0.svg" style="width: 900px;"/>
+<img src="../images/bikes_pymc_files/bikes_pymc_28_1.png" style="width: 1000px;"/>
 </center>
 <p>Note that in this base model the temperature feature has a positive effect on bike rentals on average.</p>
 </div>
 <div id="posterior-predictive-distribution" class="section level3">
 <h3>5. Posterior Predictive Distribution</h3>
 <p>Finally, let us take a look at the fitted values.</p>
-<pre class="python"><code>posterior_predictive_likelihood = posterior_predictive_base.posterior_predictive[
+<pre class="python"><code>palette = &quot;viridis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+posterior_predictive_likelihood = posterior_predictive_base.posterior_predictive[
     &quot;likelihood&quot;
 ].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
 
@@ -385,9 +1172,9 @@ ax.set(
     title=&quot;Base Model - Posterior Predictive Samples&quot;,
     xlabel=&quot;date&quot;,
     ylabel=target,
-);</code></pre>
+)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_27_0.svg" />
+<img src="../images/bikes_pymc_files/bikes_pymc_31_1.png" style="width: 1000px;"/>
 </center>
 <p>Observe that for certain points in July the predictions and the fit do not coincide and go in opposite directions. This will be solved by adding the time-varying coefficient to the linear model for the temperature regressor (see below).</p>
 <p><strong>Remark</strong>: Note that the model predict negative values for the bike rentals. This is of course not good! An alterative choice of likelihood to model count data would resolve this (e.g. Poisson or Negative Binomial likelihoods).</p>
@@ -395,39 +1182,38 @@ ax.set(
 </div>
 <div id="time-varying-coefficients-model" class="section level2">
 <h2>Time-Varying Coefficients Model</h2>
-<p>We now follow the same workflow above. The main difference is that we replace the regression coefficient of the temperature with <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html">GaussianRandomWalk</a>.</p>
+<p>We now follow the same workflow above. The main difference is that we replace the regression coefficient of the temperature with <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html">GaussianRandomWalk</a> and remove the intercept term.</p>
 <div id="model-specification-1" class="section level3">
 <h3>1. Model Specification</h3>
 <pre class="python"><code>with pm.Model(coords=coords) as model:
-
     # --- priors ---
-    intercept = pm.Normal(name=&quot;intercept&quot;, mu=0, sigma=2)
-    b_hum = pm.Normal(name=&quot;b_hum&quot;, mu=0, sigma=2)
-    b_windspeed = pm.Normal(name=&quot;b_windspeed&quot;, mu=0, sigma=2)
-    b_workingday = pm.Normal(name=&quot;b_workingday&quot;, mu=0, sigma=2, dims=&quot;workingday&quot;)
-    b_weathersit = pm.Normal(name=&quot;b_weathersit&quot;, mu=0, sigma=2, dims=&quot;weathersit&quot;)
-    b_t = pm.Normal(name=&quot;b_t&quot;, mu=0, sigma=3)
-    sigma_slopes = pm.HalfNormal(name=&quot;sigma_slope&quot;, sigma=0.5)
+    b_hum = pm.Normal(name=&quot;b_hum&quot;, mu=0, sigma=1)
+    b_windspeed = pm.Normal(name=&quot;b_windspeed&quot;, mu=0, sigma=1)
+    b_workingday = pm.ZeroSumNormal(name=&quot;b_workingday&quot;, sigma=1, dims=&quot;workingday&quot;)
+    b_weathersit = pm.ZeroSumNormal(name=&quot;b_weathersit&quot;, sigma=1, dims=&quot;weathersit&quot;)
+    b_t = pm.Normal(name=&quot;b_t&quot;, mu=0, sigma=2)
+    b_eoy = pm.Normal(name=&quot;b_eoy&quot;, mu=0, sigma=1)
+    sigma_slopes = pm.Exponential(name=&quot;sigma_slope&quot;, lam=1 / 0.2)
     nu = pm.Gamma(name=&quot;nu&quot;, alpha=8, beta=2)
-    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=2)
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=1)
 
     # --- model parametrization ---
     slopes = pm.GaussianRandomWalk(
         name=&quot;slopes&quot;,
         sigma=sigma_slopes,
-        init_dist=Exponential.dist(lam=1.0),
+        init_dist=Exponential.dist(lam=1 / 0.1),
         dims=&quot;date&quot;,
     )
     mu = pm.Deterministic(
         name=&quot;mu&quot;,
         var=(
-            intercept
-            + b_t * t
+            b_t * t
             + slopes * temp_scaled
             + b_hum * hum_scaled
             + b_windspeed * windspeed_scaled
             + b_workingday[workingday_idx]
             + b_weathersit[weathersit_idx]
+            + b_eoy * eoy
         ),
         dims=&quot;date&quot;,
     )
@@ -438,25 +1224,28 @@ ax.set(
     )
 
 
-pm.model_to_graphviz(model)
-</code></pre>
+pm.model_to_graphviz(model)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_31_0.svg" style="width: 1000px;"/>
+<img src="../images/bikes_pymc_files/bikes_pymc_35_0.svg" style="width: 1000px;"/>
 </center>
 </div>
 <div id="prior-predictive-analysis-1" class="section level3">
 <h3>2. Prior Predictive Analysis</h3>
 <pre class="python"><code>with model:
     # --- prior samples ---
-    prior_predictive = pm.sample_prior_predictive(samples=200)
+    prior_predictive = pm.sample_prior_predictive(samples=200, random_seed=rng)
+
+
+palette = &quot;viridis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
 
 
 fig, ax = plt.subplots(figsize=(12, 6))
 
 for i, p in enumerate(percs[::-1]):
-    upper = np.percentile(
-        prior_predictive.prior_predictive[&quot;likelihood&quot;], p, axis=1
-    )
+    upper = np.percentile(prior_predictive.prior_predictive[&quot;likelihood&quot;], p, axis=1)
     lower = np.percentile(
         prior_predictive.prior_predictive[&quot;likelihood&quot;], 100 - p, axis=1
     )
@@ -472,58 +1261,502 @@ sns.lineplot(x=date, y=cnt_scaled, color=&quot;black&quot;, ax=ax)
 ax.set(
     title=&quot;Time-Varying Coefficient Model - Prior Predictive Samples&quot;,
     xlabel=&quot;date&quot;,
-    ylabel=target_scaled
-);
-</code></pre>
+    ylabel=target_scaled,
+)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_33_0.svg" />
+<img src="../images/bikes_pymc_files/bikes_pymc_37_2.png" style="width: 1000px;"/>
 </center>
-<blockquote>
-
-</blockquote>
 </div>
 <div id="model-fit-1" class="section level3">
 <h3>3. Model Fit</h3>
 <pre class="python"><code>with model:
-    idata = pm.sampling_jax.sample_numpyro_nuts(
-        target_accept=0.8, draws=1000, chains=4
+    idata = pm.sample(
+        target_accept=0.97,
+        draws=2_000,
+        chains=5,
+        nuts_sampler=&quot;numpyro&quot;,
+        idata_kwargs={&quot;log_likelihood&quot;: True},
+        random_seed=rng,
     )
     posterior_predictive = pm.sample_posterior_predictive(trace=idata)</code></pre>
+<pre class="python"><code># get number of divergences
+idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+</code></pre>
+<pre><code>5</code></pre>
+<p>We get a small number of divergences 😔 … still not dramatic.</p>
 </div>
 <div id="model-diagnostics-1" class="section level3">
 <h3>4. Model Diagnostics</h3>
 <pre class="python"><code>az.summary(data=idata, var_names=[&quot;~mu&quot;, &quot;~slopes&quot;])</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/tv_summary.png" style="width: 900px;"/>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+b_hum
+</th>
+<td>
+-0.051
+</td>
+<td>
+0.019
+</td>
+<td>
+-0.087
+</td>
+<td>
+-0.016
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+521.0
+</td>
+<td>
+1591.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+b_windspeed
+</th>
+<td>
+-0.075
+</td>
+<td>
+0.016
+</td>
+<td>
+-0.104
+</td>
+<td>
+-0.042
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+1892.0
+</td>
+<td>
+5234.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+b_t
+</th>
+<td>
+0.436
+</td>
+<td>
+0.033
+</td>
+<td>
+0.376
+</td>
+<td>
+0.497
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+270.0
+</td>
+<td>
+666.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+b_eoy
+</th>
+<td>
+-0.274
+</td>
+<td>
+0.039
+</td>
+<td>
+-0.349
+</td>
+<td>
+-0.201
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+1905.0
+</td>
+<td>
+3369.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+b_workingday[NO WORKING DAY]
+</th>
+<td>
+-0.009
+</td>
+<td>
+0.003
+</td>
+<td>
+-0.014
+</td>
+<td>
+-0.004
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10199.0
+</td>
+<td>
+8763.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+b_workingday[WORKING DAY]
+</th>
+<td>
+0.009
+</td>
+<td>
+0.003
+</td>
+<td>
+0.004
+</td>
+<td>
+0.014
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10199.0
+</td>
+<td>
+8763.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[GOOD]
+</th>
+<td>
+0.106
+</td>
+<td>
+0.006
+</td>
+<td>
+0.094
+</td>
+<td>
+0.118
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+2064.0
+</td>
+<td>
+5522.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[MISTY]
+</th>
+<td>
+0.049
+</td>
+<td>
+0.007
+</td>
+<td>
+0.035
+</td>
+<td>
+0.061
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6674.0
+</td>
+<td>
+8300.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[RAIN/SNOW/STORM]
+</th>
+<td>
+-0.155
+</td>
+<td>
+0.012
+</td>
+<td>
+-0.177
+</td>
+<td>
+-0.132
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+3268.0
+</td>
+<td>
+5730.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+sigma_slope
+</th>
+<td>
+0.047
+</td>
+<td>
+0.006
+</td>
+<td>
+0.035
+</td>
+<td>
+0.058
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+310.0
+</td>
+<td>
+733.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+2.698
+</td>
+<td>
+0.382
+</td>
+<td>
+2.021
+</td>
+<td>
+3.410
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+5216.0
+</td>
+<td>
+7052.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.043
+</td>
+<td>
+0.003
+</td>
+<td>
+0.037
+</td>
+<td>
+0.050
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+1141.0
+</td>
+<td>
+3479.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+</tbody>
+</table>
+</div>
 </center>
 <pre class="python"><code>axes = az.plot_trace(
-    data=idata_base,
+    data=idata,
     var_names=[&quot;~mu&quot;, &quot;~slopes&quot;],
     compact=True,
     kind=&quot;rank_bars&quot;,
     backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
 )
-plt.gcf().suptitle(&quot;Time-Varying Coefficient Model - Trace&quot;, fontsize=16);</code></pre>
+plt.gcf().suptitle(&quot;Time-Varying Coefficient Model - Trace&quot;, fontsize=16)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_38_1.svg" style="width: 1000px;"/>
+<img src="../images/bikes_pymc_files/bikes_pymc_44_1.png" style="width: 1000px;"/>
 </center>
 <p>Let us now compare the two models in a forest plot.</p>
 <pre class="python"><code>axes = az.plot_forest(
     data=[idata_base, idata],
     model_names=[&quot;base&quot;, &quot;time-varying&quot;],
-    var_names=[&quot;~mu&quot;, &quot;~slopes&quot;],
+    var_names=[&quot;~mu&quot;, &quot;~slopes&quot;, &quot;~nu&quot;, &quot;~sigma&quot;],
     combined=True,
     r_hat=True,
-    ess=True, figsize=(10, 6),
+    ess=True,
+    figsize=(12, 7),
 )
 axes[0].axvline(x=0.0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
-plt.gcf().suptitle(&quot;Posterior Distributions&quot;, fontsize=16);</code></pre>
+plt.gcf().suptitle(&quot;Posterior Distributions&quot;, fontsize=16)
+</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_40_0.svg" style="width: 1000px;"/>
+<img src="../images/bikes_pymc_files/bikes_pymc_46_1.png" style="width: 1000px;"/>
 </center>
 <p>Overall, there is no major change in the estimated regression coefficients besides the trend component.</p>
 <p>We can also use the <a href="https://arviz-devs.github.io/arviz/api/generated/arviz.plot_compare.html"><code>az.compare</code></a> method to compare the two models.</p>
-<pre class="python"><code>az.compare(compare_dict={&quot;base&quot;: idata_base, &quot;time-varying&quot;: idata})</code></pre>
+<pre class="python"><code>az.compare(compare_dict={&quot;base&quot;: idata_base, &quot;time-varying&quot;: idata})
+</code></pre>
 <center>
 <div>
 <style scoped>
@@ -548,13 +1781,13 @@ plt.gcf().suptitle(&quot;Posterior Distributions&quot;, fontsize=16);</code></pr
 rank
 </th>
 <th>
-loo
+elpd_loo
 </th>
 <th>
 p_loo
 </th>
 <th>
-d_loo
+elpd_diff
 </th>
 <th>
 weight
@@ -569,7 +1802,7 @@ dse
 warning
 </th>
 <th>
-loo_scale
+scale
 </th>
 </tr>
 </thead>
@@ -582,19 +1815,19 @@ time-varying
 0
 </td>
 <td>
--234.726306
+859.510979
 </td>
 <td>
-131.925724
+190.554494
 </td>
 <td>
 0.000000
 </td>
 <td>
-0.989431
+0.924529
 </td>
 <td>
-26.230529
+28.507826
 </td>
 <td>
 0.000000
@@ -614,22 +1847,22 @@ base
 1
 </td>
 <td>
--488.674408
+668.611994
 </td>
 <td>
-10.541945
+11.713275
 </td>
 <td>
-253.948102
+190.898985
 </td>
 <td>
-0.010569
+0.075471
 </td>
 <td>
-26.755712
+24.952297
 </td>
 <td>
-22.971437
+21.054906
 </td>
 <td>
 False
@@ -641,12 +1874,18 @@ log
 </tbody>
 </table>
 </div>
-</center>
+<center>
 <p>It seems that the time-varying coefficient model is better at predicting the bike rentals.</p>
 </div>
 <div id="posterior-predictive-distribution-1" class="section level3">
 <h3>5. Posterior Predictive Distribution</h3>
-<pre class="python"><code>posterior_predictive_likelihood = posterior_predictive.posterior_predictive[
+<pre class="python"><code>palette = &quot;viridis_r&quot;
+cmap = plt.get_cmap(palette)
+percs = np.linspace(51, 99, 100)
+colors = (percs - np.min(percs)) / (np.max(percs) - np.min(percs))
+
+
+posterior_predictive_likelihood = posterior_predictive.posterior_predictive[
     &quot;likelihood&quot;
 ].stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
 
@@ -687,9 +1926,10 @@ ax.set(
     title=&quot;Time-Varying Coefficient Model - Posterior Predictive Samples&quot;,
     xlabel=&quot;date&quot;,
     ylabel=target,
-);</code></pre>
+)
+</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_46_0.svg" />
+<img src="../images/bikes_pymc_files/bikes_pymc_52_1.png" style="width: 1000px;"/>
 </center>
 </div>
 <div id="temperature-effect-deep-dive" class="section level3">
@@ -709,18 +1949,16 @@ time-varying model mean effect  = {time_varying_tmp_mean: 0.3f}
 ------------------------------------------
 &quot;&quot;&quot;
 )</code></pre>
-<pre><code>base model mean effect =  0.512
+<pre><code>base model mean effect =  0.473
 ------------------------------------------
-time-varying model mean effect  =  0.611
+time-varying model mean effect  =  0.536
 ------------------------------------------</code></pre>
 <p>It seems that the effect of the time-varying coefficient model is higher. Still, this is just one statistic.It is always better to see the data. The following plot shows the effect as a function of the temperature.</p>
-<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
 sns.scatterplot(
     x=&quot;temp&quot;,
     y=&quot;slopes&quot;,
-    data=data_df.assign(
-        slopes=idata.posterior[&quot;slopes&quot;].stack(sample=(&quot;chain&quot;, &quot;draw&quot;)).mean(axis=1)
-    ),
+    data=data_df.assign(slopes=idata.posterior[&quot;slopes&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;])),
     hue=&quot;mnth&quot;,
     palette=&quot;tab20&quot;,
 )
@@ -728,27 +1966,31 @@ sns.lineplot(
     x=&quot;temp&quot;,
     y=&quot;b_temp&quot;,
     data=data_df.assign(
-        b_temp=idata_base.posterior[&quot;b_temp&quot;]
-        .stack(sample=(&quot;chain&quot;, &quot;draw&quot;))
-        .mean()
-        .to_numpy()
+        b_temp=idata_base.posterior[&quot;b_temp&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;]).to_numpy()
     ),
     color=&quot;black&quot;,
     label=&quot;base model&quot;,
     ax=ax,
 )
+sns.rugplot(x=data_df[&quot;temp&quot;], color=&quot;black&quot;, alpha=0.5, ax=ax)
 ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
-ax.set(title=&quot;Temperature Effect&quot;, xlabel=&quot;temp&quot;, ylabel=&quot;effect&quot;);</code></pre>
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(title=&quot;Temperature Effect&quot;, xlabel=&quot;temp&quot;, ylabel=&quot;effect&quot;)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_50_0.svg" />
+<img src="../images/bikes_pymc_files/bikes_pymc_56_1.png" style="width: 1000px;"/>
 </center>
 <p>We see many interesting features from this plot:</p>
 <ul>
-<li><p>The time-varying coefficient model indeed finds a non constant effect of temperature on bike rentals.</p></li>
-<li><p>The effect of second model is always positive for temperatures lower than 25 degrees. For higher temperatures the effect is sometimes negative, which is consistent with the results found in the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>. This happens mainly in the months of June and July.</p></li>
-<li><p>The variance of the time-varying effect decreases with the temperature.</p></li>
+<li>The time-varying coefficient model indeed finds a non constant effect of temperature on bike rentals.</li>
+<li>The effect of second model is always positive and starts decreasing at around <span class="math inline">\(15\)</span> degrees which is consistent with the results found in the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>.</li>
+<li>The lowest points of the effect are:
+<ul>
+<li>December and January. I think this is some seasonality effect that is not captured by the model.</li>
+<li>During the summer months when the temperatures are very high, the effect decreases considerably.</li>
+</ul></li>
+<li>The variance of the time-varying effect decreases with the temperature.</li>
 </ul>
-<p>Finally, let us plot the temperature effect as a function of time.</p>
+<p>Next, we plot the temperature effect as a function of time.</p>
 <pre class="python"><code>palette = &quot;cividis_r&quot;
 cmap = plt.get_cmap(palette)
 percs = np.linspace(51, 99, 100)
@@ -784,17 +2026,62 @@ sns.lineplot(
     ),
     color=&quot;black&quot;,
     label=&quot;base model&quot;,
-    ax=ax[0]
+    ax=ax[0],
 )
 ax[0].axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
 ax[0].legend(loc=&quot;upper left&quot;)
 ax[0].set(title=&quot;Temperature Effect&quot;)
 sns.lineplot(x=&quot;date&quot;, y=&quot;temp&quot;, data=data_df, color=&quot;C0&quot;, ax=ax[1])
-ax[1].set(title=&quot;Temperature&quot;);</code></pre>
+ax[1].set(title=&quot;Temperature&quot;)</code></pre>
 <center>
-<img src="../images/bikes_pymc_files/bikes_pymc_52_0.svg" />
+<img src="../images/bikes_pymc_files/bikes_pymc_58_1.png" style="width: 1000px;"/>
 </center>
-<p>We see that the effect is quite seasonal.</p>
+<p>In the time-varying coefficient model, the temperature effect oscillates around the constant effect of the baseline model. We do see that during the spring months the effect is higher than the constant effect of the baseline model. This is consistent with the previous plot.</p>
+<p>We can transform the scale back into the original scale:</p>
+<pre class="python"><code>temp_effect_scaled_baseline = (
+    idata_base[&quot;posterior&quot;][&quot;b_temp&quot;] * exog_scaler.scale_[0]
+) / endog_scaler.scale_[0]
+
+temp_effect_scaled = (
+    idata[&quot;posterior&quot;][&quot;slopes&quot;] * exog_scaler.scale_[0]
+) / endog_scaler.scale_[0]
+
+fig, ax = plt.subplots(figsize=(12, 7))
+az.plot_hdi(
+    x=data_df[&quot;temp&quot;].to_numpy(),
+    y=temp_effect_scaled,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=data_df[&quot;temp&quot;].to_numpy(),
+    y=temp_effect_scaled,
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: &quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.axhline(
+    y=temp_effect_scaled_baseline.mean(dim=[&quot;chain&quot;, &quot;draw&quot;]).item(),
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;base model posterior predictive mean&quot;,
+)
+sns.rugplot(x=data_df[&quot;temp&quot;], color=&quot;black&quot;, alpha=0.5, ax=ax)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(
+    title=&quot;Temperature Coefficient (Original Scale) - Posterior Predictive&quot;,
+    xlabel=&quot;temp&quot;,
+    ylabel=None,
+)
+</code></pre>
+<center>
+<img src="../images/bikes_pymc_files/bikes_pymc_61_1.png" style="width: 1000px;"/>
+</center>
+<p>For temperatures lower than <span class="math inline">\(-2\)</span> the estimate is noisy and is probably leaking some seasonality effects.</p>
 <p>Note that these results are compatible with the insights found on the previous post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>. For example, take a look into the PDP and ICE Pots</p>
 <center>
 <img src="../images/interpretable_ml_files/interpretable_ml_104_0.svg" style="width: 1000px;"/>
@@ -846,6 +2133,9 @@ ax[1].set(title=&quot;Temperature&quot;);</code></pre>
 
 
     
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
 
     
 <script type="application/javascript">
