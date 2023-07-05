@@ -6,7 +6,16 @@
     <description>Recent content in python, pymc on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 03 Jul 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 05 Jul 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</title>
+      <link>/bikes_gp/</link>
+      <pubDate>Wed, 05 Jul 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/bikes_gp/</guid>
+      <description>In this notebook we present an example of a regression model with time varying coefficients using Gaussian processes. In particular, we use a Hilbert space Gaussian process approximation in pymc to speed up the computations (see HSCP). We continue using the bikes dataset from the previous posts (Exploring Tools for Interpretable Machine Learning and Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC). Please refer to those posts for more details on the dataset, EDA and base models.</description>
+    </item>
+    
     <item>
       <title>Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</title>
       <link>/bikes_pymc/</link>

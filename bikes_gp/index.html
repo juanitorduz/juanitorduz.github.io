@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/sphere2.gif"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">10 min read</span>
+    
+
+    <h1 class="article-title">Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</h1>
+
+    
+    <span class="article-date">2023-07-05</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we present an example of a regression model with time varying coefficients using Gaussian processes. In particular, we use a Hilbert space Gaussian process approximation in <a href="https://www.pymc.io/welcome.html"><code>pymc</code></a> to speed up the computations (see <a href="https://www.pymc.io/projects/docs/en/latest/api/gp/generated/pymc.gp.HSGP.html"><code>HSCP</code></a>). We continue using the <code>bikes</code> dataset from the previous posts (<a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a> and <a href="https://juanitorduz.github.io/bikes_pymc/">Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</a>). Please refer to those posts for more details on the dataset, EDA and base models. In essence, we are trying to model bike count rentals as a function of meteorological variables and seasonality. We are particularly interested in the marginal effect of temperature on bike rentals, which we expect to be non-linear.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import preliz as pz
+import pymc as pm
+import seaborn as sns
+
+from pymc.gp.util import plot_gp_dist
+from sklearn.preprocessing import MaxAbsScaler
+
+plt.style.use(&quot;bmh&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;bikes&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We read the data and create the <code>date</code> and <code>eoys</code> variables in the previous post.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/christophM/interpretable-ml-book/master/data/bike.csv&quot;
+
+raw_data_df = pd.read_csv(
+    data_path,
+    dtype={
+        &quot;season&quot;: &quot;category&quot;,
+        &quot;mnth&quot;: &quot;category&quot;,
+        &quot;holiday&quot;: &quot;category&quot;,
+        &quot;weekday&quot;: &quot;category&quot;,
+        &quot;workingday&quot;: &quot;category&quot;,
+        &quot;weathersit&quot;: &quot;category&quot;,
+        &quot;cnt&quot;: &quot;int&quot;,
+    },
+)
+
+data_df = raw_data_df.copy()
+
+data_df[&quot;date&quot;] = pd.to_datetime(&quot;2011-01-01&quot;) + data_df[&quot;days_since_2011&quot;].apply(
+    lambda z: pd.Timedelta(z, unit=&quot;D&quot;)
+)
+
+# end-of-year Gaussian bump
+is_december = data_df[&quot;date&quot;].dt.month == 12
+eoy_mu = 25
+eoy_sigma = 7
+eoy_arg = (data_df[&quot;date&quot;].dt.day - eoy_mu) / eoy_sigma
+data_df[&quot;eoy&quot;] = is_december * np.exp(-(eoy_arg**2))
+
+data_df.info()
+</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 731 entries, 0 to 730
+Data columns (total 14 columns):
+ #   Column           Non-Null Count  Dtype         
+---  ------           --------------  -----         
+ 0   season           731 non-null    category      
+ 1   yr               731 non-null    int64         
+ 2   mnth             731 non-null    category      
+ 3   holiday          731 non-null    category      
+ 4   weekday          731 non-null    category      
+ 5   workingday       731 non-null    category      
+ 6   weathersit       731 non-null    category      
+ 7   temp             731 non-null    float64       
+ 8   hum              731 non-null    float64       
+ 9   windspeed        731 non-null    float64       
+ 10  cnt              731 non-null    int64         
+ 11  days_since_2011  731 non-null    int64         
+ 12  date             731 non-null    datetime64[ns]
+ 13  eoy              731 non-null    float64       
+dtypes: category(6), datetime64[ns](1), float64(4), int64(3)
+memory usage: 51.3 KB</code></pre>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare Data</h2>
+<p>We scale and one-hot encode the continuous and categorical variables, respectively.</p>
+<pre class="python"><code>target = &quot;cnt&quot;
+target_scaled = f&quot;{target}_scaled&quot;
+
+endog_scaler = MaxAbsScaler()
+exog_scaler = MaxAbsScaler()
+
+
+data_df[target_scaled] = endog_scaler.fit_transform(X=data_df[[target]])
+data_df[[&quot;temp_scaled&quot;, &quot;hum_scaled&quot;, &quot;windspeed_scaled&quot;]] = exog_scaler.fit_transform(
+    X=data_df[[&quot;temp&quot;, &quot;hum&quot;, &quot;windspeed&quot;]]
+)</code></pre>
+<pre class="python"><code>n = data_df.shape[0]
+# target
+cnt = data_df[target].to_numpy()
+cnt_scaled = data_df[target_scaled].to_numpy()
+# date feature
+date = data_df[&quot;date&quot;].to_numpy()
+# model regressors
+temp_scaled = data_df[&quot;temp_scaled&quot;].to_numpy()
+hum_scaled = data_df[&quot;hum_scaled&quot;].to_numpy()
+windspeed_scaled = data_df[&quot;windspeed_scaled&quot;].to_numpy()
+holiday_idx, holiday = data_df[&quot;holiday&quot;].factorize(sort=True)
+workingday_idx, workingday = data_df[&quot;workingday&quot;].factorize(sort=True)
+weathersit_idx, weathersit = data_df[&quot;weathersit&quot;].factorize(sort=True)
+t = data_df[&quot;days_since_2011&quot;].to_numpy() / data_df[&quot;days_since_2011&quot;].max()
+eoy = data_df[&quot;eoy&quot;].to_numpy()</code></pre>
+</div>
+<div id="model-structure" class="section level2">
+<h2>Model Structure</h2>
+<p>We model the bikes count through a <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.StudentT.html"><code>StudentT</code></a> likelihood (as an approximation as the bike counts are large integers). Now we describe the components of the model.</p>
+<ul>
+<li>For the categorical variables we use a <a href="https://www.pymc.io/projects/docs/en/latest/api/distributions/generated/pymc.ZeroSumNormal.html#pymc.ZeroSumNormal"><code>ZeroSumNormal</code></a> distribution as we have an intercept term and we are interested about the relative deviations.</li>
+<li>For the continuous variables <code>temp</code>, <code>hum</code> and <code>windspeed</code> we use <a href="https://en.wikipedia.org/wiki/Gaussian_process"><code>Gaussian processes</code></a> to model the time-variant coefficients. For a introduction to Gaussian processes you can see previous blog posts: <a href="https://juanitorduz.github.io/reg_bayesian_regression/">Bayesian Regression as a Gaussian Process</a> and <a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a>.
+<ul>
+<li>We use <a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/pymc.gp.cov.ExpQuad.html"><code>ExpQuad</code></a> kernels.</li>
+<li>As the data is scaled we use a single length-scale and amplitudes for all the variables (I tried a hierarchical model but it did not make much difference).</li>
+<li>Instead of adding manually a linear trend, we use another Gaussian process to model a latent background trend.</li>
+<li>We use a <a href="https://www.pymc.io/projects/docs/en/latest/api/gp/generated/pymc.gp.HSGP.html"><code>HSGP</code></a> approximation to speed up the computations. Please check the video <a href="https://www.youtube.com/watch?v=ri5sJAdcYHk">PyMCon Web Series - Introduction to Hilbert Space GPs in PyMC</a> by Bill Engels for a great introduction to the topic. The original paper <a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">Hilbert space methods for reduced-rank Gaussian process regression</a> is also a great resource.</li>
+</ul></li>
+</ul>
+<pre class="python"><code>coords = {
+    &quot;date&quot;: date,
+    &quot;holiday&quot;: holiday,
+    &quot;workingday&quot;: workingday,
+    &quot;weathersit&quot;: weathersit,
+}
+
+
+with pm.Model(coords=coords) as model:
+    # --- priors ---
+    ls_latent_params = pm.find_constrained_prior(
+        distribution=pm.InverseGamma,
+        lower=0.05,
+        upper=0.5,
+        init_guess={&quot;alpha&quot;: 2, &quot;beta&quot;: 0.2},
+        mass=0.95,
+    )
+    ls_latent = pm.InverseGamma(name=&quot;ls_latent&quot;, **ls_latent_params)
+    amplitude_latent = pm.Exponential(name=&quot;amplitude_latent&quot;, lam=1 / 0.5)
+    cov_latent = amplitude_latent**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=ls_latent)
+    gp_latent = pm.gp.HSGP(m=[10], c=1.3, cov_func=cov_latent)
+    f_latent = gp_latent.prior(name=&quot;f_latent&quot;, X=t[:, None], dims=&quot;date&quot;)
+
+    ls_params = pm.find_constrained_prior(
+        distribution=pm.InverseGamma,
+        lower=0.1,
+        upper=0.7,
+        init_guess={&quot;alpha&quot;: 2, &quot;beta&quot;: 0.5},
+        mass=0.95,
+    )
+    ls = pm.InverseGamma(name=&quot;ls&quot;, **ls_params)
+
+    amplitude = pm.Exponential(name=&quot;amplitude&quot;, lam=1 / 0.5)
+
+    cov_temp = amplitude**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=ls)
+    gp_temp = pm.gp.HSGP(m=[20], c=1.3, cov_func=cov_temp)
+    b_temp = gp_temp.prior(name=&quot;b_temp&quot;, X=temp_scaled[:, None], dims=&quot;date&quot;)
+
+    cov_hum = amplitude**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=ls)
+    gp_hum = pm.gp.HSGP(m=[20], c=1.3, cov_func=cov_hum)
+    b_hum = gp_hum.prior(name=&quot;b_hum&quot;, X=hum_scaled[:, None], dims=&quot;date&quot;)
+
+    cov_windspeed = amplitude**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=ls)
+    gp_windspeed = pm.gp.HSGP(m=[20], c=1.3, cov_func=cov_windspeed)
+    b_windspeed = gp_hum.prior(
+        name=&quot;b_windspeed&quot;, X=windspeed_scaled[:, None], dims=&quot;date&quot;
+    )
+
+    b_holiday = pm.ZeroSumNormal(name=&quot;b_holiday&quot;, sigma=1, dims=&quot;holiday&quot;)
+    b_workingday = pm.ZeroSumNormal(name=&quot;b_workingday&quot;, sigma=1, dims=&quot;workingday&quot;)
+    b_weathersit = pm.ZeroSumNormal(name=&quot;b_weathersit&quot;, sigma=1, dims=&quot;weathersit&quot;)
+    b_eoy = pm.Normal(name=&quot;b_eoy&quot;, mu=0, sigma=1)
+    nu = pm.Gamma(name=&quot;nu&quot;, alpha=4, beta=1)
+    sigma = pm.Exponential(name=&quot;sigma&quot;, lam=1 / 0.2)
+
+    # --- model parametrization ---
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=(
+            f_latent
+            + b_temp * temp_scaled
+            + b_hum * hum_scaled
+            + b_windspeed * windspeed_scaled
+            + b_holiday[holiday_idx]
+            + b_workingday[workingday_idx]
+            + b_weathersit[weathersit_idx]
+            + b_eoy * eoy
+        ),
+        dims=&quot;date&quot;,
+    )
+
+    # --- likelihood ---
+    likelihood = pm.StudentT(
+        name=&quot;likelihood&quot;, mu=mu, nu=nu, sigma=sigma, dims=&quot;date&quot;, observed=cnt_scaled
+    )
+
+
+pm.model_to_graphviz(model=model)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_10_0.svg" style="width: 1000px;"/>
+</center>
+<div id="prior-predictive-checks" class="section level3">
+<h3>Prior Predictive Checks</h3>
+<p>Before sampling from the prior distribution, we can visualize the prior for the <code>ls</code> parameter:</p>
+<pre class="python"><code>ls_latent_params = pm.find_constrained_prior(
+    distribution=pm.InverseGamma,
+    lower=0.05,
+    upper=0.5,
+    init_guess={&quot;alpha&quot;: 2, &quot;beta&quot;: 0.2},
+    mass=0.95,
+)
+
+ls_params = pm.find_constrained_prior(
+    distribution=pm.InverseGamma,
+    lower=0.1,
+    upper=0.7,
+    init_guess={&quot;alpha&quot;: 2, &quot;beta&quot;: 0.5},
+    mass=0.95,
+)
+
+fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(8, 5), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+fig.tight_layout(h_pad=4)
+pz.InverseGamma(**ls_latent_params).plot_pdf(ax=ax[0])
+ax[0].set(title=r&quot;$ls$-Latent Prior&quot;, xlim=(0, 1), xlabel=&quot;ls&quot;, ylabel=&quot;pdf&quot;)
+pz.InverseGamma(**ls_params).plot_pdf(ax=ax[1])
+ax[1].set(title=r&quot;$ls$ Prior&quot;, xlim=(0, 1), xlabel=&quot;ls&quot;, ylabel=&quot;pdf&quot;)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_13_2.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>with model:
+    prior_predictive = pm.sample_prior_predictive(samples=500, random_seed=rng)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=date,
+    y=prior_predictive[&quot;prior_predictive&quot;][&quot;likelihood&quot;],
+    color=&quot;C0&quot;,
+    smooth=False,
+    hdi_prob=0.94,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=prior_predictive[&quot;prior_predictive&quot;][&quot;likelihood&quot;],
+    color=&quot;C0&quot;,
+    smooth=False,
+    hdi_prob=0.5,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: &quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(date, cnt_scaled, color=&quot;black&quot;, label=target_scaled)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Prior Predictive&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=target_scaled,
+)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_15_1.png" style="width: 1000px;"/>
+</center>
+<p>The model specification looks reasonable.</p>
+</div>
+</div>
+<div id="model-fit" class="section level2">
+<h2>Model Fit</h2>
+<p>Now we fit the model:</p>
+<pre class="python"><code>with model:
+    idata = pm.sample(
+        target_accept=0.9,
+        draws=4_000,
+        chains=5,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng,
+    )
+    posterior_predictive = pm.sample_posterior_predictive(trace=idata, random_seed=rng)</code></pre>
+<pre class="python"><code>idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+</code></pre>
+<pre><code>0</code></pre>
+<p>Observe that the model samples quite fast given the fact it has <span class="math inline">\(4\)</span> Gaussian processes and more than <span class="math inline">\(7000\)</span> observations. We can now look into the posterior distributions of the coefficients and diagnostics.</p>
+<pre class="python"><code>var_names = [
+    &quot;ls_latent&quot;,
+    &quot;ls&quot;,
+    &quot;amplitude_latent&quot;,
+    &quot;amplitude&quot;,
+    &quot;b_holiday&quot;,
+    &quot;b_workingday&quot;,
+    &quot;b_weathersit&quot;,
+    &quot;b_eoy&quot;,
+    &quot;sigma&quot;,
+    &quot;nu&quot;,
+]
+
+az.summary(data=idata, var_names=var_names)
+</code></pre>
+<center>
+<div>
+<style>
+    .dataframe thead tr:only-child th {
+        text-align: right;
+        font-size: 15px;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 18px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 18px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 18px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+ls_latent
+</th>
+<td>
+0.140
+</td>
+<td>
+0.025
+</td>
+<td>
+0.091
+</td>
+<td>
+0.179
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+3508.0
+</td>
+<td>
+1482.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+ls
+</th>
+<td>
+0.401
+</td>
+<td>
+0.054
+</td>
+<td>
+0.300
+</td>
+<td>
+0.504
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+10246.0
+</td>
+<td>
+12861.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+amplitude_latent
+</th>
+<td>
+0.275
+</td>
+<td>
+0.093
+</td>
+<td>
+0.135
+</td>
+<td>
+0.447
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6641.0
+</td>
+<td>
+9852.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+amplitude
+</th>
+<td>
+0.279
+</td>
+<td>
+0.096
+</td>
+<td>
+0.140
+</td>
+<td>
+0.457
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+9894.0
+</td>
+<td>
+11656.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_holiday[HOLIDAY]
+</th>
+<td>
+-0.024
+</td>
+<td>
+0.007
+</td>
+<td>
+-0.038
+</td>
+<td>
+-0.011
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+42504.0
+</td>
+<td>
+15211.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_holiday[NO HOLIDAY]
+</th>
+<td>
+0.024
+</td>
+<td>
+0.007
+</td>
+<td>
+0.011
+</td>
+<td>
+0.038
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+42504.0
+</td>
+<td>
+15211.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_workingday[NO WORKING DAY]
+</th>
+<td>
+-0.007
+</td>
+<td>
+0.003
+</td>
+<td>
+-0.012
+</td>
+<td>
+-0.002
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+37599.0
+</td>
+<td>
+15807.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_workingday[WORKING DAY]
+</th>
+<td>
+0.007
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+0.012
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+37599.0
+</td>
+<td>
+15807.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[GOOD]
+</th>
+<td>
+0.075
+</td>
+<td>
+0.009
+</td>
+<td>
+0.059
+</td>
+<td>
+0.091
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+22242.0
+</td>
+<td>
+16807.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[MISTY]
+</th>
+<td>
+0.040
+</td>
+<td>
+0.008
+</td>
+<td>
+0.025
+</td>
+<td>
+0.055
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+21873.0
+</td>
+<td>
+16660.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_weathersit[RAIN/SNOW/STORM]
+</th>
+<td>
+-0.115
+</td>
+<td>
+0.015
+</td>
+<td>
+-0.143
+</td>
+<td>
+-0.087
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+22499.0
+</td>
+<td>
+15907.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b_eoy
+</th>
+<td>
+-0.192
+</td>
+<td>
+0.021
+</td>
+<td>
+-0.230
+</td>
+<td>
+-0.151
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+28523.0
+</td>
+<td>
+14790.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.049
+</td>
+<td>
+0.003
+</td>
+<td>
+0.044
+</td>
+<td>
+0.053
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16243.0
+</td>
+<td>
+14110.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+3.221
+</td>
+<td>
+0.445
+</td>
+<td>
+2.437
+</td>
+<td>
+4.077
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+24273.0
+</td>
+<td>
+15672.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=var_names,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Time-Varying Coefficient Model - Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_22_2.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>az.plot_forest(
+    data=idata,
+    var_names=[v for v in var_names if v != &quot;nu&quot;],
+    combined=True,
+    figsize=(12, 8),
+    ess=True,
+    r_hat=True,
+)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_23_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 6), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+fig.tight_layout(h_pad=5)
+pz.InverseGamma(**ls_latent_params).plot_pdf(ax=ax[0])
+az.plot_posterior(
+    data=idata, var_names=[&quot;ls_latent&quot;], color=&quot;C1&quot;, label=&quot;posterior&quot;, ax=ax[0]
+)
+ax[0].set(
+    title=r&quot;$ls$-Latent Prior vs Posterior&quot;, xlim=(0, 1), xlabel=&quot;ls&quot;, ylabel=&quot;pdf&quot;
+)
+pz.InverseGamma(**ls_params).plot_pdf(ax=ax[1])
+az.plot_posterior(data=idata, var_names=[&quot;ls&quot;], color=&quot;C1&quot;, label=&quot;posterior&quot;, ax=ax[1])
+ax[1].set(title=r&quot;$ls$ Prior vs Posterior&quot;, xlim=(0, 1), xlabel=&quot;ls&quot;, ylabel=&quot;pdf&quot;)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_24_2.png" style="width: 1000px;"/>
+</center>
+<p>The results look good and the coefficients for the categorical variables make a lot of sense!</p>
+</div>
+<div id="posterior-predictive-checks" class="section level2">
+<h2>Posterior Predictive Checks</h2>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=date,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;likelihood&quot;],
+    color=&quot;C0&quot;,
+    smooth=False,
+    hdi_prob=0.94,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;likelihood&quot;],
+    color=&quot;C0&quot;,
+    smooth=False,
+    hdi_prob=0.5,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: &quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(date, cnt_scaled, color=&quot;black&quot;, label=target_scaled)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Posterior Predictive&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=target_scaled,
+)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_27_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>ax = az.plot_ppc(
+    data=posterior_predictive,
+    observed_rug=True,
+    random_seed=seed,
+)
+ax.set(
+    title=&quot;Posterior Predictive Check&quot;,
+    xlabel=&quot;likelihood (bike counts scaled)&quot;,
+    xlim=(-0.5, 1.5),
+)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_28_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="model-components-deep-dive" class="section level2">
+<h2>Model Components Deep Dive</h2>
+<p>Now we examine the Gaussian processes components of the model in more detail.</p>
+<div id="latent-trend" class="section level3">
+<h3>Latent Trend</h3>
+<p>We start by looking into the latent trend components:</p>
+<pre class="python"><code>f_latent_samples = az.extract(data=idata, var_names=[&quot;f_latent&quot;]).transpose(
+    &quot;sample&quot;, ...
+)
+
+fig, ax = plt.subplots()
+plot_gp_dist(
+    ax=ax,
+    samples=f_latent_samples,
+    x=date,
+    palette=&quot;viridis_r&quot;,
+)
+ax.set(title=&quot;Latent Process - Posterior Predictive&quot;, xlabel=&quot;date&quot;, ylabel=None)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_31_1.png" style="width: 1000px;"/>
+</center>
+<p>We see that this latent process is very smooth and seems to be capturing the global trend of the bike rentals.</p>
+</div>
+<div id="temperature" class="section level3">
+<h3>Temperature</h3>
+<p>We now focus on the variable <code>temp</code>, which is the one we are most interested in.</p>
+<pre class="python"><code>b_temp_samples = az.extract(data=idata, var_names=[&quot;b_temp&quot;]).transpose(&quot;sample&quot;, ...)
+
+fig, ax = plt.subplots()
+plot_gp_dist(
+    ax=ax,
+    samples=b_temp_samples,
+    x=data_df[&quot;temp&quot;].to_numpy(),
+    palette=&quot;viridis_r&quot;,
+)
+sns.rugplot(x=data_df[&quot;temp&quot;], color=&quot;black&quot;, ax=ax)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.set(
+    title=&quot;Temperature Coefficient - Posterior Predictive&quot;, xlabel=&quot;temp&quot;, ylabel=None
+)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_34_1.png" style="width: 1000px;"/>
+</center>
+<p>The time-varying effect is similar to the one obtained in the previous post <a href="https://juanitorduz.github.io/bikes_pymc/">Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</a>. In this case the estimation is less noisy, in particular for lower temperatures. This might be due to the fact that we are using a more flexible trend component. Let’s look now into the development over time:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+plot_gp_dist(
+    ax=ax,
+    samples=b_temp_samples,
+    x=date,
+    palette=&quot;viridis_r&quot;,
+)
+ax.set(
+    title=&quot;Temperature Coefficient over Time - Posterior Predictive&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=None,
+)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_36_1.png" style="width: 1000px;"/>
+</center>
+<p>We see how the temperature effect drops significantly during the summer months, while relatively stable during the rest of the year.</p>
+<p>Let’s compare the latent trend and the temperature effects:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
+sns.lineplot(x=date, y=cnt, color=&quot;black&quot;, ax=ax)
+plot_gp_dist(
+    ax=ax,
+    samples=endog_scaler.inverse_transform(X=f_latent_samples),
+    x=date,
+    palette=&quot;viridis_r&quot;,
+)
+plot_gp_dist(
+    ax=ax,
+    samples=endog_scaler.inverse_transform(X=b_temp_samples * temp_scaled[None, ...]),
+    x=date,
+    palette=&quot;Spectral_r&quot;,
+)
+ax.set(title=&quot;Latent Process - Posterior Predictive&quot;, xlabel=&quot;date&quot;, ylabel=None)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_39_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="humidity" class="section level3">
+<h3>Humidity</h3>
+<pre class="python"><code>b_hum_samples = az.extract(data=idata, var_names=[&quot;b_hum&quot;]).transpose(&quot;sample&quot;, ...)
+
+fig, ax = plt.subplots()
+plot_gp_dist(
+    ax=ax,
+    samples=b_hum_samples,
+    x=data_df[&quot;hum&quot;].to_numpy(),
+    palette=&quot;viridis_r&quot;,
+)
+sns.rugplot(x=data_df[&quot;hum&quot;], color=&quot;black&quot;, ax=ax)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.set(title=&quot;Humidity Coefficient - Posterior Predictive&quot;, xlabel=&quot;hum&quot;, ylabel=None)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_41_1.png" style="width: 1000px;"/>
+</center>
+<p>This variable seems to have a decreasing effect on the bike rentals. It even changes sign for humidity values higher than <span class="math inline">\(0.8\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+plot_gp_dist(
+    ax=ax,
+    samples=b_hum_samples,
+    x=date,
+    palette=&quot;viridis_r&quot;,
+)
+ax.set(
+    title=&quot;Humidity Coefficient over Time - Posterior Predictive&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=None,
+)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_43_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="wind-speed" class="section level3">
+<h3>Wind Speed</h3>
+<pre class="python"><code>b_windspeed_samples = az.extract(data=idata, var_names=[&quot;b_windspeed&quot;]).transpose(
+    &quot;sample&quot;, ...
+)
+
+fig, ax = plt.subplots()
+plot_gp_dist(
+    ax=ax,
+    samples=b_windspeed_samples,
+    x=data_df[&quot;windspeed&quot;].to_numpy(),
+    palette=&quot;viridis_r&quot;,
+)
+sns.rugplot(x=data_df[&quot;windspeed&quot;], color=&quot;black&quot;, ax=ax)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.set(
+    title=&quot;Wind Speed Coefficient - Posterior Predictive&quot;,
+    xlabel=&quot;windspeed&quot;,
+    ylabel=None,
+)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_45_1.png" style="width: 1000px;"/>
+</center>
+<p>The winds speed coefficient looks flat and negative.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+plot_gp_dist(
+    ax=ax,
+    samples=b_windspeed_samples,
+    x=date,
+    palette=&quot;viridis_r&quot;,
+)
+ax.set(
+    title=&quot;Wind Speed Coefficient over Time - Posterior Predictive&quot;,
+    xlabel=&quot;date&quot;,
+    ylabel=None,
+)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_47_1.png" style="width: 1000px;"/>
+</center>
+<p><strong>Remark:</strong> Observe that the learned time-varying coefficients are very similar to the partial dependency plots of the tree-based ensemble model presented in the post <a href="https://juanitorduz.github.io/interpretable_ml/">Exploring Tools for Interpretable Machine Learning</a>.</p>
+</div>
+</div>
+<div id="effects-original-scale" class="section level2">
+<h2>Effects Original Scale</h2>
+<p>We can transform back the time-varying effects to the original scale (see <a href="https://juanitorduz.github.io/vectorize_sklearn_transformer/">How to vectorize an scikit-learn transformer over a <code>numpy</code> array?</a>)</p>
+<pre class="python"><code>stacked_samples = np.moveaxis(
+    a=np.stack(
+        [
+            b_temp_samples.to_numpy(),
+            b_hum_samples.to_numpy(),
+            b_windspeed_samples.to_numpy(),
+        ],
+        axis=1,
+    ),
+    source=1,
+    destination=2,
+)
+
+vectorized_exog_scaler = np.vectorize(
+    pyfunc=exog_scaler.transform,
+    excluded=[1, 2],
+    signature=&quot;(m, n) -&gt; (m, n)&quot;,
+)
+
+stacked_samples_transformed = vectorized_exog_scaler(stacked_samples)
+stacked_samples_transformed.shape</code></pre>
+<pre><code>(20000, 731, 3)</code></pre>
+<pre class="python"><code>temp_samples_original_scale = endog_scaler.inverse_transform(
+    stacked_samples_transformed[:, :, 0]
+)
+
+
+fig, ax = plt.subplots()
+az.plot_hdi(
+    x=data_df[&quot;temp&quot;].to_numpy(),
+    y=temp_samples_original_scale,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=data_df[&quot;temp&quot;].to_numpy(),
+    y=temp_samples_original_scale,
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: &quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.axhline(
+    y=109.1,  # &lt;- from baseline model from previous post
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;base model posterior predictive mean&quot;,
+)
+sns.rugplot(x=data_df[&quot;temp&quot;], color=&quot;black&quot;, alpha=0.5, ax=ax)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Temperature Coefficient (Original Scale) - Posterior Predictive&quot;,
+    xlabel=&quot;temp&quot;,
+    ylabel=None,
+)</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_51_2.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>hum_samples_original_scale = endog_scaler.inverse_transform(
+    stacked_samples_transformed[:, :, 1]
+)
+
+
+fig, ax = plt.subplots()
+az.plot_hdi(
+    x=data_df[&quot;hum&quot;].to_numpy(),
+    y=hum_samples_original_scale,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=data_df[&quot;hum&quot;].to_numpy(),
+    y=hum_samples_original_scale,
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: &quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+sns.rugplot(x=data_df[&quot;hum&quot;], color=&quot;black&quot;, alpha=0.5, ax=ax)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Humidity Coefficient (Original Scale) - Posterior Predictive&quot;,
+    xlabel=&quot;hum&quot;,
+    ylabel=None,
+)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_52_2.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>windspeed_samples_original_scale = endog_scaler.inverse_transform(
+    stacked_samples_transformed[:, :, 2]
+)
+
+
+fig, ax = plt.subplots()
+az.plot_hdi(
+    x=data_df[&quot;windspeed&quot;].to_numpy(),
+    y=windspeed_samples_original_scale,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=data_df[&quot;windspeed&quot;].to_numpy(),
+    y=windspeed_samples_original_scale,
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: &quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+sns.rugplot(x=data_df[&quot;windspeed&quot;], color=&quot;black&quot;, alpha=0.5, ax=ax)
+ax.axhline(y=0.0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    title=&quot;Wind Speed Coefficient (Original Scale) - Posterior Predictive&quot;,
+    xlabel=&quot;windspeed&quot;,
+    ylabel=None,
+)
+</code></pre>
+<center>
+<img src="../images/bikes_gp_files/bikes_gp_53_2.png" style="width: 1000px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
