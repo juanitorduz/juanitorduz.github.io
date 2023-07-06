@@ -76,7 +76,7 @@
 
   <article class="article">
     
-    <span class="article-duration">10 min read</span>
+    <span class="article-duration">11 min read</span>
     
 
     <h1 class="article-title">Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</h1>
@@ -207,6 +207,7 @@ eoy = data_df[&quot;eoy&quot;].to_numpy()</code></pre>
 <li>For the categorical variables we use a <a href="https://www.pymc.io/projects/docs/en/latest/api/distributions/generated/pymc.ZeroSumNormal.html#pymc.ZeroSumNormal"><code>ZeroSumNormal</code></a> distribution as we have an intercept term and we are interested about the relative deviations.</li>
 <li>For the continuous variables <code>temp</code>, <code>hum</code> and <code>windspeed</code> we use <a href="https://en.wikipedia.org/wiki/Gaussian_process"><code>Gaussian processes</code></a> to model the time-variant coefficients. For a introduction to Gaussian processes you can see previous blog posts: <a href="https://juanitorduz.github.io/reg_bayesian_regression/">Bayesian Regression as a Gaussian Process</a> and <a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a>.
 <ul>
+<li>The domain of definition of the Gaussian process is not the <code>date</code> variable bur rather the <code>temp</code>, <code>hum</code> and <code>windspeed</code> variables respectively. This is because we want to model the effect of the continuous variables on the bike count (I must admit this was a <a href="https://en.wikipedia.org/wiki/Clever_Hans#The_Clever_Hans_effect">Clever Hans Effect</a> 🙈).</li>
 <li>We use <a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/pymc.gp.cov.ExpQuad.html"><code>ExpQuad</code></a> kernels.</li>
 <li>As the data is scaled we use a single length-scale and amplitudes for all the variables (I tried a hierarchical model but it did not make much difference).</li>
 <li>Instead of adding manually a linear trend, we use another Gaussian process to model a latent background trend.</li>
@@ -1282,6 +1283,7 @@ ax.set(
 <center>
 <img src="../images/bikes_gp_files/bikes_gp_53_2.png" style="width: 1000px;"/>
 </center>
+<p>The results are consistent with the curves obtained in the post <a href="https://juanitorduz.github.io/bikes_pymc/">Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</a> using a <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html"><code>GaussianRandomWalk</code></a>. Still, I found using Gaussian processes more intuitive and flexible (specially because the Hilbert space approximation).</p>
 </div>
 
     </div>
