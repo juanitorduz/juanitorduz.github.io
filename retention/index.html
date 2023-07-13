@@ -465,7 +465,7 @@ ax[1].set(
     yscale=&quot;log&quot;,
 );</code></pre>
 <center>
-<img src="../images/retention_files/retention_10_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_11_1.png" style="width: 1000px;"/>
 </center>
 <ul>
 <li>Number of users: We see a mild positive trend with some peaks which do not seem driven by seasonality.</li>
@@ -498,7 +498,7 @@ fmt = lambda y, _: f&quot;{y :0.0%}&quot;
 
 ax.set_title(&quot;Retention by Cohort and Period&quot;);</code></pre>
 <center>
-<img src="../images/retention_files/retention_13_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_14_1.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
 sns.lineplot(
@@ -515,7 +515,7 @@ sns.lineplot(
 ax.legend(title=&quot;cohort&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5), fontsize=7.5)
 ax.set(title=&quot;Retention by Cohort and Period&quot;);</code></pre>
 <center>
-<img src="../images/retention_files/retention_14_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_15_1.png" style="width: 1000px;"/>
 </center>
 <ul>
 <li>It seems that for a given period, the retention rates of the new cohorts are higher than the retention rates of the older cohorts. This is a clear indication that the retention rate is a function of the absolute cohort age.</li>
@@ -542,7 +542,7 @@ ax.set(title=&quot;Retention by Cohort and Period&quot;);</code></pre>
     facet_kws={&quot;sharex&quot;: True, &quot;sharey&quot;: True},
 )</code></pre>
 <center>
-<img src="../images/retention_files/retention_16_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_17_1.png" style="width: 1000px;"/>
 </center>
 <p>Finally, we plot the retention rates for each period (observation time) as a function of the cohort age (i.e. how long is the cohort):</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
@@ -560,7 +560,7 @@ sns.lineplot(
 ax.legend(title=&quot;period&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5), fontsize=7.5)
 ax.set(title=&quot;Retention by Cohort and Period&quot;);</code></pre>
 <center>
-<img src="../images/retention_files/retention_18_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_19_1.png" style="width: 1000px;"/>
 </center>
 <p>Most of them have a negative trend. This is just representing the vertical columns from the retention matrix above.</p>
 <p><strong>One of the main takeaways from this EDA is that the retention rate is a function of (after controlling for seasonality) the absolute cohort age and the period, with a potential interaction effect.</strong></p>
@@ -896,7 +896,7 @@ coords: dict[str, npt.NDArray] = {
 pm.model_to_graphviz(model=model)
 </code></pre>
 <center>
-<img src="../images/retention_files/retention_26_0.svg" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_27_0.svg" style="width: 1000px;"/>
 </center>
 </div>
 <div id="model-fitting" class="section level3">
@@ -1492,13 +1492,13 @@ b_period_month[12]
 )
 plt.gcf().suptitle(&quot;Model Trace&quot;, fontsize=16);</code></pre>
 <center>
-<img src="../images/retention_files/retention_31_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_32_1.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>ax, *_ = az.plot_forest(data=idata, var_names=[&quot;~mu&quot;, &quot;~p&quot;], combined=True)
 ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
 ax.set(title=&quot;Model Posterior Predictive&quot;, xlabel=&quot;Retention&quot;);</code></pre>
 <center>
-<img src="../images/retention_files/retention_32_0.png" style="width: 800px;"/>
+<img src="../images/retention_files/retention_33_1.png" style="width: 700px;"/>
 </center>
 <p>It is nice to see how the seasonality coefficients resemble seasonality patterns from the EDA.</p>
 <p>We can now look into the posterior predictive check:</p>
@@ -1509,7 +1509,7 @@ ax.set(
     xlabel=&quot;likelihood (n_active_users) - log scale&quot;,
 );</code></pre>
 <center>
-<img src="../images/retention_files/retention_35_0.png" style="width: 900px;"/>
+<img src="../images/retention_files/retention_36_1.png" style="width: 1000px;"/>
 </center>
 </div>
 <div id="retention-rate-in-sample-predictions" class="section level3">
@@ -1538,7 +1538,7 @@ ax.axline(xy1=(0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;
 ax.legend()
 ax.set(title=&quot;Posterior Predictive - Retention Mean&quot;);</code></pre>
 <center>
-<img src="../images/retention_files/retention_37_0.png" style="width: 900px;"/>
+<img src="../images/retention_files/retention_38_1.png" style="width: 900px;"/>
 </center>
 <p>The results look quite good 🚀 !</p>
 <p>Now, we can deep dive into specific cohorts to see the predictions and uncertainty of the estimates.</p>
@@ -1587,7 +1587,7 @@ fig, axes = plt.subplots(
 for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
     plot_train_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)</code></pre>
 <center>
-<img src="../images/retention_files/retention_39_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_40_1.png" style="width: 1000px;"/>
 </center>
 <p>Here we also see the model is capturing the retention rate development over time. In addition we see how older cohorts have a higher uncertainty estimation as the number of base users is lower than the new cohorts.</p>
 </div>
@@ -1702,7 +1702,7 @@ for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten()):
     ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 fig.suptitle(&quot;Retention Predictions&quot;, y=1.03, fontsize=16);</code></pre>
 <center>
-<img src="../images/retention_files/retention_49_0.png" style="width: 1000px;"/>
+<img src="../images/retention_files/retention_50_1.png" style="width: 1000px;"/>
 </center>
 <p>The out-of-sample predictions look quite good as well 🙌 !</p>
 <p>For real data sets we expect this model to be a baseline for further improvements. For example, we could add more features (e.g. country, user segment, etc.) or we could use a more complex model (e.g. a hierarchical model).</p>
