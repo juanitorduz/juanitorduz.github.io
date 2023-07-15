@@ -975,11 +975,11 @@ train_cohort_age_scaled = train_cohort_age_scaler.fit_transform(
         dims=&quot;obs&quot;,
     )
 
-    mean_revenue_per_user = pm.Deterministic(
-        name=&quot;mean_revenue_per_user&quot;, var=(1 / lam), dims=&quot;obs&quot;
+    mean_revenue_per_active_user = pm.Deterministic(
+        name=&quot;mean_revenue_per_active_user&quot;, var=(1 / lam), dims=&quot;obs&quot;
     )
     pm.Deterministic(
-        name=&quot;mean_revenue_per_active_user&quot;, var=p * mean_revenue_per_user, dims=&quot;obs&quot;
+        name=&quot;mean_revenue_per_user&quot;, var=p * mean_revenue_per_active_user, dims=&quot;obs&quot;
     )
 
 pm.model_to_graphviz(model=model)</code></pre>
