@@ -139,7 +139,7 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.inspection import PartialDependenceDisplay
 from sklearn.model_selection import RandomizedSearchCV
 
-plt.style.use(&quot;bmh&quot;)
+z.style.use(&quot;arviz-darkgrid&quot;)
 plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
 plt.rcParams[&quot;figure.dpi&quot;] = 100
 plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
@@ -658,10 +658,10 @@ Name: sales, dtype: float64</code></pre>
 <pre class="python"><code>g = sns.displot(
     data=data, x=&quot;sales&quot;, kind=&quot;hist&quot;, kde=True, fill=True, height=5, aspect=1.5
 )
-g.fig.suptitle(&quot;Sales Distribution&quot;, y=1.05, fontsize=16)
+g.fig.suptitle(&quot;Sales Distribution&quot;, y=1.05, fontsize=18, fontweight=&quot;bold&quot;)
 </code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_19_1.png" style="width: 900px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_19_2.png" style="width: 900px;"/>
 </center>
 </div>
 <div id="descriptive-statistics" class="section level2">
@@ -677,9 +677,11 @@ g.fig.suptitle(&quot;Sales Distribution&quot;, y=1.05, fontsize=16)
     height=5,
     aspect=1.5,
 )
-g.fig.suptitle(&quot;Sales Distribution by Discount Group&quot;, y=1.05, fontsize=16)</code></pre>
+g.fig.suptitle(
+    &quot;Sales Distribution by Discount Group&quot;, y=1.05, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_22_1.png" style="width: 900px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_22_2.png" style="width: 900px;"/>
 </center>
 <p>It looks customers with discount have higher sales. Data scientist A is optimistic with this initial result. To quantify this, they computed the difference in means:</p>
 <pre class="python"><code>data.groupby([&quot;discount&quot;]).agg({&quot;sales&quot;: &quot;mean&quot;})
@@ -745,9 +747,9 @@ discount
 <p>Wow! We see <span class="math inline">\(4.8\$\)</span> mean uplift! This is great news. The discount strategy seems to be working. Data scientist A is happy with the results and decides to get feedback from the rest of the data science team.</p>
 <p>Data scientist B is not so happy with the results. They think that the uplift is too good to be true (based on domain knowledge and the sales distributions 🤔). When thinking about reasons for such a high uplift, they realized the discount assignment was not at random. It was based on the number of web visits (remember the marketing plan?). This means that the discount group is not comparable to the control group completely! They decide to plot sales against web visits per discount group:</p>
 <pre class="python"><code>g = sns.relplot(data=data, x=&quot;visits&quot;, y=&quot;sales&quot;, hue=&quot;is_loyal&quot;, col=&quot;discount&quot;)
-g.fig.suptitle(&quot;Sales vs. Visits&quot;, y=1.05, fontsize=16)</code></pre>
+g.fig.suptitle(&quot;Sales vs. Visits&quot;, y=1.05, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_27_1.png" style="width: 1000px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_27_2.png" style="width: 1000px;"/>
 </center>
 <p>Indeed, they realize they should probably adjust for the number of web visits. A natural metric is sales per web visit. Let’s compute it:</p>
 <pre class="python"><code>data.groupby([&quot;discount&quot;]).agg({&quot;sales_per_visit&quot;: &quot;mean&quot;})
@@ -817,10 +819,13 @@ discount
     aspect=1.5,
 )
 g.fig.suptitle(
-    &quot;Sales per Web Visits Distribution by Discount Group&quot;, y=1.05, fontsize=16
+    &quot;Sales per Web Visits Distribution by Discount Group&quot;,
+    y=1.05,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
 )</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_31_1.png" style="width: 900px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_31_2.png" style="width: 900px;"/>
 </center>
 <p>For both data scientist the results look much better, but they were unsure about which uplift to report. They thought about the difference in means:</p>
 <pre class="python"><code>(
@@ -852,10 +857,12 @@ for i, ax in enumerate(g.axes.flatten()):
         )
         ax.legend(loc=&quot;upper right&quot;)
 
-g.fig.suptitle(&quot;Sales distribution by discount and loyalty&quot;, y=1.05, fontsize=16)
+g.fig.suptitle(
+    &quot;Sales distribution by discount and loyalty&quot;, y=1.05, fontsize=18, fontweight=&quot;bold&quot;
+)
 </code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_35_1.png" style="width: 1000px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_35_2.png" style="width: 1000px;"/>
 </center>
 <p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the non-discounted group! How could this be? Could it be that the discount strategy is working only for non-loyal customers? According to the plot above, filtering for non loyal customers would yield to a positive uplift:</p>
 <pre class="python"><code>(
@@ -889,10 +896,13 @@ for i, ax in enumerate(g.axes.flatten()):
         ax.legend(loc=&quot;upper right&quot;)
 
 g.fig.suptitle(
-    &quot;Sales per visit distribution by discount and loyalty&quot;, y=1.05, fontsize=16
+    &quot;Sales per visit distribution by discount and loyalty&quot;,
+    y=1.05,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
 )</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_39_1.png" style="width: 1000px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_39_2.png" style="width: 1000px;"/>
 </center>
 <p>This plots shows a different story! It seems that loyal customers do react positively to the discount strategy. Also, when just looking to the non-discounted group, they saw the loyal customers had a higher <code>sales_per_visit</code> value.</p>
 </div>
@@ -938,11 +948,11 @@ complete_model</code></pre>
             is_loyal ~ Normal(mu: 0.0, sigma: 5.0)
         
         Auxiliary parameters
-            sales_sigma ~ Exponential(lam: 0.5)</code></pre>
+            sigma ~ Exponential(lam: 0.5)</code></pre>
 <pre class="python"><code>complete_model.build()
 complete_model.graph()</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_44_0.svg" style="width: 700px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_44_0.svg" style="width: 800px;"/>
 </center>
 </div>
 <div id="prior-predictive-checks" class="section level3">
@@ -953,7 +963,7 @@ complete_model.graph()</code></pre>
 </code></pre>
 <pre class="python"><code>fig, ax = plt.subplots()
 az.plot_ppc(data=complete_model_prior_predictive, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
-ax.set(title=&quot;Complete Model - Prior Predictive&quot;)</code></pre>
+ax.set_title(label=&quot;Complete Model - Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_47_2.png" style="width: 900px;"/>
 </center>
@@ -1189,14 +1199,18 @@ visits
     kind=&quot;rank_bars&quot;,
     backend_kwargs={&quot;figsize&quot;: (10, 9), &quot;layout&quot;: &quot;constrained&quot;},
 )
-plt.gcf().suptitle(&quot;Complete Model - Trace&quot;, fontsize=16)</code></pre>
+plt.gcf().suptitle(&quot;Complete Model - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_53_1.png" style="width: 1000px;"/>
 </center>
 <p>It seems the discount distribution contains zero and the posterior predictive mean effect is slightly negative. We can zoom in into the posterior distribution of the discount effect:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 az.plot_posterior(data=complete_model_idata, var_names=[&quot;discount&quot;], ref_val=0, ax=ax)
-</code></pre>
+ax.set_title(
+    label=&quot;Posterior distribution of discount coefficient - complete model&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_55_1.png" style="width: 900px;"/>
 </center>
@@ -1214,8 +1228,9 @@ az.plot_ppc(
     random_seed=seed,
     ax=ax,
 )
-ax.set(title=&quot;Complete Model - Posterior Predictive&quot;)
-</code></pre>
+ax.set_title(
+    label=&quot;Complete Model - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_59_1.png" style="width: 900px;"/>
 </center>
@@ -1324,12 +1339,12 @@ y_pred = ml_model.predict(X=X)
 fig, ax = plt.subplots(figsize=(7, 6))
 sns.scatterplot(x=y, y=y_pred, color=&quot;C0&quot;, alpha=0.7, ax=ax)
 ax.axline(xy1=(10, 10), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;)
-ax.set(
-    title=&quot;ML Model - Actual vs Predicted Sales&quot;, xlabel=&quot;Actual&quot;, ylabel=&quot;Predicted&quot;
-)
-</code></pre>
+ax.set(xlabel=&quot;Actual&quot;, ylabel=&quot;Predicted&quot;)
+ax.set_title(
+    label=&quot;ML Model - Actual vs Predicted Sales&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_64_1.png" style="width: 700px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_64_1.png" style="width: 800px;"/>
 </center>
 <p>The predictions look ok. For example, the variance explained looks similar to the one from the linear model.</p>
 <p>Let’s move to the question of interest: the discount effect. The data scientist computed the partial dependency plot for the <code>discount</code> and <code>is_loyal</code> variables. They presented absolute and relative effects.</p>
@@ -1347,7 +1362,9 @@ for b in [False, True]:
         random_state=seed,
         ax=ax[int(b)],
     )
-fig.suptitle(&quot;ML Model - Partial Dependence Plots&quot;, y=1.05, fontsize=16)</code></pre>
+fig.suptitle(
+    &quot;ML Model - Partial Dependence Plots&quot;, y=1.05, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_66_1.png" style="width: 1000px;"/>
 </center>
@@ -1428,11 +1445,11 @@ causal_model
             visits ~ Gamma(mu: 0.9, sigma: 0.3)
         
         Auxiliary parameters
-            sales_sigma ~ Exponential(lam: 0.5)</code></pre>
+            sigma ~ Exponential(lam: 0.5)</code></pre>
 <pre class="python"><code>causal_model.build()
 causal_model.graph()</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_75_0.svg" style="width: 700px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_75_0.svg" style="width: 800px;"/>
 </center>
 </div>
 <div id="prior-predictive-checks-1" class="section level3">
@@ -1444,7 +1461,7 @@ causal_model.graph()</code></pre>
 </code></pre>
 <pre class="python"><code>fig, ax = plt.subplots()
 az.plot_ppc(data=causal_model_prior_predictive, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
-ax.set(title=&quot;Causal Model - Prior Predictive&quot;)</code></pre>
+ax.set_title(label=&quot;Causal Model - Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_78_1.png" style="width: 900px;"/>
 </center>
@@ -1648,13 +1665,19 @@ visits
     kind=&quot;rank_bars&quot;,
     backend_kwargs={&quot;figsize&quot;: (10, 7), &quot;layout&quot;: &quot;constrained&quot;},
 )
-plt.gcf().suptitle(&quot;Causal Model - Trace&quot;, fontsize=16)</code></pre>
+plt.gcf().suptitle(&quot;Causal Model - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_84_1.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>fig, ax = plt.subplots()
 az.plot_posterior(data=causal_model_idata, var_names=[&quot;discount&quot;], ref_val=0, ax=ax)
-</code></pre>
+ax.axvline(x=2.0, color=&quot;C2&quot;, linestyle=&quot;-&quot;, label=&quot;True ATE&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(
+    &quot;Posterior distribution of discount coefficient - causal model&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_85_1.png" style="width: 900px;"/>
 </center>
@@ -1672,7 +1695,9 @@ az.plot_ppc(
     random_seed=seed,
     ax=ax,
 )
-ax.set(title=&quot;Causal Model - Posterior Predictive&quot;)</code></pre>
+ax.set_title(
+    label=&quot;Causal Model - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_89_1.png" style="width: 900px;"/>
 </center>
@@ -1683,17 +1708,19 @@ ax.set(title=&quot;Causal Model - Posterior Predictive&quot;)</code></pre>
 <h2>Discount Estimation Comparison</h2>
 <p>We can now compare the discount effect estimates from the complete (non-causal) linear model and the causal linear model.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-
-
+ax.axvline(x=2.0, color=&quot;C2&quot;, linestyle=&quot;-&quot;)
 az.plot_forest(
     data=[complete_model_idata, causal_model_idata],
     var_names=[&quot;discount&quot;],
     model_names=[&quot;complete model&quot;, &quot;causal model&quot;],
     combined=True,
     ax=ax,
+)
+ax.set_title(
+    label=r&quot;Discount on sales coefficient ($94\%$ HDI)&quot;, fontsize=18, fontweight=&quot;bold&quot;
 )</code></pre>
 <center>
-<img src="../images/causal_inference_example_files/causal_inference_example_92_1.png" style="width: 800px;"/>
+<img src="../images/causal_inference_example_files/causal_inference_example_92_1.png" style="width: 900px;"/>
 </center>
 <p>Here we can appreciate the negative consequence of adding the bad control variable <code>is_loyal</code>. Moreover, observe that adding more features to the model does not translate to variance reduction!</p>
 </div>
@@ -1708,6 +1735,7 @@ az.plot_forest(
 <li>Machine learning models are not always the solution for applied data science problems.</li>
 <li>Inference and prediction tasks are different (see <a href="https://matheusfacure.github.io/python-causality-handbook/18-Heterogeneous-Treatment-Effects-and-Personalization.html">here</a> for another use case showing this).</li>
 </ul>
+<p><strong>Remark:</strong> In many ways this example is an over-simplification of a real world application. In practice, one is more interested in the <em>conditional average treatment effect</em>, to identify users which are more likely to be influenced by the treatment. This is a more complex problem, which requires more data and more sophisticated models. See for example <a href="https://juanitorduz.github.io/uplift/">PyConDE &amp; PyData Berlin 2022: Introduction to Uplift Modeling</a> and <a href="https://towardsdatascience.com/beyond-churn-prediction-and-churn-uplift-45225e5a7541">Beyond Churn Prediction and Churn Uplift</a>). However, the main message of this example still holds: understanding the data generating process and the assumptions behind it is crucial for causal inference.</p>
 </div>
 <div id="appending-a-causal-inference-software" class="section level2">
 <h2>Appending A: Causal Inference Software</h2>
@@ -1801,9 +1829,13 @@ No such variable(s) found!</code></pre>
 <pre class="python"><code>model._graph.get_backdoor_paths(nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;])</code></pre>
 <pre><code>[[&#39;discount&#39;, &#39;visits&#39;, &#39;sales&#39;]]</code></pre>
 <p>We can also check for valid control sets:</p>
-<pre class="python"><code>model._graph.check_valid_backdoor_set(nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;], nodes3=[&quot;visits&quot;])</code></pre>
+<pre class="python"><code>model._graph.check_valid_backdoor_set(
+    nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;], nodes3=[&quot;visits&quot;]
+)</code></pre>
 <pre><code>{&#39;is_dseparated&#39;: True}</code></pre>
-<pre class="python"><code>model._graph.check_valid_backdoor_set(nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;], nodes3=[&quot;is_loyal&quot;])</code></pre>
+<pre class="python"><code>model._graph.check_valid_backdoor_set(
+    nodes1=[&quot;discount&quot;], nodes2=[&quot;sales&quot;], nodes3=[&quot;is_loyal&quot;]
+)</code></pre>
 <pre><code>{&#39;is_dseparated&#39;: False}</code></pre>
 <p>After selecting the estimand, we can proceed to estimate the causal effect:</p>
 <pre class="python"><code>estimate = model.estimate_effect(
@@ -1870,7 +1902,11 @@ PartialDependenceDisplay.from_estimator(
     random_state=seed,
     ax=ax,
 )
-ax.set(title=&quot;ML Model (Causal) - Partial Dependence Plot (Centered)&quot;)</code></pre>
+ax.set_title(
+    label=&quot;ML Model (Causal) - Partial Dependence Plot (Centered)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_119_1.png" style="width: 900px;"/>
 </center>
