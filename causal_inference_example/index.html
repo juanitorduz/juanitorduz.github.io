@@ -864,14 +864,14 @@ g.fig.suptitle(
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_35_2.png" style="width: 1000px;"/>
 </center>
-<p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the non-discounted group! How could this be? We do see a clear difference in sales between loyal an non-loyal users conditioned on no dsicount:</p>
+<p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the non-discounted group! How could this be? We do see a clear difference in sales between loyal an non-loyal users conditioned on no-discount:</p>
 <pre class="python"><code>(
     data.query(&quot;discount == 0 &amp; is_loyal == 1&quot;)[&quot;sales&quot;].mean()
     - data.query(&quot;discount == 0 &amp; is_loyal == 0&quot;)[&quot;sales&quot;].mean()
 )
 </code></pre>
 <pre><code>12.631180501353883</code></pre>
-<p>So the loyalty feature should not be the problem right? Still, the <code>loyal</code> tag depends on the discount, so maybe this is implictly providing an uplift? In view of the sales distribution and the expectation of the experiments, this looks way to good to be true. The data scientist were very hesitant to recommend pushing discount to non-loyal customers as a result of a <span class="math inline">\(12\$\)</span> uplift on sales. Stakeholders would probably not buy this as the overall average sales per user was around <span class="math inline">\(20\$\)</span>.</p>
+<p>So the loyalty feature should not be the problem right? Still, the <code>loyal</code> tag depends on the discount, so maybe this is implicitly providing an uplift? In view of the sales distribution and the expectation of the experiments, this looks way to good to be true. The data scientist were very hesitant to recommend pushing discounts to non-loyal customers as a result of a <span class="math inline">\(12\$\)</span> uplift in sales. Stakeholders would probably not buy this as the overall average sales per user was around <span class="math inline">\(20\$\)</span>.</p>
 <p>Data scientist B noticed that the plots above did not factor in the <code>visits</code> variable. Hence, they decided to run the analogous plots on the <code>sales_per_visit</code> variable:</p>
 <pre class="python"><code>g = sns.displot(
     data=data,
