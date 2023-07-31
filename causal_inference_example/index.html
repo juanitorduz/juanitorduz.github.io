@@ -96,7 +96,7 @@
 <p>instead of thinking about the data generating process. In other words, it will be about not thinking about <strong>causality</strong>.</p>
 <div id="the-business-problem" class="section level3">
 <h3>The Business Problem</h3>
-<p>The story begins in a fast paced startup. The company is growing fast and the marketing team is looking for ways to increase the sales from existing customers by making them buy more. The main idea is to unlock the potential of the customer based through incentives, in this case a discount. We of course want to measure the effect of the discount on the customer’s behavior. Still, they do not want to waste money giving discounts to users which are not valuable. As always, it is about return on investment (ROI). Without going into specifics about the nature of the discount, it has been designed to provide a positive return on investment if the customer buys more than <span class="math inline">\(1\$\)</span> as a result of the discount. How can we measure the effect of the discount and make sure our experiment has a positive ROI? The marketing team came up with the following strategy:</p>
+<p>The story begins in a fast paced startup. The company is growing fast and the marketing team is looking for ways to increase the sales from existing customers by making them buy more. The main idea is to unlock the potential of the customer base through incentives, in this case a discount. We of course want to measure the effect of the discount on the customer’s behavior. Still, they do not want to waste money giving discounts to users which are not valuable. As always, it is about return on investment (ROI). Without going into specifics about the nature of the discount, it has been designed to provide a positive return on investment if the customer buys more than <span class="math inline">\(1\$\)</span> as a result of the discount. How can we measure the effect of the discount and make sure our experiment has a positive ROI? The marketing team came up with the following strategy:</p>
 <ul>
 <li>Select a sample of existing customers from the same cohort.</li>
 <li>Set a test window of 1 month.</li>
@@ -864,14 +864,14 @@ g.fig.suptitle(
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_35_2.png" style="width: 1000px;"/>
 </center>
-<p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the non-discounted group! How could this be? Could it be that the discount strategy is working only for non-loyal customers? According to the plot above, filtering for non loyal customers would yield to a positive uplift:</p>
+<p>Ok! This was shocking! They saw that for the loyal customers the sales are much (much!) higher for the non-discounted group! How could this be? We do see a clear difference in sales between loyal an non-loyal users conditioned on no dsicount:</p>
 <pre class="python"><code>(
     data.query(&quot;discount == 0 &amp; is_loyal == 1&quot;)[&quot;sales&quot;].mean()
     - data.query(&quot;discount == 0 &amp; is_loyal == 0&quot;)[&quot;sales&quot;].mean()
 )
 </code></pre>
 <pre><code>12.631180501353883</code></pre>
-<p>In view of the sales distribution and the expectation of the experiments, this looks way to good to be true. The data scientist were very hesitant to recommend pushing discount to non-loyal customers as a result of a <span class="math inline">\(12\$\)</span> uplift on sales. Stakeholders would probably not buy this as the overall average sales per user was around <span class="math inline">\(20\$\)</span>.</p>
+<p>So the loyalty feature should not be the problem right? Still, the <code>loyal</code> tag depends on the discount, so maybe this is implictly providing an uplift? In view of the sales distribution and the expectation of the experiments, this looks way to good to be true. The data scientist were very hesitant to recommend pushing discount to non-loyal customers as a result of a <span class="math inline">\(12\$\)</span> uplift on sales. Stakeholders would probably not buy this as the overall average sales per user was around <span class="math inline">\(20\$\)</span>.</p>
 <p>Data scientist B noticed that the plots above did not factor in the <code>visits</code> variable. Hence, they decided to run the analogous plots on the <code>sales_per_visit</code> variable:</p>
 <pre class="python"><code>g = sns.displot(
     data=data,
@@ -1368,7 +1368,7 @@ fig.suptitle(
 <center>
 <img src="../images/causal_inference_example_files/causal_inference_example_66_1.png" style="width: 1000px;"/>
 </center>
-<p>According to the machine learning model, the discount <strong>does have a positive effect on sales</strong>. The relative partial dependency plot hint that the additional sales driven by the discount are are around <span class="math inline">\(0.35\$\)</span>. This is less than the limit <span class="math inline">\(1\$\)</span> set by the marketing team to obtain a positive ROI.</p>
+<p>According to the machine learning model, the discount <strong>does have a positive effect on sales</strong>. The relative partial dependency plot hint that the additional sales driven by the discount are around <span class="math inline">\(0.35\$\)</span>. This is less than the limit <span class="math inline">\(1\$\)</span> set by the marketing team to obtain a positive ROI.</p>
 </div>
 <div id="conclusions-and-recommendations" class="section level2">
 <h2>Conclusions and Recommendations</h2>
@@ -1406,7 +1406,7 @@ g</code></pre>
 <p>The following are the main structural remarks from the DAG:</p>
 <ul>
 <li>Both the discounts (treatment) and sales (target) are affected by the number of web visits (proxy for customer’s interest in the product). This means that the number of web visits is a confounder variable.</li>
-<li>However, the loyalty of the customer is defined by both the discounts and the sales. This means that the loyalty is a collider variable.</li>
+<li>However, the loyalty of the customer is defined by both the discounts and the sales. This means that loyalty is a collider variable.</li>
 </ul>
 <p>If this sounds strange to you, is ok, the causal inference jargon is not easy to understand at the beginning (please see the <strong>References</strong> section below). What is important is that the <code>visits</code> variable is a confounding variable which is important to control for because it is creating a bias as we are actively giving more discounts to more engaged users. However, on the other hand, the <code>is_loyal</code> variable is a collider variable which is creating an spurious relationship between the <code>discount</code> and <code>sales</code> variables. <strong>This was the data scientists mistake!</strong> Note that we do not care if we estimate effect with a linear model or a gradient boosting tree ensemble, the problem is the features we select for the model!</p>
 <div id="causal-bayesian-regression-model" class="section level2">
