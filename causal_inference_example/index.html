@@ -1411,7 +1411,7 @@ g</code></pre>
 <p>If this sounds strange to you, is ok, the causal inference jargon is not easy to understand at the beginning (please see the <strong>References</strong> section below). What is important is that the <code>visits</code> variable is a confounding variable which is important to control for because it is creating a bias as we are actively giving more discounts to more engaged users. However, on the other hand, the <code>is_loyal</code> variable is a collider variable which is creating an spurious relationship between the <code>discount</code> and <code>sales</code> variables. <strong>This was the data scientists mistake!</strong> Note that we do not care if we estimate effect with a linear model or a gradient boosting tree ensemble, the problem is the features we select for the model!</p>
 <div id="causal-bayesian-regression-model" class="section level2">
 <h2>Causal Bayesian Regression Model</h2>
-<p>In view of the remark above regarding <em>bad control</em> variables, let’s fit the same Bayesian linear regression model but now controlling for the <code>is_loyal</code> variable.</p>
+<p>In view of the remark above regarding <em>bad control</em> variables, let’s fit the same Bayesian linear regression model but not controlling for the <code>is_loyal</code> variable.</p>
 <div id="specify-the-model-1" class="section level3">
 <h3>Specify the Model</h3>
 <pre class="python"><code>causal_model_priors = {
