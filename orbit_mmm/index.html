@@ -95,9 +95,11 @@
 <p><em>The core of KTR is the use of latent variables to define a smooth time varying representation of model coefficients. These smooth representations are <a href="https://en.wikipedia.org/wiki/Kernel_smoother">Kernel Smooths</a>.</em></p>
 </blockquote>
 <p>These <em>latent variables</em> are somehow similar (or at least inspired) to the basis functions in a spline regression. Again, for details see the references above (which is <strong>strongly</strong> recommended!).</p>
-<p>This notebook has two parts:
-- In <strong>Part I</strong> we generate the data ourselves. This allow us to have control on the data generation process in order to understand the strength and limitations of the KTR model. Moreover, we explore useful transformations of media cost data to model carryover and diminishing returns, see <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>.
-- In <strong>Part II</strong> we use the KTR model to estimate the media effects. We also compare it with a baseline <a href="https://facebook.github.io/prophet/">Prophet</a> model.</p>
+<p>This notebook has two parts:</p>
+<ul>
+<li><p>In <strong>Part I</strong> we generate the data ourselves. This allow us to have control on the data generation process in order to understand the strength and limitations of the KTR model. Moreover, we explore useful transformations of media cost data to model carryover and diminishing returns, see <a href="https://research.google/pubs/pub46001/">Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)</a>.</p></li>
+<li><p>In <strong>Part II</strong> we use the KTR model to estimate the media effects. We also compare it with a baseline <a href="https://facebook.github.io/prophet/">Prophet</a> model.</p></li>
+</ul>
 <p><strong>Remark</strong>: In many applications measuring the effects via regression analysis is challenging because potential stochastic factors between the input and response variable. In our work <a href="https://arxiv.org/abs/2111.06403">Modelling stochastic time delay for regression analysis</a> with Aaron Pickering we go deeper into this subject.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
