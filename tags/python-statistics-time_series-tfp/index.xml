@@ -13,8 +13,7 @@
       <pubDate>Tue, 11 Feb 2020 00:00:00 +0000</pubDate>
       
       <guid>/intro_sts_tfp/</guid>
-      <description>In this notebook we explore the Structural Time Series (STS) Module of TensorFlow Probability. We follow closely the use cases presented in their Medium blog. As described there: An STS model expresses an observed time series as the sum of simpler components 1:
-\[ f(t) = \sum_{k=1}^{N}f_{k}(t) + \varepsilon, \quad \text{where}\quad \varepsilon \sim N(0, \sigma^2). \]
+      <description>In this notebook we explore the Structural Time Series (STS) Module of TensorFlow Probability. We follow closely the use cases presented in their Medium blog. As described there: An STS model expresses an observed time series as the sum of simpler components 1:    \[ f(t) = \sum_{k=1}^{N}f_{k}(t) + \varepsilon, \quad \text{where}\quad \varepsilon \sim N(0, \sigma^2). \]
 Each summand \(f_{k}(t)\) has a particular structure, e.g. specific seasonality, trend, autoregressive terms, etc.</description>
     </item>
     
