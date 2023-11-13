@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Multilevel Elasticities for a Single SKU - Part II. - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Multilevel Elasticities for a Single SKU - Part II. - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">8 min read</span>
+    
+
+    <h1 class="article-title">Multilevel Elasticities for a Single SKU - Part II.</h1>
+
+    
+    <span class="article-date">2023-11-13</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we go deeper into the last covariance model presented in the previous blog post <a href="https://juanitorduz.github.io/multilevel_elasticities_single_sku/">Multilevel Elasticities for a Single SKU</a>. In particular we describe how to generate posterior predictive samples from an unseen region by the model. This can be useful for scenario planning: once can simulated outcome quantities from price ranges through the elasticity estimates (with uncertainty!)</p>
+<p>We strongly recommend reading the previous blog post before reading this one as we will skip the EDA and baseline model comparison parts.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;multilevel_elasticities_single_sku&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We begin by reading the data from the previous notebook.</p>
+<pre class="python"><code>market_df = pd.read_csv(
+    &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/multilevel_elasticities_single_sku_data.csv&quot;
+)
+
+market_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+    
+    .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+item_id
+</th>
+<th>
+price
+</th>
+<th>
+quantities
+</th>
+<th>
+time_step
+</th>
+<th>
+store_id
+</th>
+<th>
+region_store_id
+</th>
+<th>
+region_id
+</th>
+<th>
+median_income
+</th>
+<th>
+log_price
+</th>
+<th>
+log_quantities
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+0
+</td>
+<td>
+1.335446
+</td>
+<td>
+6.170862
+</td>
+<td>
+16
+</td>
+<td>
+0
+</td>
+<td>
+r-0_s-0
+</td>
+<td>
+0
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.289265
+</td>
+<td>
+1.819839
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+0
+</td>
+<td>
+1.702792
+</td>
+<td>
+3.715124
+</td>
+<td>
+15
+</td>
+<td>
+0
+</td>
+<td>
+r-0_s-0
+</td>
+<td>
+0
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.532269
+</td>
+<td>
+1.312412
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+0
+</td>
+<td>
+1.699778
+</td>
+<td>
+3.290962
+</td>
+<td>
+14
+</td>
+<td>
+0
+</td>
+<td>
+r-0_s-0
+</td>
+<td>
+0
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.530498
+</td>
+<td>
+1.191180
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+0
+</td>
+<td>
+1.335844
+</td>
+<td>
+5.702928
+</td>
+<td>
+13
+</td>
+<td>
+0
+</td>
+<td>
+r-0_s-0
+</td>
+<td>
+0
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.289563
+</td>
+<td>
+1.740980
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+0
+</td>
+<td>
+1.517213
+</td>
+<td>
+4.264949
+</td>
+<td>
+12
+</td>
+<td>
+0
+</td>
+<td>
+r-0_s-0
+</td>
+<td>
+0
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.416875
+</td>
+<td>
+1.450430
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Recall we want to estimate the SKU elasticities at region level using a log-log model of price and demand. We have <span class="math inline">\(9\)</span> regions in the data set:</p>
+<pre class="python"><code>g = sns.lmplot(
+    data=market_df,
+    x=&quot;log_price&quot;,
+    y=&quot;log_quantities&quot;,
+    hue=&quot;region_id&quot;,
+    height=8,
+    aspect=1.2,
+    scatter=False,
+)
+g.set_axis_labels(x_var=&quot;Log Prices&quot;, y_var=&quot;Log Quantities&quot;)
+legend = g.legend
+legend.set_title(title=&quot;Region ID&quot;, prop={&quot;size&quot;: 10})
+g.fig.suptitle(
+    &quot;Log Prices vs Log Quantities by Region&quot;, y=1.05, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_7_2.png" style="width: 900px;"/>
+</center>
+<p>In this context, the elasticities are nothing else than the slopes of the lines above. In the previous notebook, we saw that these slopes can be explained by an additional variable: <code>median_income</code>.</p>
+<p>An important point in the plot above is that the <strong>intercepts and slopes are correlated</strong> 💡. Note how higher slopes correspond the lower intercepts. This key observation motivated modeling the covariance matrix of the intercepts and slopes. We will revisit the model specification below.</p>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare Data</h2>
+<p>In contrast to the previous notebook, we will not fit the model for all regions but only for <span class="math inline">\(8\)</span> of them. We will use the last region as a holdout set to generate posterior predictive samples. This is to illustrate how one can use hierarchical models to generate prediction (and parameter inference like elasticities) for unseen categories, in this case regions.</p>
+<pre class="python"><code># We do not include region 8 in the model
+region_id_out = 8
+
+market_red_df = market_df.query(&quot;region_id != @region_id_out&quot;)
+market_out_df = market_df.query(&quot;region_id == @region_id_out&quot;)</code></pre>
+<p>We use the suffix <code>_red</code> (reduced) to denote the quantities (model, plots, …, etc) fitted just with <span class="math inline">\(8\)</span> regions.</p>
+<pre class="python"><code>obs_red = market_red_df.index.to_numpy()
+price_red = market_red_df[&quot;price&quot;].to_numpy()
+log_price_red = market_red_df[&quot;log_price&quot;].to_numpy()
+quantities_red = market_red_df[&quot;quantities&quot;].to_numpy()
+log_quantities_red = market_red_df[&quot;log_quantities&quot;].to_numpy()
+median_income_idx_red, median_income_red = market_red_df[&quot;median_income&quot;].factorize(
+    sort=True
+)
+region_idx_red, region_red = market_red_df[&quot;region_id&quot;].factorize(sort=True)</code></pre>
+<p>Without the suffix we refer to the quantities fitted with all <span class="math inline">\(9\)</span> regions.</p>
+<pre class="python"><code>obs = market_df.index.to_numpy()
+price = market_df[&quot;price&quot;].to_numpy()
+log_price = market_df[&quot;log_price&quot;].to_numpy()
+quantities = market_df[&quot;quantities&quot;].to_numpy()
+log_quantities = market_df[&quot;log_quantities&quot;].to_numpy()
+median_income_idx, median_income = market_df[&quot;median_income&quot;].factorize(sort=True)
+region_idx, region = market_df[&quot;region_id&quot;].factorize(sort=True)</code></pre>
+</div>
+<div id="specify-model" class="section level2">
+<h2>Specify Model</h2>
+<p>The model specification is the same as in the previous notebook. The only change is that we use data containers and mutable coordinates to make sure we can generate posterior predictive samples for the holdout region. The strategy is to explicitly model the covariance matrix of the intercept and slopes using the <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.LKJCholeskyCov.html"><code>pm.LKJCholeskyCov</code></a> distribution as explained in the great blog post <a href="https://tomicapretto.github.io/posts/2022-06-12_lkj-prior/">Hierarchical modeling with the LKJ prior in PyMC</a> by <a href="https://tomicapretto.github.io/">Tomi Capretto</a>.</p>
+<pre class="python"><code>coords = {
+    &quot;effect&quot;: [&quot;intercept&quot;, &quot;slope&quot;],
+}
+
+with pm.Model(coords=coords) as model_cov_red:
+    # --- Data Containers ---
+
+    model_cov_red.add_coord(name=&quot;region&quot;, values=region_red, mutable=True)
+    model_cov_red.add_coord(name=&quot;obs&quot;, values=obs_red, mutable=True)
+
+    region_idx_data = pm.Data(
+        name=&quot;region_idx_data&quot;, value=region_idx_red, mutable=True, dims=&quot;obs&quot;
+    )
+    median_income_data = pm.Data(
+        name=&quot;median_income_data&quot;,
+        value=median_income_red.to_numpy(),
+        mutable=True,
+        dims=&quot;region&quot;,
+    )
+    log_price_data = pm.Data(
+        name=&quot;log_price_data&quot;, value=log_price_red, mutable=True, dims=&quot;obs&quot;
+    )
+    log_quantities_data = pm.Data(
+        name=&quot;log_quantities_data&quot;, value=log_quantities_red, mutable=True, dims=&quot;obs&quot;
+    )
+
+    # --- Priors ---
+    alpha_j_intercept = pm.Normal(name=&quot;alpha_j_intercept&quot;, mu=0, sigma=1)
+    beta_j_intercept = pm.Normal(name=&quot;beta_j_intercept&quot;, mu=0, sigma=1)
+
+    sd_dist = pm.HalfNormal.dist(sigma=0.02, shape=2)
+    chol, corr, sigmas = pm.LKJCholeskyCov(name=&quot;chol_cov&quot;, eta=2, n=2, sd_dist=sd_dist)
+
+    sigma = pm.Exponential(name=&quot;sigma&quot;, lam=1 / 0.5)
+
+    z_slopes = pm.Normal(name=&quot;z_slopes&quot;, mu=0, sigma=1, dims=(&quot;effect&quot;, &quot;region&quot;))
+    slopes = pm.Deterministic(
+        name=&quot;slopes&quot;, var=pt.dot(chol, z_slopes).T, dims=(&quot;region&quot;, &quot;effect&quot;)
+    )
+
+    # --- Parametrization ---
+    alpha_j_slope = pm.Deterministic(
+        name=&quot;alpha_j_slope&quot;, var=slopes[:, 0], dims=&quot;region&quot;
+    )
+
+    beta_j_slope = pm.Deterministic(
+        name=&quot;beta_j_slope&quot;, var=slopes[:, 1], dims=&quot;region&quot;
+    )
+
+    alpha_j = pm.Deterministic(
+        name=&quot;alpha_j&quot;,
+        var=alpha_j_intercept + alpha_j_slope * median_income_data,
+        dims=&quot;region&quot;,
+    )
+
+    beta_j = pm.Deterministic(
+        name=&quot;beta_j&quot;,
+        var=beta_j_intercept + beta_j_slope * median_income_data,
+        dims=&quot;region&quot;,
+    )
+
+    alpha = pm.Deterministic(name=&quot;alpha&quot;, var=alpha_j[region_idx_data], dims=&quot;obs&quot;)
+    beta = pm.Deterministic(name=&quot;beta&quot;, var=beta_j[region_idx_data], dims=&quot;obs&quot;)
+
+    mu = pm.Deterministic(name=&quot;mu&quot;, var=alpha + beta * log_price_data, dims=&quot;obs&quot;)
+
+    # --- Likelihood ---
+    pm.Normal(
+        name=&quot;likelihood&quot;, mu=mu, sigma=sigma, observed=log_quantities_data, dims=&quot;obs&quot;
+    )
+
+pm.model_to_graphviz(model=model_cov_red)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_16_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="fit-model" class="section level2">
+<h2>Fit Model</h2>
+<p>Now we fit the model and generate posterior predictive samples.</p>
+<pre class="python"><code>with model_cov_red:
+    idata_cov_red = pm.sample(
+        target_accept=0.9,
+        draws=6_000,
+        chains=4,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng,
+    )
+    posterior_predictive_cov_red = pm.sample_posterior_predictive(
+        trace=idata_cov_red, random_seed=rng
+    )</code></pre>
+<p>We can now take a look at the trace:</p>
+<pre class="python"><code>var_names = [
+    &quot;chol_cov&quot;,
+    &quot;alpha_j_intercept&quot;,
+    &quot;beta_j_intercept&quot;,
+    &quot;slopes&quot;,
+    &quot;alpha_j&quot;,
+    &quot;beta_j&quot;,
+    &quot;sigma&quot;,
+]
+
+
+axes = az.plot_trace(
+    data=idata_cov_red,
+    var_names=var_names,
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(
+    &quot;Covariance Multilevel Model (Reduced) - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_20_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="covariance-deep-dive" class="section level2">
+<h2>Covariance Deep Dive</h2>
+<p>We now look deeper into the covariance matrix of the intercepts and slopes. Specifically, we take a look into the correlation component:</p>
+<pre class="python"><code>chol_cov_corr_posterior_red = idata_cov_red[&quot;posterior&quot;][&quot;chol_cov_corr&quot;].sel(
+    chol_cov_corr_dim_0=0, chol_cov_corr_dim_1=1
+)</code></pre>
+<p>Let’s look into the posterior distribution:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 6))
+az.plot_dist(values=chol_cov_corr_posterior_red, quantiles=[0.06, 0.94], ax=ax)
+ax.set(title=&quot;Correlation Posterior Distribution&quot;, xlabel=&quot;correlation&quot;)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_24_1.png" style="width: 900px;"/>
+</center>
+<p>The plot above shows that the correlation is negative anv quite close to <span class="math inline">\(-1\)</span> as expected.</p>
+<p>We can now plot the intercepts and slopes samples per region.</p>
+<pre class="python"><code>alpha_j_samples_red = az.extract(data=idata_cov_red, var_names=[&quot;alpha_j&quot;])
+beta_j_samples_red = az.extract(data=idata_cov_red, var_names=[&quot;beta_j&quot;])
+
+
+fig, ax = plt.subplots(figsize=(9, 7))
+
+for r in region_red:
+    sns.regplot(
+        x=alpha_j_samples_red.sel(region=r),
+        y=beta_j_samples_red.sel(region=r),
+        scatter_kws={&quot;alpha&quot;: 0.01},
+        ax=ax,
+    )
+
+ax.set(
+    title=&quot;Intercepts &amp; Slopes Posterior Samples&quot;,
+    xlabel=r&quot;intercepts ($\alpha_{j}$)&quot;,
+    ylabel=r&quot;slopes ($\beta_{}$)&quot;,
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_27_1.png" style="width: 900px;"/>
+</center>
+<p>We indeed see the negative correlation between regions</p>
+<p>We now take samples of the generated lines in the log-log space:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+
+n_samples = 100
+
+for r in region_red:
+    for a, b in zip(
+        alpha_j_samples_red.sel(region=r)[:n_samples],
+        beta_j_samples_red.sel(region=r)[:n_samples],
+    ):
+        ax.axline(xy1=(0, a), slope=b, color=f&quot;C{r}&quot;, alpha=0.2)
+
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.set(
+    title=&quot;Posterior Predictive&quot;,
+    xlabel=&quot;Log Prices&quot;,
+    ylabel=&quot;Log Quantities&quot;,
+    xlim=(-0.2, 1),
+    ylim=(-1, 4),
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_30_1.png" style="width: 900px;"/>
+</center>
+<p>This plot looks very similar to the one at the beginning of the notebook. Hence, we see that the posterior predictive samples are able to capture the correlation between intercepts and slopes.</p>
+</div>
+<div id="posterior-predictive-for-holdout-region" class="section level2">
+<h2>Posterior Predictive for Holdout Region</h2>
+<p>We now replace the region coordinates to add the holdout region and generate posterior predictive samples for it.</p>
+<pre class="python"><code>with model_cov_red:
+    pm.set_data(
+        new_data={
+            &quot;region_idx_data&quot;: region_idx,
+            &quot;median_income_data&quot;: median_income.to_numpy(),
+            &quot;log_price_data&quot;: log_price,
+            &quot;log_quantities_data&quot;: log_quantities,
+        },
+        coords={&quot;region&quot;: region, &quot;obs&quot;: obs},
+    )
+    posterior_predictive_cov = pm.sample_posterior_predictive(
+        trace=idata_cov_red,
+        var_names=[&quot;alpha_j&quot;, &quot;beta_j&quot;, &quot;likelihood&quot;],
+        random_seed=rng,
+    )</code></pre>
+<p>We are interested in looking into the induced intercepts, slopes and elasticities for this new region:</p>
+<div id="intercepts-and-slopes" class="section level3">
+<h3>Intercepts and Slopes</h3>
+<pre class="python"><code>alpha_j_samples = az.extract(
+    data=posterior_predictive_cov, group=&quot;posterior_predictive&quot;, var_names=[&quot;alpha_j&quot;]
+)
+beta_j_samples = az.extract(
+    data=posterior_predictive_cov, group=&quot;posterior_predictive&quot;, var_names=[&quot;beta_j&quot;]
+)
+
+fig, ax = plt.subplots(figsize=(9, 7))
+sns.regplot(
+    x=alpha_j_samples.sel(region=region_id_out),
+    y=beta_j_samples.sel(region=region_id_out),
+    color=f&quot;C{region_id_out}&quot;,
+    scatter_kws={&quot;alpha&quot;: 0.01},
+    ax=ax,
+)
+ax.set(
+    title=&quot;Intercepts &amp; Slopes Posterior Samples (New Region)&quot;,
+    xlabel=r&quot;intercepts ($\alpha_{j}$)&quot;,
+    ylabel=r&quot;slopes ($\beta_{}$)&quot;,
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_36_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+
+n_samples = 200
+
+for a, b in zip(
+    alpha_j_samples.sel(region=region_id_out)[:n_samples],
+    beta_j_samples.sel(region=region_id_out)[:n_samples],
+):
+    ax.axline(xy1=(0, a), slope=b, color=f&quot;C{region_id_out}&quot;, alpha=0.2)
+
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.set(
+    title=&quot;Posterior Predictive&quot;,
+    xlabel=&quot;Log Prices&quot;,
+    ylabel=&quot;Log Quantities&quot;,
+    xlim=(-0.2, 1),
+    ylim=(-1, 4),
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_37_1.png" style="width: 900px;"/>
+</center>
+<p>We see how the induced lines are in some sense a weighted average of the lines of the other regions. This average is also pushed to the global mean of the intercepts and slopes because of the <em>shrinkage phenomenon</em> (see previous notebook). In addition, we have wider credible intervals as expected.</p>
+</div>
+</div>
+<div id="elasticities" class="section level2">
+<h2>Elasticities</h2>
+<p>We can compare the elasticities of the holdout region with the other regions:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+az.plot_forest(
+    data=idata_cov_red,
+    var_names=[&quot;beta_j&quot;],
+    combined=True,
+    ax=ax[0],
+)
+az.plot_forest(
+    data=posterior_predictive_cov[&quot;posterior_predictive&quot;].sel(region=region_id_out),
+    var_names=[&quot;beta_j&quot;],
+    combined=True,
+    colors=&quot;C8&quot;,
+    ax=ax[1],
+)
+
+fig.suptitle(
+    t=&quot;Covariance Multilevel Model (Reduced)&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.05
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_40_1.png" style="width: 900px;"/>
+</center>
+<p>We also see how the elasticity of ne new region in centered around the global mean. It is also clear that the uncertainty for the new region is higher than for the other regions.</p>
+<div id="posterior-predictive-distribution" class="section level3">
+<h3>Posterior Predictive Distribution</h3>
+<p>Finally we look into the posterior predictive distribution in the original price-quantity scale:</p>
+<pre class="python"><code>exp_likelihood_hdi = az.hdi(
+    ary=np.exp(posterior_predictive_cov[&quot;posterior_predictive&quot;][&quot;likelihood&quot;])
+)[&quot;likelihood&quot;]
+
+g = sns.relplot(
+    data=market_df.assign(region_id=lambda x: x[&quot;region_id&quot;].astype(str)),
+    x=&quot;price&quot;,
+    y=&quot;quantities&quot;,
+    kind=&quot;scatter&quot;,
+    col=&quot;region_id&quot;,
+    col_wrap=3,
+    hue=&quot;region_id&quot;,
+    height=3.5,
+    aspect=1,
+    facet_kws={&quot;sharex&quot;: True, &quot;sharey&quot;: True},
+)
+
+axes = g.axes.flatten()
+
+for i, region_to_plot in enumerate(region):
+    ax = axes[i]
+
+    price_region = price[region_idx == region_to_plot]
+    price_region_argsort = np.argsort(price_region)
+
+    ax.fill_between(
+        x=price_region[price_region_argsort],
+        y1=exp_likelihood_hdi[region_idx == region_to_plot][price_region_argsort, 0],
+        y2=exp_likelihood_hdi[region_idx == region_to_plot][price_region_argsort, 1],
+        color=f&quot;C{i}&quot;,
+        alpha=0.2,
+    )
+
+legend = g.legend
+legend.set_title(title=&quot;Region ID&quot;, prop={&quot;size&quot;: 10})
+g.fig.suptitle(
+    &quot;Prices vs Quantities by Region - Covariance Multilevel Model&quot;,
+    y=1.05,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_2_files/multilevel_elasticities_single_sku_2_43_2.png" style="width: 1000px;"/>
+</center>
+<p>The posterior predictive distribution does for the data of the new region but the <span class="math inline">\(94\%\)</span> interval is much wider than for the original model in the previous notebook where we included all regions.</p>
+<p>One can of course build hierarchies not only on the mean of the likelihood but also in the standard deviation. This is left as an exercise for the reader.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
