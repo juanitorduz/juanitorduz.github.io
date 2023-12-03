@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Numpyro with Pathfinder - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Numpyro with Pathfinder - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">5 min read</span>
+    
+
+    <h1 class="article-title">Numpyro with Pathfinder</h1>
+
+    
+    <span class="article-date">2023-12-04</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we describe how to use <a href="https://blackjax-devs.github.io/blackjax/index.html"><code>blackjax</code></a>’s <a href="https://blackjax-devs.github.io/sampling-book/algorithms/pathfinder.html"><code>pathfinder</code></a> implementation to do inference with a <a href="https://num.pyro.ai/en/stable/"><code>numpyro</code></a> model.</p>
+<p>I am simply putting some pieces together from the following resources (strongly recommended to read):</p>
+<p><strong>References:</strong></p>
+<ul>
+<li>Blackjax docs: <a href="https://blackjax-devs.github.io/blackjax/examples/howto_use_numpyro.html">Use with Numpyro models</a></li>
+<li>Blackjax Sampling Book: <a href="https://blackjax-devs.github.io/sampling-book/algorithms/pathfinder.html">Pathfinder</a></li>
+<li>Numpyro Issue <a href="https://github.com/pyro-ppl/numpyro/issues/1485">#1485</a></li>
+<li><a href="https://github.com/pymc-devs/pymc-experimental/blob/main/pymc_experimental/inference/pathfinder.py">PyMC Experimental - Pathfinder</a></li>
+<li><a href="https://arxiv.org/abs/2108.03782">Pathfinder: Parallel quasi-Newton variational inference</a></li>
+</ul>
+<div id="what-and-why-pathfinder" class="section level3">
+<h3>What and Why Pathfinder?</h3>
+<p>From the <a href="https://arxiv.org/abs/2108.03782">paper</a>’s abstract:</p>
+<ul>
+<li><strong>What?</strong></li>
+</ul>
+<blockquote>
+<p><em>We propose Pathfinder, a variational method for approximately sampling from differentiable log densities. Starting from a random initialization, Pathfinder locates normal approximations to the target density along a quasi-Newton optimization path, with local covariance estimated using the inverse Hessian estimates produced by the optimizer. Pathfinder returns draws from the approximation with the lowest estimated Kullback-Leibler (KL) divergence to the true posterior.</em></p>
+</blockquote>
+<ul>
+<li><strong>Why?</strong></li>
+</ul>
+<blockquote>
+<p><em>Compared to ADVI and short dynamic HMC runs, Pathfinder requires one to two orders of magnitude fewer log density and gradient evaluations, with greater reductions for more challenging posteriors.</em></p>
+</blockquote>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import blackjax
+import jax
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+
+from jax import random
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer.autoguide import AutoMultivariateNormal
+from numpyro.infer.util import initialize_model, Predictive
+
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>We generate some data from a simple linear regression model.</p>
+<pre class="python"><code>def generate_data(rng_key, a, b, sigma, n):
+    x = random.normal(rng_key, (n,))
+    rng_key, rng_subkey = random.split(rng_key)
+    epsilon = sigma * random.normal(rng_subkey, (n,))
+    y = a + b * x + epsilon
+    return x, y
+
+# true parameters
+a = 1.0
+b = 2.0
+sigma = 0.5
+n = 100
+
+# generate data
+rng_key, rng_subkey = random.split(rng_key)
+x, y = generate_data(rng_key, a, b, sigma, n)
+
+# plot data
+fig, ax = plt.subplots(figsize=(8, 7))
+ax.plot(x, y, &quot;o&quot;, c=&quot;C0&quot;, label=&quot;data&quot;)
+ax.axline((0, a), slope=b, color=&quot;C1&quot;, label=&quot;true mean&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;, title=&quot;Raw Data&quot;)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_4_1.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>We define a simple linear regression model in <code>numpyro</code>.</p>
+<pre class="python"><code>def model(x, y=None):
+    a = numpyro.sample(&quot;a&quot;, dist.Normal(0.0, 2.0))
+    b = numpyro.sample(&quot;b&quot;, dist.HalfNormal(2.0))
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.Exponential(1.0))
+    mean = numpyro.deterministic(&quot;mu&quot;, a + b * x)
+    with numpyro.plate(&quot;data&quot;, len(x)):
+        numpyro.sample(&quot;likelihood&quot;, dist.Normal(mean, sigma), obs=y)
+
+
+numpyro.render_model(
+    model=model,
+    model_args=(x, y),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_6_0.svg" style="width: 500px;"/>
+</center>
+</div>
+<div id="pathfinder-sampler" class="section level2">
+<h2>Pathfinder Sampler</h2>
+<p>The key function is <a href="https://num.pyro.ai/en/stable/mcmc.html#numpyro.infer.util.initialize_model"><code>initialize_model</code></a> from <code>numpyro</code>. This allow us to compute the log-density, which is required by <code>blackjax</code>’s <code>pathfinder</code> implementation. In addition, we get a way to transform the unconstrained space (where the optimization happens) to the constrained space.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+param_info, potential_fn, postprocess_fn, *_ = initialize_model(
+    rng_subkey,
+    model,
+    model_args=(x, y),
+    dynamic_args=True,  # &lt;- this is important!
+)
+
+# get log-density from the potential function
+def logdensity_fn(position):
+    func = potential_fn(x, y)
+    return -func(position)
+
+# get initial position
+initial_position = param_info.z</code></pre>
+<p>We can now use <a href="https://blackjax-devs.github.io/blackjax/autoapi/blackjax/vi/pathfinder/index.html#blackjax.vi.pathfinder.approximate"><code>blackjax.vi.pathfinder.approximate</code></a> to run the variational inference algorithm.</p>
+<pre class="python"><code># run pathfinder
+rng_key, rng_subkey = random.split(rng_key)
+pathfinder_state, _ = blackjax.vi.pathfinder.approximate(
+    rng_key=rng_subkey,
+    logdensity_fn=logdensity_fn,
+    initial_position=initial_position,
+    num_samples=10_000,
+    ftol=1e-4,
+)
+
+# sample from the posterior
+rng_key, rng_subkey = random.split(rng_key)
+posterior_samples, _ = blackjax.vi.pathfinder.sample(
+    rng_key=rng_subkey,
+    state=pathfinder_state,
+    num_samples=5_000,
+)
+
+# convert to arviz
+idata_pathfinder = az.from_dict(
+    posterior={
+        k: np.expand_dims(a=np.asarray(v), axis=0) for k, v in posterior_samples.items()
+    },
+)</code></pre>
+</div>
+<div id="visualize-results" class="section level2">
+<h2>Visualize Results</h2>
+<pre class="python"><code>az.summary(data=idata_pathfinder, round_to=3)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+a
+</th>
+<td>
+1.043
+</td>
+<td>
+0.051
+</td>
+<td>
+0.951
+</td>
+<td>
+1.139
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+5047.694
+</td>
+<td>
+4780.373
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+b
+</th>
+<td>
+0.730
+</td>
+<td>
+0.028
+</td>
+<td>
+0.679
+</td>
+<td>
+0.785
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4998.218
+</td>
+<td>
+4873.062
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+-0.657
+</td>
+<td>
+0.069
+</td>
+<td>
+-0.785
+</td>
+<td>
+-0.527
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+5056.785
+</td>
+<td>
+5101.670
+</td>
+<td>
+NaN
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata_pathfinder,
+    compact=True,
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(
+    t=&quot;Pathfinder Trace - Transformed Space&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_13_1.png" style="width: 1000px;"/>
+</center>
+<p>Note that the value for <code>a</code> is close to the true value of <span class="math inline">\(1.0\)</span>. However, the values for <code>b</code> and <code>sigma</code> are do not match the true values of <span class="math inline">\(2.0\)</span> and <span class="math inline">\(0.5\)</span> respectively. The reason is that we use a <code>dist.HalfNormal</code> and <code>dist.Exponential</code> prior these parameters respectively so the samples are taken from the unconstrained space.</p>
+</div>
+<div id="transform-samples" class="section level2">
+<h2>Transform Samples</h2>
+<p>We can use the <code>postprocess_fn</code> function returned by <code>initialize_model</code> to transform the samples from the unconstrained space to the constrained space:</p>
+<pre class="python"><code>posterior_samples_transformed = jax.vmap(postprocess_fn(x, y))(posterior_samples)
+
+rng_key, rng_subkey = random.split(rng_key)
+posterior_predictive_samples_transformed = Predictive(
+    model=model, posterior_samples=posterior_samples_transformed
+)(rng_subkey, x)
+
+idata_pathfinder_transformed = az.from_dict(
+    posterior={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in posterior_samples_transformed.items()
+    },
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in posterior_predictive_samples_transformed.items()
+    },
+)
+
+axes = az.plot_trace(
+    data=idata_pathfinder_transformed,
+    var_names=[&quot;~mu&quot;],
+    compact=True,
+    lines=[
+        (&quot;a&quot;, {}, a),
+        (&quot;b&quot;, {}, b),
+        (&quot;sigma&quot;, {}, sigma),
+    ],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(
+    t=&quot;Pathfinder Trace - Original Space&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_16_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 7))
+ax.plot(x, y, &quot;o&quot;, c=&quot;C0&quot;, label=&quot;data&quot;)
+ax.axline((0, a), slope=b, color=&quot;C1&quot;, label=&quot;true mean&quot;)
+az.plot_hdi(
+    x=x,
+    y=idata_pathfinder_transformed[&quot;posterior_predictive&quot;][&quot;mu&quot;],
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: &quot;mu posterior ($94\%$ HDI)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=x,
+    y=idata_pathfinder_transformed[&quot;posterior_predictive&quot;][&quot;likelihood&quot;],
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: &quot;posterior predictive ($94\%$ HDI)&quot;},
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;, title=&quot;Pathfinder Posterior Predictive&quot;)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_17_1.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="appendix-svi" class="section level2">
+<h2>Appendix: SVI</h2>
+<p>Here we compare against the stochastic variational inference (SVI) algorithm implemented in <code>numpyro</code>.</p>
+<pre class="python"><code>guide = AutoMultivariateNormal(model=model)
+optimizer = numpyro.optim.Adam(step_size=0.01)
+svi = SVI(model, guide, optimizer, loss=Trace_ELBO())
+rng_key, rng_subkey = random.split(key=rng_key)
+n_samples = 1_000
+svi_result = svi.run(rng_subkey, n_samples, x, y)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_20_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>params = svi_result.params
+# get posterior samples (parameters)
+predictive = Predictive(model=guide, params=params, num_samples=4_000)
+rng_key, rng_subkey = random.split(key=rng_key)
+posterior_samples = predictive(rng_subkey, x, y)
+# get posterior predictive (deterministics and likelihood)
+predictive = Predictive(model=model, guide=guide, params=params, num_samples=4_000)
+rng_key, rng_subkey = random.split(key=rng_key)
+samples = predictive(rng_subkey, x, y)</code></pre>
+<pre class="python"><code>idata_svi = az.from_dict(
+    posterior={
+        k: np.expand_dims(a=np.asarray(v), axis=0) for k, v in posterior_samples.items()
+    },
+)</code></pre>
+<pre class="python"><code>az.summary(data=idata_svi, var_names=[&quot;a&quot;, &quot;b&quot;, &quot;sigma&quot;], round_to=3)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+a
+</th>
+<td>
+1.034
+</td>
+<td>
+0.052
+</td>
+<td>
+0.935
+</td>
+<td>
+1.132
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3158.147
+</td>
+<td>
+3521.286
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+b
+</th>
+<td>
+2.062
+</td>
+<td>
+0.063
+</td>
+<td>
+1.940
+</td>
+<td>
+2.178
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+4074.610
+</td>
+<td>
+3881.514
+</td>
+<td>
+NaN
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.516
+</td>
+<td>
+0.035
+</td>
+<td>
+0.455
+</td>
+<td>
+0.583
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+3630.886
+</td>
+<td>
+3446.498
+</td>
+<td>
+NaN
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata_svi,
+    var_names=[&quot;a&quot;, &quot;b&quot;, &quot;sigma&quot;],
+    compact=True,
+    lines=[
+        (&quot;a&quot;, {}, a),
+        (&quot;b&quot;, {}, b),
+        (&quot;sigma&quot;, {}, sigma),
+    ],
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(t=&quot;SVI Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_24_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_forest(
+    data=[idata_pathfinder_transformed, idata_svi],
+    model_names=[&quot;Pathfinder&quot;, &quot;SVI&quot;],
+    var_names=[&quot;a&quot;, &quot;b&quot;, &quot;sigma&quot;],
+    combined=True,
+    figsize=(9, 6),
+)</code></pre>
+<center>
+<img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_25_0.png" style="width: 800px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

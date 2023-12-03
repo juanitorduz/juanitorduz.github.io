@@ -6,7 +6,20 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 19 Nov 2023 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 04 Dec 2023 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Numpyro with Pathfinder</title>
+      <link>/numpyro_pathfinder/</link>
+      <pubDate>Mon, 04 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/numpyro_pathfinder/</guid>
+      <description>In this notebook we describe how to use blackjax’s pathfinder implementation to do inference with a numpyro model.
+I am simply putting some pieces together from the following resources (strongly recommended to read):
+References:
+ Blackjax docs: Use with Numpyro models Blackjax Sampling Book: Pathfinder Numpyro Issue #1485 PyMC Experimental - Pathfinder Pathfinder: Parallel quasi-Newton variational inference  What and Why Pathfinder? From the paper’s abstract:
+ What?   We propose Pathfinder, a variational method for approximately sampling from differentiable log densities.</description>
+    </item>
+    
     <item>
       <title>Causal Bandits: Causality, Marketing &amp; Simulations</title>
       <link>/causal_bandits/</link>

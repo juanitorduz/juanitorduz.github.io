@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>python, numpyro, blackjax on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-numpyro-blackjax/</link>
+    <description>Recent content in python, numpyro, blackjax on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 04 Dec 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-blackjax/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Numpyro with Pathfinder</title>
+      <link>/numpyro_pathfinder/</link>
+      <pubDate>Mon, 04 Dec 2023 00:00:00 +0000</pubDate>
+      
+      <guid>/numpyro_pathfinder/</guid>
+      <description>In this notebook we describe how to use blackjax’s pathfinder implementation to do inference with a numpyro model.
+I am simply putting some pieces together from the following resources (strongly recommended to read):
+References:
+ Blackjax docs: Use with Numpyro models Blackjax Sampling Book: Pathfinder Numpyro Issue #1485 PyMC Experimental - Pathfinder Pathfinder: Parallel quasi-Newton variational inference  What and Why Pathfinder? From the paper’s abstract:
+ What?   We propose Pathfinder, a variational method for approximately sampling from differentiable log densities.</description>
+    </item>
+    
+  </channel>
+</rss>
