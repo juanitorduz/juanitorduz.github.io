@@ -87,7 +87,6 @@
 
     <div class="article-content">
       
-<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p>In this notebook I want to deep-dive into the idea of wrapping a <a href="https://www.statsmodels.org/stable/index.html"><code>statsmodels</code></a> <a href="https://www.statsmodels.org/dev/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html"><code>UnobservedComponents</code></a> model as a bayesian model with <a href="https://github.com/pymc-devs/pymc">PyMC</a> described in the (great!) post <a href="https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html">Fast Bayesian estimation of SARIMAX models</a>. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponents model to a simulated time series. In the second part we describe the process of wrapping the model as a PyMC model, running the MCMC and sampling and generating out of sample predictions.</p>
@@ -175,7 +174,10 @@ sns.lineplot(x=&quot;date&quot;, y=&quot;x&quot;, data=data_df, marker=&quot;o&q
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&quot;Simulated data components&quot;);</code></pre>
 <center>
-<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_7_0.svg" title="fig:" alt="svg" />
+<div class="float">
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_7_0.svg" alt="svg" />
+<div class="figcaption">svg</div>
+</div>
 </center>
 </div>
 <div id="train-test-split" class="section level2">
@@ -208,7 +210,10 @@ ax.axvline(x=x_train.tail(1).index[0], color=sns_c[6], linestyle=&quot;--&quot;,
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set(title=&quot;Train-Test Split&quot;);</code></pre>
 <center>
-<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_11_0.svg" title="fig:" alt="svg" />
+<div class="float">
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_11_0.svg" alt="svg" />
+<div class="figcaption">svg</div>
+</div>
 </center>
 </div>
 <div id="fit-model" class="section level2">
@@ -242,7 +247,10 @@ result.summary()</code></pre>
 <p>Now we can see some diagnostic plots:</p>
 <pre class="python"><code>result.plot_diagnostics(figsize=(12, 9));</code></pre>
 <center>
-<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_17_0.svg" title="fig:" alt="svg" />
+<div class="float">
+<img src="../images/unobserved_components_pymc_files/unobserved_components_pymc_17_0.svg" alt="svg" />
+<div class="figcaption">svg</div>
+</div>
 </center>
 <p>The error distribution looks ok! Now let us visualize the model (learned) components:</p>
 <pre class="python"><code>alpha = 0.05
@@ -396,7 +404,7 @@ ax.set(title=&quot;Unobserved Components Model Predictions&quot;);</code></pre>
 <h2>Write Model Wrapper</h2>
 <p>As mentioned in the introduction, we follow the indications of the post <a href="https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html">Fast Bayesian estimation of SARIMAX models</a> to wrap the model as a PyMC model. Here is the main idea. The <code>UnobservedComponents</code> implementation from <code>statsmodels</code> already computes the derivative of the log-likelihood function with respect to the state vector. This is the main ingredient for the <a href="https://en.wikipedia.org/wiki/Hamiltonian_Monte_Carlo">Hamiltonian Monte Carlo (HMC) algorithm</a>. Hence, we just need to extract the likelihood and its derivate as a <a href="https://docs.pymc.io/en/v3/PyMC3_and_Theano.html">Theano</a> / <a href="https://github.com/aesara-devs/aesara">Aesara</a> operator, which is what PyMC uses to construct the computational graph. To see the details about what is required to create a custom Python operator please see the extensive documentation <a href="https://theano-pymc.readthedocs.io/en/latest/extending/extending_theano.html">Creating a new Op: Python implementation</a>. The following is the structure of a Theano graph:</p>
 <center>
-<img src="https://theano-pymc.readthedocs.io/en/latest/_images/apply_node.png" alt="Theano Op">
+<img src="https://pytensor.readthedocs.io/en/latest/_images/apply_node.png" alt="Theano Op">
 </center>
 <p>From the documentation:</p>
 <blockquote>
