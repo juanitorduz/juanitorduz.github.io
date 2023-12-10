@@ -1,0 +1,2427 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Non-Parametric Product Life Cycle Modeling - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Non-Parametric Product Life Cycle Modeling - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">13 min read</span>
+    
+
+    <h1 class="article-title">Non-Parametric Product Life Cycle Modeling</h1>
+
+    
+    <span class="article-date">2023-12-10</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we present an example of how to use a combination of Bayesian hierarchical models and the non-parametric methods , namely bayesian additive trees (<a href="https://www.pymc.io/projects/bart/en/latest/">BART</a>), to model the product life cycles. This approach is motivated by previous work in cohort analysis, see <a href="https://juanitorduz.github.io/revenue_retention/">here</a>.</p>
+<p>As a case study we use the Google search index (trends) data for iPhones worldwide. We use the data of four different models to predict the development of the latest iPhone. The model presented for this specific example can be easily extended for other products and product life cycles structures.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import holidays
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import preliz as pz
+import pymc as pm
+import pymc_bart as pmb
+import pytensor.tensor as pt
+import seaborn as sns
+from pymc_bart.split_rules import ContinuousSplitRule, OneHotSplitRule, SubsetSplitRule
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;iphone_trends&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We provide the data downloaded from Google Trends for the following search terms (weekly granularity):</p>
+<center>
+<img src="../images/iphone_trends_files/trends_iphone.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>raw_df = pd.read_csv(
+    &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/iphone_trends.csv&quot;,
+    parse_dates=[&quot;week&quot;]
+)
+
+raw_df.tail()</code></pre>
+<center>
+<div>
+<style>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+week
+</th>
+<th>
+iphone_11
+</th>
+<th>
+iphone_12
+</th>
+<th>
+iphone_13
+</th>
+<th>
+iphone_14
+</th>
+<th>
+iphone_15
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+256
+</th>
+<td>
+2023-10-22
+</td>
+<td>
+10
+</td>
+<td>
+10
+</td>
+<td>
+14
+</td>
+<td>
+16
+</td>
+<td>
+23
+</td>
+</tr>
+<tr>
+<th>
+257
+</th>
+<td>
+2023-10-29
+</td>
+<td>
+10
+</td>
+<td>
+9
+</td>
+<td>
+13
+</td>
+<td>
+15
+</td>
+<td>
+22
+</td>
+</tr>
+<tr>
+<th>
+258
+</th>
+<td>
+2023-11-05
+</td>
+<td>
+11
+</td>
+<td>
+10
+</td>
+<td>
+15
+</td>
+<td>
+17
+</td>
+<td>
+22
+</td>
+</tr>
+<tr>
+<th>
+259
+</th>
+<td>
+2023-11-12
+</td>
+<td>
+11
+</td>
+<td>
+10
+</td>
+<td>
+16
+</td>
+<td>
+17
+</td>
+<td>
+24
+</td>
+</tr>
+<tr>
+<th>
+260
+</th>
+<td>
+2023-11-19
+</td>
+<td>
+12
+</td>
+<td>
+11
+</td>
+<td>
+17
+</td>
+<td>
+17
+</td>
+<td>
+24
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We see a clear structure in the searches development for each model:</p>
+<ul>
+<li>Steep peak at the beginning of the product life cycle (maximum on the release week)</li>
+<li>A slow long term decay with a mild yearly seasonality.</li>
+</ul>
+<p>In order to capture the peak at the beginning of the product life cycle we collect the release data for such iPhone models:</p>
+<pre class="python"><code>releases_df = pd.DataFrame(
+    data=[
+        {&quot;model&quot;: &quot;iphone_11&quot;, &quot;release_date&quot;: &quot;September 20, 2019&quot;},
+        {&quot;model&quot;: &quot;iphone_12&quot;, &quot;release_date&quot;: &quot;October 23, 2020&quot;},
+        {&quot;model&quot;: &quot;iphone_13&quot;, &quot;release_date&quot;: &quot;September 24, 2021&quot;},
+        {&quot;model&quot;: &quot;iphone_14&quot;, &quot;release_date&quot;: &quot;September 16, 2022&quot;},
+        {&quot;model&quot;: &quot;iphone_15&quot;, &quot;release_date&quot;: &quot;September 22, 2023&quot;},
+    ]
+)
+
+# We use the same week-starting date as the Google Trends data
+release_dates_df = releases_df.assign(
+    release_week=lambda x: (
+        pd.to_datetime(x[&quot;release_date&quot;]).dt.to_period(&quot;W-SAT&quot;).dt.start_time
+        - pd.DateOffset(days=7)
+    )
+)
+
+release_dates_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+model
+</th>
+<th>
+release_date
+</th>
+<th>
+release_week
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+iphone_11
+</td>
+<td>
+September 20, 2019
+</td>
+<td>
+2019-09-08
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+iphone_12
+</td>
+<td>
+October 23, 2020
+</td>
+<td>
+2020-10-11
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+iphone_13
+</td>
+<td>
+September 24, 2021
+</td>
+<td>
+2021-09-12
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+iphone_14
+</td>
+<td>
+September 16, 2022
+</td>
+<td>
+2022-09-04
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+iphone_15
+</td>
+<td>
+September 22, 2023
+</td>
+<td>
+2023-09-10
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="feature-engineering" class="section level2">
+<h2>Feature Engineering</h2>
+<p>To start, we collect two holiday events that are clear from the image above: Black Friday and Christmas.</p>
+<pre class="python"><code>holidays_list = [&quot;Christmas Day&quot;, &quot;Thanksgiving&quot;]
+
+holidays_df = (
+    pd.DataFrame.from_dict(
+        data=holidays.country_holidays(
+            country=&quot;US&quot;, years=[2019, 2020, 2021, 2022, 2023, 2024]
+        ),
+        orient=&quot;index&quot;,
+        columns=[&quot;holiday&quot;],
+    )
+    .query(&quot;holiday in @holidays_list&quot;)
+    .reset_index(drop=False)
+    .rename(columns={&quot;index&quot;: &quot;date&quot;})
+    .assign(
+        week=lambda x: pd.to_datetime(x[&quot;date&quot;]).dt.to_period(&quot;W-SAT&quot;).dt.start_time
+    )
+)
+
+holidays_df.head(12)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+date
+</th>
+<th>
+holiday
+</th>
+<th>
+week
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2019-11-28
+</td>
+<td>
+Thanksgiving
+</td>
+<td>
+2019-11-24
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2019-12-25
+</td>
+<td>
+Christmas Day
+</td>
+<td>
+2019-12-22
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2020-11-26
+</td>
+<td>
+Thanksgiving
+</td>
+<td>
+2020-11-22
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2020-12-25
+</td>
+<td>
+Christmas Day
+</td>
+<td>
+2020-12-20
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2021-11-25
+</td>
+<td>
+Thanksgiving
+</td>
+<td>
+2021-11-21
+</td>
+</tr>
+<tr>
+<th>
+5
+</th>
+<td>
+2021-12-25
+</td>
+<td>
+Christmas Day
+</td>
+<td>
+2021-12-19
+</td>
+</tr>
+<tr>
+<th>
+6
+</th>
+<td>
+2022-11-24
+</td>
+<td>
+Thanksgiving
+</td>
+<td>
+2022-11-20
+</td>
+</tr>
+<tr>
+<th>
+7
+</th>
+<td>
+2022-12-25
+</td>
+<td>
+Christmas Day
+</td>
+<td>
+2022-12-25
+</td>
+</tr>
+<tr>
+<th>
+8
+</th>
+<td>
+2023-11-23
+</td>
+<td>
+Thanksgiving
+</td>
+<td>
+2023-11-19
+</td>
+</tr>
+<tr>
+<th>
+9
+</th>
+<td>
+2023-12-25
+</td>
+<td>
+Christmas Day
+</td>
+<td>
+2023-12-24
+</td>
+</tr>
+<tr>
+<th>
+10
+</th>
+<td>
+2024-11-28
+</td>
+<td>
+Thanksgiving
+</td>
+<td>
+2024-11-24
+</td>
+</tr>
+<tr>
+<th>
+11
+</th>
+<td>
+2024-12-25
+</td>
+<td>
+Christmas Day
+</td>
+<td>
+2024-12-22
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Next, motivated by the features used in the previous work on <a href="https://juanitorduz.github.io/revenue_retention/">cohort analysis</a>, we create the following features:</p>
+<ul>
+<li><code>age</code>: Number of weeks since the release of the iPhone model relative to today’s date.</li>
+<li><code>model_age</code>: Number of weeks since the release of the iPhone model relative to the release of the latest iPhone model. Not that this feature is negative for weeks before the release.</li>
+<li><code>is_release_week</code>: Binary feature indicating if the week is the release week of the iPhone model.</li>
+<li><code>month</code>: Month of the year.</li>
+</ul>
+<pre class="python"><code>data_df = (
+    raw_df.copy()
+    .melt(id_vars=[&quot;week&quot;], var_name=&quot;model&quot;, value_name=&quot;search&quot;)
+    .merge(right=release_dates_df, on=&quot;model&quot;)
+    .drop(columns=[&quot;release_date&quot;])
+    .assign(
+        age=lambda x: (x[&quot;week&quot;].max() - x[&quot;week&quot;]).dt.days / 7,
+        model_age=lambda x: (x[&quot;week&quot;] - x[&quot;release_week&quot;]).dt.days / 7,
+        is_release=lambda x: (x[&quot;model_age&quot;] == 0).astype(float),
+        month=lambda x: x[&quot;week&quot;].dt.month,
+        # holidays
+        is_christmas=lambda x: x[&quot;week&quot;]
+        .isin(holidays_df.query(&quot;holiday == &#39;Christmas Day&#39;&quot;)[&quot;week&quot;])
+        .astype(float),
+        is_thanksgiving=lambda x: x[&quot;week&quot;]
+        .isin(holidays_df.query(&quot;holiday == &#39;Thanksgiving&#39;&quot;)[&quot;week&quot;])
+        .astype(float),
+    )
+    .query(
+        &quot;model_age &gt;= -50&quot;
+    )  # Drop data one year before release (as it is mainly noise)
+    .reset_index(drop=True)
+)
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+week
+</th>
+<th>
+model
+</th>
+<th>
+search
+</th>
+<th>
+release_week
+</th>
+<th>
+age
+</th>
+<th>
+model_age
+</th>
+<th>
+is_release
+</th>
+<th>
+month
+</th>
+<th>
+is_christmas
+</th>
+<th>
+is_thanksgiving
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2018-11-25
+</td>
+<td>
+iphone_11
+</td>
+<td>
+0
+</td>
+<td>
+2019-09-08
+</td>
+<td>
+260.0
+</td>
+<td>
+-41.0
+</td>
+<td>
+0.0
+</td>
+<td>
+11
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2018-12-02
+</td>
+<td>
+iphone_11
+</td>
+<td>
+0
+</td>
+<td>
+2019-09-08
+</td>
+<td>
+259.0
+</td>
+<td>
+-40.0
+</td>
+<td>
+0.0
+</td>
+<td>
+12
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2018-12-09
+</td>
+<td>
+iphone_11
+</td>
+<td>
+0
+</td>
+<td>
+2019-09-08
+</td>
+<td>
+258.0
+</td>
+<td>
+-39.0
+</td>
+<td>
+0.0
+</td>
+<td>
+12
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2018-12-16
+</td>
+<td>
+iphone_11
+</td>
+<td>
+0
+</td>
+<td>
+2019-09-08
+</td>
+<td>
+257.0
+</td>
+<td>
+-38.0
+</td>
+<td>
+0.0
+</td>
+<td>
+12
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2018-12-23
+</td>
+<td>
+iphone_11
+</td>
+<td>
+0
+</td>
+<td>
+2019-09-08
+</td>
+<td>
+256.0
+</td>
+<td>
+-37.0
+</td>
+<td>
+0.0
+</td>
+<td>
+12
+</td>
+<td>
+0.0
+</td>
+<td>
+0.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>We plot the data for each iPhone model:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 7))
+
+sns.lineplot(
+    data=data_df,
+    x=&quot;week&quot;,
+    y=&quot;search&quot;,
+    hue=&quot;model&quot;,
+    ax=ax,
+)
+
+for i, model in enumerate(release_dates_df[&quot;model&quot;]):
+    release_week = release_dates_df.query(f&quot;model == &#39;{model}&#39;&quot;)[&quot;release_week&quot;].item()
+    ax.axvline(
+        release_week,
+        color=f&quot;C{i}&quot;,
+        linestyle=&quot;--&quot;,
+        alpha=0.5,
+        label=f&quot;release week {model}&quot;,
+    )
+
+ax.legend(bbox_to_anchor=(1.05, 1), loc=&quot;upper left&quot;)
+ax.set_title(
+    label=&quot;Google Trends for iPhone Models (Worldwide)&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_15_1.png" style="width: 1000px;"/>
+</center>
+<p>We do see how the peak maximum coincides with the release date.</p>
+<p>Note that all of the models have a similar structure, however the maximum and decay forms differ from model to model. This motivates the use of a hierarchical model.</p>
+<p>On the other hand, if we plot the search index in a heat map we doo see the immediate similarity to th cohort analysis problem where we use <code>age</code> and <code>cohort</code> age as key futures to model the revenue and retention:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+(
+    data_df.assign(week=lambda x: x[&quot;week&quot;].dt.date)[[&quot;model&quot;, &quot;week&quot;, &quot;search&quot;]]
+    .pivot_table(index=&quot;model&quot;, columns=&quot;week&quot;, values=&quot;search&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        ax=ax,
+    )
+)
+ax.set_title(
+    label=&quot;Google Trends for iPhone Models (Worldwide)&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_18_1.png" style="width: 1000px;"/>
+</center>
+<p>This motivates the use of BART as a non-parametric component to model seasonal and long term behavior of the search index.</p>
+<p><strong>Remark:</strong> This is of course not the only possibility. We could for example use (hierarchical) Gaussian processes.</p>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare Data</h2>
+<p>We now prepare the data for the model.</p>
+<pre class="python"><code># model for the holdout data
+test_model = &quot;iphone_15&quot;
+
+train_df = data_df.query(f&quot;model != &#39;{test_model}&#39;&quot;)
+test_df = data_df.query(f&quot;model == &#39;{test_model}&#39;&quot;)</code></pre>
+<pre class="python"><code>train_obs = train_df.index.to_numpy()
+train_iphone_model_idx, train_iphone_model = train_df[&quot;model&quot;].factorize(sort=True)
+train_month_idx, train_month = train_df[&quot;month&quot;].factorize(sort=True)
+train_age = train_df[&quot;age&quot;].to_numpy()
+train_model_age = train_df[&quot;model_age&quot;].to_numpy()
+train_is_release = train_df[&quot;is_release&quot;].to_numpy()
+features = [&quot;age&quot;, &quot;model_age&quot;, &quot;month&quot;, &quot;is_christmas&quot;, &quot;is_thanksgiving&quot;]
+x_train = train_df[features]
+train_search = train_df[&quot;search&quot;].to_numpy()</code></pre>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<div id="main-idea" class="section level3">
+<h3>Main Idea</h3>
+<p>The main idea is to model the search index through a negative binomial likelihood where the mean is the sum of the release phase plus the long term decay. For the release phase we use a non-symmetric <a href="https://juanitorduz.github.io/bump_func/">Gaussian bump function</a> while for the long term decay we use a BART model.</p>
+<p><strong>Remark</strong>: We use the recommended parametrization for the negative binomial distribution, see <a href="https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations#story-when-the-generic-prior-fails-the-case-of-the-negative-binomial">here</a>.</p>
+<p><strong>Remark:</strong> We weight the <span class="math inline">\(\alpha\)</span> parameter in the likelihood to place more importance on the search index values closer to the release date. The motivation is that we are often interested in this first phase much more than the relatively stable decay (see <a href="https://discourse.pymc.io/t/how-to-add-weights-to-data-in-bayesian-linear-regression/8362">here</a>).</p>
+</div>
+<div id="mathematical-formulation" class="section level3">
+<h3>Mathematical Formulation</h3>
+<p>Here are the main ingredients of the model:</p>
+<p><span class="math display">\[
+\begin{align*}
+\beta^{[m]}_{\text{release}}  \sim &amp; \text{HalfNormal}(\sigma_{\beta}) \\
+\ell^{[m]}_{\pm}  \sim &amp; \text{HalfNormal}(\sigma_{\ell}) \\
+\mu_{\text{release}}  = &amp; \beta^{[m]}_{\text{release}} \left( I\{\text{model\_age} \leq 0\} \exp(-{\text{model\_age}^{p_{-}} / \ell^{[m]}_{-}}) \right. \\
+&amp; \left.+ I\{\text{model\_age} \geq 0\} \exp(-{\text{model\_age}^{p_{+}} / \ell^{[m]}_{+}} )  \right)\\
+\mu_{\text{decay}}  = &amp; \text{BART}(\text{age}, \text{model\_age}, \text{month}, \text{holidays}) \\
+\mu  = &amp; \mu_{\text{release}} + \mu_{\text{decay}} \\
+\alpha  = &amp; \frac{1}{\sqrt{\tilde{\alpha}}} \\
+\alpha_{\text{weighted}}  = &amp; \frac{\alpha}{|\text{model\_age}|} \\
+\text{search}  \sim &amp; \text{NegativeBinomial}(\mu, \alpha_{\text{weighted}})
+\end{align*}
+\]</span></p>
+<p>The hierarchical structure is encoded in <span class="math inline">\(\beta{\text{release}}\)</span> and the <span class="math inline">\(\ell_{\pm}\)</span> which come from a common prior for each model respectively.</p>
+<p>I believe this mathematical formulation is not very intuitive, so let’s go to the PyMC code:</p>
+<pre class="python"><code># small number for numerical stability
+eps = np.finfo(float).eps
+
+coords = {&quot;month&quot;: train_month, &quot;feature&quot;: features}
+
+with pm.Model(coords=coords) as model:
+    # --- Data Containers ---
+
+    model.add_coord(name=&quot;iphone_model&quot;, values=train_iphone_model, mutable=True)
+    model.add_coord(name=&quot;obs&quot;, values=train_obs, mutable=True)
+    iphone_model_idx_data = pm.MutableData(
+        name=&quot;iphone_model_idx_data&quot;, value=train_iphone_model_idx, dims=&quot;obs&quot;
+    )
+    model_age_data = pm.MutableData(
+        name=&quot;model_age_data&quot;, value=train_model_age, dims=&quot;obs&quot;
+    )
+    x_data = pm.MutableData(name=&quot;x_data&quot;, value=x_train, dims=(&quot;obs&quot;, &quot;feature&quot;))
+    search_data = pm.MutableData(name=&quot;search_data&quot;, value=train_search, dims=&quot;obs&quot;)
+
+    # --- Priors ---
+
+    power_minus = pm.Beta(name=&quot;power_minus&quot;, alpha=5, beta=15)
+    power_plus = pm.Beta(name=&quot;power_plus&quot;, alpha=5, beta=15)
+
+    sigma_ell_is_release_minus = pm.Exponential(
+        name=&quot;sigma_ell_is_release_minus&quot;, lam=1
+    )
+    sigma_ell_is_release_plus = pm.Exponential(
+        name=&quot;sigma_ell_is_release_plus&quot;, lam=1 / 4
+    )
+    sigma_is_release = pm.Exponential(name=&quot;sigma_is_release&quot;, lam=1 / 100)
+
+    ell_is_release_minus = pm.HalfNormal(
+        name=&quot;ell_is_release_minus&quot;,
+        sigma=sigma_ell_is_release_minus,
+        dims=&quot;iphone_model&quot;,
+    )
+
+    ell_is_release_plus = pm.HalfNormal(
+        name=&quot;ell_is_release_plus&quot;, sigma=sigma_ell_is_release_plus, dims=&quot;iphone_model&quot;
+    )
+
+    beta_is_release = pm.HalfNormal(
+        name=&quot;beta_is_release&quot;, sigma=sigma_is_release, dims=&quot;iphone_model&quot;
+    )
+
+    inv_alpha_lam = pm.HalfNormal(name=&quot;inv_alpha_lam&quot;, sigma=500)
+
+    inv_alpha = pm.Exponential(name=&quot;inv_alpha&quot;, lam=inv_alpha_lam, dims=&quot;iphone_model&quot;)
+
+    bart_mu_log = pmb.BART(
+        name=&quot;bart_mu_log&quot;,
+        X=x_data,
+        Y=np.log1p(train_search),
+        m=100,
+        response=&quot;mix&quot;,
+        split_rules=[
+            ContinuousSplitRule(),
+            ContinuousSplitRule(),
+            SubsetSplitRule(),
+            OneHotSplitRule(),
+            OneHotSplitRule(),
+        ],
+        dims=&quot;obs&quot;,
+    )
+
+    # --- Parametrization ---
+
+    is_release_bump = pm.Deterministic(
+        name=&quot;is_release_bump&quot;,
+        var=beta_is_release[iphone_model_idx_data]
+        * (
+            (
+                (model_age_data &lt; 0)
+                * pt.exp(
+                    -pt.pow(pt.abs(model_age_data), power_minus)
+                    / ell_is_release_minus[iphone_model_idx_data]
+                )
+            )
+            + (
+                (model_age_data &gt;= 0)
+                * pt.exp(
+                    -pt.pow(pt.abs(model_age_data), power_plus)
+                    / ell_is_release_plus[iphone_model_idx_data]
+                )
+            )
+        ),
+        dims=&quot;obs&quot;,
+    )
+
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=pt.exp(bart_mu_log) + is_release_bump,
+        dims=&quot;obs&quot;,
+    )
+
+    alpha = pm.Deterministic(
+        name=&quot;alpha&quot;,
+        var=1 / (pt.sqrt(inv_alpha) + eps),
+        dims=&quot;iphone_model&quot;,
+    )
+
+    alpha_weighted = pm.Deterministic(
+        name=&quot;alpha_weighted&quot;,
+        var=alpha[iphone_model_idx_data] / (pt.abs(model_age_data) + 1),
+        dims=&quot;obs&quot;,
+    )
+
+    # --- Likelihood ---
+
+    _ = pm.NegativeBinomial(
+        name=&quot;likelihood&quot;,
+        mu=mu,
+        alpha=alpha_weighted,
+        observed=search_data,
+        dims=&quot;obs&quot;,
+    )
+
+pm.model_to_graphviz(model=model)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_24_1.svg" style="width: 1000px;"/>
+</center>
+<p>We can take a look into some of the prior distributions for the Gaussian bump parameters:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(9, 7), sharex=False, sharey=False, layout=&quot;constrained&quot;
+)
+pz.Beta(alpha=5, beta=15).plot_pdf(ax=ax[0])
+ax[0].set_title(r&quot;$p_{\pm}$&quot;)
+pz.Exponential(lam=1 / 4).plot_pdf(ax=ax[1])
+ax[1].set_title(r&quot;$\sigma_{\ell}$&quot;)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_26_1.png" style="width: 800px;"/>
+</center>
+</div>
+</div>
+<div id="prior-predictive" class="section level2">
+<h2>Prior Predictive</h2>
+<p>Let’s start with the prior predictive distribution to check the feasibility of the priors and the model specification:</p>
+<pre class="python"><code>with model:
+    prior_predictive = pm.sample_prior_predictive(samples=1_000, random_seed=rng)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(data=prior_predictive, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
+ax.set_title(label=&quot;Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax.set(xscale=&quot;log&quot;)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_29_1.png" style="width: 800px;"/>
+</center>
+<p>Overall the prior predictive looks reasonable.</p>
+</div>
+<div id="model-fitting" class="section level2">
+<h2>Model Fitting</h2>
+<p>The model takes around <span class="math inline">\(10\)</span> minutes to fit (Mac Book Pro, Intel Core i7).</p>
+<pre class="python"><code>with model:
+    idata = pm.sample(
+        tune=1_000,
+        target_accept=0.90,
+        draws=3_000,
+        chains=4,
+        random_seed=rng,
+    )
+    posterior_predictive = pm.sample_posterior_predictive(trace=idata, random_seed=rng)</code></pre>
+</div>
+<div id="diagnostics" class="section level2">
+<h2>Diagnostics</h2>
+<p>We look into the model diagnostics. First we check divergences:</p>
+<pre class="python"><code>idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
+<p>No divergences! Let’s look into additional diagnostics:</p>
+<pre class="python"><code>var_names = [
+    &quot;power_minus&quot;,
+    &quot;power_plus&quot;,
+    &quot;sigma_is_release&quot;,
+    &quot;sigma_ell_is_release_minus&quot;,
+    &quot;sigma_ell_is_release_plus&quot;,
+    &quot;beta_is_release&quot;,
+    &quot;ell_is_release_minus&quot;,
+    &quot;ell_is_release_plus&quot;,
+    &quot;inv_alpha_lam&quot;,
+    &quot;inv_alpha&quot;,
+    &quot;alpha&quot;,
+]
+
+az.summary(data=idata, var_names=var_names, round_to=3)</code></pre>
+<center>
+<div>
+<style>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+power_minus
+</th>
+<td>
+0.298
+</td>
+<td>
+0.028
+</td>
+<td>
+0.246
+</td>
+<td>
+0.352
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+2391.351
+</td>
+<td>
+4144.913
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+power_plus
+</th>
+<td>
+0.252
+</td>
+<td>
+0.020
+</td>
+<td>
+0.215
+</td>
+<td>
+0.288
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+86.111
+</td>
+<td>
+1099.446
+</td>
+<td>
+1.042
+</td>
+</tr>
+<tr>
+<th>
+sigma_is_release
+</th>
+<td>
+102.876
+</td>
+<td>
+42.193
+</td>
+<td>
+46.924
+</td>
+<td>
+180.339
+</td>
+<td>
+0.490
+</td>
+<td>
+0.368
+</td>
+<td>
+10416.997
+</td>
+<td>
+6657.539
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+sigma_ell_is_release_minus
+</th>
+<td>
+0.676
+</td>
+<td>
+0.304
+</td>
+<td>
+0.267
+</td>
+<td>
+1.206
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+8418.883
+</td>
+<td>
+6663.825
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+sigma_ell_is_release_plus
+</th>
+<td>
+1.975
+</td>
+<td>
+0.920
+</td>
+<td>
+0.740
+</td>
+<td>
+3.520
+</td>
+<td>
+0.011
+</td>
+<td>
+0.009
+</td>
+<td>
+9682.738
+</td>
+<td>
+7021.077
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_is_release[iphone_11]
+</th>
+<td>
+87.811
+</td>
+<td>
+7.197
+</td>
+<td>
+74.774
+</td>
+<td>
+101.641
+</td>
+<td>
+0.109
+</td>
+<td>
+0.077
+</td>
+<td>
+4319.084
+</td>
+<td>
+6775.800
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+beta_is_release[iphone_12]
+</th>
+<td>
+104.559
+</td>
+<td>
+8.481
+</td>
+<td>
+89.382
+</td>
+<td>
+120.857
+</td>
+<td>
+0.109
+</td>
+<td>
+0.077
+</td>
+<td>
+6011.804
+</td>
+<td>
+7460.644
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_is_release[iphone_13]
+</th>
+<td>
+71.477
+</td>
+<td>
+6.613
+</td>
+<td>
+58.896
+</td>
+<td>
+83.784
+</td>
+<td>
+0.097
+</td>
+<td>
+0.068
+</td>
+<td>
+4645.736
+</td>
+<td>
+6530.297
+</td>
+<td>
+1.003
+</td>
+</tr>
+<tr>
+<th>
+beta_is_release[iphone_14]
+</th>
+<td>
+77.189
+</td>
+<td>
+7.859
+</td>
+<td>
+62.536
+</td>
+<td>
+91.975
+</td>
+<td>
+0.110
+</td>
+<td>
+0.078
+</td>
+<td>
+5044.312
+</td>
+<td>
+7110.363
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_minus[iphone_11]
+</th>
+<td>
+0.306
+</td>
+<td>
+0.092
+</td>
+<td>
+0.090
+</td>
+<td>
+0.443
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+887.354
+</td>
+<td>
+876.292
+</td>
+<td>
+1.005
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_minus[iphone_12]
+</th>
+<td>
+0.637
+</td>
+<td>
+0.056
+</td>
+<td>
+0.536
+</td>
+<td>
+0.743
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2138.258
+</td>
+<td>
+3615.357
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_minus[iphone_13]
+</th>
+<td>
+0.508
+</td>
+<td>
+0.054
+</td>
+<td>
+0.405
+</td>
+<td>
+0.610
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+1283.886
+</td>
+<td>
+2246.039
+</td>
+<td>
+1.010
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_minus[iphone_14]
+</th>
+<td>
+0.596
+</td>
+<td>
+0.061
+</td>
+<td>
+0.483
+</td>
+<td>
+0.711
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+1061.666
+</td>
+<td>
+2279.684
+</td>
+<td>
+1.015
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_plus[iphone_11]
+</th>
+<td>
+1.621
+</td>
+<td>
+0.165
+</td>
+<td>
+1.323
+</td>
+<td>
+1.932
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+1851.762
+</td>
+<td>
+3902.532
+</td>
+<td>
+1.005
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_plus[iphone_12]
+</th>
+<td>
+1.240
+</td>
+<td>
+0.108
+</td>
+<td>
+1.047
+</td>
+<td>
+1.450
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+2247.391
+</td>
+<td>
+4202.864
+</td>
+<td>
+1.003
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_plus[iphone_13]
+</th>
+<td>
+1.653
+</td>
+<td>
+0.164
+</td>
+<td>
+1.358
+</td>
+<td>
+1.965
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+2443.428
+</td>
+<td>
+4825.193
+</td>
+<td>
+1.003
+</td>
+</tr>
+<tr>
+<th>
+ell_is_release_plus[iphone_14]
+</th>
+<td>
+1.434
+</td>
+<td>
+0.151
+</td>
+<td>
+1.148
+</td>
+<td>
+1.703
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+2339.363
+</td>
+<td>
+4509.314
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+inv_alpha_lam
+</th>
+<td>
+1063.267
+</td>
+<td>
+343.859
+</td>
+<td>
+455.498
+</td>
+<td>
+1731.624
+</td>
+<td>
+2.941
+</td>
+<td>
+2.080
+</td>
+<td>
+12516.787
+</td>
+<td>
+5576.722
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+inv_alpha[iphone_11]
+</th>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11882.618
+</td>
+<td>
+6562.296
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+inv_alpha[iphone_12]
+</th>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+9734.909
+</td>
+<td>
+5760.883
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+inv_alpha[iphone_13]
+</th>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11053.589
+</td>
+<td>
+5939.772
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+inv_alpha[iphone_14]
+</th>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11624.208
+</td>
+<td>
+6221.281
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+alpha[iphone_11]
+</th>
+<td>
+145142.927
+</td>
+<td>
+323221.101
+</td>
+<td>
+14576.774
+</td>
+<td>
+364749.684
+</td>
+<td>
+4811.220
+</td>
+<td>
+3442.385
+</td>
+<td>
+11882.618
+</td>
+<td>
+6562.296
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+alpha[iphone_12]
+</th>
+<td>
+74385.878
+</td>
+<td>
+189051.386
+</td>
+<td>
+5906.571
+</td>
+<td>
+193317.310
+</td>
+<td>
+2613.356
+</td>
+<td>
+1848.025
+</td>
+<td>
+9734.909
+</td>
+<td>
+5760.883
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+alpha[iphone_13]
+</th>
+<td>
+44040.603
+</td>
+<td>
+74711.095
+</td>
+<td>
+4282.518
+</td>
+<td>
+116911.536
+</td>
+<td>
+995.960
+</td>
+<td>
+704.287
+</td>
+<td>
+11053.589
+</td>
+<td>
+5939.772
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+alpha[iphone_14]
+</th>
+<td>
+15155.624
+</td>
+<td>
+24059.611
+</td>
+<td>
+1308.656
+</td>
+<td>
+40757.582
+</td>
+<td>
+369.597
+</td>
+<td>
+269.143
+</td>
+<td>
+11624.208
+</td>
+<td>
+6221.281
+</td>
+<td>
+1.000
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Overall, it looks fine.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=var_names,
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Model Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_38_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="posterior-predictive" class="section level2">
+<h2>Posterior Predictive</h2>
+<p>We now look into the posterior predictive distribution:</p>
+<pre class="python"><code>az.plot_ppc(
+    data=posterior_predictive,
+    num_pp_samples=1_000,
+    observed_rug=True,
+    random_seed=seed,
+)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_40_1.png" style="width: 800px;"/>
+</center>
+<p>It looks the model has captured most of the variance from the data.</p>
+<p>We can now look for each model separately:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=train_iphone_model.size,
+    ncols=1,
+    sharex=True,
+    sharey=True,
+    figsize=(12, 15),
+    layout=&quot;constrained&quot;,
+)
+
+for i, iphone_model in enumerate(train_iphone_model):
+    ax = axes[i]
+
+    condition = train_df[&quot;model&quot;] == iphone_model
+    temp_df = train_df[condition]
+    temp_likelihood = posterior_predictive[&quot;posterior_predictive&quot;][&quot;likelihood&quot;][
+        :, :, condition.to_numpy()
+    ]
+
+    sns.lineplot(
+        data=temp_df,
+        x=&quot;model_age&quot;,
+        y=&quot;search&quot;,
+        color=&quot;black&quot;,
+        label=&quot;Observed&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=temp_df[&quot;model_age&quot;],
+        y=temp_likelihood.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+        color=f&quot;C{i}&quot;,
+        label=&quot;Posterior Predictive Mean&quot;,
+        ax=ax,
+    )
+    az.plot_hdi(
+        x=temp_df[&quot;model_age&quot;],
+        y=temp_likelihood,
+        hdi_prob=0.94,
+        color=f&quot;C{i}&quot;,
+        smooth=False,
+        fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+        ax=ax,
+    )
+    az.plot_hdi(
+        x=temp_df[&quot;model_age&quot;],
+        y=temp_likelihood,
+        hdi_prob=0.50,
+        color=f&quot;C{i}&quot;,
+        smooth=False,
+        fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+        ax=ax,
+    )
+    ax.legend(loc=&quot;upper right&quot;)
+    ax.set(title=iphone_model, xlabel=&quot;Model Age (weeks)&quot;, ylabel=&quot;Search&quot;)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_42_0.png" style="width: 1000px;"/>
+</center>
+<p>We indeed see we the model has captures the release peak, the decay and the yearly seasonality 🙌!</p>
+</div>
+<div id="life-cycle-components" class="section level2">
+<h2>Life Cycle Components</h2>
+<p>We now split the posterior predictive mean into the release peak and decay components:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 7))
+
+sns.lineplot(
+    data=train_df,
+    x=&quot;week&quot;,
+    y=&quot;search&quot;,
+    hue=&quot;model&quot;,
+    ax=ax,
+)
+
+for i, iphone_model in enumerate(
+    release_dates_df.query(f&quot;model != &#39;{test_model}&#39;&quot;)[&quot;model&quot;]
+):
+    condition = (train_df[&quot;model&quot;] == iphone_model).to_numpy()
+
+    release_week = release_dates_df.query(f&quot;model == &#39;{iphone_model}&#39;&quot;)[
+        &quot;release_week&quot;
+    ].item()
+
+    ax.axvline(
+        release_week,
+        color=f&quot;C{i}&quot;,
+        linestyle=&quot;--&quot;,
+        label=f&quot;release week {iphone_model}&quot;,
+    )
+
+    sns.lineplot(
+        x=train_df[&quot;week&quot;][condition],
+        y=idata[&quot;posterior&quot;][&quot;is_release_bump&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))[condition],
+        color=f&quot;C{i}&quot;,
+        alpha=0.5,
+        label=&quot;Release Bump: (mean)&quot;,
+        ax=ax,
+    )
+
+    sns.lineplot(
+        x=train_df[&quot;week&quot;][condition],
+        y=np.exp(
+            idata[&quot;posterior&quot;][&quot;bart_mu_log&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))[condition]
+        ),
+        color=f&quot;C{i}&quot;,
+        alpha=0.5,
+        linestyle=&quot;-.&quot;,
+        label=&quot;Decay component: (mean)&quot;,
+        ax=ax,
+    )
+
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=3)
+ax.set_title(
+    label=&quot;Google Trends for iPhone Models (Worldwide)&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_45_1.png" style="width: 1000px;"/>
+</center>
+<p>Most of the variance is explained by the release Gaussian bump components. The decay component acs as a small collection over the initial peak decay.</p>
+<p>We can decompose further de decay component by looking into the partial dependence plots:</p>
+<pre class="python"><code>axes = pmb.plot_pdp(
+    bartrv=bart_mu_log,
+    X=x_train,
+    Y=train_search,
+    func=np.exp,
+    xs_interval=&quot;insample&quot;,
+    samples=1_000,
+    grid=&quot;long&quot;,
+    color=&quot;C0&quot;,
+    color_mean=&quot;C0&quot;,
+    var_discrete=[2, 3, 4],
+    figsize=(10, 12),
+    random_seed=seed,
+)
+plt.gcf().suptitle(
+    &quot;Partial Dependency Plots (PDP)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.05,
+)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_47_1.png" style="width: 900px;"/>
+</center>
+<p>Here are some remarks from these partial dependence plots:
+- Overall, the contribution of the decay component is small 9expected from the plot above).
+- The <code>age</code>’s contribution decays monotonically.
+- The variable <code>model_age</code> presents a bump around week <span class="math inline">\(50\)</span>, which seems to be be related to the release of the next iPhone model. We could add this feature to the model to capture this behavior.
+- We see a mild seasonality contribution from the <code>month</code> variable, attaining a maximum around September when the new iPhone models are usually released.
+- We also a mild contribution from the holidays variable. A better encoding would be a multiplicative interaction with the model age.</p>
+</div>
+<div id="out-of-sample-predictions" class="section level2">
+<h2>Out-of-Sample Predictions</h2>
+<p>We now generate out of sample prediction for the unseen iPhone model:</p>
+<pre class="python"><code>test_obs = test_df.index.to_numpy()
+test_iphone_model_idx, test_iphone_model = test_df[&quot;model&quot;].factorize(sort=True)
+test_month_idx, test_month = test_df[&quot;month&quot;].factorize(sort=True)
+test_age = test_df[&quot;age&quot;].to_numpy()
+test_model_age = test_df[&quot;model_age&quot;].to_numpy()
+test_is_release = test_df[&quot;is_release&quot;].to_numpy()
+x_test = test_df[features]
+test_search = test_df[&quot;search&quot;].to_numpy()</code></pre>
+<pre class="python"><code>with model:
+    pm.set_data(
+        new_data={
+            &quot;iphone_model_idx_data&quot;: test_iphone_model_idx,
+            &quot;model_age_data&quot;: test_model_age,
+            &quot;x_data&quot;: x_test,
+            &quot;search_data&quot;: np.ones_like(test_search),  # Dummy data to make coords work!
+            # We are not using this at prediction time!
+        },
+        coords={&quot;iphone_model&quot;: test_iphone_model, &quot;obs&quot;: test_obs},
+    )
+    idata.extend(
+        pm.sample_posterior_predictive(
+            trace=idata,
+            var_names=[&quot;is_release_bump&quot;, &quot;bart_mu_log&quot;, &quot;likelihood&quot;],
+            idata_kwargs={
+                &quot;coords&quot;: {&quot;iphone_model&quot;: test_iphone_model, &quot;obs&quot;: test_obs}
+            },
+            random_seed=rng,
+        )
+    )</code></pre>
+<p>Finally, we plot the posterior predictive distribution for the unseen iPhone model:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+test_likelihood = idata[&quot;posterior_predictive&quot;][&quot;likelihood&quot;]
+
+i = 4
+
+sns.lineplot(
+    data=test_df,
+    x=&quot;model_age&quot;,
+    y=&quot;search&quot;,
+    color=&quot;black&quot;,
+    label=&quot;Observed&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=test_df[&quot;model_age&quot;],
+    y=test_likelihood.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=f&quot;C{i}&quot;,
+    label=&quot;Posterior Predictive Mean&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=test_df[&quot;model_age&quot;],
+    y=test_likelihood,
+    hdi_prob=0.94,
+    color=f&quot;C{i}&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=test_df[&quot;model_age&quot;],
+    y=test_likelihood,
+    hdi_prob=0.50,
+    color=f&quot;C{i}&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+sns.lineplot(
+    x=test_df[&quot;model_age&quot;],
+    y=idata[&quot;posterior_predictive&quot;][&quot;is_release_bump&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C7&quot;,
+    linewidth=2,
+    alpha=0.7,
+    label=&quot;Release Bump: Posterior Predictive Mean&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=test_df[&quot;model_age&quot;],
+    y=np.exp(idata[&quot;posterior_predictive&quot;][&quot;bart_mu_log&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))),
+    color=&quot;C7&quot;,
+    linewidth=2,
+    linestyle=&quot;-.&quot;,
+    alpha=0.7,
+    label=&quot;Decay component: Posterior Predictive Mean&quot;,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(title=test_model, xlabel=&quot;Model Age (weeks)&quot;, ylabel=&quot;Search&quot;)</code></pre>
+<center>
+<img src="../images/iphone_trends_files/iphone_trends_53_1.png" style="width: 1000px;"/>
+</center>
+<p>We see the model has captured the release peak and the decay within the <span class="math inline">\(94\%\)</span> HDI. In particular, the predicted peak maximum is very close to the observed one.</p>
+</div>
+<div id="final-remarks" class="section level2">
+<h2>Final Remarks</h2>
+<p>This example shows how to build a custom model for a family of products with similar life cycle structures. The model is flexible enough to capture the release peak and the long term decay. The model can be easily extended to other products and life cycle structures. Here we just illustrated some of the possibilities.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
