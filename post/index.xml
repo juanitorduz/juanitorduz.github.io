@@ -6,7 +6,26 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 10 Dec 2023 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 05 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Flax and NumPyro Toy Example</title>
+      <link>/flax_numpyro/</link>
+      <pubDate>Fri, 05 Jan 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/flax_numpyro/</guid>
+      <description>In this notebook I want to experiment with the numpyro/contrib/module.py module which allow us to integrate Flax models with NumPyro models. I am interested in this because I want to experiment with complex bayesian models with larger datasets.
+Most of the main components can be found in the great blog post Bayesian Neural Networks with Flax and Numpyro. The author takes a different path working directly with potentials, but he also points out the recent addition of the numpyro/contrib/module.</description>
+    </item>
+    
+    <item>
+      <title>Time Series Modeling with HSGP: Baby Births Example</title>
+      <link>/birthdays/</link>
+      <pubDate>Tue, 02 Jan 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/birthdays/</guid>
+      <description>In this notebook we want to reproduce a classical example of using Gaussian processes to model time series data: The birthdays data set. I first encountered this example in the seminal book Chapter 21, Bayesian Data Analysis (Third edition) when learning about the subject. One thing I rapidly realized was that fitting these types of models in practice is very computationally expensive and sometimes almost infeasible for real industry applications where the data size is larger than all of these academic examples.</description>
+    </item>
+    
     <item>
       <title>Non-Parametric Product Life Cycle Modeling</title>
       <link>/iphone_trends/</link>

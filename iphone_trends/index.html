@@ -1003,12 +1003,12 @@ train_search = train_df[&quot;search&quot;].to_numpy()</code></pre>
 \begin{align*}
 \beta^{[m]}_{\text{release}}  \sim &amp; \text{HalfNormal}(\sigma_{\beta}) \\
 \ell^{[m]}_{\pm}  \sim &amp; \text{HalfNormal}(\sigma_{\ell}) \\
-\mu_{\text{release}}  = &amp; \beta^{[m]}_{\text{release}} \left( I\{\text{model\_age} \leq 0\} \exp(-{\text{model\_age}^{p_{-}} / \ell^{[m]}_{-}}) \right. \\
-&amp; \left.+ I\{\text{model\_age} \geq 0\} \exp(-{\text{model\_age}^{p_{+}} / \ell^{[m]}_{+}} )  \right)\\
-\mu_{\text{decay}}  = &amp; \text{BART}(\text{age}, \text{model\_age}, \text{month}, \text{holidays}) \\
+\mu_{\text{release}}  = &amp; \beta^{[m]}_{\text{release}} \left( I\{\text{model_age} \leq 0\} \exp(-{\text{model_age}^{p_{-}} / \ell^{[m]}_{-}}) \right. \\
+&amp; \left.+ I\{\text{model_age} \geq 0\} \exp(-{\text{model_age}^{p_{+}} / \ell^{[m]}_{+}} )  \right)\\
+\mu_{\text{decay}}  = &amp; \text{BART}(\text{age}, \text{model_age}, \text{month}, \text{holidays}) \\
 \mu  = &amp; \mu_{\text{release}} + \mu_{\text{decay}} \\
 \alpha  = &amp; \frac{1}{\sqrt{\tilde{\alpha}}} \\
-\alpha_{\text{weighted}}  = &amp; \frac{\alpha}{|\text{model\_age}|} \\
+\alpha_{\text{weighted}}  = &amp; \frac{\alpha}{|\text{model_age}|} \\
 \text{search}  \sim &amp; \text{NegativeBinomial}(\mu, \alpha_{\text{weighted}})
 \end{align*}
 \]</span></p>

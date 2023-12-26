@@ -1,0 +1,1936 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Time Series Modeling with HSGP: Baby Births Example - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Time Series Modeling with HSGP: Baby Births Example - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">19 min read</span>
+    
+
+    <h1 class="article-title">Time Series Modeling with HSGP: Baby Births Example</h1>
+
+    
+    <span class="article-date">2024-01-02</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we want to reproduce a classical example of using Gaussian processes to model time series data: The birthdays data set. I first encountered this example in the seminal book <a href="http://www.stat.columbia.edu/~gelman/book/BDA3.pdf">Chapter 21, Bayesian Data Analysis (Third edition)</a> when learning about the subject. One thing I rapidly realized was that fitting these types of models in practice is very computationally expensive and sometimes almost infeasible for real industry applications where the data size is larger than all of these academic examples. Recently, there has been a lot of progress in approximation methods to speed up the computations. We investigate one such method: the Hilbert Space Gaussian Process (HSGP) approximation introduced in <a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">Hilbert space methods for reduced-rank Gaussian process regression</a>. The main ideas of this method relies on the Laplacian’s spectral decomposition to approximate kernels’ spectral measures as a function of basis functions. The key observation is that the basis functions in the reduced-rank approximation do not depend on the hyperparameters of the covariance function for the Gaussian process. This allows us to speed up the computations tremendously. We do not go into the mathematical details here (we might do this in a future post), as the original article is very well written and easy to follow (see also the great paper <a href="https://link.springer.com/article/10.1007/s11222-022-10167-2">Practical Hilbert space approximate Bayesian Gaussian processes for probabilistic programming</a>). Instead, we reproduce this classical example using PyMC using a very raw implementation from <a href="https://num.pyro.ai/en/stable/examples/hsgp.html"><code>NumPyro</code> Docs - Example: Hilbert space approximation for Gaussian processes</a>, which is a great resource to learn about the method internals (so it is also strongly recommended!).</p>
+<p><strong>Remark [Bayesian Workflow Book]:</strong> The model I implemented is a fairly complex one, and it is not simple enough for a first iteration. Instead I reproduced every single model from the <strong>amazing guide</strong>: <a href="https://avehtari.github.io/casestudies/Birthdays/birthdays.html">Bayesian workflow book - Birthdays</a> by <a href="https://users.aalto.fi/~ave/">Aki Vehtari</a>. This is a step-by-step to develop this model in Stan. All the code can be found on <a href="https://github.com/avehtari/casestudies/tree/master/Birthdays">this repository</a>. The Stan code is very readable but I should confess I personally find the PyMC API much nicer to iterate on. I also find the PyMC code much more readable, but this is a matter of taste. I strongly recommend reading the guide and the code to understand the model and the data.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import preliz as pz
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+import xarray as xr
+from matplotlib.ticker import MaxNLocator
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;birthdays&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We read the data from the repository <a href="https://avehtari.github.io/casestudies/Birthdays/birthdays.html">Bayesian workflow book - Birthdays</a> by <a href="https://users.aalto.fi/~ave/">Aki Vehtari</a>.</p>
+<pre class="python"><code>raw_df = pd.read_csv(
+    &quot;https://raw.githubusercontent.com/avehtari/casestudies/master/Birthdays/data/births_usa_1969.csv&quot;,
+)
+
+raw_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 7305 entries, 0 to 7304
+Data columns (total 8 columns):
+ #   Column        Non-Null Count  Dtype
+---  ------        --------------  -----
+ 0   year          7305 non-null   int64
+ 1   month         7305 non-null   int64
+ 2   day           7305 non-null   int64
+ 3   births        7305 non-null   int64
+ 4   day_of_year   7305 non-null   int64
+ 5   day_of_week   7305 non-null   int64
+ 6   id            7305 non-null   int64
+ 7   day_of_year2  7305 non-null   int64
+dtypes: int64(8)
+memory usage: 456.7 KB</code></pre>
+<p>The data set contains the number of births per day in USA in the period 1969-1988. All the columns are self-explanatory except for <code>day_of_year2</code> which is the day of the year (from 1 to 366) with leap day being 60 and 1st March 61 also on non-leap-years.</p>
+</div>
+<div id="eda-and-feature-engineering" class="section level2">
+<h2>EDA and Feature Engineering</h2>
+<p>Let us look into the data and create the features we will use in the model.</p>
+<pre class="python"><code>raw_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+year
+</th>
+<th>
+month
+</th>
+<th>
+day
+</th>
+<th>
+births
+</th>
+<th>
+day_of_year
+</th>
+<th>
+day_of_week
+</th>
+<th>
+id
+</th>
+<th>
+day_of_year2
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+1969
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+8486
+</td>
+<td>
+1
+</td>
+<td>
+3
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+1969
+</td>
+<td>
+1
+</td>
+<td>
+2
+</td>
+<td>
+9002
+</td>
+<td>
+2
+</td>
+<td>
+4
+</td>
+<td>
+2
+</td>
+<td>
+2
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+1969
+</td>
+<td>
+1
+</td>
+<td>
+3
+</td>
+<td>
+9542
+</td>
+<td>
+3
+</td>
+<td>
+5
+</td>
+<td>
+3
+</td>
+<td>
+3
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+1969
+</td>
+<td>
+1
+</td>
+<td>
+4
+</td>
+<td>
+8960
+</td>
+<td>
+4
+</td>
+<td>
+6
+</td>
+<td>
+4
+</td>
+<td>
+4
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+1969
+</td>
+<td>
+1
+</td>
+<td>
+5
+</td>
+<td>
+8390
+</td>
+<td>
+5
+</td>
+<td>
+7
+</td>
+<td>
+5
+</td>
+<td>
+5
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>First, we look into the <code>births</code> distribution:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.histplot(data=raw_df, x=&quot;births&quot;, kde=True, ax=ax)
+ax.set_title(
+    label=&quot;Number of Births in the USA in 1969 - 1988&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_10_1.png" style="width: 1000px;"/>
+</center>
+<p>We create a couple of features:</p>
+<ul>
+<li>A <code>date</code>stamp.</li>
+<li><code>births_relative100</code>: the number of births relative to <span class="math inline">\(100\)</span>.</li>
+<li><code>obs</code>: data index.</li>
+</ul>
+<pre class="python"><code>data_df = raw_df.copy().assign(
+    date=lambda x: pd.to_datetime(x[[&quot;year&quot;, &quot;month&quot;, &quot;day&quot;]]),
+    births_relative100=lambda x: x[&quot;births&quot;] / x[&quot;births&quot;].mean() * 100,
+    obs=lambda x: x.index,
+)</code></pre>
+<p>Now, let’s look into the development over time of the relative births, which is the target variable we will model.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data_df, x=&quot;date&quot;, y=&quot;births_relative100&quot;, c=&quot;C0&quot;, s=8, ax=ax)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+ax.legend()
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969 - 1988&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_14_1.png" style="width: 1000px;"/>
+</center>
+<p>We see a clear long term trend component and a clear yearly seasonality. Let’s deep dive into the yearly seasonality.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+(
+    data_df.groupby([&quot;day_of_year2&quot;], as_index=False)
+    .agg(meanbirths=(&quot;births_relative100&quot;, &quot;mean&quot;))
+    .pipe((sns.scatterplot, &quot;data&quot;), x=&quot;day_of_year2&quot;, y=&quot;meanbirths&quot;, c=&quot;C0&quot;, ax=ax)
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+ax.legend()
+ax.set(xlabel=&quot;day of year&quot;, ylabel=&quot;relative number of births per day of year&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969 - 1988\nMean over Day of Year&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_16_1.png" style="width: 1000px;"/>
+</center>
+<p>We see a relatively smooth pattern, except for some specific dates which correspond to holidays. In particular, we see the clear drop at the end of the year. In addition, there are some special holidays which span over a week: memorial day, labor day and thanksgiving. Let’s add these features to the dataset.</p>
+<pre class="python"><code>memorial_days = data_df.query(&quot;month == 5 &amp; day_of_week == 1 &amp; day &gt;=25&quot;)[&quot;date&quot;]
+
+labor_days = data_df.query(&quot;month == 9 &amp; day_of_week == 1 &amp; day &lt;=7&quot;)[&quot;date&quot;]
+labor_days = pd.concat(
+    [labor_days, labor_days + pd.Timedelta(days=1)], axis=0
+).sort_values()
+
+thanksgiving_days = data_df.query(&quot;month == 11 &amp; day_of_week == 4 &amp; 22 &lt;=day &lt;=28&quot;)[
+    &quot;date&quot;
+]
+thanksgiving_days = pd.concat(
+    [thanksgiving_days, thanksgiving_days + pd.Timedelta(days=1)], axis=0
+).sort_values()
+
+data_df[&quot;is_memorial_day&quot;] = data_df[&quot;date&quot;].isin(memorial_days).astype(int)
+data_df[&quot;is_labor_day&quot;] = data_df[&quot;date&quot;].isin(labor_days).astype(int)
+data_df[&quot;is_thanksgiving_day&quot;] = data_df[&quot;date&quot;].isin(thanksgiving_days).astype(int)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+(
+    data_df.groupby([&quot;day_of_year2&quot;], as_index=False)
+    .agg(meanbirths=(&quot;births_relative100&quot;, &quot;mean&quot;))
+    .pipe((sns.scatterplot, &quot;data&quot;), x=&quot;day_of_year2&quot;, y=&quot;meanbirths&quot;, c=&quot;C0&quot;, ax=ax)
+)
+for i, day in enumerate([&quot;is_memorial_day&quot;, &quot;is_labor_day&quot;, &quot;is_thanksgiving_day&quot;]):
+    sns.scatterplot(
+        data=data_df.query(f&quot;{day} == 1 and year == 1969&quot;),
+        x=&quot;day_of_year2&quot;,
+        y=&quot;births_relative100&quot;,
+        c=f&quot;C{i + 1}&quot;,
+        s=80,
+        label=day,
+        ax=ax,
+    )
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;day of year&quot;, ylabel=&quot;relative number of births per day of year&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969 - 1988\nMean over Day of Year&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_19_1.png" style="width: 1000px;"/>
+</center>
+<p>Next, we split by month and year.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+(
+    data_df.groupby([&quot;year&quot;, &quot;month&quot;], as_index=False)
+    .agg(meanbirths=(&quot;births_relative100&quot;, &quot;mean&quot;))
+    .assign(month=lambda x: pd.Categorical(x[&quot;month&quot;]))
+    .pipe(
+        (sns.lineplot, &quot;data&quot;),
+        x=&quot;year&quot;,
+        y=&quot;meanbirths&quot;,
+        marker=&quot;o&quot;,
+        markersize=7,
+        hue=&quot;month&quot;,
+        palette=&quot;tab20&quot;,
+    )
+)
+ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+ax.legend(title=&quot;month&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(xlabel=&quot;year&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969 - 1988\nMean over Month and Year&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_21_1.png" style="width: 1000px;"/>
+</center>
+<p>Besides the global trend, we do not see any clear differences between months.</p>
+<p>We continue looking into the weekly seasonality.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+(
+    data_df.groupby([&quot;day_of_week&quot;], as_index=False)
+    .agg(meanbirths=(&quot;births_relative100&quot;, &quot;mean&quot;))
+    .pipe(
+        (sns.lineplot, &quot;data&quot;),
+        x=&quot;day_of_week&quot;,
+        y=&quot;meanbirths&quot;,
+        marker=&quot;o&quot;,
+        c=&quot;C0&quot;,
+        markersize=10,
+        ax=ax,
+    )
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+ax.legend()
+ax.set(xlabel=&quot;day of week&quot;, ylabel=&quot;relative number of births per day of week&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969 - 1988\nMean over Day of Week&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_24_1.png" style="width: 1000px;"/>
+</center>
+<p>It seems that there are on average less births during the weekend. We can also plot the time development over the years.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+(
+    data_df.groupby([&quot;year&quot;, &quot;day_of_week&quot;], as_index=False)
+    .agg(meanbirths=(&quot;births_relative100&quot;, &quot;mean&quot;))
+    .assign(day_of_week=lambda x: pd.Categorical(x[&quot;day_of_week&quot;]))
+    .pipe(
+        (sns.lineplot, &quot;data&quot;),
+        x=&quot;year&quot;,
+        y=&quot;meanbirths&quot;,
+        marker=&quot;o&quot;,
+        markersize=7,
+        hue=&quot;day_of_week&quot;,
+    )
+)
+ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+ax.legend(title=&quot;day of week&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(xlabel=&quot;year&quot;, ylabel=&quot;relative number of births per day of week&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969 - 1988\nMean over Day of Week and Year&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_26_1.png" style="width: 1000px;"/>
+</center>
+<p>We see that the trends behave differently over the years for weekdays and weekends.</p>
+</div>
+<div id="data-pre-processing" class="section level2">
+<h2>Data Pre-Processing</h2>
+<p>After having a better understanding of the data and the patters we want to capture with the model, we can proceed to pre-process the data.</p>
+<ul>
+<li>Extract relevant features</li>
+</ul>
+<pre class="python"><code>n = data_df.shape[0]
+obs = data_df[&quot;obs&quot;].to_numpy()
+date = data_df[&quot;date&quot;].to_numpy()
+year = data_df[&quot;year&quot;].to_numpy()
+day_of_week_idx, day_of_week = data_df[&quot;day_of_week&quot;].factorize(sort=True)
+day_of_year2_idx, day_of_year2 = data_df[&quot;day_of_year2&quot;].factorize(sort=True)
+memorial_days = data_df[&quot;is_memorial_day&quot;].to_numpy()
+labor_days = data_df[&quot;is_labor_day&quot;].to_numpy()
+thanksgiving_days = data_df[&quot;is_thanksgiving_day&quot;].to_numpy()
+births_relative100 = data_df[&quot;births_relative100&quot;].to_numpy()</code></pre>
+<ul>
+<li>We want to work on the normalized log scale of the relative births data.</li>
+</ul>
+<pre class="python"><code># we want to use the scale of the data size to set up the priors.
+# we are mainly interested in the standard deviation.
+obs_pipeline = Pipeline(steps=[(&quot;scaler&quot;, StandardScaler())])
+obs_pipeline.fit(obs.reshape(-1, 1))
+normalized_obs = obs_pipeline.transform(obs.reshape(-1, 1)).flatten()
+obs_std = obs_pipeline[&quot;scaler&quot;].scale_.item()
+
+# we first take a log transform and then normalize the data.
+births_relative100_pipeline = Pipeline(
+    steps=[
+        (&quot;log&quot;, FunctionTransformer(func=np.log, inverse_func=np.exp)),
+        (&quot;scaler&quot;, StandardScaler()),
+    ]
+)
+births_relative100_pipeline.fit(births_relative100.reshape(-1, 1))
+normalized_log_births_relative100 = births_relative100_pipeline.transform(
+    births_relative100.reshape(-1, 1)
+).flatten()
+normalized_log_births_relative100_std = births_relative100_pipeline[
+    &quot;scaler&quot;
+].scale_.item()</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(normalized_obs, normalized_log_births_relative100, &quot;o&quot;, c=&quot;C0&quot;, markersize=2)
+ax.set(xlabel=&quot;normalized obs&quot;, ylabel=&quot;relative number of births - Transformed&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969 - 1988\nTransformed Data&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_33_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>In this section we implement one of the final models described in <a href="https://avehtari.github.io/casestudies/Birthdays/birthdays.html">Bayesian workflow book - Birthdays</a>. I really (really!) recommend looking into that blog post as it has a lot of insights and retails regarding the iterative modeling process and the motivation of the different modeling choices. When implementing this model I build it in this iterative process and it was very instructive. Of course I did not re-write everything again, so here I show one og the final models.</p>
+<div id="model-components" class="section level3">
+<h3>Model Components</h3>
+<p>Let’s describe the model components. All of these building blocks should not come as a surprise after looking into the EDA section.</p>
+<ol style="list-style-type: decimal">
+<li><strong>Global trend.</strong> We use a Gaussian process with an exponential quadratic kernel.</li>
+<li><strong>Periodicity over years</strong>: We use a Gaussian process with a periodic kernel. Observe that, since we are working on the normalized scale, the period should be <code>period=365.25 / obs_std</code> (and not <code>period=365.25</code> !).</li>
+<li><strong>Weekly seasonality</strong>: We use a zero-sum-normal distribution to capture the relative difference across weekdays. We couple it with a multiplicative factor parametrized by a Gaussian process (trough a exponential function).</li>
+<li><strong>Yearly seasonality</strong>: We use a Student-t distribution over the <code>day_of_year2</code>.</li>
+<li><strong>Likelihood</strong>: We use a Gaussian distribution.</li>
+</ol>
+<p>For all of the Gaussian processes components we use the Hilbert Space Gaussian Process (HSGP) approximation.</p>
+<p><strong>Remark [Periodic Kernel]:</strong> I decided to work on this example motivated by the fact that the HSGP approximation for periodic kernel was recently added to PyMC in <a href="https://github.com/pymc-devs/pymc/pull/6877"><code>pymc/#6877</code></a>. This was a non-trivial task as the periodic kernel does not have a well-defined spectral density, but there is nevertheless a way to approximate it using the HSGP method.</p>
+<p><strong>Remark [Likelihood]</strong>: I also tried a Student-t likelihood, but the results were not good.</p>
+<p><strong>Remark <a href="#horseshoe-prior">Horseshoe Prior</a>:</strong> <a href="https://users.aalto.fi/~ave/">Aki Vehtari</a> suggest using a horseshoe prior for the day-of-year contribution as a way of regularizing the model (by enforcing many day contributions to be zero). At the end, I did not see a great benefit and the diagnostics (e.g. r-hat and divergences) were not good at all. If you find I am doing something wrong, please let me know! Here is the snippet of code I used (following <a href="https://num.pyro.ai/en/stable/examples/hsgp.html"><code>NumPyro</code> Docs - Example: Hilbert space approximation for Gaussian processes</a>):</p>
+<pre class="python"><code>slab_df = 50
+slab_scale = 2
+scale_global = 0.1
+tau = pm.HalfNormal(name=&quot;tau&quot;, sigma=2 * scale_global)
+c_aux = pm.InverseGamma(name=&quot;c_aux&quot;, alpha=slab_df / 2, beta=slab_df / 2)
+c = pm.Deterministic(name=&quot;c&quot;, var=slab_scale * pt.sqrt(c_aux))
+lam = pm.HalfCauchy(name=&quot;lam&quot;, beta=1, dims=&quot;day_of_year2&quot;)
+
+lam_tilde = pm.Deterministic(
+    name=&quot;lam_tilde&quot;,
+    var=pt.sqrt(c) * lam / pt.sqrt(c + (tau * lam) ** 2),
+    dims=&quot;day_of_year2&quot;,
+)
+
+b_day_of_year2 = pm.Normal(
+    name=&quot;b_day_of_year2&quot;, mu=0, sigma=tau * lam_tilde, dims=&quot;day_of_year2&quot;
+)</code></pre>
+<p>Still, it was a great opportunity to learn about this technique and I can only recommend the blog post <a href="https://austinrochford.com/posts/2021-05-29-horseshoe-pymc3.html">The Hierarchical Regularized Horseshoe Prior in PyMC3</a> by <a href="https://austinrochford.com/">Austin Rochford</a>. As always, very insightful and well written.</p>
+</div>
+<div id="prior-specifications" class="section level3">
+<h3>Prior Specifications</h3>
+<p>Moth of the priors are not very informative. The only tricky part here is to think that we are working on the normalized log scale of the relative births data. For example, for the global trend we use a Gaussian process with an exponential quadratic kernel. We use a the following priors for the length scale:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.LogNormal(mu=np.log(700 / obs_std), sigma=1).plot_pdf(ax=ax)
+ax.set(xlim=(None, 4))
+ax.set_title(
+    label=&quot;Prior distribution for the global trend Gaussian process&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_36_1.png" style="width: 1000px;"/>
+</center>
+<p>The motivation is that we have around <span class="math inline">\(7.3\)</span>K data points and whe want to consider the in between data points distance in the normalized scale. That is why we consider the ratio <code>7_000 / obs_str</code>. Note that we want to capture the long term trend, so we want to consider a length scale that is larger than the data points distance. We increase the order of magnitude by dividing by <span class="math inline">\(10\)</span>. We then take a log transform as we are using a log-normal prior.</p>
+<p>For the day-of-week Gaussian process we consider a length scale much larger as we want this variation to be less than the global trend. Similarly, por the periodic length scale we expect it to be smaller than the global trend.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.LogNormal(mu=np.log(700 / obs_std), sigma=1).plot_pdf(ax=ax)
+pz.LogNormal(mu=np.log(7_000 / obs_std), sigma=1).plot_pdf(ax=ax)
+pz.LogNormal(mu=np.log(70 / obs_std), sigma=1).plot_pdf(ax=ax)
+ax.set(xlim=(-0.1, 2))
+ax.set_title(
+    label=&quot;Prior distribution for the Gaussian processes&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_39_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="model-implementation" class="section level3">
+<h3>Model Implementation</h3>
+<p>We now specify the model in PyMC. Note how similar the model implementation is to the mathematical description. This is, in my personal opinion, one of the biggest strengths of PyMC.</p>
+<pre class="python"><code>coords = {&quot;obs&quot;: obs, &quot;day_of_week&quot;: day_of_week, &quot;day_of_year2&quot;: day_of_year2}
+
+with pm.Model(coords=coords) as model:
+    # --- Data Containers ---
+
+    normalized_obs_data = pm.Data(
+        name=&quot;normalized_obs_data&quot;, value=normalized_obs, mutable=False, dims=&quot;obs&quot;
+    )
+
+    day_of_week_idx_data = pm.Data(
+        name=&quot;day_of_week_idx_data&quot;, value=day_of_week_idx, mutable=False, dims=&quot;obs&quot;
+    )
+
+    day_of_year2_idx_data = pm.Data(
+        name=&quot;day_of_year2_idx_data&quot;, value=day_of_year2_idx, mutable=False, dims=&quot;obs&quot;
+    )
+
+    memorial_days_data = pm.Data(
+        name=&quot;memorial_days_data&quot;, value=memorial_days, mutable=False, dims=&quot;obs&quot;
+    )
+
+    labor_days_data = pm.Data(
+        name=&quot;labor_days_data&quot;, value=labor_days, mutable=False, dims=&quot;obs&quot;
+    )
+
+    thanksgiving_days_data = pm.Data(
+        name=&quot;thanksgiving_days_data&quot;,
+        value=thanksgiving_days,
+        mutable=False,
+        dims=&quot;obs&quot;,
+    )
+
+    normalized_log_births_relative100_data = pm.Data(
+        name=&quot;log_births_relative100&quot;,
+        value=normalized_log_births_relative100,
+        mutable=False,
+        dims=&quot;obs&quot;,
+    )
+
+    # --- Priors ---
+
+    ## global trend
+    amplitude_trend = pm.HalfNormal(name=&quot;amplitude_trend&quot;, sigma=1.0)
+    ls_trend = pm.LogNormal(name=&quot;ls_trend&quot;, mu=np.log(700 / obs_std), sigma=1)
+    cov_trend = amplitude_trend * pm.gp.cov.ExpQuad(input_dim=1, ls=ls_trend)
+    gp_trend = pm.gp.HSGP(m=[20], c=1.5, cov_func=cov_trend)
+    f_trend = gp_trend.prior(name=&quot;f_trend&quot;, X=normalized_obs_data[:, None], dims=&quot;obs&quot;)
+
+    ## year periodic
+    amplitude_year_periodic = pm.HalfNormal(name=&quot;amplitude_year_periodic&quot;, sigma=1)
+    ls_year_periodic = pm.LogNormal(
+        name=&quot;ls_year_periodic&quot;, mu=np.log(7_000 / obs_std), sigma=1
+    )
+    gp_year_periodic = pm.gp.HSGPPeriodic(
+        m=20,
+        scale=amplitude_year_periodic,
+        cov_func=pm.gp.cov.Periodic(
+            input_dim=1, period=365.25 / obs_std, ls=ls_year_periodic
+        ),
+    )
+    f_year_periodic = gp_year_periodic.prior(
+        name=&quot;f_year_periodic&quot;, X=normalized_obs_data[:, None], dims=&quot;obs&quot;
+    )
+
+    ## day of week GP global scale
+    amplitude_day_of_week = pm.HalfNormal(name=&quot;amplitude_day_of_week&quot;, sigma=1)
+    ls_day_of_week = pm.LogNormal(
+        name=&quot;ls_day_of_week&quot;, mu=np.log(70 / obs_std), sigma=1
+    )
+    cov_day_of_week = amplitude_day_of_week * pm.gp.cov.ExpQuad(
+        input_dim=1, ls=ls_day_of_week
+    )
+    gp_day_of_week = pm.gp.HSGP(m=[5], c=1.5, cov_func=cov_day_of_week)
+    log_f_day_of_week = gp_day_of_week.prior(
+        name=&quot;log_f_day_of_week&quot;, X=normalized_obs_data[:, None], dims=&quot;obs&quot;
+    )
+    f_day_of_week = pm.Deterministic(
+        name=&quot;f_day_of_week&quot;, var=pt.exp(log_f_day_of_week), dims=&quot;obs&quot;
+    )
+
+    b_day_of_week = pm.ZeroSumNormal(name=&quot;b_day_of_week&quot;, sigma=1, dims=&quot;day_of_week&quot;)
+
+    ## day o
+    sigma_day_of_year2 = pm.HalfNormal(name=&quot;sigma_day_of_year2&quot;, sigma=0.5)
+    nu_day_of_year2 = pm.Gamma(name=&quot;nu_day_of_year2&quot;, alpha=3, beta=0.1)
+    b_day_of_year2 = pm.StudentT(
+        name=&quot;b_day_of_year2&quot;,
+        mu=0,
+        sigma=sigma_day_of_year2,
+        nu=nu_day_of_year2,
+        dims=&quot;day_of_year2&quot;,
+    )
+
+    # special holidays
+    b_memorial_day = pm.Normal(name=&quot;b_memorial_day&quot;, mu=0, sigma=1)
+    b_labor_day = pm.Normal(name=&quot;b_labor_day&quot;, mu=0, sigma=1)
+    b_thanksgiving_day = pm.Normal(name=&quot;b_thanksgiving_day&quot;, mu=0, sigma=1)
+
+    # global noise
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=0.5)
+
+    # --- Parametrization ---
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=f_trend
+        + f_year_periodic
+        + f_day_of_week * b_day_of_week[day_of_week_idx_data]
+        + b_day_of_year2[day_of_year2_idx_data]
+        + b_memorial_day * memorial_days_data
+        + b_labor_day * labor_days_data
+        + b_thanksgiving_day * thanksgiving_days_data,
+        dims=&quot;obs&quot;,
+    )
+
+    # --- Likelihood ---
+    pm.Normal(
+        name=&quot;likelihood&quot;,
+        mu=mu,
+        sigma=sigma,
+        observed=normalized_log_births_relative100_data,
+        dims=&quot;obs&quot;,
+    )
+
+pm.model_to_graphviz(model=model)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_41_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+</div>
+<div id="prior-predictive-checks" class="section level2">
+<h2>Prior Predictive Checks</h2>
+<p>We run the model with the prior predictive checks to see if the model is able to generate data in a similar scale as the data.</p>
+<pre class="python"><code>with model:
+    prior_predictive = pm.sample_prior_predictive(samples=2_000, random_seed=rng)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(data=prior_predictive, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
+ax.set_title(label=&quot;Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_44_2.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="model-fitting-and-diagnostics" class="section level2">
+<h2>Model Fitting and Diagnostics</h2>
+<p>We now proceed to fit the model using the <code>Numpyro</code> sampler. It takes around <span class="math inline">\(20\)</span> minutes to run the model locally (Intel MacBook Pro, <span class="math inline">\(4\)</span> cores, <span class="math inline">\(16\)</span> GB RAM).</p>
+<pre class="python"><code>with model:
+    idata = pm.sample(
+        target_accept=0.95,
+        draws=2_000,
+        chains=4,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng,
+    )
+    posterior_predictive = pm.sample_posterior_predictive(trace=idata, random_seed=rng)</code></pre>
+</div>
+<div id="diagnostics" class="section level2">
+<h2>Diagnostics</h2>
+<p>We do not see any divergences or very high r-hat values.</p>
+<pre class="python"><code>idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>var_names = [
+    &quot;amplitude_trend&quot;,
+    &quot;ls_trend&quot;,
+    &quot;amplitude_year_periodic&quot;,
+    &quot;ls_year_periodic&quot;,
+    &quot;ls_day_of_week&quot;,
+    &quot;b_day_of_week&quot;,
+    &quot;sigma_day_of_year2&quot;,
+    &quot;nu_day_of_year2&quot;,
+    &quot;b_memorial_day&quot;,
+    &quot;b_labor_day&quot;,
+    &quot;b_thanksgiving_day&quot;,
+    &quot;sigma&quot;,
+]
+
+az.summary(data=idata, var_names=var_names, round_to=3)</code></pre>
+<center>
+<div>
+<style>
+    .dataframe thead tr:only-child th {
+        text-align: right;
+        font-size: 15px;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 18px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 18px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 18px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+amplitude_trend
+</th>
+<td>
+0.441
+</td>
+<td>
+0.211
+</td>
+<td>
+0.156
+</td>
+<td>
+0.825
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+2861.721
+</td>
+<td>
+4571.089
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+ls_trend
+</th>
+<td>
+0.192
+</td>
+<td>
+0.045
+</td>
+<td>
+0.104
+</td>
+<td>
+0.271
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+1836.581
+</td>
+<td>
+1226.614
+</td>
+<td>
+1.003
+</td>
+</tr>
+<tr>
+<th>
+amplitude_year_periodic
+</th>
+<td>
+0.965
+</td>
+<td>
+0.142
+</td>
+<td>
+0.712
+</td>
+<td>
+1.228
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+1432.702
+</td>
+<td>
+2629.018
+</td>
+<td>
+1.004
+</td>
+</tr>
+<tr>
+<th>
+ls_year_periodic
+</th>
+<td>
+0.147
+</td>
+<td>
+0.010
+</td>
+<td>
+0.127
+</td>
+<td>
+0.166
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+1809.155
+</td>
+<td>
+2725.739
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+ls_day_of_week
+</th>
+<td>
+0.044
+</td>
+<td>
+0.053
+</td>
+<td>
+0.004
+</td>
+<td>
+0.113
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7698.161
+</td>
+<td>
+6383.154
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_day_of_week[1]
+</th>
+<td>
+0.293
+</td>
+<td>
+0.031
+</td>
+<td>
+0.235
+</td>
+<td>
+0.354
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+2460.771
+</td>
+<td>
+3248.552
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+b_day_of_week[2]
+</th>
+<td>
+0.613
+</td>
+<td>
+0.064
+</td>
+<td>
+0.492
+</td>
+<td>
+0.738
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2426.709
+</td>
+<td>
+3150.868
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_day_of_week[3]
+</th>
+<td>
+0.382
+</td>
+<td>
+0.040
+</td>
+<td>
+0.308
+</td>
+<td>
+0.462
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2494.189
+</td>
+<td>
+3190.484
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_day_of_week[4]
+</th>
+<td>
+0.332
+</td>
+<td>
+0.035
+</td>
+<td>
+0.262
+</td>
+<td>
+0.397
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2422.496
+</td>
+<td>
+3125.097
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_day_of_week[5]
+</th>
+<td>
+0.455
+</td>
+<td>
+0.048
+</td>
+<td>
+0.367
+</td>
+<td>
+0.551
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2453.775
+</td>
+<td>
+3230.309
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_day_of_week[6]
+</th>
+<td>
+-0.840
+</td>
+<td>
+0.088
+</td>
+<td>
+-1.013
+</td>
+<td>
+-0.676
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+2424.470
+</td>
+<td>
+3183.280
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_day_of_week[7]
+</th>
+<td>
+-1.234
+</td>
+<td>
+0.129
+</td>
+<td>
+-1.490
+</td>
+<td>
+-0.996
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+2404.679
+</td>
+<td>
+3155.249
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+sigma_day_of_year2
+</th>
+<td>
+0.005
+</td>
+<td>
+0.003
+</td>
+<td>
+0.001
+</td>
+<td>
+0.009
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+19.610
+</td>
+<td>
+55.847
+</td>
+<td>
+1.152
+</td>
+</tr>
+<tr>
+<th>
+nu_day_of_year2
+</th>
+<td>
+0.765
+</td>
+<td>
+0.136
+</td>
+<td>
+0.524
+</td>
+<td>
+1.024
+</td>
+<td>
+0.025
+</td>
+<td>
+0.018
+</td>
+<td>
+26.560
+</td>
+<td>
+106.853
+</td>
+<td>
+1.104
+</td>
+</tr>
+<tr>
+<th>
+b_memorial_day
+</th>
+<td>
+-1.238
+</td>
+<td>
+0.054
+</td>
+<td>
+-1.339
+</td>
+<td>
+-1.138
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+14142.638
+</td>
+<td>
+5844.987
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_labor_day
+</th>
+<td>
+-0.901
+</td>
+<td>
+0.040
+</td>
+<td>
+-0.976
+</td>
+<td>
+-0.825
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+13492.083
+</td>
+<td>
+6177.131
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+b_thanksgiving_day
+</th>
+<td>
+-1.308
+</td>
+<td>
+0.041
+</td>
+<td>
+-1.388
+</td>
+<td>
+-1.234
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10185.410
+</td>
+<td>
+5180.619
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.229
+</td>
+<td>
+0.002
+</td>
+<td>
+0.226
+</td>
+<td>
+0.233
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8495.983
+</td>
+<td>
+4798.312
+</td>
+<td>
+1.001
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We can also look into the trace plots.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=var_names,
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (15, 17), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_51_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="posterior-distribution-analysis" class="section level2">
+<h2>Posterior Distribution Analysis</h2>
+<p>Now we want to deep dive into the posterior distribution of the model and its components. We want to do this in the original scale. Therefore the first step is to transform the posterior samples back to the original scale.</p>
+<ul>
+<li>Model Components</li>
+</ul>
+<pre class="python"><code>pp_vars_original_scale = {
+    var_name: xr.apply_ufunc(
+        births_relative100_pipeline.inverse_transform,
+        idata[&quot;posterior&quot;][var_name].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+        input_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(dim=&quot;_&quot;)
+    for var_name in [&quot;mu&quot;, &quot;f_trend&quot;, &quot;f_year_periodic&quot;, &quot;f_day_of_week&quot;]
+}</code></pre>
+<ul>
+<li>Likelohood</li>
+</ul>
+<pre class="python"><code>pp_likelihood_original_scale = xr.apply_ufunc(
+    births_relative100_pipeline.inverse_transform,
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;likelihood&quot;].expand_dims(
+        dim={&quot;_&quot;: 1}, axis=-1
+    ),
+    input_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<p>We start by plotting the likelihood.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 9))
+sns.scatterplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;births_relative100&quot;, c=&quot;C0&quot;, s=8, label=&quot;data&quot;, ax=ax
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+az.plot_hdi(
+    x=date,
+    y=pp_likelihood_original_scale,
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;likelihood $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_likelihood_original_scale,
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: r&quot;likelihood $50\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.07), ncol=4)
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;&quot;&quot;Relative Births in the USA in 1969 - 1988
+    Posterior Predictive (Likelihood)&quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_58_1.png" style="width: 1000px;"/>
+</center>
+<p>It looks that we are capturing the global variation. Let’s look into the posterior distribution plot to get a better understanding of the model.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(
+    data=posterior_predictive,
+    num_pp_samples=1_000,
+    observed_rug=True,
+    random_seed=seed,
+    ax=ax,
+)
+ax.set_title(label=&quot;Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_60_2.png" style="width: 1000px;"/>
+</center>
+<p>Overall, it looks very good.</p>
+<p>We can now plot the posterior predictive distribution of the mean component <span class="math inline">\(\mu\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 9))
+sns.scatterplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;births_relative100&quot;, c=&quot;C0&quot;, s=8, label=&quot;data&quot;, ax=ax
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;mu&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$\mu$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;mu&quot;],
+    hdi_prob=0.5,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: r&quot;$\mu$ $50\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.07), ncol=4)
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=r&quot;Relative Births in the USA in 1969-1988\nPosterior Predictive (Mean $\mu$)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_62_1.png" style="width: 1000px;"/>
+</center>
+<p>To get a better understanding of the model fit, we need to look into the individual components.</p>
+</div>
+<div id="model-components-1" class="section level2">
+<h2>Model Components</h2>
+<ul>
+<li>Global Trend</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 9))
+sns.scatterplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;births_relative100&quot;, c=&quot;C0&quot;, s=8, label=&quot;data&quot;, ax=ax
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_trend&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$f_\text{trend}$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_trend&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: r&quot;$f_\text{trend}$ $50\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.07), ncol=4)
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;&quot;&quot;Relative Births in the USA in 1969-1988
+    Posterior Predictive (Global Trend)&quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_66_1.png" style="width: 1000px;"/>
+</center>
+<ul>
+<li>Yearly Periodicity</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 9))
+sns.scatterplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;births_relative100&quot;, c=&quot;C0&quot;, s=8, label=&quot;data&quot;, ax=ax
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_year_periodic&quot;],
+    hdi_prob=0.94,
+    color=&quot;C4&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$f_\text{yearly periodic}$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_year_periodic&quot;],
+    hdi_prob=0.5,
+    color=&quot;C4&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: r&quot;$f_\text{yearly periodic}$ $50\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.07), ncol=4)
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;Relative Births in the USA in 1969\nPosterior Predictive (Periodic Yearly)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_68_1.png" style="width: 1000px;"/>
+</center>
+<ul>
+<li>Global Trend plus Yearly Periodicity</li>
+</ul>
+<p>If we want to combine the global trend and the yearly periodicity, we can not simply sum the to components in the original scale as we would be adding the mean term twice. Instead we need to first sum the posterior samples and then take the inverse transform (these operation do not commute!).</p>
+<pre class="python"><code>pp_vars_original_scale[&quot;f_trend_periodic&quot;] = xr.apply_ufunc(
+    births_relative100_pipeline.inverse_transform,
+    (idata[&quot;posterior&quot;][&quot;f_trend&quot;] + idata[&quot;posterior&quot;][&quot;f_year_periodic&quot;]).expand_dims(
+        dim={&quot;_&quot;: 1}, axis=-1
+    ),
+    input_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 9))
+sns.scatterplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;births_relative100&quot;, c=&quot;C0&quot;, s=8, label=&quot;data&quot;, ax=ax
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_trend_periodic&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$f_\text{trend + periodic}$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_trend_periodic&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.6, &quot;label&quot;: r&quot;$f_\text{trend  + periodic}$ $50\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.07), ncol=4)
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;&quot;&quot;Relative Births in the USA in 1969-1988
+    Posterior Predictive (Global Trend + Periodic Yearly)&quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_71_1.png" style="width: 1000px;"/>
+</center>
+<ul>
+<li>Day of Week global scale trend</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 9))
+sns.scatterplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;births_relative100&quot;, c=&quot;C0&quot;, s=8, label=&quot;data&quot;, ax=ax
+)
+ax.axhline(100, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;mean level&quot;)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_day_of_week&quot;],
+    hdi_prob=0.94,
+    color=&quot;C7&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: r&quot;$f_\text{day of week}$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale[&quot;f_day_of_week&quot;],
+    hdi_prob=0.5,
+    color=&quot;C7&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.8, &quot;label&quot;: r&quot;$f_\text{day of week}$ $50\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.07), ncol=4)
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;&quot;&quot;Relative Births in the USA in 1969
+    Posterior Predictive (Day of Week global scale trend)&quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_73_1.png" style="width: 1000px;"/>
+</center>
+<ul>
+<li>Day of Year</li>
+</ul>
+<pre class="python"><code>pp_b_day_of_year2_original_scale = xr.apply_ufunc(
+    births_relative100_pipeline.inverse_transform,
+    idata[&quot;posterior&quot;][&quot;b_day_of_year2&quot;].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+    input_core_dims=[[&quot;day_of_year2&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;day_of_year2&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(
+    day_of_year2, pp_b_day_of_year2_original_scale.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)), c=&quot;C0&quot;
+)
+az.plot_hdi(
+    x=day_of_year2,
+    y=pp_b_day_of_year2_original_scale,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=day_of_year2,
+    y=pp_b_day_of_year2_original_scale,
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;lower left&quot;)
+for day_date, label in zip(
+    [
+        &quot;1969-01-01&quot;,
+        &quot;1969-02-14&quot;,
+        &quot;1969-04-01&quot;,
+        &quot;1969-07-04&quot;,
+        &quot;1969-10-31&quot;,
+        &quot;1969-12-24&quot;,
+        &quot;1969-05-30&quot;,
+        &quot;1969-09-05&quot;,
+        &quot;1969-11-24&quot;,
+    ],
+    [
+        &quot;New year&quot;,
+        &quot;Valentine&#39;s day&quot;,
+        &quot;April 1st&quot;,
+        &quot;Independence day&quot;,
+        &quot;Halloween&quot;,
+        &quot;Christmas&quot;,
+        &quot;Memorial day&quot;,
+        &quot;Labor day&quot;,
+        &quot;Thanksgiving&quot;,
+    ],
+    strict=True,
+):
+    doy = np.argwhere(day_of_year2 == pd.to_datetime(day_date).dayofyear).item() + 1
+    ax.annotate(text=label, xy=(doy, 102), fontsize=12, rotation=45)
+    ax.axvline(x=doy, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+
+ax.set(xlabel=&quot;day of year&quot;, ylabel=&quot;relative number of births&quot;)
+ax.set_title(
+    label=&quot;Day of Year Contribution - Posterior Predictive&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/birthdays_files/birthdays_76_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="final-remarks" class="section level2">
+<h2>Final Remarks</h2>
+<p>This was a very fun and challenging notebook to work on. If you are interested in getting into the details I strongly recommend working on this model iteratively!</p>
+<hr />
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<div id="gaussian-processes" class="section level3">
+<h3>Gaussian Processes</h3>
+<div id="blogs" class="section level4">
+<h4>Blogs</h4>
+<ul>
+<li><a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a></li>
+<li><a href="https://juanitorduz.github.io/gaussian_process_time_series/">PyData Berlin 2019: Gaussian Processes for Time Series Forecasting (scikit-learn)</a></li>
+<li><a href="https://juanitorduz.github.io/gp_ts_pymc3/">Gaussian Processes for Time Series Forecasting with PyMC3</a></li>
+<li><a href="https://juanitorduz.github.io/bikes_gp/">Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</a></li>
+</ul>
+</div>
+<div id="books" class="section level4">
+<h4>Books</h4>
+<ul>
+<li><a href="http://www.stat.columbia.edu/~gelman/book/BDA3.pdf">Chapter 21, Bayesian Data Analysis (Third edition)</a></li>
+<li><a href="https://gaussianprocess.org/gpml/">Gaussian Processes for Machine Learning</a></li>
+</ul>
+</div>
+<div id="videos" class="section level4">
+<h4>Videos</h4>
+<ul>
+<li><a href="https://www.youtube.com/watch?v=KJEoKsGJKEg">PyMC Labs - L6: Gaussian Processes (State of Bayes Lecture Series)</a></li>
+</ul>
+</div>
+</div>
+<div id="hilbert-space-gaussian-processes-hsgp" class="section level3">
+<h3>Hilbert Space Gaussian Processes (HSGP)</h3>
+<div id="code-examples" class="section level4">
+<h4>Code Examples</h4>
+<ul>
+<li><a href="https://avehtari.github.io/casestudies/Birthdays/birthdays.html">Bayesian workflow book - Birthdays</a></li>
+<li><a href="https://num.pyro.ai/en/stable/examples/hsgp.html"><code>NumPyro</code> Docs - Example: Hilbert space approximation for Gaussian processes</a></li>
+</ul>
+</div>
+<div id="papers" class="section level4">
+<h4>Papers</h4>
+<ul>
+<li><a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">Hilbert space methods for reduced-rank Gaussian process regression</a></li>
+<li><a href="https://link.springer.com/article/10.1007/s11222-022-10167-2">Practical Hilbert space approximate Bayesian Gaussian processes for probabilistic programming</a></li>
+</ul>
+</div>
+<div id="videos-1" class="section level4">
+<h4>Videos</h4>
+<ul>
+<li><a href="https://www.youtube.com/watch?v=ri5sJAdcYHk">PyMCon Web Series - Introduction to Hilbert Space GPs in PyMC - Bill Engels</a> (see <a href="https://discourse.pymc.io/t/pymcon-web-series-03a-introduction-to-hilbert-space-gps-hsgps-in-pymc-mar-15-2023-bill-engels/11533">Discourse entry</a>)</li>
+</ul>
+</div>
+</div>
+<div id="horseshoe-prior" class="section level3">
+<h3>Horseshoe Prior</h3>
+<ul>
+<li><a href="https://austinrochford.com/posts/2021-05-29-horseshoe-pymc3.html">The Hierarchical Regularized Horseshoe Prior in PyMC3</a></li>
+</ul>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

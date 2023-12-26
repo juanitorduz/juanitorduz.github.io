@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v5.13.0/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Flax and NumPyro Toy Example - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Flax and NumPyro Toy Example - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">7 min read</span>
+    
+
+    <h1 class="article-title">Flax and NumPyro Toy Example</h1>
+
+    
+    <span class="article-date">2024-01-05</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook I want to experiment with the <a href="https://github.com/pyro-ppl/numpyro/blob/master/numpyro/contrib/module.py"><code>numpyro/contrib/module.py</code></a> module which allow us to integrate <a href="https://github.com/google/flax"><code>Flax</code></a> models with <a href="https://github.com/pyro-ppl/numpyro"><code>NumPyro</code></a> models. I am interested in this because I want to experiment with complex bayesian models with larger datasets.</p>
+<p>Most of the main components can be found in the great blog post <a href="https://omarfsosa.github.io/bayesian_nn">Bayesian Neural Networks with Flax and Numpyro</a>. The author takes a different path working directly with potentials, but he also points out the recent addition of the <code>numpyro/contrib/module.py</code> module. The main difference with the model presented here is that I am using two components in the model (to model the mean and standard deviation of the data), I use <em>stochastic variational inference</em> instead of <em>MCMC</em> and I work with scaling transformations.</p>
+<p>Another great source to learn about this model and expected behavior are the unit tests of the <code>numpyro/contrib/module.py</code> module 😄.</p>
+<p><strong>Remark:</strong> Note that there is a way of adding <a href="https://github.com/google/flax"><code>Flax</code></a> models into <a href="https://github.com/pymc-devs/pymc">PyMC</a>, see <a href="https://www.pymc-labs.com/blog-posts/jax-functions-in-pymc-3-quick-examples/">How to use JAX ODEs and Neural Networks in PyMC</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import seaborn as sns
+import xarray as xr
+from flax import linen as nn
+from jax import random
+from numpyro.contrib.module import flax_module
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer.autoguide import AutoNormal
+from numpyro.infer.util import Predictive
+from sklearn.preprocessing import StandardScaler
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>We generate a simple one-dimensional dataset with a non-linear relationship between the input and output.</p>
+<pre class="python"><code>n = 32 * 10
+rng_key, rng_subkey = random.split(rng_key)
+x = random.uniform(rng_key, shape=(n,), minval=1, maxval=jnp.pi)
+mu_true = jnp.sqrt(x + 0.5) * jnp.sin(9 * x)
+sigma_true = 0.15 * x**2
+rng_key, rng_subkey = random.split(rng_key)
+y = mu_true + sigma_true * random.normal(rng_key, shape=(n,))</code></pre>
+<p>Note that we are actually adding non-linearities to the mean and standard deviation of the data.</p>
+<pre class="python"><code>x_idx = jnp.argsort(x)
+
+fig, ax = plt.subplots()
+sns.lineplot(x=x, y=mu_true, color=&quot;C0&quot;, label=r&quot;$\mu$&quot;, linewidth=3, ax=ax)
+ax.fill_between(
+    x[x_idx],
+    (mu_true - 2 * sigma_true)[x_idx],
+    (mu_true + 2 * sigma_true)[x_idx],
+    color=&quot;C0&quot;,
+    alpha=0.2,
+    label=r&quot;$\mu \pm 2 \sigma$&quot;,
+)
+sns.scatterplot(x=x, y=y, color=&quot;black&quot;, label=&quot;data&quot;, ax=ax)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(label=&quot;Simulated Data&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)</code></pre>
+<center>
+<img src="../images/flax_numpyro_files/flax_numpyro_6_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="train-test-split" class="section level2">
+<h2>Train-Test Split</h2>
+<p>We now do a simple train-test split of the data.</p>
+<pre class="python"><code>train_test_split = 0.7
+train_idx = int(n * train_test_split)
+x_train, y_train = x[:train_idx], y[:train_idx]
+x_test, y_test = x[train_idx:], y[train_idx:]</code></pre>
+<pre class="python"><code># useful variables for indexing
+obs_train = jnp.arange(x_train.size)
+obs_test = jnp.arange(x_test.size) + x_train.size</code></pre>
+<p>Let’s see both datasets:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(12, 9), layout=&quot;constrained&quot;
+)
+sns.scatterplot(x=x_train, y=y_train, color=&quot;C0&quot;, label=&quot;train&quot;, ax=ax[0])
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set_title(label=&quot;Train Data&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax[0].set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+sns.scatterplot(x=x_test, y=y_test, color=&quot;C1&quot;, label=&quot;test&quot;, ax=ax[1])
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].set_title(label=&quot;Test Data&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax[1].set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)</code></pre>
+<center>
+<img src="../images/flax_numpyro_files/flax_numpyro_11_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="data-preprocessing" class="section level2">
+<h2>Data Preprocessing</h2>
+<p>As we want to use a neural network to model the mean and standard deviation of the data, we need to scale the data. We use a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html"><code>StandardScaler</code></a> from <a href="https://scikit-learn.org/stable/"><code>sklearn</code></a> to do this.</p>
+<pre class="python"><code>x_scaler = StandardScaler()
+x_train_scaled = x_scaler.fit_transform(x_train[:, None])
+x_train_scaled = jnp.array(x_train_scaled)
+x_test_scaled = x_scaler.transform(x_test[:, None])
+x_test_scaled = jnp.array(x_test_scaled)
+
+y_scaler = StandardScaler()
+y_train_scaled = y_scaler.fit_transform(y_train[:, None])
+y_train_scaled = y_train_scaled.squeeze()
+y_train_scaled = jnp.array(y_train_scaled)
+y_test_scaled = y_scaler.transform(y_test[:, None])
+y_test_scaled = y_test_scaled.squeeze()
+y_test_scaled = jnp.array(y_test_scaled)</code></pre>
+<p><strong>Remark:</strong> Note that the feature matrices <code>x_train</code> and <code>x_test</code> have dimension <span class="math inline">\(2\)</span> as the first dimension represent the <code>batch</code> component! For the target variables we simply have a vector.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(12, 9), layout=&quot;constrained&quot;
+)
+sns.scatterplot(
+    x=x_train_scaled.squeeze(),
+    y=y_train_scaled,
+    color=&quot;C0&quot;,
+    label=&quot;train&quot;,
+    ax=ax[0],
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set_title(label=&quot;Train Data (Scaled)&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax[0].set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+sns.scatterplot(
+    x=x_test_scaled.squeeze(),
+    y=y_test_scaled,
+    color=&quot;C1&quot;,
+    label=&quot;test&quot;,
+    ax=ax[1],
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].set_title(label=&quot;Test Data (Scaled)&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax[1].set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)</code></pre>
+<center>
+<img src="../images/flax_numpyro_files/flax_numpyro_15_1.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>We now specify the model. We use a simple feed-forward neural network or multilayer perceptron (MLP) to model both the mean and standard deviation of the data. We then pass it through Normal likelihoods distribution in a <code>NumPyro</code> model.</p>
+<p>First, we define the MLP with <code>Flax</code>:</p>
+<pre class="python"><code>class MLP(nn.Module):
+    layers: list[int]
+
+    @nn.compact
+    def __call__(self, x):
+        for num_features in self.layers[:-1]:
+            x = nn.sigmoid(nn.Dense(features=num_features)(x))
+        return nn.Dense(features=self.layers[-1])(x)</code></pre>
+<p>We now specify the <code>NumPyro</code> model. The main ingredient is the from <a href="https://num.pyro.ai/en/latest/primitives.html#flax-module"><code>flax_module</code></a> from the <code>numpyro.contrib.module</code> module. This allows us to integrate the <code>Flax</code> model into the <code>NumPyro</code> model.</p>
+<pre class="python"><code>def model(x, y=None):
+    mu_nn = flax_module(&quot;mu_nn&quot;, MLP(layers=[4, 4, 1]), input_shape=(1,))
+    log_sigma_nn = flax_module(&quot;sigma_nn&quot;, MLP(layers=[2, 1]), input_shape=(1,))
+
+    mu = numpyro.deterministic(&quot;mu&quot;, mu_nn(x).squeeze())
+    sigma = numpyro.deterministic(&quot;sigma&quot;, jnp.exp(log_sigma_nn(x)).squeeze())
+
+    with numpyro.plate(&quot;data&quot;, len(x)):
+        numpyro.sample(&quot;likelihood&quot;, dist.Normal(loc=mu, scale=sigma), obs=y)
+
+
+numpyro.render_model(
+    model=model,
+    model_args=(x_train_scaled, y_train_scaled),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/flax_numpyro_files/flax_numpyro_20_0.svg" style="width: 600px;"/>
+</center>
+<p><strong>Remark:</strong> The <a href="https://num.pyro.ai/en/latest/primitives.html#flax-module"><code>flax_module</code></a> function consider the Flax model parameters as parameters to lear, but not really distributions. We can add priors to the parameters of the Flax model using the <a href="https://num.pyro.ai/en/latest/primitives.html#random_flax-module"><code>random_flax_module</code></a> instead. We could then pass the priors as a dictionary:</p>
+<pre class="python"><code>mu_nn = flax_module(
+    &quot;mu_nn&quot;,
+    MLP(layers=[4, 4, 1]),
+    prior={
+        &quot;Dense_0.bias&quot;: dist.Cauchy(),
+        &quot;Dense_0.kernel&quot;: dist.Normal(),
+        &quot;Dense_1.bias&quot;: dist.Cauchy(),
+        &quot;Dense_1.kernel&quot;: dist.Normal(),
+        &quot;Dense_2.bias&quot;: dist.Cauchy(),
+        &quot;Dense_2.kernel&quot;: dist.Normal(),
+    },
+    input_shape=(1,),
+)</code></pre>
+</div>
+<div id="model-fitting" class="section level2">
+<h2>Model Fitting</h2>
+<p>We now fit the model. We use the <a href="https://num.pyro.ai/en/latest/svi.html"><code>SVI</code></a> class from <code>NumPyro</code> to do this.</p>
+<pre class="python"><code>guide = AutoNormal(model=model)
+optimizer = numpyro.optim.Adam(step_size=0.01)
+svi = SVI(model, guide, optimizer, loss=Trace_ELBO())
+n_samples = 5_000
+rng_key, rng_subkey = random.split(key=rng_key)
+svi_result = svi.run(rng_subkey, n_samples, x_train_scaled, y_train_scaled)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/flax_numpyro_files/flax_numpyro_23_2.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="posterior-predictive-checks" class="section level2">
+<h2>Posterior Predictive Checks</h2>
+<p>We now generate posterior predictive samples from the model for the training and test data.</p>
+<p>First we generate posterior samples from the model in the scaled space.</p>
+<pre class="python"><code>params = svi_result.params
+# get posterior predictive (deterministics and likelihood)
+posterior_predictive = Predictive(
+    model=model, guide=guide, params=params, num_samples=4 * 4_000
+)
+rng_key, rng_subkey = random.split(key=rng_key)
+posterior_predictive_samples = posterior_predictive(rng_subkey, x_train_scaled)</code></pre>
+<p>We store the posterior samples in a <a href="https://python.arviz.org/en/stable/api/generated/arviz.InferenceData.html"><code>az.InferenceData</code></a> object.</p>
+<pre class="python"><code>idata_svi = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in posterior_predictive_samples.items()
+    },
+    coords={&quot;obs&quot;: obs_train},
+    dims={&quot;mu&quot;: [&quot;obs&quot;], &quot;sigma&quot;: [&quot;obs&quot;], &quot;likelihood&quot;: [&quot;obs&quot;]},
+)</code></pre>
+<p>We now scale the posterior samples back to the original space.</p>
+<pre class="python"><code>posterior_predictive_original_scale = {
+    var_name: xr.apply_ufunc(
+        y_scaler.inverse_transform,
+        idata_svi[&quot;posterior_predictive&quot;][var_name].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+        input_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(dim=&quot;_&quot;)
+    for var_name in [&quot;mu&quot;, &quot;sigma&quot;, &quot;likelihood&quot;]
+}</code></pre>
+<p>Let’s see the posterior predictive checks for the training data:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=x_train,
+    y=posterior_predictive_original_scale[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: r&quot;likelihood $50\%$ HDI&quot;, &quot;alpha&quot;: 0.2},
+    ax=ax,
+)
+az.plot_hdi(
+    x=x_train,
+    y=posterior_predictive_original_scale[&quot;likelihood&quot;],
+    hdi_prob=0.50,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;label&quot;: r&quot;likelihood $94\%$ HDI&quot;, &quot;alpha&quot;: 0.3},
+    smooth=False,
+    ax=ax,
+)
+
+sns.lineplot(
+    x=x_train,
+    y=posterior_predictive_original_scale[&quot;mu&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;]),
+    color=&quot;C0&quot;,
+    linewidth=3,
+    label=r&quot;$\mu$&quot;,
+    ax=ax,
+)
+
+sns.scatterplot(x=x_train, y=y_train, color=&quot;black&quot;, label=&quot;train&quot;, ax=ax)
+sns.lineplot(
+    x=x, y=mu_true, color=&quot;C3&quot;, label=r&quot;$\mu_{\text{true}}$&quot;, linewidth=3, ax=ax
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=5)
+ax.set_title(label=&quot;Train Data - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)</code></pre>
+<center>
+<img src="../images/flax_numpyro_files/flax_numpyro_32_1.png" style="width: 1000px;"/>
+</center>
+<p>The model seems to capture the mean and standard deviation of the data well. Still, not great at the right boundary.</p>
+<p>We can run the same procedure for the test data:</p>
+<pre class="python"><code>predictive = Predictive(model=model, guide=guide, params=params, num_samples=4 * 4_000)
+rng_key, rng_subkey = random.split(key=rng_key)
+test_posterior_predictive_samples = predictive(rng_subkey, x_test_scaled)
+
+test_idata_svi = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in test_posterior_predictive_samples.items()
+    },
+    coords={&quot;obs&quot;: obs_test},
+    dims={&quot;mu&quot;: [&quot;obs&quot;], &quot;sigma&quot;: [&quot;obs&quot;], &quot;likelihood&quot;: [&quot;obs&quot;]},
+)
+
+test_posterior_predictive_original_scale = {
+    var_name: xr.apply_ufunc(
+        y_scaler.inverse_transform,
+        test_idata_svi[&quot;posterior_predictive&quot;][var_name].expand_dims(
+            dim={&quot;_&quot;: 1}, axis=-1
+        ),
+        input_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;obs&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(dim=&quot;_&quot;)
+    for var_name in [&quot;mu&quot;, &quot;sigma&quot;, &quot;likelihood&quot;]
+}</code></pre>
+<p>We generate the posterior predictive checks for the test data:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=x_test,
+    y=test_posterior_predictive_original_scale[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;label&quot;: r&quot;likelihood $50\%$ HDI&quot;, &quot;alpha&quot;: 0.2},
+    ax=ax,
+)
+az.plot_hdi(
+    x=x_test,
+    y=test_posterior_predictive_original_scale[&quot;likelihood&quot;],
+    hdi_prob=0.50,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;label&quot;: r&quot;likelihood $94\%$ HDI&quot;, &quot;alpha&quot;: 0.3},
+    smooth=False,
+    ax=ax,
+)
+
+sns.lineplot(
+    x=x_test,
+    y=test_posterior_predictive_original_scale[&quot;mu&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;]),
+    color=&quot;C1&quot;,
+    linewidth=3,
+    label=r&quot;$\mu$&quot;,
+    ax=ax,
+)
+
+sns.scatterplot(
+    x=x_test,
+    y=y_test,
+    color=&quot;black&quot;,
+    label=&quot;test&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=x, y=mu_true, color=&quot;C3&quot;, label=r&quot;$\mu_{\text{true}}$&quot;, linewidth=3, ax=ax
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=5)
+ax.set_title(label=&quot;Test Data - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)</code></pre>
+<center>
+<img src="../images/flax_numpyro_files/flax_numpyro_37_1.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the results seem very reasonable. The right boundary is still not great. In general we do not expect these models to capture patterns outside the range of the training data.</p>
+<p>Even though the data and the model are very simple, this just serves as a concrete example for more complex scenarios were complex feature interactions trough neural networks can be beneficial in the context of bayesian modelling.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

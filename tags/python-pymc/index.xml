@@ -6,7 +6,16 @@
     <description>Recent content in python, pymc on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 05 Jul 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 02 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Time Series Modeling with HSGP: Baby Births Example</title>
+      <link>/birthdays/</link>
+      <pubDate>Tue, 02 Jan 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/birthdays/</guid>
+      <description>In this notebook we want to reproduce a classical example of using Gaussian processes to model time series data: The birthdays data set. I first encountered this example in the seminal book Chapter 21, Bayesian Data Analysis (Third edition) when learning about the subject. One thing I rapidly realized was that fitting these types of models in practice is very computationally expensive and sometimes almost infeasible for real industry applications where the data size is larger than all of these academic examples.</description>
+    </item>
+    
     <item>
       <title>Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</title>
       <link>/bikes_gp/</link>
