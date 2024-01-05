@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Cohort Revenue Retention Analysis with Flax and NumPyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Cohort Revenue Retention Analysis with Flax and NumPyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">12 min read</span>
+    
+
+    <h1 class="article-title">Cohort Revenue Retention Analysis with Flax and NumPyro</h1>
+
+    
+    <span class="article-date">2024-01-08</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we present an alternative implementation of the cohort-revenue-retention model presented in the blog post <a href="https://juanitorduz.github.io/revenue_retention/">Cohort Revenue &amp; Retention Analysis: A Bayesian Approach</a> where we show how to replace the <a href="https://github.com/pymc-devs/pymc-bart">BART</a> retention component with a general neural network implemented with <a href="https://github.com/google/flax">Flax</a>. This allows faster inference, as we can use <a href="https://github.com/pyro-ppl/numpyro">NumPyro</a>’s NUTS sampler or any of the stochastic variational inference (SVI) algorithms available. We could even use a wider family of samplers using the newly released package <a href="https://jax-ml.github.io/bayeux/">Bayeux</a> or the great <a href="https://github.com/blackjax-devs/blackjax">BlackJax</a> (see for example, the <a href="https://blackjax-devs.github.io/sampling-book/models/mlp.html">MLP Classifier Example</a>).
+We use the same simulated dataset to be able to compare the approaches. Overall, the retention and revenue in and out-of sample predictions, as well as the credible intervals are very similar to the ones obtained with the <a href="https://github.com/pymc-devs/pymc-bart">BART</a> model.</p>
+<p><strong>Remark:</strong> On the other hand, we loose the PDP and ICE plots, which are useful to understand the influence of regressors on the target variable. We could of course trying implementing it by hand, but it would not be straightforward to make it fast, at least in my view (please let me know if you have any ideas on how to do it.)</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import pandas as pd
+import seaborn as sns
+from flax import linen as nn
+from jax import random
+from numpyro.contrib.module import random_flax_module
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer.autoguide import AutoNormal
+from numpyro.infer.util import Predictive
+from scipy.special import logit
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import (
+    LabelEncoder,
+    MaxAbsScaler,
+    OneHotEncoder,
+    StandardScaler,
+)
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;retention&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We start by reading the data from previous posts (see <a href="https://github.com/juanitorduz/website_projects/blob/master/Python/retantion_data.py">here</a> for the code to generate the data).</p>
+<pre class="python"><code>data_df = pd.read_csv(
+    &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/retention_data.csv&quot;,
+    parse_dates=[&quot;cohort&quot;, &quot;period&quot;],
+)
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+cohort
+</th>
+<th>
+n_users
+</th>
+<th>
+period
+</th>
+<th>
+age
+</th>
+<th>
+cohort_age
+</th>
+<th>
+retention_true_mu
+</th>
+<th>
+retention_true
+</th>
+<th>
+n_active_users
+</th>
+<th>
+revenue
+</th>
+<th>
+retention
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-01-01
+</td>
+<td>
+1430
+</td>
+<td>
+0
+</td>
+<td>
+-1.807373
+</td>
+<td>
+0.140956
+</td>
+<td>
+150
+</td>
+<td>
+14019.256906
+</td>
+<td>
+1.000000
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-02-01
+</td>
+<td>
+1430
+</td>
+<td>
+31
+</td>
+<td>
+-1.474736
+</td>
+<td>
+0.186224
+</td>
+<td>
+25
+</td>
+<td>
+1886.501237
+</td>
+<td>
+0.166667
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-03-01
+</td>
+<td>
+1430
+</td>
+<td>
+60
+</td>
+<td>
+-2.281286
+</td>
+<td>
+0.092685
+</td>
+<td>
+13
+</td>
+<td>
+1098.136314
+</td>
+<td>
+0.086667
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-04-01
+</td>
+<td>
+1430
+</td>
+<td>
+91
+</td>
+<td>
+-3.206610
+</td>
+<td>
+0.038918
+</td>
+<td>
+6
+</td>
+<td>
+477.852458
+</td>
+<td>
+0.040000
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-05-01
+</td>
+<td>
+1430
+</td>
+<td>
+121
+</td>
+<td>
+-3.112983
+</td>
+<td>
+0.042575
+</td>
+<td>
+2
+</td>
+<td>
+214.667937
+</td>
+<td>
+0.013333
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="data-preprocessing" class="section level2">
+<h2>Data Preprocessing</h2>
+<p>We make a data train-test split as in the previous post.</p>
+<pre class="python"><code>period_train_test_split = &quot;2022-11-01&quot;
+
+train_data_df = data_df.query(&quot;period &lt;= @period_train_test_split&quot;)
+test_data_df = data_df.query(&quot;period &gt; @period_train_test_split&quot;)
+test_data_df = test_data_df[
+    test_data_df[&quot;cohort&quot;].isin(train_data_df[&quot;cohort&quot;].unique())
+]</code></pre>
+</div>
+<div id="eda" class="section level2">
+<h2>EDA</h2>
+<p>For a detailed EDA of the data, please refer to the previous posts (<a href="https://juanitorduz.github.io/retention/">A Simple Cohort Retention Analysis in PyMC</a>, <a href="https://juanitorduz.github.io/retention_bart/">Cohort Retention Analysis with BART</a> and <a href="https://juanitorduz.github.io/revenue_retention/">Cohort Revenue &amp; Retention Analysis: A Bayesian Approach</a>). We assume you are familiar with the dataset.</p>
+<p>Let’s recall how the retention matrix looks like:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(17, 9))
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;retention&quot;])
+    .pivot_table(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;retention&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        fmt=&quot;0.0%&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(func=lambda y, _: f&quot;{y :0.0%}&quot;)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Retention by Cohort and Period&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_9_1.png" style="width: 1000px;"/>
+</center>
+<p>Similarly we can plot the revenue matrix:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(17, 9))
+
+
+(
+    train_data_df.assign(
+        cohort=lambda df: df[&quot;cohort&quot;].dt.strftime(&quot;%Y-%m&quot;),
+        period=lambda df: df[&quot;period&quot;].dt.strftime(&quot;%Y-%m&quot;),
+    )
+    .query(&quot;cohort_age != 0&quot;)
+    .filter([&quot;cohort&quot;, &quot;period&quot;, &quot;revenue&quot;])
+    .pivot_table(index=&quot;cohort&quot;, columns=&quot;period&quot;, values=&quot;revenue&quot;)
+    .pipe(
+        (sns.heatmap, &quot;data&quot;),
+        cmap=&quot;viridis_r&quot;,
+        linewidths=0.2,
+        linecolor=&quot;black&quot;,
+        annot=True,
+        annot_kws={&quot;fontsize&quot;: 6},
+        fmt=&quot;0.0f&quot;,
+        cbar_kws={&quot;format&quot;: mtick.FuncFormatter(lambda y, _: f&quot;{y :0.0f}&quot;)},
+        ax=ax,
+    )
+)
+
+ax.set_title(&quot;Revenue by Cohort and Period&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_11_1.png" style="width: 1000px;"/>
+</center>
+<p>Our objective is to model both components as the same time as we expect the revenue to depend on the retention levels.</p>
+</div>
+<div id="model" class="section level2">
+<h2>Model</h2>
+<p>Motivated by the analysis above we suggest the following retention-revenue model.</p>
+<p><span class="math display">\[\begin{align*}
+\text{Revenue} &amp; \sim \text{Gamma}(N_{\text{active}}, \lambda) \\
+\log(\lambda) = (&amp; \text{intercept} \\
+    &amp; + \beta_{\text{cohort age}} \text{cohort age} \\
+    &amp; + \beta_{\text{age}} \text{age} \\
+    &amp; + \beta_{\text{cohort age} \times \text{age}} \text{cohort age} \times \text{age} ) \\
+N_{\text{active}} &amp; \sim \text{Binomial}(N_{\text{total}}, p) \\
+\textrm{logit}(p) &amp; = \text{NN}(\text{cohort age}, \text{age}, \text{month})
+\end{align*}\]</span></p>
+<p>where <span class="math inline">\(\text{NN}\)</span> is a neural network implemented with Flax. We use a simple architecture with one hidden layers with <span class="math inline">\(4\)</span> units each and sigmoid activation functions. For this simple case this architecture is enough. You can of course try more complex models.</p>
+<p>The magic for this approach lies in the NumPyro module <a href="https://github.com/pyro-ppl/numpyro/blob/master/numpyro/contrib/module.py"><code>numpyro/contrib/module.py</code></a> where we have very useful functions to integrate Flax models with NumPyro. In particular, we will use the <a href="https://num.pyro.ai/en/stable/primitives.html#random-flax-module"><code>random_flax_module</code></a> which allow us to set priors on the layers weights and biases. You can find a simple example of this approach in the blog post <a href="https://juanitorduz.github.io/flax_numpyro/">Flax and NumPyro Toy Example</a>.</p>
+<div id="data-transformations" class="section level3">
+<h3>Data Transformations</h3>
+<p>We do similar transformations as in the previous posts.</p>
+<pre class="python"><code>eps = np.finfo(float).eps
+train_data_red_df = train_data_df.query(&quot;cohort_age &gt; 0&quot;).reset_index(drop=True)
+train_obs_idx = train_data_red_df.index.to_numpy()
+train_n_users = train_data_red_df[&quot;n_users&quot;].to_numpy()
+train_n_active_users = train_data_red_df[&quot;n_active_users&quot;].to_numpy()
+train_retention = train_data_red_df[&quot;retention&quot;].to_numpy()
+train_retention_logit = logit(train_retention + eps)
+train_data_red_df[&quot;month&quot;] = train_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+train_data_red_df[&quot;cohort_month&quot;] = (
+    train_data_red_df[&quot;cohort&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+)
+train_data_red_df[&quot;period_month&quot;] = (
+    train_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+)
+train_revenue = train_data_red_df[&quot;revenue&quot;].to_numpy() + eps
+train_revenue_per_user = train_revenue / (train_n_active_users + eps)
+
+train_cohort = train_data_red_df[&quot;cohort&quot;].to_numpy()
+train_cohort_encoder = LabelEncoder()
+train_cohort_idx = train_cohort_encoder.fit_transform(train_cohort).flatten()
+train_period = train_data_red_df[&quot;period&quot;].to_numpy()
+train_period_encoder = LabelEncoder()
+train_period_idx = train_period_encoder.fit_transform(train_period).flatten()
+
+features: list[str] = [&quot;age&quot;, &quot;cohort_age&quot;, &quot;month&quot;]
+x_train = train_data_red_df[features]
+
+train_age = train_data_red_df[&quot;age&quot;].to_numpy()
+train_age_scaler = MaxAbsScaler()
+train_age_scaled = train_age_scaler.fit_transform(train_age.reshape(-1, 1)).flatten()
+train_cohort_age = train_data_red_df[&quot;cohort_age&quot;].to_numpy()
+train_cohort_age_scaler = MaxAbsScaler()
+train_cohort_age_scaled = train_cohort_age_scaler.fit_transform(
+    train_cohort_age.reshape(-1, 1)
+).flatten()</code></pre>
+<p>For the variables entering into the model we need to convert them to <code>jnp.array</code> objects.</p>
+<pre class="python"><code>train_n_users = jnp.array(train_n_users)
+train_n_active_users = jnp.array(train_n_active_users)
+train_revenue = jnp.array(train_revenue)</code></pre>
+<p>Moreover, for the design matrix feeding the neural network we also need to scale the features (Note this was not necessary with the BART model). We also one-hot-encode the <code>month</code> variable.</p>
+<pre class="python"><code>numerical_features = [&quot;age&quot;, &quot;cohort_age&quot;]
+categorical_features = [&quot;month&quot;]
+
+numerical_transformer = Pipeline(steps=[(&quot;scaler&quot;, StandardScaler())])
+categorical_features_transformer = Pipeline(
+    steps=[(&quot;onehot&quot;, OneHotEncoder(drop=&quot;first&quot;, sparse_output=False))]
+)
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        (&quot;num&quot;, numerical_transformer, numerical_features),
+        (&quot;cat&quot;, categorical_features_transformer, categorical_features),
+    ]
+).set_output(transform=&quot;pandas&quot;)
+
+preprocessor.fit(x_train)
+x_train_preprocessed = preprocessor.transform(x_train)
+
+x_train_preprocessed.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 595 entries, 0 to 594
+Data columns (total 13 columns):
+ #   Column           Non-Null Count  Dtype  
+---  ------           --------------  -----  
+ 0   num__age         595 non-null    float64
+ 1   num__cohort_age  595 non-null    float64
+ 2   cat__month_2     595 non-null    float64
+ 3   cat__month_3     595 non-null    float64
+ 4   cat__month_4     595 non-null    float64
+ 5   cat__month_5     595 non-null    float64
+ 6   cat__month_6     595 non-null    float64
+ 7   cat__month_7     595 non-null    float64
+ 8   cat__month_8     595 non-null    float64
+ 9   cat__month_9     595 non-null    float64
+ 10  cat__month_10    595 non-null    float64
+ 11  cat__month_11    595 non-null    float64
+ 12  cat__month_12    595 non-null    float64
+dtypes: float64(13)
+memory usage: 60.6 KB</code></pre>
+<p>Finally, we convert the transformed design matrix to a <code>jnp.array</code> object.</p>
+<pre class="python"><code>x_train_preprocessed_array = jnp.array(x_train_preprocessed)</code></pre>
+</div>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>We are now ready to write the model. First we define the neural network architecture in Flax.</p>
+<pre class="python"><code>class RetentionMLP(nn.Module):
+    layers: list[int]
+
+    @nn.compact
+    def __call__(self, x):
+        for num_features in self.layers:
+            x = nn.sigmoid(nn.Dense(features=num_features)(x))
+        return x</code></pre>
+<p>Now we write the NumPyro model. For the weights and biases we use set Normal priors centered around zero with unit variance.</p>
+<pre class="python"><code>def model(x, age, cohort_age, n_users, revenue=None, n_active_users=None):
+    eps = np.finfo(float).eps
+
+    retention_nn = random_flax_module(
+        &quot;retention_nn&quot;,
+        RetentionMLP(layers=[4, 1]),
+        prior=dist.Laplace(loc=0, scale=1),
+        input_shape=(x.shape[1],),
+    )
+    retention = numpyro.deterministic(&quot;retention&quot;, retention_nn(x).squeeze(-1))
+
+    intercept = numpyro.sample(&quot;intercept&quot;, dist.Normal(loc=0, scale=1))
+    b_age = numpyro.sample(&quot;b_age&quot;, dist.Normal(loc=0, scale=1))
+    b_cohort_age = numpyro.sample(&quot;b_cohort_age&quot;, dist.Normal(loc=0, scale=1))
+    b_interaction = numpyro.sample(&quot;b_interaction&quot;, dist.Normal(loc=0, scale=1))
+
+    lam_log = numpyro.deterministic(
+        &quot;lam_log&quot;,
+        intercept
+        + b_age * age
+        + b_cohort_age * cohort_age
+        + b_interaction * age * cohort_age,
+    )
+
+    lam = numpyro.deterministic(&quot;lam&quot;, jnp.exp(lam_log))
+
+    with numpyro.plate(&quot;data&quot;, len(x)):
+        n_active_users_estimated = numpyro.sample(
+            &quot;n_active_users_estimated&quot;,
+            dist.Binomial(total_count=n_users, probs=retention),
+            obs=n_active_users,
+        )
+
+        numpyro.deterministic(&quot;retention_estimated&quot;, n_active_users_estimated / n_users)
+
+        numpyro.sample(
+            &quot;revenue_estimated&quot;,
+            dist.Gamma(concentration=n_active_users_estimated + eps, rate=lam),
+            obs=revenue,
+        )</code></pre>
+<p>We can visualize the model using structure.</p>
+<pre class="python"><code>numpyro.render_model(
+    model=model,
+    model_kwargs={
+        &quot;x&quot;: x_train_preprocessed_array,
+        &quot;age&quot;: train_age_scaled,
+        &quot;cohort_age&quot;: train_cohort_age_scaled,
+        &quot;n_users&quot;: train_n_users,
+        &quot;revenue&quot;: train_revenue,
+        &quot;n_active_users&quot;: train_n_active_users,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_27_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="inference-svi" class="section level2">
+<h2>Inference: SVI</h2>
+<p>We use stochastic variational inference (SVI) to fit the model. We also se a <a href="https://num.pyro.ai/en/stable/autoguide.html#numpyro.infer.autoguide.AutoNormal"><code>AutoNormal</code></a> guide as a variational distribution.</p>
+<pre class="python"><code>guide = AutoNormal(model=model)
+optimizer = numpyro.optim.Adam(step_size=0.02)
+svi = SVI(model, guide, optimizer, loss=Trace_ELBO())
+n_samples = 15_000
+rng_key, rng_subkey = random.split(key=rng_key)
+svi_result = svi.run(
+    rng_subkey,
+    n_samples,
+    x_train_preprocessed_array,
+    train_age_scaled,
+    train_cohort_age_scaled,
+    train_n_users,
+    train_revenue,
+    train_n_active_users,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set(yscale=&quot;log&quot;)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_29_2.png" style="width: 800px;"/>
+</center>
+<p>We see a nicely decaying <a href="https://en.wikipedia.org/wiki/Evidence_lower_bound">ELBO</a> curve.</p>
+<p>Next we sample from the posterior distribution.</p>
+<pre class="python"><code>params = svi_result.params
+
+posterior_predictive = Predictive(
+    model=model, guide=guide, params=params, num_samples=4 * 2_000
+)
+rng_key, rng_subkey = random.split(key=rng_key)
+posterior_predictive_samples = posterior_predictive(
+    rng_subkey,
+    x_train_preprocessed_array,
+    train_age_scaled,
+    train_cohort_age_scaled,
+    train_n_users,
+)</code></pre>
+<p>We structure the samples as an <a href="https://python.arviz.org/en/stable/api/generated/arviz.InferenceData.html"><code>az.InferenceData</code></a> object.</p>
+<pre class="python"><code>idata_svi = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in posterior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: train_obs_idx},
+    dims={
+        &quot;retention&quot;: [&quot;obs_idx&quot;],
+        &quot;n_active_users_estimated&quot;: [&quot;obs_idx&quot;],
+        &quot;retention_estimated&quot;: [&quot;obs_idx&quot;],
+        &quot;revenue_estimated&quot;: [&quot;obs_idx&quot;],
+    },
+)</code></pre>
+</div>
+<div id="in-sample-predictions" class="section level2">
+<h2>In-Sample Predictions</h2>
+<p>We now look at the in-sample fit. First we start with retention:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+sns.scatterplot(
+    x=train_retention,
+    y=idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;].mean(
+        dim=[&quot;chain&quot;, &quot;draw&quot;]
+    ),
+    color=&quot;C0&quot;,
+    label=&quot;Mean Predicted Retention&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_retention,
+    y=idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_retention,
+    y=idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;True Retention&quot;, ylabel=&quot;Predicted Retention&quot;)
+ax.set_title(
+    label=&quot;True vs Predicted Retention (Train)&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_35_1.png" style="width: 800px;"/>
+</center>
+<p>Overall it looks very reasonable. There are some point the model does not properly catch, but the previous BART model had the same issue.</p>
+<p>The revenue in-sample predictions are also very similar to the ones obtained with the BART model.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+sns.scatterplot(
+    x=train_revenue,
+    y=idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;].mean(
+        dim=[&quot;chain&quot;, &quot;draw&quot;]
+    ),
+    color=&quot;C0&quot;,
+    label=&quot;Mean Predicted revenue_estimated&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_revenue,
+    y=idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_revenue,
+    y=idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;True Revenue&quot;, ylabel=&quot;Predicted Revenue&quot;)
+ax.set_title(label=&quot;True vs Predicted Revenue (Train)&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_37_1.png" style="width: 800px;"/>
+</center>
+<p>As in the previous post, we select a couple of example cohorts to visualize the predictions:</p>
+<ul>
+<li>Retention</li>
+</ul>
+<pre class="python"><code>train_retention_hdi = az.hdi(ary=idata_svi[&quot;posterior_predictive&quot;])[
+    &quot;retention_estimated&quot;
+]
+
+
+def plot_train_retention_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+    mask = train_cohort_idx == cohort_index
+
+    ax.fill_between(
+        x=train_period[train_period_idx[mask]],
+        y1=train_retention_hdi[mask, :][:, 0],
+        y2=train_retention_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C3&quot;,
+        label=&quot;94% HDI&quot;,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;].mean(
+            dim=[&quot;chain&quot;, &quot;draw&quot;]
+        )[mask],
+        marker=&quot;o&quot;,
+        color=&quot;C3&quot;,
+        label=&quot;predicted&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=train_retention[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed&quot;,
+        ax=ax,
+    )
+    cohort_name = (
+        pd.to_datetime(train_cohort_encoder.classes_[cohort_index]).date().isoformat()
+    )
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set(title=f&quot;Retention - Cohort {cohort_name}&quot;)
+    return ax
+
+
+cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohort_index_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+
+fig.suptitle(&quot;In-Sample Retention&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_40_1.png" style="width: 1000px;"/>
+</center>
+<ul>
+<li>Revenue</li>
+</ul>
+<pre class="python"><code>train_revenue_estimated_hdi = az.hdi(ary=idata_svi[&quot;posterior_predictive&quot;])[
+    &quot;revenue_estimated&quot;
+]
+
+
+def plot_train_revenue_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+    mask = train_cohort_idx == cohort_index
+
+    ax.fill_between(
+        x=train_period[train_period_idx[mask]],
+        y1=train_revenue_estimated_hdi[mask, :][:, 0],
+        y2=train_revenue_estimated_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C3&quot;,
+        label=&quot;94% HDI&quot;,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;].mean(
+            dim=[&quot;chain&quot;, &quot;draw&quot;]
+        )[mask],
+        marker=&quot;o&quot;,
+        color=&quot;C3&quot;,
+        label=&quot;predicted&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=train_revenue[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed&quot;,
+        ax=ax,
+    )
+    cohort_name = (
+        pd.to_datetime(train_cohort_encoder.classes_[cohort_index]).date().isoformat()
+    )
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set(title=f&quot;revenue_estimated - Cohort {cohort_name}&quot;)
+    return ax
+
+
+cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohort_index_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(cohort_index=cohort_index, ax=ax)
+
+fig.suptitle(&quot;In-Sample Revenue&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_42_1.png" style="width: 1000px;"/>
+</center>
+<p>The fit look very good and are very similar to the ones obtained with the BART model! Note that the HDI intervals are wider for smaller cohorts as expected.</p>
+</div>
+<div id="out-of-sample-predictions" class="section level2">
+<h2>Out-of-Sample Predictions</h2>
+<p>Now we prepare the data for the out-of-sample predictions.</p>
+<pre class="python"><code>test_data_red_df = test_data_df.query(&quot;cohort_age &gt; 0&quot;)
+test_data_red_df = test_data_red_df[
+    test_data_red_df[&quot;cohort&quot;].isin(train_data_red_df[&quot;cohort&quot;].unique())
+].reset_index(drop=True)
+test_obs_idx = test_data_red_df.index.to_numpy()
+test_n_users = test_data_red_df[&quot;n_users&quot;].to_numpy()
+test_n_active_users = test_data_red_df[&quot;n_active_users&quot;].to_numpy()
+test_retention = test_data_red_df[&quot;retention&quot;].to_numpy()
+test_revenue = test_data_red_df[&quot;revenue&quot;].to_numpy()
+
+test_cohort = test_data_red_df[&quot;cohort&quot;].to_numpy()
+test_cohort_idx = train_cohort_encoder.transform(test_cohort).flatten()
+
+test_data_red_df[&quot;month&quot;] = test_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+test_data_red_df[&quot;cohort_month&quot;] = (
+    test_data_red_df[&quot;cohort&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+)
+test_data_red_df[&quot;period_month&quot;] = (
+    test_data_red_df[&quot;period&quot;].dt.strftime(&quot;%m&quot;).astype(int)
+)
+x_test = test_data_red_df[features]
+
+test_age = test_data_red_df[&quot;age&quot;].to_numpy()
+test_age_scaled = train_age_scaler.transform(test_age.reshape(-1, 1)).flatten()
+test_cohort_age = test_data_red_df[&quot;cohort_age&quot;].to_numpy()
+test_cohort_age_scaled = train_cohort_age_scaler.transform(
+    test_cohort_age.reshape(-1, 1)
+).flatten()</code></pre>
+<pre class="python"><code>test_n_users = jnp.array(test_n_users)
+test_n_active_users = jnp.array(test_n_active_users)
+test_revenue = jnp.array(test_revenue)
+
+x_test_preprocessed = preprocessor.transform(x_test)
+x_test_preprocessed_array = jnp.array(x_test_preprocessed)</code></pre>
+<p>Now we are ready to sample from the posterior distribution.</p>
+<pre class="python"><code>test_predictive = Predictive(
+    model=model, guide=guide, params=params, num_samples=4 * 2_000
+)
+rng_key, rng_subkey = random.split(key=rng_key)
+test_posterior_predictive_samples = test_predictive(
+    rng_subkey,
+    x_test_preprocessed_array,
+    test_age_scaled,
+    test_cohort_age_scaled,
+    test_n_users,
+)</code></pre>
+<p>Again, we structure the samples as an <a href="https://python.arviz.org/en/stable/api/generated/arviz.InferenceData.html"><code>az.InferenceData</code></a> object.</p>
+<pre class="python"><code>test_idata_svi = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in test_posterior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: test_obs_idx},
+    dims={
+        &quot;retention&quot;: [&quot;obs_idx&quot;],
+        &quot;n_active_users_estimates&quot;: [&quot;obs_idx&quot;],
+        &quot;revenue_estimated&quot;: [&quot;obs_idx&quot;],
+    },
+)</code></pre>
+<p>Let’s now look at the actual against the predictions.</p>
+<ul>
+<li>Retention</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+sns.scatterplot(
+    x=test_retention,
+    y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;].mean(
+        dim=[&quot;chain&quot;, &quot;draw&quot;]
+    ),
+    color=&quot;C1&quot;,
+    label=&quot;Mean Predicted Retention&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=test_retention,
+    y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=test_retention,
+    y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;True Retention&quot;, ylabel=&quot;Predicted Retention&quot;)
+ax.set_title(label=&quot;True vs Predicted Retention (test)&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_53_1.png" style="width: 800px;"/>
+</center>
+<ul>
+<li>Revenue</li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+sns.scatterplot(
+    x=test_revenue,
+    y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;].mean(
+        dim=[&quot;chain&quot;, &quot;draw&quot;]
+    ),
+    color=&quot;C1&quot;,
+    label=&quot;Mean Predicted revenue_estimated&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=test_revenue,
+    y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=test_revenue,
+    y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;True revenue_estimated&quot;, ylabel=&quot;Predicted revenue_estimated&quot;)
+ax.set_title(label=&quot;True vs Predicted Revenue (test)&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_55_1.png" style="width: 800px;"/>
+</center>
+<p>The retention predictions look very good whereas the revenue ones seem a bit higher for cohorts with higher revenue. This is also similar to the BART model.</p>
+<p>Finally, lets get out of sample predictions for the selected subset of cohorts.</p>
+<ul>
+<li>Retention</li>
+</ul>
+<pre class="python"><code>test_retention_hdi = az.hdi(ary=test_idata_svi[&quot;posterior_predictive&quot;])[
+    &quot;retention_estimated&quot;
+]
+
+
+def plot_test_retention_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+    mask = test_cohort_idx == cohort_index
+
+    test_period_range = test_data_red_df.query(
+        f&quot;cohort == &#39;{train_cohort_encoder.classes_[cohort_index]}&#39;&quot;
+    )[&quot;period&quot;]
+
+    ax.fill_between(
+        x=test_period_range,
+        y1=test_retention_hdi[mask, :][:, 0],
+        y2=test_retention_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C3&quot;,
+    )
+
+    sns.lineplot(
+        x=test_period_range,
+        y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;].mean(
+            dim=[&quot;chain&quot;, &quot;draw&quot;]
+        )[mask],
+        marker=&quot;o&quot;,
+        color=&quot;C3&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=test_period_range,
+        y=test_retention[mask],
+        color=&quot;C1&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed (test)&quot;,
+        ax=ax,
+    )
+    return ax</code></pre>
+<pre class="python"><code>cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=len(cohort_index_to_plot),
+    ncols=1,
+    figsize=(15, 16),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    plot_test_retention_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    ax.axvline(
+        x=pd.to_datetime(period_train_test_split),
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+fig.suptitle(&quot;Retention Predictions&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_60_1.png" style="width: 1000px;"/>
+</center>
+<ul>
+<li>Revenue</li>
+</ul>
+<pre class="python"><code>test_revenue_estimated_hdi = az.hdi(ary=test_idata_svi[&quot;posterior_predictive&quot;])[
+    &quot;revenue_estimated&quot;
+]
+
+
+def plot_test_revenue_hdi_cohort(cohort_index: int, ax: plt.Axes) -&gt; plt.Axes:
+    mask = test_cohort_idx == cohort_index
+
+    test_period_range = test_data_red_df.query(
+        f&quot;cohort == &#39;{train_cohort_encoder.classes_[cohort_index]}&#39;&quot;
+    )[&quot;period&quot;]
+
+    ax.fill_between(
+        x=test_period_range,
+        y1=test_revenue_estimated_hdi[mask, :][:, 0],
+        y2=test_revenue_estimated_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C3&quot;,
+    )
+
+    sns.lineplot(
+        x=test_period_range,
+        y=test_idata_svi[&quot;posterior_predictive&quot;][&quot;revenue_estimated&quot;].mean(
+            dim=[&quot;chain&quot;, &quot;draw&quot;]
+        )[mask],
+        marker=&quot;o&quot;,
+        color=&quot;C3&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=test_period_range,
+        y=test_revenue[mask],
+        color=&quot;C1&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed (test)&quot;,
+        ax=ax,
+    )
+    return ax</code></pre>
+<pre class="python"><code>cohort_index_to_plot = [0, 1, 5, 10, 15, 20, 25, 30]
+
+fig, axes = plt.subplots(
+    nrows=len(cohort_index_to_plot),
+    ncols=1,
+    figsize=(15, 16),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort_index, ax in zip(cohort_index_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    plot_test_revenue_hdi_cohort(cohort_index=cohort_index, ax=ax)
+    ax.axvline(
+        x=pd.to_datetime(period_train_test_split),
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+fig.suptitle(&quot;Revenue Predictions&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/revenue_retention_numpyro_files/revenue_retention_numpyro_63_1.png" style="width: 1000px;"/>
+</center>
+<p>The results look very good! Both the posterior mean and the uncertainty as a function of the cohort size.</p>
+<p>This extension of the model allow us for greater flexibility without compromising the inference speed (it is actually much faster) or accuracy. We could actually iterate on the model development with SVI and then get posterior samples via full HMC (NUTS). This is also fast for the typical dataset sizes we have in this type of problems.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

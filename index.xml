@@ -6,7 +6,16 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 05 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 08 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Cohort Revenue Retention Analysis with Flax and NumPyro</title>
+      <link>/revenue_retention_numpyro/</link>
+      <pubDate>Mon, 08 Jan 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/revenue_retention_numpyro/</guid>
+      <description>In this notebook we present an alternative implementation of the cohort-revenue-retention model presented in the blog post Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach where we show how to replace the BART retention component with a general neural network implemented with Flax. This allows faster inference, as we can use NumPyro’s NUTS sampler or any of the stochastic variational inference (SVI) algorithms available. We could even use a wider family of samplers using the newly released package Bayeux or the great BlackJax (see for example, the MLP Classifier Example).</description>
+    </item>
+    
     <item>
       <title>Flax and NumPyro Toy Example</title>
       <link>/flax_numpyro/</link>
