@@ -726,7 +726,7 @@ with pm.Model(coords=coords) as model:
 
     b_day_of_week = pm.ZeroSumNormal(name=&quot;b_day_of_week&quot;, sigma=1, dims=&quot;day_of_week&quot;)
 
-    ## day o
+    ## day of year
     sigma_day_of_year2 = pm.HalfNormal(name=&quot;sigma_day_of_year2&quot;, sigma=0.5)
     nu_day_of_year2 = pm.Gamma(name=&quot;nu_day_of_year2&quot;, alpha=3, beta=0.1)
     b_day_of_year2 = pm.StudentT(
