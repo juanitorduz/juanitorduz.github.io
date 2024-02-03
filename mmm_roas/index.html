@@ -1,0 +1,5009 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Media Mix Model and Experimental Calibration: A Simulation Study - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Media Mix Model and Experimental Calibration: A Simulation Study - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">44 min read</span>
+    
+
+    <h1 class="article-title">Media Mix Model and Experimental Calibration: A Simulation Study</h1>
+
+    
+    <span class="article-date">2024-02-04</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we present a complete simulation study of the media mix model and experimental calibration method presented in the paper <a href="https://research.google/pubs/media-mix-model-calibration-with-bayesian-priors/">“Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al.</a>, where the authors propose a convenient parametrization the regression model in terms of the ROAs (return on advertising spend) instead of the classical regression (beta) coefficients. The benefit of this parametrization is that it allows for the use of Bayesian priors on the ROAs, which typically come from previous experiments or domain knowledge. We show, similar as in the autor’s paper, that the proposed method is able to provide better ROAs estimation when we have bias on the estimation due to missing covariates or omitted variables. We work out an example of the classical media mix model presented in the paper <a href="https://research.google/pubs/bayesian-methods-for-media-mix-modeling-with-carryover-and-shape-effects/">“Bayesian Methods for Media Mix Modeling with Carryover and Shape Effects”, by Jin, et al.</a>. I strongly recommend taking a look in too these two papers before reading this notebook. Reading them in parallel with this notebook is also a good alternative.</p>
+<p>For an introduction to the topic I recommend my two previous posts:</p>
+<ul>
+<li><a href="https://juanitorduz.github.io/orbit_mmm/">Media Effect Estimation with Orbit’s KTR Model</a></li>
+<li><a href="https://juanitorduz.github.io/pymc_mmm/">Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</a></li>
+</ul>
+<p>and the <a href="https://www.pymc-marketing.io/en/stable/"><code>PyMC-Marketing</code></a> MMM <a href="https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html">example</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import graphviz as gr
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import pandas as pd
+import preliz as pz
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+import xarray as xr
+from dowhy import CausalModel
+from sklearn import set_config
+from sklearn.preprocessing import MaxAbsScaler
+from tqdm.notebook import tqdm
+
+set_config(transform_output=&quot;pandas&quot;)
+
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;mmm_roas&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+<hr />
+</div>
+<div id="data-generating-process" class="section level2">
+<h2>Data Generating Process</h2>
+<p>We begin by generating a synthetic data set to be able to compare the estimates of various models against the ground truth. We follow a similar strategy as in the <a href="https://www.pymc-marketing.io/en/stable/"><code>PyMC-Marketing</code></a> MMM <a href="https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html">example</a>. However, the main difference is that we add a confounder variable which a causal effect on a specific channel and the target. The following DAG represents the data generating process and the causal dependencies between the variables.</p>
+<pre class="python"><code>g = gr.Digraph()
+g.node(name=&quot;seasonality&quot;, label=&quot;seasonality&quot;, color=&quot;lightgray&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;trend&quot;, label=&quot;trend&quot;)
+g.node(name=&quot;z&quot;, label=&quot;z&quot;, color=&quot;lightgray&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;x1&quot;, label=&quot;x1&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;x2&quot;, label=&quot;x2&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;y&quot;, label=&quot;y&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+g.edge(tail_name=&quot;seasonality&quot;, head_name=&quot;x1&quot;)
+g.edge(tail_name=&quot;z&quot;, head_name=&quot;x1&quot;)
+g.edge(tail_name=&quot;x1&quot;, head_name=&quot;y&quot;)
+g.edge(tail_name=&quot;seasonality&quot;, head_name=&quot;y&quot;)
+g.edge(tail_name=&quot;trend&quot;, head_name=&quot;y&quot;)
+g.edge(tail_name=&quot;z&quot;, head_name=&quot;y&quot;)
+g.edge(tail_name=&quot;x2&quot;, head_name=&quot;y&quot;)
+g</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_5_0.svg" style="width: 700px;"/>
+</center>
+<p>Here <span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span> represent two media channels and <span class="math inline">\(y\)</span> our target variable (e.g. sales). The confounder <span class="math inline">\(z\)</span> has a causal effect on <span class="math inline">\(x_1\)</span> and <span class="math inline">\(y\)</span>.</p>
+<p><strong>Remark:</strong> If you are a color geek like me, you can get the color pallette color codes of the <code>arviz</code> theme <a href="#id_%20https://github.com/arviz-devs/arviz/blob/main/arviz/plots/styles/arviz-darkgrid.mplstyle">here</a>. Note that you can add them with transparency as described <a href="#id_%20https://graphviz.org/Gallery/neato/transparency.html">here</a>. Note that the transparency is specified by the las two characters of the hex code.</p>
+<p>We not proceed to generate weekly data for <span class="math inline">\(2.5\)</span> years. In the following snippet of code we generate the date range, seasonality and trend components and, the covariate <span class="math inline">\(z\)</span>, which is always positive.</p>
+<pre class="python"><code># date range
+min_date = pd.to_datetime(&quot;2021-10-02&quot;)
+max_date = pd.to_datetime(&quot;2024-03-30&quot;)
+
+data_df = pd.DataFrame(
+    data={&quot;date&quot;: pd.date_range(start=min_date, end=max_date, freq=&quot;W-SAT&quot;)}
+)
+
+n = data_df.shape[0]
+
+data_df[&quot;dayofyear&quot;] = data_df[&quot;date&quot;].dt.dayofyear
+data_df[&quot;quarter&quot;] = data_df[&quot;date&quot;].dt.to_period(&quot;Q&quot;).dt.strftime(&quot;%YQ%q&quot;)
+data_df[&quot;trend&quot;] = (np.linspace(start=0.0, stop=50, num=n) + 10) ** (1 / 3) - 1
+data_df[&quot;cs&quot;] = -np.sin(2 * 2 * np.pi * data_df[&quot;dayofyear&quot;] / 365.25)
+data_df[&quot;cc&quot;] = np.cos(1 * 2 * np.pi * data_df[&quot;dayofyear&quot;] / 365.25)
+data_df[&quot;seasonality&quot;] = 0.3 * (data_df[&quot;cs&quot;] + data_df[&quot;cc&quot;])
+data_df[&quot;z&quot;] = 0.3 * rng.gamma(shape=1, scale=2 / 3, size=n)</code></pre>
+<p>The following plot shows the time series development of these features (and the aggregation).</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(12, 9),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;trend&quot;,
+    color=&quot;C0&quot;,
+    label=&quot;trend&quot;,
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;seasonality&quot;,
+    color=&quot;C1&quot;,
+    label=&quot;seasonality&quot;,
+    ax=ax[0],
+)
+sns.lineplot(data=data_df, x=&quot;date&quot;, y=&quot;z&quot;, color=&quot;C2&quot;, label=&quot;z&quot;, ax=ax[0])
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(xlabel=&quot;date&quot;, ylabel=None)
+
+sns.lineplot(
+    data=data_df.eval(&quot;sum = trend + seasonality + z&quot;),
+    x=&quot;date&quot;,
+    y=&quot;sum&quot;,
+    color=&quot;black&quot;,
+    label=&quot;trend + seasonality + z&quot;,
+    ax=ax[1],
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+
+fig.suptitle(t=&quot;Data Components&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_10_1.png" style="width: 900px;"/>
+</center>
+<p>Next, we generate the media channels <span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span>. Note that the channel spend <span class="math inline">\(x_1\)</span> depends both the seasonality component and the <span class="math inline">\(z\)</span> variable. We also generate Gaussian noise to be added to the target variable <span class="math inline">\(y\)</span>.</p>
+<pre class="python"><code>data_df[&quot;x1&quot;] = 1.2 * (
+    0.5
+    + 0.4 * data_df[&quot;seasonality&quot;]
+    + 0.6 * data_df[&quot;z&quot;]
+    + 0.1 * rng.poisson(lam=1 / 2, size=n)
+)
+
+data_df[&quot;x2&quot;] = 0.3 * rng.gamma(shape=1, scale=1, size=n)
+
+data_df[&quot;epsilon&quot;] = rng.normal(loc=0, scale=0.1, size=n)</code></pre>
+<p>We now can visualize all the components:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(15, 10),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;trend&quot;,
+    color=&quot;C0&quot;,
+    alpha=0.5,
+    label=&quot;trend&quot;,
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;seasonality&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;seasonality&quot;,
+    ax=ax[0],
+)
+sns.lineplot(data=data_df, x=&quot;date&quot;, y=&quot;z&quot;, color=&quot;C2&quot;, alpha=0.5, label=&quot;z&quot;, ax=ax[0])
+sns.lineplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;x1&quot;, color=&quot;C3&quot;, linewidth=2.5, label=&quot;x1&quot;, ax=ax[0]
+)
+sns.lineplot(
+    data=data_df, x=&quot;date&quot;, y=&quot;x2&quot;, color=&quot;C4&quot;, linewidth=2.5, label=&quot;x2&quot;, ax=ax[0]
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;epsilon&quot;,
+    color=&quot;C5&quot;,
+    linewidth=2.5,
+    label=&quot;epsilon&quot;,
+    ax=ax[0],
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(xlabel=&quot;date&quot;, ylabel=None)
+
+sns.lineplot(
+    data=data_df.eval(&quot;sum = trend + seasonality + z + x1 + x2 + epsilon&quot;),
+    x=&quot;date&quot;,
+    y=&quot;sum&quot;,
+    color=&quot;black&quot;,
+    linewidth=2.5,
+    label=&quot;trend + seasonality + z + x1 + x2 + epsilon&quot;,
+    ax=ax[1],
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+
+fig.suptitle(t=&quot;Data Components&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_14_1.png" style="width: 900px;"/>
+</center>
+<p>Note that we have not yet added the non-linear effects of the media channels. This is a key component in media mix models as we expect that the media signal to have carryover (adstock) and saturation effects (for a detailed description of these transformation and alternative parametrizations see the paper <a href="https://research.google/pubs/bayesian-methods-for-media-mix-modeling-with-carryover-and-shape-effects/">“Bayesian Methods for Media Mix Modeling with Carryover and Shape Effects”, by Jin, et al.</a>). We add these two transformations using some helper functions (the code is not that important):</p>
+<pre class="python"><code>def geometric_adstock(x, alpha, l_max, normalize):
+    &quot;&quot;&quot;Vectorized geometric adstock transformation.&quot;&quot;&quot;
+    cycles = [
+        pt.concatenate(tensor_list=[pt.zeros(shape=x.shape)[:i], x[: x.shape[0] - i]])
+        for i in range(l_max)
+    ]
+    x_cycle = pt.stack(cycles)
+    x_cycle = pt.transpose(x=x_cycle, axes=[1, 2, 0])
+    w = pt.as_tensor_variable([pt.power(alpha, i) for i in range(l_max)])
+    w = pt.transpose(w)[None, ...]
+    w = w / pt.sum(w, axis=2, keepdims=True) if normalize else w
+    return pt.sum(pt.mul(x_cycle, w), axis=2)
+
+
+def logistic_saturation(x, lam):
+    &quot;&quot;&quot;Logistic saturation transformation.&quot;&quot;&quot;
+    return (1 - pt.exp(-lam * x)) / (1 + pt.exp(-lam * x))</code></pre>
+<p>First, we apply the adstock transformation. The strength of the carryover effect is controlled by the decay parameter <span class="math inline">\(0\leq \alpha \leq 1\)</span>.</p>
+<pre class="python"><code># adstock maximum lag
+l_max = 4
+# apply geometric adstock transformation
+alpha1 = 0.3
+alpha2 = 0.5
+
+alpha = np.array([alpha1, alpha2])
+
+data_df[[&quot;x1_adstock&quot;, &quot;x2_adstock&quot;]] = geometric_adstock(
+    x=data_df[[&quot;x1&quot;, &quot;x2&quot;]], alpha=alpha, l_max=l_max, normalize=True
+).eval()</code></pre>
+<p>Let’s visualize the raw and transformed data:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(x=&quot;date&quot;, y=&quot;x1&quot;, data=data_df, color=&quot;C0&quot;, label=&quot;x1&quot;, ax=ax[0])
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x1_adstock&quot;,
+    data=data_df,
+    color=&quot;C1&quot;,
+    label=&quot;x1_adstock&quot;,
+    ax=ax[0],
+)
+sns.lineplot(x=&quot;date&quot;, y=&quot;x2&quot;, data=data_df, color=&quot;C0&quot;, label=&quot;x2&quot;, ax=ax[1])
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x2_adstock&quot;,
+    data=data_df,
+    color=&quot;C1&quot;,
+    label=&quot;x2_adstock&quot;,
+    ax=ax[1],
+)
+
+fig.suptitle(&quot;Adstock Transformation&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_20_1.png" style="width: 900px;"/>
+</center>
+<p>Observe that the adstock transformation has the effect of smoothing the media signal.</p>
+<p>We continue by applying the saturation transformation:</p>
+<pre class="python"><code># apply saturation transformation
+lam1 = 1.0
+lam2 = 2.5
+
+lam = np.array([lam1, lam2])
+
+data_df[[&quot;x1_adstock_saturated&quot;, &quot;x2_adstock_saturated&quot;]] = logistic_saturation(
+    x=data_df[[&quot;x1_adstock&quot;, &quot;x2_adstock&quot;]], lam=lam
+).eval()</code></pre>
+<p>This transformation simply compresses peaks. Let;s first visualize the saturation function (which depends on a parameter <span class="math inline">\(\lambda &gt; 0\)</span>).</p>
+<pre class="python"><code>x_range = np.linspace(start=0, stop=1.4, num=100)
+
+fig, ax = plt.subplots(figsize=(8, 7))
+sns.lineplot(
+    data=data_df,
+    x=&quot;x1_adstock&quot;,
+    y=&quot;x1_adstock_saturated&quot;,
+    linewidth=3,
+    label=&quot;x1&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=x_range,
+    y=logistic_saturation(x=x_range, lam=lam1).eval(),
+    color=&quot;C0&quot;,
+    linestyle=&quot;--&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;x2_adstock&quot;,
+    y=&quot;x2_adstock_saturated&quot;,
+    linewidth=3,
+    label=&quot;x2&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=x_range,
+    y=logistic_saturation(x=x_range, lam=lam2).eval(),
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    ax=ax,
+)
+ax.axline(
+    (0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=2.5, label=&quot;diagonal&quot;
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(&quot;Saturation Transformation&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_24_1.png" style="width: 700px;"/>
+</center>
+<p>We can now compare the initial signal and how is transformed by these two on-linear transformations:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3, ncols=2, figsize=(15, 10), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(x=&quot;date&quot;, y=&quot;x1&quot;, data=data_df, color=&quot;C0&quot;, ax=ax[0, 0])
+sns.lineplot(x=&quot;date&quot;, y=&quot;x2&quot;, data=data_df, color=&quot;C1&quot;, ax=ax[0, 1])
+sns.lineplot(x=&quot;date&quot;, y=&quot;x1_adstock&quot;, data=data_df, color=&quot;C0&quot;, ax=ax[1, 0])
+sns.lineplot(x=&quot;date&quot;, y=&quot;x2_adstock&quot;, data=data_df, color=&quot;C1&quot;, ax=ax[1, 1])
+sns.lineplot(x=&quot;date&quot;, y=&quot;x1_adstock_saturated&quot;, data=data_df, color=&quot;C0&quot;, ax=ax[2, 0])
+sns.lineplot(x=&quot;date&quot;, y=&quot;x2_adstock_saturated&quot;, data=data_df, color=&quot;C1&quot;, ax=ax[2, 1])
+fig.autofmt_xdate()
+fig.suptitle(&quot;Media Costs Data - Transformed&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_26_2.png" style="width: 1000px;"/>
+</center>
+<p>Now we are ready to put everything together and generate the target variable <span class="math inline">\(y\)</span>. We just need to apply some weights <span class="math inline">\(\beta\)</span> to the transformed media data (i.e. specifying the regression coefficients).</p>
+<pre class="python"><code>beta1 = 2.0
+beta2 = 1.5
+amplitude = 100
+
+data_df = data_df.eval(
+    f&quot;&quot;&quot;
+    x1_effect = {beta1} * x1_adstock_saturated
+    x2_effect = {beta2} * x2_adstock_saturated
+    y = {amplitude} * (trend + seasonality + z + x1_effect + x2_effect + epsilon)
+    y01 = {amplitude} * (trend + seasonality + z + x2_effect + epsilon)
+    y02 = {amplitude} * (trend + seasonality + z + x1_effect + epsilon)
+    &quot;&quot;&quot;
+)</code></pre>
+<p>Finally, we can see the components and the final target variable:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(15, 10),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;trend&quot;,
+    color=&quot;C0&quot;,
+    alpha=0.5,
+    label=&quot;trend&quot;,
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;seasonality&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;seasonality&quot;,
+    ax=ax[0],
+)
+sns.lineplot(data=data_df, x=&quot;date&quot;, y=&quot;z&quot;, color=&quot;C2&quot;, alpha=0.5, label=&quot;z&quot;, ax=ax[0])
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;x1_effect&quot;,
+    color=&quot;C3&quot;,
+    linewidth=2.5,
+    label=&quot;x1_effect&quot;,
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;x2_effect&quot;,
+    color=&quot;C4&quot;,
+    linewidth=2.5,
+    label=&quot;x2_effect&quot;,
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;epsilon&quot;,
+    color=&quot;C5&quot;,
+    linewidth=2.5,
+    label=&quot;epsilon&quot;,
+    ax=ax[0],
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(title=&quot;Components&quot;, xlabel=&quot;date&quot;, ylabel=None)
+
+sns.lineplot(
+    data=data_df,
+    x=&quot;date&quot;,
+    y=&quot;y&quot;,
+    color=&quot;black&quot;,
+    linewidth=2.5,
+    label=&quot;100 x (trend + seasonality + z + x1_effect + x2_effect + epsilon)&quot;,
+    ax=ax[1],
+)
+ax[1].legend(loc=&quot;lower right&quot;)
+ax[1].set(title=&quot;Target&quot;)
+
+fig.suptitle(t=&quot;Data Generating Process&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_30_1.png" style="width: 900px;"/>
+</center>
+<p><strong>Remark:</strong> We are computing quantities <code>y01</code> and <code>y01</code> as the potential outcome sales when channels <span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span> are set to <span class="math inline">\(0\)</span>. This is useful to compute the global ROAS (see below).</p>
+<pre class="python"><code>data_df.info()</code></pre>
+<pre><code>&lt;class &#39;pandas.core.frame.DataFrame&#39;&gt;
+RangeIndex: 131 entries, 0 to 130
+Data columns (total 20 columns):
+ #   Column                Non-Null Count  Dtype         
+---  ------                --------------  -----         
+ 0   date                  131 non-null    datetime64[ns]
+ 1   dayofyear             131 non-null    int32         
+ 2   quarter               131 non-null    object        
+ 3   trend                 131 non-null    float64       
+ 4   cs                    131 non-null    float64       
+ 5   cc                    131 non-null    float64       
+ 6   seasonality           131 non-null    float64       
+ 7   z                     131 non-null    float64       
+ 8   x1                    131 non-null    float64       
+ 9   x2                    131 non-null    float64       
+ 10  epsilon               131 non-null    float64       
+ 11  x1_adstock            131 non-null    float64       
+ 12  x2_adstock            131 non-null    float64       
+ 13  x1_adstock_saturated  131 non-null    float64       
+ 14  x2_adstock_saturated  131 non-null    float64       
+ 15  x1_effect             131 non-null    float64       
+ 16  x2_effect             131 non-null    float64       
+ 17  y                     131 non-null    float64       
+ 18  y01                   131 non-null    float64       
+ 19  y02                   131 non-null    float64       
+dtypes: datetime64[ns](1), float64(17), int32(1), object(1)
+memory usage: 20.1+ KB</code></pre>
+<hr />
+</div>
+<div id="roas" class="section level2">
+<h2>ROAS</h2>
+<p>One of the key outputs of media mix models is the ROAS (return on advertising spend) which is defined as the ratio between the incremental sales and the media spend. In the following snippet of code we compute the ROAS analytically for each channel.</p>
+<p>Recall from <a href="https://research.google/pubs/media-mix-model-calibration-with-bayesian-priors/">“Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al.</a>, the definition of ROAS:</p>
+<center>
+<img src="../images/mmm_roas_files/formula_6.png" style="width: 700px;"/>
+</center>
+<p>We compute a global ROAS as well as a quarterly ROAS. One has to be careful with the computation as we want to make sure we consider the carryover effects of the media channels. For example, if we compute the ROAS for the first week of the year, we need to consider the carryover effects of the media spend from the previous year.</p>
+<p>The following function generate the sales when a given channel is turned off during a given period (note it mimics the data generating process described above). In the language of causal inference, this function computes the potential outcome when a given channel is turned off.</p>
+<pre class="python"><code>def generate_potential_y(
+    dataset, alpha, l_max, lambda_, beta1, beta2, amplitude, channel, t0, t1
+):
+    dataset = dataset.copy()
+    dataset[&quot;mask&quot;] = ~dataset[&quot;date&quot;].between(left=t0, right=t1, inclusive=&quot;both&quot;)
+    dataset[channel] = dataset[channel].where(cond=dataset[&quot;mask&quot;], other=0)
+    dataset[[&quot;x1_adstock&quot;, &quot;x2_adstock&quot;]] = geometric_adstock(
+        x=dataset[[&quot;x1&quot;, &quot;x2&quot;]], alpha=alpha, l_max=l_max, normalize=True
+    ).eval()
+    dataset[[&quot;x1_adstock_saturated&quot;, &quot;x2_adstock_saturated&quot;]] = logistic_saturation(
+        x=dataset[[&quot;x1_adstock&quot;, &quot;x2_adstock&quot;]], lam=lambda_
+    ).eval()
+    return dataset.eval(
+        f&quot;&quot;&quot;
+        x1_effect = {beta1} * x1_adstock_saturated
+        x2_effect = {beta2} * x2_adstock_saturated
+        y = {amplitude} * (trend + seasonality + z + x1_effect + x2_effect + epsilon)
+        &quot;&quot;&quot;
+    )</code></pre>
+<p>Let’s test this function does generates our dataset above when we do not turn off any channel. We achieve this by setting the <code>t0</code> and <code>t1</code> arguments (which define the turn off period) outside of the data range.</p>
+<pre class="python"><code>for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    temp_df = generate_potential_y(
+        dataset=data_df,
+        alpha=alpha,
+        l_max=l_max,
+        lambda_=lam,
+        beta1=beta1,
+        beta2=beta2,
+        amplitude=amplitude,
+        channel=channel,
+        t0=min_date - pd.Timedelta(days=7),
+        t1=min_date - pd.Timedelta(days=7),
+    )
+
+    pd.testing.assert_frame_equal(left=temp_df[data_df.columns], right=data_df)</code></pre>
+<p>We proceed to generate the potential outcome sales for each channel and each quarter.</p>
+<pre class="python"><code>quarter_ranges = data_df.groupby(&quot;quarter&quot;, as_index=False).agg(
+    {&quot;date&quot;: [&quot;min&quot;, &quot;max&quot;]}
+)
+
+quarter_ranges.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead tr th {
+        text-align: left;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+</th>
+<th>
+quarter
+</th>
+<th colspan="2" halign="left">
+date
+</th>
+</tr>
+<tr>
+<th>
+</th>
+<th>
+</th>
+<th>
+min
+</th>
+<th>
+max
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2021Q4
+</td>
+<td>
+2021-10-02
+</td>
+<td>
+2021-12-25
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2022Q1
+</td>
+<td>
+2022-01-01
+</td>
+<td>
+2022-03-26
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2022Q2
+</td>
+<td>
+2022-04-02
+</td>
+<td>
+2022-06-25
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2022Q3
+</td>
+<td>
+2022-07-02
+</td>
+<td>
+2022-09-24
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2022Q4
+</td>
+<td>
+2022-10-01
+</td>
+<td>
+2022-12-31
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>roas_data = {
+    channel: {
+        row[&quot;quarter&quot;].item(): generate_potential_y(
+            dataset=data_df,
+            alpha=alpha,
+            l_max=l_max,
+            lambda_=lam,
+            beta1=beta1,
+            beta2=beta2,
+            amplitude=amplitude,
+            channel=channel,
+            t0=row[&quot;date&quot;][&quot;min&quot;],
+            t1=row[&quot;date&quot;][&quot;max&quot;],
+        )
+        for _, row in tqdm(quarter_ranges.iterrows())
+    }
+    for channel in [&quot;x1&quot;, &quot;x2&quot;]
+}</code></pre>
+<p>We can visualize the potential outcome against the true sales for each quarter for the first channel <span class="math inline">\(x_1\)</span>.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=quarter_ranges.quarter.nunique(),
+    ncols=1,
+    figsize=(15, 17),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+axes = axes.flatten()
+
+for i, (q, q_df) in enumerate(roas_data[&quot;x1&quot;].items()):
+    ax = axes[i]
+    ax_twin = ax.twinx()
+
+    sns.lineplot(
+        data=data_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=&quot;$y (actual)$&quot;, ax=ax
+    )
+    sns.lineplot(data=q_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, label=&quot;$y (potential)$&quot;, ax=ax)
+    sns.lineplot(data=q_df, x=&quot;date&quot;, y=&quot;mask&quot;, color=&quot;C1&quot;, ax=ax_twin)
+    ax.set_title(f&quot;Quarter {q}&quot;)
+    ax_twin.grid(None)
+
+fig.suptitle(t=&quot;Actual vs Potential - x1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_41_1.png" style="width: 1000px;"/>
+</center>
+<p>Observe that the potential sales and the true sales differ immediately after the mask period as a result of the carryover effect of the media spend. Next, we compute the ROAS for each each quarter by simply dividing the difference between the potential sales and the true sales by the media spend.</p>
+<pre class="python"><code>roas_x1 = pd.DataFrame.from_dict(
+    data={
+        q: (
+            (data_df[&quot;y&quot;].sum() - q_df[&quot;y&quot;].sum())
+            / data_df.query(&quot;quarter == @q&quot;)[&quot;x1&quot;].sum()
+        )
+        for q, q_df in roas_data[&quot;x1&quot;].items()
+    },
+    orient=&quot;index&quot;,
+    columns=[&quot;roas&quot;],
+).assign(channel=&quot;x1&quot;)</code></pre>
+<p>We can do the exact same procedure for channel <span class="math inline">\(x_2\)</span>.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=quarter_ranges.quarter.nunique(),
+    ncols=1,
+    figsize=(15, 17),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+axes = axes.flatten()
+
+for i, (q, q_df) in enumerate(roas_data[&quot;x2&quot;].items()):
+    ax = axes[i]
+    ax_twin = ax.twinx()
+
+    sns.lineplot(
+        data=data_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=&quot;$y (actual)$&quot;, ax=ax
+    )
+    sns.lineplot(data=q_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;C0&quot;, label=&quot;$y (potential)$&quot;, ax=ax)
+    sns.lineplot(data=q_df, x=&quot;date&quot;, y=&quot;mask&quot;, color=&quot;C1&quot;, ax=ax_twin)
+    ax.set_title(f&quot;Quarter {q}&quot;)
+    ax_twin.grid(None)
+
+fig.suptitle(t=&quot;Actual vs Potential - x2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_45_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>roas_x2 = pd.DataFrame.from_dict(
+    data={
+        q: (
+            (data_df[&quot;y&quot;].sum() - q_df[&quot;y&quot;].sum())
+            / data_df.query(&quot;quarter == @q&quot;)[&quot;x2&quot;].sum()
+        )
+        for q, q_df in roas_data[&quot;x2&quot;].items()
+    },
+    orient=&quot;index&quot;,
+    columns=[&quot;roas&quot;],
+).assign(channel=&quot;x2&quot;)</code></pre>
+<p>Moreover, we can easily compute the global ROAS:</p>
+<pre class="python"><code>roas_all_1 = (data_df[&quot;y&quot;] - data_df[&quot;y01&quot;]).sum() / data_df[&quot;x1&quot;].sum()
+
+roas_all_2 = (data_df[&quot;y&quot;] - data_df[&quot;y02&quot;]).sum() / data_df[&quot;x2&quot;].sum()</code></pre>
+<p>Let’s visualize the quarterly and global ROAS for each channel:</p>
+<pre class="python"><code>roas = (
+    pd.concat(objs=[roas_x1, roas_x2], axis=0)
+    .reset_index(drop=False)
+    .rename(columns={&quot;index&quot;: &quot;quarter&quot;})
+)
+
+g = sns.catplot(
+    data=roas.assign(quarter_num=lambda df: df.quarter.str[4:]),
+    x=&quot;quarter&quot;,
+    y=&quot;roas&quot;,
+    row=&quot;channel&quot;,
+    hue=&quot;quarter_num&quot;,
+    kind=&quot;bar&quot;,
+    height=4,
+    aspect=3,
+    alpha=0.7,
+    sharey=False,
+)
+
+ax = g.axes.flatten()
+ax[0].axhline(
+    y=roas_all_1, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=2.5, label=&quot;roas (all)&quot;
+)
+ax[1].axhline(
+    y=roas_all_2, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=2.5, label=&quot;roas (all)&quot;
+)
+
+g.fig.suptitle(t=&quot;True ROAS&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.03)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_50_2.png" style="width: 1000px;"/>
+</center>
+<p>We see that channel <span class="math inline">\(x_2\)</span> has approximately <span class="math inline">\(75\%\)</span> higher ROAS as compared to channel <span class="math inline">\(x_1\)</span>.</p>
+<hr />
+</div>
+<div id="data-preparation" class="section level2">
+<h2>Data Preparation</h2>
+<p>Now that we have generated the data, we can proceed to prepare it for the media mix model. We start by selecting the features we would have in a real scenario. Note that in such a case we would not have <code>x1_effect</code> or <code>x2_effect</code> as this is precisely what we want to estimate.</p>
+<pre class="python"><code>columns_to_keep = [
+    &quot;date&quot;,
+    &quot;dayofyear&quot;,
+    &quot;z&quot;,
+    &quot;x1&quot;,
+    &quot;x2&quot;,
+    &quot;y&quot;,
+]
+
+model_df = data_df[columns_to_keep]
+
+model_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+date
+</th>
+<th>
+dayofyear
+</th>
+<th>
+z
+</th>
+<th>
+x1
+</th>
+<th>
+x2
+</th>
+<th>
+y
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2021-10-02
+</td>
+<td>
+275
+</td>
+<td>
+0.053693
+</td>
+<td>
+0.646554
+</td>
+<td>
+0.336188
+</td>
+<td>
+199.329637
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2021-10-09
+</td>
+<td>
+282
+</td>
+<td>
+1.045243
+</td>
+<td>
+1.411917
+</td>
+<td>
+0.203931
+</td>
+<td>
+371.237041
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+2021-10-16
+</td>
+<td>
+289
+</td>
+<td>
+0.179703
+</td>
+<td>
+0.837610
+</td>
+<td>
+0.024026
+</td>
+<td>
+272.215933
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+2021-10-23
+</td>
+<td>
+296
+</td>
+<td>
+0.140496
+</td>
+<td>
+0.973612
+</td>
+<td>
+0.120257
+</td>
+<td>
+291.104040
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+2021-10-30
+</td>
+<td>
+303
+</td>
+<td>
+0.869155
+</td>
+<td>
+1.415985
+</td>
+<td>
+0.084630
+</td>
+<td>
+386.243000
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Next, we proceed to scale the data with a <a href="https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MaxAbsScaler.html"><code>MaxAbsScaler</code></a>. For more details about the scaling please see the previous post <a href="https://juanitorduz.github.io/pymc_mmm/">Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</a>.</p>
+<pre class="python"><code>date = model_df[&quot;date&quot;]
+
+index_scaler = MaxAbsScaler()
+index_scaled = index_scaler.fit_transform(model_df.reset_index(drop=False)[[&quot;index&quot;]])
+
+target = &quot;y&quot;
+target_scaler = MaxAbsScaler()
+target_scaled = target_scaler.fit_transform(model_df[[target]])
+
+channels = [&quot;x1&quot;, &quot;x2&quot;]
+channels_scaler = MaxAbsScaler()
+channels_scaled = channels_scaler.fit_transform(model_df[channels])
+
+controls = [&quot;z&quot;]
+controls_scaler = MaxAbsScaler()
+controls_scaled = controls_scaler.fit_transform(model_df[controls])</code></pre>
+<p>To model the yearly seasonality we generate some <a href="https://en.wikipedia.org/wiki/Fourier_series">Fourier modes</a> to include them into the regression model.</p>
+<pre class="python"><code>n_order = 3
+periods = model_df[&quot;dayofyear&quot;] / 365.25
+fourier_features = pd.DataFrame(
+    {
+        f&quot;{func}_order_{order}&quot;: getattr(np, func)(2 * np.pi * periods * order)
+        for order in range(1, n_order + 1)
+        for func in (&quot;sin&quot;, &quot;cos&quot;)
+    }
+)</code></pre>
+<p>Now we are ready to start with the media mix model.</p>
+<hr />
+</div>
+<div id="model-1-causal-model" class="section level2">
+<h2>Model 1: Causal Model</h2>
+<p>In this first model we simply add the features from our causal graph. We should be able to recover the parameters and the ROAS from the data generating process. Before jumping into the model lets look closer the the causal structure.</p>
+<div id="causal-model" class="section level3">
+<h3>Causal Model</h3>
+<p>It is very important to view media mix models from a causal perspective. We can not simply add a bunch of variables and hope for the best! See for example <a href="https://juanitorduz.github.io/causal_inference_example/">Using Data Science for Bad Decision-Making: A Case Study</a>. There is a systematic way to select the variables we should / should not add into the model. To see this how this works in practice, let’s use <a href="https://www.pywhy.org/dowhy/main/"><code>DoWhy</code></a> to get the set of variables for our model. First we need to define the DAG (this is where domain knowledge from the marketing mechanism comes into place!).</p>
+<pre class="python"><code>gml_graph = &quot;&quot;&quot;
+graph [
+    directed 1
+
+    node [
+        id x1
+        label &quot;x1&quot;
+    ]
+    node [
+        id x2
+        label &quot;x2&quot;
+    ]
+    node [
+        id z
+        label &quot;z&quot;
+    ]
+    node [
+        id seasonality
+        label &quot;seasonality&quot;
+    ]
+    node [
+        id trend
+        label &quot;trend&quot;
+    ]
+    node [
+        id y
+        label &quot;y&quot;
+    ]
+    edge [
+        source seasonality
+        target x1
+    ]
+    edge [
+        source z
+        target x1
+    ]
+    edge [
+        source seasonality
+        target y
+    ]
+    edge [
+        source trend
+        target y
+    ]
+    edge [
+        source z
+        target y
+    ]
+    edge [
+        source x1
+        target y
+    ]
+    edge [
+        source x2
+        target y
+    ]
+]
+&quot;&quot;&quot;</code></pre>
+<p>We want to see if we can find a set of variables which we can put in a regression model to estimate the effect of <span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span> on <span class="math inline">\(y\)</span>. Hence, we define to causal models:</p>
+<pre class="python"><code>causal_model_1 = CausalModel(
+    data=model_df,
+    graph=gml_graph,
+    treatment=&quot;x1&quot;,
+    outcome=&quot;y&quot;,
+)
+
+causal_model_2 = CausalModel(
+    data=model_df,
+    graph=gml_graph,
+    treatment=&quot;x2&quot;,
+    outcome=&quot;y&quot;,
+)
+
+causal_model_1.view_model()</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_63_1.png" style="width: 700px;"/>
+</center>
+<p>We can now query for backdoor paths between the treatment and the outcome:</p>
+<pre class="python"><code>causal_model_1._graph.get_backdoor_paths(nodes1=[&quot;x1&quot;], nodes2=[&quot;y&quot;])</code></pre>
+<pre><code>[[&#39;x1&#39;, &#39;z&#39;, &#39;y&#39;], [&#39;x1&#39;, &#39;seasonality&#39;, &#39;y&#39;]]</code></pre>
+<pre class="python"><code>causal_model_2._graph.get_backdoor_paths(nodes1=[&quot;x2&quot;], nodes2=[&quot;y&quot;])</code></pre>
+<pre><code>[]</code></pre>
+<p>Note that for <span class="math inline">\(x_1\)</span> we need to add <span class="math inline">\(z\)</span> and seasonality, otherwise we would have open paths:</p>
+<pre class="python"><code>causal_model_1._graph.check_valid_backdoor_set(nodes1=[&quot;x1&quot;], nodes2=[&quot;y&quot;], nodes3=[])</code></pre>
+<pre><code>{&#39;is_dseparated&#39;: False}</code></pre>
+<p>Therefore the set of variables we should add to the model are <span class="math inline">\(x_1\)</span>, <span class="math inline">\(x_2\)</span>, <span class="math inline">\(z\)</span>, seasonality and trend (the trend component will allow us to reduce the variance on the estimate).</p>
+<pre class="python"><code>causal_model_1._graph.check_valid_backdoor_set(
+    nodes1=[&quot;x1&quot;], nodes2=[&quot;y&quot;], nodes3=[&quot;z&quot;, &quot;seasonality&quot;, &quot;trend&quot;]
+)</code></pre>
+<pre><code>{&#39;is_dseparated&#39;: True}</code></pre>
+<pre class="python"><code>causal_model_1._graph.check_valid_backdoor_set(
+    nodes1=[&quot;x2&quot;], nodes2=[&quot;y&quot;], nodes3=[&quot;z&quot;, &quot;seasonality&quot;, &quot;trend&quot;]
+)</code></pre>
+<pre><code>{&#39;is_dseparated&#39;: True}</code></pre>
+</div>
+<div id="prior-specification" class="section level3">
+<h3>Prior Specification</h3>
+<p>Bayesian models provide great flexibility to add domain knowledge into the model through the prior distributions. <a href="https://preliz.readthedocs.io/en/latest/"><code>PreliZ</code></a> is a great library to study and set priors.</p>
+<p>For example, what should be the prior for the adstock parameter <span class="math inline">\(\alpha\)</span>? We know it should be between zero and one. We also do not expect the carry over to be very strong. Hence, we can use a Beta distribution with the mass a bit towards zero.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+pz.Beta(alpha=2, beta=3).plot_pdf(ax=ax)
+ax.set(xlabel=r&quot;$\alpha$&quot;)
+ax.set_title(label=r&quot;Prior Distribution $\alpha$&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_73_1.png" style="width: 900px;"/>
+</center>
+<p>For <span class="math inline">\(\lambda\)</span> we could also argue similarly: it is a positive number and we expect a mild saturation. Hence, we can use a Gamma distribution with mean close to one. Still, we make sure it is not concentrated to much around one in order to allow for some flexibility.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+pz.Gamma(alpha=2, beta=2).plot_pdf(ax=ax)
+ax.set(xlabel=r&quot;$\lambda$&quot;)
+ax.set_title(label=r&quot;Prior Distribution $\lambda$&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_75_1.png" style="width: 900px;"/>
+</center>
+<p>A much harder choice for prior are the regression coefficients of the media variables. Without any prior information on channel performance a common choice is to use a weakly informative prior driven by the investment share. The idea motivation behind it is that we expect (without seeing the data!) that channels where we spend the most to contribute more to sales. This can actually not be the case once we see the data. Nevertheless, is a good guidance if you do not have any other information. One could put the same prior for all channels, but in practice I have seen in practice that, given the small sample sizes, smaller channels can get very high contributions just because of the noise (I have also tested via simulations). It is important to emphasize that there is no right answer here. It is a matter of what you believe and what you want to test.</p>
+<p>For this example, let’s use such a prior. In addition, note we expect the effect to be always positive. Hence, we can use a half-normal distribution to enforce this.</p>
+<pre class="python"><code>channel_share = data_df[channels].sum() / data_df[channels].sum().sum()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.barplot(
+    x=channel_share.index, y=channel_share.values, hue=channel_share.index, ax=ax
+)
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1))
+ax.set(xlabel=&quot;channel&quot;, ylabel=&quot;share&quot;)
+ax.set_title(label=&quot;Channel Spend Share&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_77_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+pz.HalfNormal(sigma=channel_share.loc[&quot;x1&quot;]).plot_pdf(ax=ax)
+pz.HalfNormal(sigma=channel_share.loc[&quot;x2&quot;]).plot_pdf(ax=ax)
+ax.set(xlabel=r&quot;$\beta$&quot;)
+ax.set_title(label=r&quot;Prior Distribution $\beta$&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_78_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>We are now ready to specify the model. We will not go into details as we are implementing the classical model from <a href="https://research.google/pubs/media-mix-model-calibration-with-bayesian-priors/">“Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al.</a>, which is described in detail in the the previous post <a href="https://juanitorduz.github.io/pymc_mmm/">Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</a>.</p>
+<p>The only difference it we do not add an explicit trend variable but we use a Gaussian process to model this latent variable (therefore we also remove an intercept) as described in the post <a href="https://medium.com/@nialloulton/estimating-the-long-term-base-in-marketing-mix-models-864782323109">Estimating the Long-Term Base in Marketing-Mix Models</a>. We are using the same technique as described in the example <a href="https://juanitorduz.github.io/birthdays/">Time Series Modeling with HSGP: Baby Births Example</a>.</p>
+<pre class="python"><code>coords = {&quot;date&quot;: date, &quot;channel&quot;: channels, &quot;fourier_mode&quot;: np.arange(2 * n_order)}</code></pre>
+<pre class="python"><code>with pm.Model(coords=coords) as model_1:
+    # --- Data Containers ---
+
+    index_scaled_data = pm.Data(
+        name=&quot;index_scaled&quot;,
+        value=index_scaled.to_numpy().flatten(),
+        mutable=True,
+        dims=&quot;date&quot;,
+    )
+
+    channels_scaled_data = pm.Data(
+        name=&quot;channels_scaled&quot;,
+        value=channels_scaled,
+        mutable=True,
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+
+    z_scaled_data = pm.Data(
+        name=&quot;z_scaled&quot;,
+        value=controls_scaled.to_numpy().flatten(),
+        mutable=True,
+        dims=&quot;date&quot;,
+    )
+
+    fourier_features_data = pm.Data(
+        name=&quot;fourier_features&quot;,
+        value=fourier_features,
+        mutable=True,
+        dims=(&quot;date&quot;, &quot;fourier_mode&quot;),
+    )
+
+    y_scaled_data = pm.Data(
+        name=&quot;y_scaled&quot;,
+        value=target_scaled.to_numpy().flatten(),
+        mutable=True,
+        dims=&quot;date&quot;,
+    )
+
+    # --- Priors ---
+
+    amplitude_trend = pm.HalfNormal(name=&quot;amplitude_trend&quot;, sigma=1)
+    ls_trend_params = pm.find_constrained_prior(
+        distribution=pm.InverseGamma,
+        lower=0.1,
+        upper=0.9,
+        init_guess={&quot;alpha&quot;: 3, &quot;beta&quot;: 1},
+        mass=0.95,
+    )
+    ls_trend = pm.InverseGamma(name=&quot;ls_trend&quot;, **ls_trend_params)
+
+    alpha = pm.Beta(name=&quot;alpha&quot;, alpha=2, beta=3, dims=&quot;channel&quot;)
+    lam = pm.Gamma(name=&quot;lam&quot;, alpha=2, beta=2, dims=&quot;channel&quot;)
+    beta_channel = pm.HalfNormal(
+        name=&quot;beta_channel&quot;,
+        sigma=channel_share.to_numpy(),
+        dims=&quot;channel&quot;,
+    )
+    beta_z = pm.Normal(name=&quot;beta_z&quot;, mu=0, sigma=1)
+    beta_fourier = pm.Normal(name=&quot;beta_fourier&quot;, mu=0, sigma=1, dims=&quot;fourier_mode&quot;)
+
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=1)
+    nu = pm.Gamma(name=&quot;nu&quot;, alpha=25, beta=2)
+
+    # --- Parametrization ---
+
+    cov_trend = amplitude_trend * pm.gp.cov.ExpQuad(input_dim=1, ls=ls_trend)
+    gp_trend = pm.gp.HSGP(m=[20], c=1.5, cov_func=cov_trend)
+    f_trend = gp_trend.prior(name=&quot;f_trend&quot;, X=index_scaled_data[:, None], dims=&quot;date&quot;)
+
+    channel_adstock = pm.Deterministic(
+        name=&quot;channel_adstock&quot;,
+        var=geometric_adstock(
+            x=channels_scaled_data,
+            alpha=alpha,
+            l_max=l_max,
+            normalize=True,
+        ),
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+    channel_adstock_saturated = pm.Deterministic(
+        name=&quot;channel_adstock_saturated&quot;,
+        var=logistic_saturation(x=channel_adstock, lam=lam),
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+    channel_contributions = pm.Deterministic(
+        name=&quot;channel_contributions&quot;,
+        var=channel_adstock_saturated * beta_channel,
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+
+    fourier_contribution = pm.Deterministic(
+        name=&quot;fourier_contribution&quot;,
+        var=pt.dot(fourier_features_data, beta_fourier),
+        dims=&quot;date&quot;,
+    )
+
+    z_contribution = pm.Deterministic(
+        name=&quot;z_contribution&quot;,
+        var=z_scaled_data * beta_z,
+        dims=&quot;date&quot;,
+    )
+
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=f_trend
+        + channel_contributions.sum(axis=-1)
+        + z_contribution
+        + fourier_contribution,
+        dims=&quot;date&quot;,
+    )
+
+    # --- Likelihood ---
+    y = pm.StudentT(
+        name=&quot;y&quot;,
+        nu=nu,
+        mu=mu,
+        sigma=sigma,
+        observed=y_scaled_data,
+        dims=&quot;date&quot;,
+    )
+
+pm.model_to_graphviz(model=model_1)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_81_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="prior-predictive-checks" class="section level3">
+<h3>Prior Predictive Checks</h3>
+<p>Before fitting the model, it is always a good idea to check the prior predictive distribution. This is a way to see if the model is able to generate data that is consistent with our prior beliefs. We can do this by sampling from the prior and plotting the results.</p>
+<pre class="python"><code>with model_1:
+    prior_predictive_1 = pm.sample_prior_predictive(samples=2_000, random_seed=rng)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(data=prior_predictive_1, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
+ax.set_title(label=&quot;Prior Predictive - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_84_2.png" style="width: 900px;"/>
+</center>
+<p>It looks quite reasonable.</p>
+</div>
+<div id="model-fitting" class="section level3">
+<h3>Model Fitting</h3>
+<p>We now fit the model using the No-U-Turn Sampler (NUTS) algorithm. We will run four chains in parallel and sample <span class="math inline">\(2000\)</span> draws from each chain. We use <a href="http://num.pyro.ai/en/stable/"><code>NumPyro</code></a> as the backend for the model fitting (it is super fast).</p>
+<pre class="python"><code>with model_1:
+    idata_1 = pm.sample(
+        target_accept=0.9,
+        draws=2_000,
+        chains=4,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng,
+    )
+    posterior_predictive_1 = pm.sample_posterior_predictive(
+        trace=idata_1, random_seed=rng
+    )</code></pre>
+</div>
+<div id="model-diagnostics" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>First we verify we do not have divergences:</p>
+<pre class="python"><code>idata_1[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<p><span class="math inline">\(\displaystyle 0\)</span></p>
+<p>Next, we look into the posterior distribution of the parameters.</p>
+<pre class="python"><code>var_names = [
+    &quot;amplitude_trend&quot;,
+    &quot;ls_trend&quot;,
+    &quot;alpha&quot;,
+    &quot;lam&quot;,
+    &quot;beta_channel&quot;,
+    &quot;beta_z&quot;,
+    &quot;beta_fourier&quot;,
+    &quot;sigma&quot;,
+    &quot;nu&quot;,
+]
+
+az.summary(data=idata_1, var_names=var_names, round_to=3)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+amplitude_trend
+</th>
+<td>
+0.380
+</td>
+<td>
+0.339
+</td>
+<td>
+0.031
+</td>
+<td>
+1.024
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+2216.743
+</td>
+<td>
+3547.131
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+ls_trend
+</th>
+<td>
+0.307
+</td>
+<td>
+0.042
+</td>
+<td>
+0.224
+</td>
+<td>
+0.380
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2068.505
+</td>
+<td>
+2892.961
+</td>
+<td>
+1.003
+</td>
+</tr>
+<tr>
+<th>
+alpha[x1]
+</th>
+<td>
+0.318
+</td>
+<td>
+0.072
+</td>
+<td>
+0.181
+</td>
+<td>
+0.449
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7797.458
+</td>
+<td>
+6545.114
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+alpha[x2]
+</th>
+<td>
+0.493
+</td>
+<td>
+0.028
+</td>
+<td>
+0.440
+</td>
+<td>
+0.544
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10193.826
+</td>
+<td>
+5924.861
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+lam[x1]
+</th>
+<td>
+0.973
+</td>
+<td>
+0.452
+</td>
+<td>
+0.276
+</td>
+<td>
+1.806
+</td>
+<td>
+0.006
+</td>
+<td>
+0.004
+</td>
+<td>
+5677.231
+</td>
+<td>
+6177.363
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+lam[x2]
+</th>
+<td>
+2.812
+</td>
+<td>
+0.687
+</td>
+<td>
+1.548
+</td>
+<td>
+4.070
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+6103.450
+</td>
+<td>
+5004.784
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_channel[x1]
+</th>
+<td>
+0.709
+</td>
+<td>
+0.312
+</td>
+<td>
+0.262
+</td>
+<td>
+1.288
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+5211.349
+</td>
+<td>
+6102.915
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_channel[x2]
+</th>
+<td>
+0.404
+</td>
+<td>
+0.094
+</td>
+<td>
+0.268
+</td>
+<td>
+0.581
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+5946.573
+</td>
+<td>
+4792.955
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_z
+</th>
+<td>
+0.190
+</td>
+<td>
+0.017
+</td>
+<td>
+0.158
+</td>
+<td>
+0.222
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7142.269
+</td>
+<td>
+5758.734
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[0]
+</th>
+<td>
+0.000
+</td>
+<td>
+0.008
+</td>
+<td>
+-0.015
+</td>
+<td>
+0.012
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+3680.755
+</td>
+<td>
+3103.355
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[1]
+</th>
+<td>
+0.047
+</td>
+<td>
+0.007
+</td>
+<td>
+0.034
+</td>
+<td>
+0.060
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5009.843
+</td>
+<td>
+3406.016
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[2]
+</th>
+<td>
+-0.055
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.063
+</td>
+<td>
+-0.047
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7868.972
+</td>
+<td>
+6689.172
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[3]
+</th>
+<td>
+-0.004
+</td>
+<td>
+0.002
+</td>
+<td>
+-0.008
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10720.589
+</td>
+<td>
+7004.293
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[4]
+</th>
+<td>
+-0.004
+</td>
+<td>
+0.002
+</td>
+<td>
+-0.008
+</td>
+<td>
+-0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10558.562
+</td>
+<td>
+6143.012
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[5]
+</th>
+<td>
+-0.000
+</td>
+<td>
+0.002
+</td>
+<td>
+-0.004
+</td>
+<td>
+0.004
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10858.069
+</td>
+<td>
+5358.714
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.015
+</td>
+<td>
+0.001
+</td>
+<td>
+0.013
+</td>
+<td>
+0.018
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+9595.037
+</td>
+<td>
+5908.872
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+12.606
+</td>
+<td>
+2.482
+</td>
+<td>
+8.049
+</td>
+<td>
+17.155
+</td>
+<td>
+0.023
+</td>
+<td>
+0.017
+</td>
+<td>
+12003.132
+</td>
+<td>
+6203.788
+</td>
+<td>
+1.001
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata_1,
+    var_names=var_names,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (15, 17), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace - Model 1&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_92_1.png" style="width: 1000px;"/>
+</center>
+<p>The trace looks fine!</p>
+</div>
+<div id="posterior-predictive-checks" class="section level3">
+<h3>Posterior Predictive Checks</h3>
+<p>We now want to see the model fit. We want to do it in the original scale. Therefore we need to scale our posterior samples back.</p>
+<pre class="python"><code>pp_vars_original_scale_1 = {
+    var_name: xr.apply_ufunc(
+        target_scaler.inverse_transform,
+        idata_1[&quot;posterior&quot;][var_name].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+        input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(dim=&quot;_&quot;)
+    for var_name in [&quot;mu&quot;, &quot;f_trend&quot;, &quot;fourier_contribution&quot;, &quot;z_contribution&quot;]
+}</code></pre>
+<pre class="python"><code>pp_vars_original_scale_1[&quot;channel_contributions&quot;] = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    idata_1[&quot;posterior&quot;][&quot;channel_contributions&quot;],
+    input_core_dims=[[&quot;date&quot;, &quot;channel&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;channel&quot;]],
+    vectorize=True,
+)
+
+# We define the baseline as f_trand + fourier_contribution + z_contribution
+pp_vars_original_scale_1[&quot;baseline&quot;] = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    (
+        idata_1[&quot;posterior&quot;][&quot;f_trend&quot;]
+        + idata_1[&quot;posterior&quot;][&quot;fourier_contribution&quot;]
+        + idata_1[&quot;posterior&quot;][&quot;z_contribution&quot;]
+    ).expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+    input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<p>We also scale back the likelihood.</p>
+<pre class="python"><code>pp_likelihood_original_scale_1 = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    posterior_predictive_1[&quot;posterior_predictive&quot;][&quot;y&quot;].expand_dims(
+        dim={&quot;_&quot;: 1}, axis=-1
+    ),
+    input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<p>We can now visualize the results:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(data=model_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=target, ax=ax)
+az.plot_hdi(
+    x=date,
+    y=pp_likelihood_original_scale_1,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.1, &quot;label&quot;: r&quot;likelihood $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;mu&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$\mu$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(label=&quot;Posterior Predictive - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_100_1.png" style="width: 900px;"/>
+</center>
+<p>The model does explain the data variance quite well. Let’s look into the distribution:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(
+    data=posterior_predictive_1,
+    num_pp_samples=1_000,
+    observed_rug=True,
+    random_seed=seed,
+    ax=ax,
+)
+ax.set_title(label=&quot;Posterior Predictive - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_102_2.png" style="width: 900px;"/>
+</center>
+<p>Looks good!</p>
+</div>
+<div id="model-components" class="section level3">
+<h3>Model Components</h3>
+<p>We now visualize the model components.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(data=model_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=target, ax=ax)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;channel_contributions&quot;].sel(channel=&quot;x1&quot;),
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x1$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;channel_contributions&quot;].sel(channel=&quot;x2&quot;),
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x2$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;f_trend&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$f_\text{trend}$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;fourier_contribution&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;seasonality $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;z_contribution&quot;],
+    hdi_prob=0.94,
+    color=&quot;C4&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$z$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set_title(label=&quot;Components Contributions - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_105_1.png" style="width: 900px;"/>
+</center>
+<p><strong>Remarks:</strong></p>
+<ul>
+<li>The Gaussian process is able to capture the trend component quite well.</li>
+<li>Note that the variance of the <span class="math inline">\(x_1\)</span> estimate is much wider than the one for <span class="math inline">\(x_2\)</span>. This is due to the fact <span class="math inline">\(x_1\)</span> has a high correlation with the seasonality component. Multicollinearity is a common issue in media mix models.</li>
+</ul>
+<p>We now plot the <em>baseline</em> against the media contribution:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(data=model_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=target, ax=ax)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;channel_contributions&quot;].sel(channel=&quot;x1&quot;),
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x1$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;channel_contributions&quot;].sel(channel=&quot;x2&quot;),
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x2$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;baseline&quot;],
+    hdi_prob=0.94,
+    color=&quot;C7&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;baseline $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(label=&quot;Baseline vs Channels - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_107_1.png" style="width: 900px;"/>
+</center>
+<p>Let’s now deep dive into the media contributions:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x1_effect&quot;,
+    data=data_df.assign(x1_effect=lambda x: amplitude * x[&quot;x1_effect&quot;]),
+    color=&quot;C0&quot;,
+    label=r&quot;$x1$ effect&quot;,
+    ax=ax[0],
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;channel_contributions&quot;].sel(channel=&quot;x1&quot;),
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$x1$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax[0],
+)
+ax[0].legend(loc=&quot;upper right&quot;)
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x2_effect&quot;,
+    data=data_df.assign(x2_effect=lambda x: amplitude * x[&quot;x2_effect&quot;]),
+    color=&quot;C1&quot;,
+    label=r&quot;$x2$ effect&quot;,
+    ax=ax[1],
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_1[&quot;channel_contributions&quot;].sel(channel=&quot;x2&quot;),
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$x2$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax[1],
+)
+ax[1].legend(loc=&quot;upper right&quot;)
+
+fig.suptitle(&quot;Channel Contributions - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_109_1.png" style="width: 900px;"/>
+</center>
+<p>Overall, the model recovered the true effects. Still, the estimate of <span class="math inline">\(x_2\)</span> is slightly underestimated by the model (the true value is not in the middle of the HDI).</p>
+</div>
+<div id="media-parameters" class="section level3">
+<h3>Media Parameters</h3>
+<p>We now compare the estimated against the true values for the parameters <span class="math inline">\(\alpha\)</span>, <span class="math inline">\(\lambda\)</span> and the regression coefficients <span class="math inline">\(\beta\)</span>. Recall that since we are working on the scaled space we need to scale <span class="math inline">\(\lambda\)</span> and <span class="math inline">\(\beta\)</span> back:</p>
+<pre class="python"><code>alpha_posterior_1 = idata_1[&quot;posterior&quot;][&quot;alpha&quot;]
+lam_posterior_1 = idata_1[&quot;posterior&quot;][&quot;lam&quot;] * channels_scaler.scale_
+beta_channel_posterior_1 = (
+    idata_1[&quot;posterior&quot;][&quot;beta_channel&quot;]
+    * (1 / channels_scaler.scale_)
+    * (target_scaler.scale_)
+    * (1 / amplitude)
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=alpha_posterior_1, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(
+    x=alpha1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\alpha_1$ (true)&quot;
+)
+ax.axvline(
+    x=alpha2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\alpha_2$ (true)&quot;
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(
+    label=r&quot;Adstock Parameter $\alpha$ ($94\%$ HDI) - Model 1&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_113_1.png" style="width: 700px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=lam_posterior_1, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(x=lam1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\lambda_1$ (true)&quot;)
+ax.axvline(x=lam2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\lambda_2$ (true)&quot;)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(
+    label=r&quot;Saturation Parameter $\lambda$ ($94\%$ HDI) - Model 1&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_114_1.png" style="width: 700px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=beta_channel_posterior_1, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(x=beta1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\beta_1$ (true)&quot;)
+ax.axvline(x=beta2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\beta_2$ (true)&quot;)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(
+    label=r&quot;Channel $\beta$ ($94\%$ HDI) - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_115_1.png" style="width: 700px;"/>
+</center>
+<p><strong>Remarks:</strong></p>
+<ul>
+<li>We wer able to recover the true values of the carryover parameter <span class="math inline">\(\alpha\)</span>.</li>
+<li>For <span class="math inline">\(x_1\)</span>, the true values of <span class="math inline">\(\lambda\)</span> and <span class="math inline">\(\beta\)</span> are in the <span class="math inline">\(94\%\)</span> HDI.</li>
+<li>The <span class="math inline">\(94\%\)</span> HDI of the regression coefficient <span class="math inline">\(\beta\)</span> for <span class="math inline">\(x_1\)</span> is much wider than the one for <span class="math inline">\(x_2\)</span>. As mentioned before, this is probably related with multicollinearity with the seasonal component.</li>
+<li>For <span class="math inline">\(x_2\)</span> the model overestimated the saturation parameter <span class="math inline">\(\lambda\)</span> and underestimated the regression coefficient <span class="math inline">\(\beta\)</span>. Maybe we should have had stricter priors? This is a true challenge in practice as we do not know the true values. This is a motivation for this notebook! Being able to easily pass information through ROAS than beta coefficients in the scaled space is a much more convenient way to pass information to the model.</li>
+</ul>
+</div>
+<div id="roas-estimation" class="section level3">
+<h3>ROAS Estimation</h3>
+<p>Once the model is fitted, we can use the posterior samples to compute the ROAS as in above. We simply need to generate predictions when setting the media data to zero. Let’s start with the global ROAS:</p>
+<pre class="python"><code>predictions_roas_data_all_1 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in tqdm([&quot;x1&quot;, &quot;x2&quot;]):
+    with model_1:
+        pm.set_data(
+            new_data={
+                &quot;channels_scaled&quot;: channels_scaler.transform(
+                    data_df[channels].assign(**{channel: 0})
+                )
+            }
+        )
+        predictions_roas_data_all_1[channel] = pm.sample_posterior_predictive(
+            trace=idata_1, var_names=[&quot;y&quot;, &quot;mu&quot;], progressbar=False, random_seed=rng
+        )</code></pre>
+<p>We now scale the predictions back to the original scale:</p>
+<pre class="python"><code>predictions_roas_data_scaled_diff_all_1 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_data_scaled_diff_all_1[channel] = pp_vars_original_scale_1[
+        &quot;mu&quot;
+    ] - xr.apply_ufunc(
+        target_scaler.inverse_transform,
+        predictions_roas_data_all_1[channel][&quot;posterior_predictive&quot;][&quot;mu&quot;].expand_dims(
+            dim={&quot;_&quot;: 1}, axis=-1
+        ),
+        input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(
+        dim=&quot;_&quot;
+    )</code></pre>
+<p>We can now visualize the difference iin the potential outcomes:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+az.plot_hdi(
+    x=date,
+    y=predictions_roas_data_scaled_diff_all_1[&quot;x1&quot;],
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$E(y - y_{01})$ $94\%$ HDI&quot;},
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df.assign(x1_effect=lambda x: amplitude * x[&quot;x1_effect&quot;]),
+    x=&quot;date&quot;,
+    y=&quot;x1_effect&quot;,
+    color=&quot;C0&quot;,
+    label=r&quot;$x1$ effect&quot;,
+    ax=ax[0],
+)
+az.plot_hdi(
+    x=date,
+    y=predictions_roas_data_scaled_diff_all_1[&quot;x2&quot;],
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$E(y - y_{02})$ $94\%$ HDI&quot;},
+    ax=ax[1],
+)
+sns.lineplot(
+    data=data_df.assign(x2_effect=lambda x: amplitude * x[&quot;x2_effect&quot;]),
+    x=&quot;date&quot;,
+    y=&quot;x2_effect&quot;,
+    color=&quot;C1&quot;,
+    label=r&quot;$x2$ effect&quot;,
+    ax=ax[1],
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[0].set(ylabel=None)
+ax[1].set(ylabel=None)
+fig.suptitle(&quot;Potential Outcomes Difference - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_122_1.png" style="width: 900px;"/>
+</center>
+<p>It is not surprise that this is precisely the same plot as the one we saw before. Namely, the media contributions from the model 🙃.</p>
+<p>We now compute the ROAS:</p>
+<pre class="python"><code>predictions_roas_all_1 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_all_1[channel] = (
+        predictions_roas_data_scaled_diff_all_1[channel].sum(dim=&quot;date&quot;)
+        / data_df[channel].sum()
+    )</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+az.plot_posterior(predictions_roas_all_1[&quot;x1&quot;], ref_val=roas_all_1, ax=ax[0])
+ax[0].set(title=&quot;x1&quot;)
+az.plot_posterior(predictions_roas_all_1[&quot;x2&quot;], ref_val=roas_all_2, ax=ax[1])
+ax[1].set(title=&quot;x2&quot;, xlabel=&quot;ROAS&quot;)
+fig.suptitle(&quot;Global ROAS - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_125_1.png" style="width: 1000px;"/>
+</center>
+<p>We can proceed in an analogous way for the quarterly ROAS. This time we need to loop ever time series on which we set up the quarterly spend to zero for a given channel.</p>
+<pre class="python"><code>predictions_roas_data_1 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in tqdm([&quot;x1&quot;, &quot;x2&quot;]):
+    for q in tqdm(roas_data[channel].keys()):
+        with model_1:
+            pm.set_data(
+                new_data={
+                    &quot;channels_scaled&quot;: channels_scaler.transform(
+                        roas_data[channel][q][channels]
+                    )
+                }
+            )
+            predictions_roas_data_1[channel][q] = pm.sample_posterior_predictive(
+                trace=idata_1, var_names=[&quot;y&quot;, &quot;mu&quot;], progressbar=False, random_seed=rng
+            )</code></pre>
+<pre class="python"><code>predictions_roas_data_scaled_diff_1 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_data_scaled_diff_1[channel] = {
+        q: pp_vars_original_scale_1[&quot;mu&quot;]
+        - xr.apply_ufunc(
+            target_scaler.inverse_transform,
+            idata_q[&quot;posterior_predictive&quot;][&quot;mu&quot;].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+            input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+            output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+            vectorize=True,
+        ).squeeze(dim=&quot;_&quot;)
+        for q, idata_q in tqdm(predictions_roas_data_1[channel].items())
+    }</code></pre>
+<p>In order to have a better understanding on this computation, we can plot one of such time series differences:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.axvspan(
+    xmin=quarter_ranges.loc[quarter_ranges.quarter == &quot;2022Q3&quot;][&quot;date&quot;][&quot;min&quot;].item(),
+    xmax=quarter_ranges.loc[quarter_ranges.quarter == &quot;2022Q3&quot;][&quot;date&quot;][&quot;max&quot;].item(),
+    color=&quot;C1&quot;,
+    label=&quot;2022-Q3&quot;,
+    alpha=0.2,
+)
+az.plot_hdi(
+    x=date,
+    y=predictions_roas_data_scaled_diff_1[&quot;x2&quot;][&quot;2022Q3&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.7, &quot;label&quot;: r&quot;$x2$ difference against actuals $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(
+    label=r&quot;Potential Outcomes Difference - Model 1 (Channel $x2$ (2023-Q3))&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_130_1.png" style="width: 900px;"/>
+</center>
+<p>Observe the difference is non-zero just after the selected quarter. This is due to the carryover effect of the media spend.</p>
+<p>We now divide the differences by the spend to get the ROAS:</p>
+<pre class="python"><code>predictions_roas_1 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_1[channel] = {
+        q: idata_q.sum(dim=&quot;date&quot;) / data_df.query(&quot;quarter == @q&quot;)[channel].sum()
+        for q, idata_q in predictions_roas_data_scaled_diff_1[channel].items()
+    }</code></pre>
+<p>Here are the results for <span class="math inline">\(x_1\)</span> and compare them with the true values:</p>
+<pre class="python"><code>x1_ref_vals = (
+    roas.query(&quot;channel == &#39;x1&#39;&quot;)
+    .drop(&quot;channel&quot;, axis=1)
+    .rename(columns={&quot;roas&quot;: &quot;ref_val&quot;})
+    .to_dict(orient=&quot;records&quot;)
+)
+
+axes = az.plot_posterior(
+    data=xr.concat(
+        predictions_roas_1[&quot;x1&quot;].values(),
+        dim=pd.Index(data=predictions_roas_1[&quot;x1&quot;].keys(), name=&quot;quarter&quot;),
+    ),
+    figsize=(18, 15),
+    grid=(5, 2),
+    ref_val={&quot;mu&quot;: x1_ref_vals},
+    backend_kwargs={&quot;sharex&quot;: True, &quot;layout&quot;: &quot;constrained&quot;},
+)
+fig = axes.ravel()[0].get_figure()
+fig.suptitle(
+    t=&quot;Posterior Predictive - ROAS x1 - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_135_1.png" style="width: 1000px;"/>
+</center>
+<p>Here are the results for <span class="math inline">\(x_2\)</span>:</p>
+<pre class="python"><code>x2_ref_vals = (
+    roas.query(&quot;channel == &#39;x2&#39;&quot;)
+    .drop(&quot;channel&quot;, axis=1)
+    .rename(columns={&quot;roas&quot;: &quot;ref_val&quot;})
+    .to_dict(orient=&quot;records&quot;)
+)
+
+axes = az.plot_posterior(
+    data=xr.concat(
+        predictions_roas_1[&quot;x2&quot;].values(),
+        dim=pd.Index(data=predictions_roas_1[&quot;x2&quot;].keys(), name=&quot;quarter&quot;),
+    ),
+    figsize=(18, 15),
+    grid=(5, 2),
+    ref_val={&quot;mu&quot;: x2_ref_vals},
+    backend_kwargs={&quot;sharex&quot;: True, &quot;layout&quot;: &quot;constrained&quot;},
+)
+fig = axes.ravel()[0].get_figure()
+fig.suptitle(
+    t=&quot;Posterior Predictive - ROAS x2 - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_137_1.png" style="width: 1000px;"/>
+</center>
+<p>These results are consistent with the ones from the global ROAS. The model underestimates for <span class="math inline">\(x_2\)</span> (for <span class="math inline">\(x_1\)</span> the difference lies within the reasonable uncertainty estimates).</p>
+<hr />
+</div>
+</div>
+<div id="model-2-unobserved-confounder" class="section level2">
+<h2>Model 2: Unobserved Confounder</h2>
+<p>In this second model we keep the same model structure as above but we remove the confounder <span class="math inline">\(z\)</span> as a covariate. We want to see if the model is able to recover the true effects of the media channels. We should expect the model to overestimate the effect of <span class="math inline">\(x_1\)</span> as a result of omitted variable bias.</p>
+<pre class="python"><code>with pm.Model(coords=coords) as model_2:
+    # --- Data Containers ---
+
+    index_scaled_data = pm.Data(
+        name=&quot;index_scaled&quot;,
+        value=index_scaled.to_numpy().flatten(),
+        mutable=True,
+        dims=&quot;date&quot;,
+    )
+
+    channels_scaled_data = pm.Data(
+        name=&quot;channels_scaled&quot;,
+        value=channels_scaled,
+        mutable=True,
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+
+    fourier_features_data = pm.Data(
+        name=&quot;fourier_features&quot;,
+        value=fourier_features,
+        mutable=True,
+        dims=(&quot;date&quot;, &quot;fourier_mode&quot;),
+    )
+
+    y_scaled_data = pm.Data(
+        name=&quot;y_scaled&quot;,
+        value=target_scaled.to_numpy().flatten(),
+        mutable=True,
+        dims=&quot;date&quot;,
+    )
+
+    # --- Priors ---
+
+    amplitude_trend = pm.HalfNormal(name=&quot;amplitude_trend&quot;, sigma=1)
+    ls_trend_params = pm.find_constrained_prior(
+        distribution=pm.InverseGamma,
+        lower=0.1,
+        upper=0.9,
+        init_guess={&quot;alpha&quot;: 3, &quot;beta&quot;: 1},
+        mass=0.95,
+    )
+    ls_trend = pm.InverseGamma(name=&quot;ls_trend&quot;, **ls_trend_params)
+
+    alpha = pm.Beta(name=&quot;alpha&quot;, alpha=2, beta=3, dims=&quot;channel&quot;)
+    lam = pm.Gamma(name=&quot;lam&quot;, alpha=2, beta=2, dims=&quot;channel&quot;)
+    beta_channel = pm.HalfNormal(
+        name=&quot;beta_channel&quot;,
+        sigma=channel_share.to_numpy(),
+        dims=&quot;channel&quot;,
+    )
+    beta_fourier = pm.Normal(name=&quot;beta_fourier&quot;, mu=0, sigma=1, dims=&quot;fourier_mode&quot;)
+
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=1)
+    nu = pm.Gamma(name=&quot;nu&quot;, alpha=25, beta=2)
+
+    # --- Parametrization ---
+
+    cov_trend = amplitude_trend * pm.gp.cov.ExpQuad(input_dim=1, ls=ls_trend)
+    gp_trend = pm.gp.HSGP(m=[20], c=1.5, cov_func=cov_trend)
+    f_trend = gp_trend.prior(name=&quot;f_trend&quot;, X=index_scaled_data[:, None], dims=&quot;date&quot;)
+
+    channel_adstock = pm.Deterministic(
+        name=&quot;channel_adstock&quot;,
+        var=geometric_adstock(
+            x=channels_scaled_data,
+            alpha=alpha,
+            l_max=l_max,
+            normalize=True,
+        ),
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+    channel_adstock_saturated = pm.Deterministic(
+        name=&quot;channel_adstock_saturated&quot;,
+        var=logistic_saturation(x=channel_adstock, lam=lam),
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+    channel_contributions = pm.Deterministic(
+        name=&quot;channel_contributions&quot;,
+        var=channel_adstock_saturated * beta_channel,
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+
+    fourier_contribution = pm.Deterministic(
+        name=&quot;fourier_contribution&quot;,
+        var=pt.dot(fourier_features_data, beta_fourier),
+        dims=&quot;date&quot;,
+    )
+
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=f_trend + channel_contributions.sum(axis=-1) + fourier_contribution,
+        dims=&quot;date&quot;,
+    )
+
+    # --- Likelihood ---
+    y = pm.StudentT(
+        name=&quot;y&quot;,
+        nu=nu,
+        mu=mu,
+        sigma=sigma,
+        observed=y_scaled_data,
+        dims=&quot;date&quot;,
+    )
+
+pm.model_to_graphviz(model=model_2)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_140_0.svg" style="width: 1000px;"/>
+</center>
+<p>The prior predictive check should be similar to the one above. We will skip it. We fit the model directly.</p>
+<pre class="python"><code>with model_2:
+    idata_2 = pm.sample(
+        target_accept=0.9,
+        draws=2_000,
+        chains=4,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng,
+    )
+    posterior_predictive_2 = pm.sample_posterior_predictive(
+        trace=idata_2, random_seed=rng
+    )</code></pre>
+<div id="model-diagnostics-1" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>We inspect for divergences the trace of the model:</p>
+<pre class="python"><code>idata_2[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<p><span class="math inline">\(\displaystyle 0\)</span></p>
+<pre class="python"><code>var_names = [
+    &quot;amplitude_trend&quot;,
+    &quot;ls_trend&quot;,
+    &quot;alpha&quot;,
+    &quot;lam&quot;,
+    &quot;beta_channel&quot;,
+    &quot;beta_fourier&quot;,
+    &quot;sigma&quot;,
+    &quot;nu&quot;,
+]
+
+az.summary(data=idata_2, var_names=var_names, round_to=3)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+amplitude_trend
+</th>
+<td>
+0.296
+</td>
+<td>
+0.298
+</td>
+<td>
+0.017
+</td>
+<td>
+0.867
+</td>
+<td>
+0.006
+</td>
+<td>
+0.005
+</td>
+<td>
+1669.534
+</td>
+<td>
+3017.828
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+ls_trend
+</th>
+<td>
+0.337
+</td>
+<td>
+0.049
+</td>
+<td>
+0.243
+</td>
+<td>
+0.426
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+1712.131
+</td>
+<td>
+1506.935
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+alpha[x1]
+</th>
+<td>
+0.140
+</td>
+<td>
+0.037
+</td>
+<td>
+0.068
+</td>
+<td>
+0.206
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5437.078
+</td>
+<td>
+3453.508
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+alpha[x2]
+</th>
+<td>
+0.481
+</td>
+<td>
+0.043
+</td>
+<td>
+0.396
+</td>
+<td>
+0.560
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8357.205
+</td>
+<td>
+5956.070
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+lam[x1]
+</th>
+<td>
+0.799
+</td>
+<td>
+0.202
+</td>
+<td>
+0.467
+</td>
+<td>
+1.201
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+4217.968
+</td>
+<td>
+5296.788
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+lam[x2]
+</th>
+<td>
+2.090
+</td>
+<td>
+0.584
+</td>
+<td>
+1.041
+</td>
+<td>
+3.153
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+4337.649
+</td>
+<td>
+3596.350
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_channel[x1]
+</th>
+<td>
+1.485
+</td>
+<td>
+0.334
+</td>
+<td>
+0.915
+</td>
+<td>
+2.099
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+4258.979
+</td>
+<td>
+5367.265
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_channel[x2]
+</th>
+<td>
+0.488
+</td>
+<td>
+0.127
+</td>
+<td>
+0.289
+</td>
+<td>
+0.730
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+4267.566
+</td>
+<td>
+5275.431
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[0]
+</th>
+<td>
+0.006
+</td>
+<td>
+0.007
+</td>
+<td>
+-0.004
+</td>
+<td>
+0.017
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+3971.823
+</td>
+<td>
+2878.822
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[1]
+</th>
+<td>
+0.028
+</td>
+<td>
+0.007
+</td>
+<td>
+0.016
+</td>
+<td>
+0.038
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4614.429
+</td>
+<td>
+2660.869
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[2]
+</th>
+<td>
+-0.027
+</td>
+<td>
+0.005
+</td>
+<td>
+-0.036
+</td>
+<td>
+-0.019
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6689.125
+</td>
+<td>
+5829.273
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[3]
+</th>
+<td>
+-0.001
+</td>
+<td>
+0.003
+</td>
+<td>
+-0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10266.507
+</td>
+<td>
+4704.094
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[4]
+</th>
+<td>
+-0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+-0.009
+</td>
+<td>
+0.002
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+13133.854
+</td>
+<td>
+5397.527
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[5]
+</th>
+<td>
+-0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+-0.010
+</td>
+<td>
+0.002
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11668.364
+</td>
+<td>
+5770.083
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.022
+</td>
+<td>
+0.002
+</td>
+<td>
+0.019
+</td>
+<td>
+0.026
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6113.067
+</td>
+<td>
+5754.287
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+12.444
+</td>
+<td>
+2.408
+</td>
+<td>
+7.858
+</td>
+<td>
+16.776
+</td>
+<td>
+0.027
+</td>
+<td>
+0.019
+</td>
+<td>
+7514.359
+</td>
+<td>
+5171.298
+</td>
+<td>
+1.000
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata_2,
+    var_names=var_names,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (15, 17), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace - Model 2&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_146_1.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the trace looks fine. One big difference we immediately see is that the regression coefficient <span class="math inline">\(\beta_1\)</span> of <span class="math inline">\(x_1\)</span> increased significantly as compared to the previous model</p>
+</div>
+<div id="posterior-predictive-checks-1" class="section level3">
+<h3>Posterior Predictive Checks</h3>
+<p>We run the same analysis to visualize the model fit. As berore, we need to rescale the predictions back to the original scale.</p>
+<pre class="python"><code>pp_vars_original_scale_2 = {
+    var_name: xr.apply_ufunc(
+        target_scaler.inverse_transform,
+        idata_2[&quot;posterior&quot;][var_name].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+        input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(dim=&quot;_&quot;)
+    for var_name in [&quot;mu&quot;, &quot;f_trend&quot;, &quot;fourier_contribution&quot;]
+}
+
+pp_vars_original_scale_2[&quot;channel_contributions&quot;] = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    idata_2[&quot;posterior&quot;][&quot;channel_contributions&quot;],
+    input_core_dims=[[&quot;date&quot;, &quot;channel&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;channel&quot;]],
+    vectorize=True,
+)
+
+pp_likelihood_original_scale_2 = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    posterior_predictive_2[&quot;posterior_predictive&quot;][&quot;y&quot;].expand_dims(
+        dim={&quot;_&quot;: 1}, axis=-1
+    ),
+    input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(data=model_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=target, ax=ax)
+az.plot_hdi(
+    x=date,
+    y=pp_likelihood_original_scale_2,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.1, &quot;label&quot;: r&quot;likelihood $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_2[&quot;mu&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$\mu$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(label=&quot;Posterior Predictive - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_150_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(
+    data=posterior_predictive_2,
+    num_pp_samples=1_000,
+    observed_rug=True,
+    random_seed=seed,
+    ax=ax,
+)
+ax.set_title(label=&quot;Posterior Predictive - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_151_2.png" style="width: 900px;"/>
+</center>
+<p>The models seem to have a comparable in-sample fit.</p>
+</div>
+<div id="model-components-1" class="section level3">
+<h3>Model Components</h3>
+<p>Now we inspect the model components.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(data=model_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=target, ax=ax)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_2[&quot;channel_contributions&quot;].sel(channel=&quot;x1&quot;),
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x1$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_2[&quot;channel_contributions&quot;].sel(channel=&quot;x2&quot;),
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x2$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_2[&quot;f_trend&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$f_\text{trend}$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_2[&quot;fourier_contribution&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;seasonality $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set_title(label=&quot;Components Contributions - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_154_1.png" style="width: 900px;"/>
+</center>
+<p>Here we clearly see that the model overestimates the effect of <span class="math inline">\(x_1\)</span> by <strong>a lot</strong>! 🫠</p>
+<p>Let’s compare against the true values for the media contributions:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x1_effect&quot;,
+    data=data_df.assign(x1_effect=lambda x: amplitude * x[&quot;x1_effect&quot;]),
+    color=&quot;C0&quot;,
+    label=r&quot;$x1$ effect&quot;,
+    ax=ax[0],
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_2[&quot;channel_contributions&quot;].sel(channel=&quot;x1&quot;),
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$x1$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax[0],
+)
+ax[0].legend(loc=&quot;upper right&quot;)
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x2_effect&quot;,
+    data=data_df.assign(x2_effect=lambda x: amplitude * x[&quot;x2_effect&quot;]),
+    color=&quot;C1&quot;,
+    label=r&quot;$x2$ effect&quot;,
+    ax=ax[1],
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_2[&quot;channel_contributions&quot;].sel(channel=&quot;x2&quot;),
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$x2$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax[1],
+)
+ax[1].legend(loc=&quot;upper right&quot;)
+
+fig.suptitle(&quot;Channel Contributions - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_157_1.png" style="width: 900px;"/>
+</center>
+<p>The overestimation of <span class="math inline">\(x_1\)</span> is close to <span class="math inline">\(100\%\)</span>! Note that the estimate of <span class="math inline">\(x_2\)</span> is not that bad, but still underestimated.</p>
+</div>
+<div id="media-parameters-1" class="section level3">
+<h3>Media Parameters</h3>
+<p>We now</p>
+<pre class="python"><code>alpha_posterior_2 = idata_2[&quot;posterior&quot;][&quot;alpha&quot;]
+lam_posterior_2 = idata_2[&quot;posterior&quot;][&quot;lam&quot;] * channels_scaler.scale_
+beta_channel_posterior_2 = idata_2[&quot;posterior&quot;][&quot;beta_channel&quot;] * channels_scaler.scale_</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=[alpha_posterior_2], combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(
+    x=alpha1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\alpha_1$ (true)&quot;
+)
+ax.axvline(
+    x=alpha2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\alpha_2$ (true)&quot;
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(
+    label=r&quot;Adstock Parameter $\alpha$ ($94\%$ HDI) - Model 2&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_161_1.png" style="width: 700px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=lam_posterior_2, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(x=lam1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\lambda_1$ (true)&quot;)
+ax.axvline(x=lam2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\lambda_2$ (true)&quot;)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(
+    label=r&quot;Saturation Parameter $\lambda$ ($94\%$ HDI) - Model 2&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_162_1.png" style="width: 700px;"/>
+</center>
+<pre class="python"><code>beta_channel_posterior_2 = (
+    idata_2[&quot;posterior&quot;][&quot;beta_channel&quot;]
+    * (1 / channels_scaler.scale_)
+    * (target_scaler.scale_)
+    * (1 / amplitude)
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=beta_channel_posterior_2, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(x=beta1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\beta_1$ (true)&quot;)
+ax.axvline(x=beta2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\beta_2$ (true)&quot;)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(
+    label=r&quot;Channel $\beta$ ($94\%$ HDI) - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_164_1.png" style="width: 700px;"/>
+</center>
+<p>The carryover parameter <span class="math inline">\(\alpha_1\)</span> and the regression coefficient <span class="math inline">\(\beta_1\)</span> for <span class="math inline">\(x_1\)</span> are the ones that are most affected by the omitted variable bias. For <span class="math inline">\(x_2\)</span> the model is able to recover the true values within the <span class="math inline">\(94\%\)</span> HDI.</p>
+</div>
+<div id="roas-estimation-1" class="section level3">
+<h3>ROAS Estimation</h3>
+<p>We now compute the ROAS as before. We start with the global ROAS:</p>
+<pre class="python"><code>predictions_roas_data_all_2 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in tqdm([&quot;x1&quot;, &quot;x2&quot;]):
+    with model_2:
+        pm.set_data(
+            new_data={
+                &quot;channels_scaled&quot;: channels_scaler.transform(
+                    data_df[channels].assign(**{channel: 0})
+                )
+            }
+        )
+        predictions_roas_data_all_2[channel] = pm.sample_posterior_predictive(
+            trace=idata_2, var_names=[&quot;y&quot;, &quot;mu&quot;], progressbar=False, random_seed=rng
+        )</code></pre>
+<pre class="python"><code>predictions_roas_data_scaled_diff_all_2 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_data_scaled_diff_all_2[channel] = pp_vars_original_scale_2[
+        &quot;mu&quot;
+    ] - xr.apply_ufunc(
+        target_scaler.inverse_transform,
+        predictions_roas_data_all_2[channel][&quot;posterior_predictive&quot;][&quot;mu&quot;].expand_dims(
+            dim={&quot;_&quot;: 1}, axis=-1
+        ),
+        input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(
+        dim=&quot;_&quot;
+    )</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+az.plot_hdi(
+    x=date,
+    y=predictions_roas_data_scaled_diff_all_2[&quot;x1&quot;],
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$E(y - y_{01})$ $94\%$ HDI&quot;},
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df.assign(x1_effect=lambda x: amplitude * x[&quot;x1_effect&quot;]),
+    x=&quot;date&quot;,
+    y=&quot;x1_effect&quot;,
+    color=&quot;C0&quot;,
+    label=r&quot;$x1$ effect&quot;,
+    ax=ax[0],
+)
+az.plot_hdi(
+    x=date,
+    y=predictions_roas_data_scaled_diff_all_2[&quot;x2&quot;],
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$E(y - y_{02})$ $94\%$ HDI&quot;},
+    ax=ax[1],
+)
+sns.lineplot(
+    data=data_df.assign(x2_effect=lambda x: amplitude * x[&quot;x2_effect&quot;]),
+    x=&quot;date&quot;,
+    y=&quot;x2_effect&quot;,
+    color=&quot;C1&quot;,
+    label=r&quot;$x2$ effect&quot;,
+    ax=ax[1],
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[0].set(ylabel=None)
+ax[1].set(ylabel=None)
+fig.suptitle(&quot;Potential Outcomes Difference - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_169_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>predictions_roas_all_2 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_all_2[channel] = (
+        predictions_roas_data_scaled_diff_all_2[channel].sum(dim=&quot;date&quot;)
+        / data_df[channel].sum()
+    )</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+az.plot_posterior(predictions_roas_all_2[&quot;x1&quot;], ref_val=roas_all_1, ax=ax[0])
+ax[1].set(title=&quot;x1&quot;)
+az.plot_posterior(predictions_roas_all_2[&quot;x2&quot;], ref_val=roas_all_2, ax=ax[1])
+ax[1].set(title=&quot;x2&quot;, xlabel=&quot;ROAS&quot;)
+fig.suptitle(&quot;Global ROAS - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_171_1.png" style="width: 1000px;"/>
+</center>
+<p>The ROAS overestimation of <span class="math inline">\(x_1\)</span> is massive! It is of the order of <span class="math inline">\(100\%\)</span>. For <span class="math inline">\(x_2\)</span> the estimated global is less than the true value (but less dramatic than <span class="math inline">\(x_1\)</span>).</p>
+<p>We now compute the quarterly ROAS as before.</p>
+<pre class="python"><code>predictions_roas_data_2 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in tqdm([&quot;x1&quot;, &quot;x2&quot;]):
+    for q in tqdm(roas_data[channel].keys()):
+        with model_2:
+            pm.set_data(
+                new_data={
+                    &quot;channels_scaled&quot;: channels_scaler.transform(
+                        roas_data[channel][q][channels]
+                    )
+                }
+            )
+            predictions_roas_data_2[channel][q] = pm.sample_posterior_predictive(
+                trace=idata_2, var_names=[&quot;y&quot;, &quot;mu&quot;], progressbar=False, random_seed=rng
+            )</code></pre>
+<pre class="python"><code>predictions_roas_data_scaled_diff_2 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_data_scaled_diff_2[channel] = {
+        q: pp_vars_original_scale_2[&quot;mu&quot;]
+        - xr.apply_ufunc(
+            target_scaler.inverse_transform,
+            idata_q[&quot;posterior_predictive&quot;][&quot;mu&quot;].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+            input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+            output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+            vectorize=True,
+        ).squeeze(dim=&quot;_&quot;)
+        for q, idata_q in tqdm(predictions_roas_data_2[channel].items())
+    }</code></pre>
+<pre class="python"><code>predictions_roas_2 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_2[channel] = {
+        q: idata_q.sum(dim=&quot;date&quot;) / data_df.query(&quot;quarter == @q&quot;)[channel].sum()
+        for q, idata_q in predictions_roas_data_scaled_diff_2[channel].items()
+    }</code></pre>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=xr.concat(
+        predictions_roas_2[&quot;x1&quot;].values(),
+        dim=pd.Index(data=predictions_roas_2[&quot;x1&quot;].keys(), name=&quot;quarter&quot;),
+    ),
+    figsize=(18, 15),
+    grid=(5, 2),
+    ref_val={&quot;mu&quot;: x1_ref_vals},
+    backend_kwargs={&quot;sharex&quot;: True, &quot;layout&quot;: &quot;constrained&quot;},
+)
+fig = axes.ravel()[0].get_figure()
+fig.suptitle(
+    t=&quot;Posterior Predictive - ROAS x1 - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_176_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=xr.concat(
+        predictions_roas_2[&quot;x2&quot;].values(),
+        dim=pd.Index(data=predictions_roas_2[&quot;x2&quot;].keys(), name=&quot;quarter&quot;),
+    ),
+    figsize=(18, 15),
+    grid=(5, 2),
+    ref_val={&quot;mu&quot;: x2_ref_vals},
+    backend_kwargs={&quot;sharex&quot;: True, &quot;layout&quot;: &quot;constrained&quot;},
+)
+fig = axes.ravel()[0].get_figure()
+fig.suptitle(
+    t=&quot;Posterior Predictive - ROAS x2 - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_177_1.png" style="width: 1000px;"/>
+</center>
+<p>The quarterly ROAS present the same pattern as the global ROAS. The model overestimates the ROAS for <span class="math inline">\(x_1\)</span> heavily!</p>
+<hr />
+</div>
+</div>
+<div id="model-3-roas-calibration" class="section level2">
+<h2>Model 3: ROAS Calibration</h2>
+<p>In this third model we use the parametrization presented in the paper <a href="https://research.google/pubs/media-mix-model-calibration-with-bayesian-priors/">“Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al.</a>. Here is the description from the paper:</p>
+<center>
+<img src="../images/mmm_roas_files/formula_14-15.png" style="width: 800px;"/>
+</center>
+<p><strong>Remark:</strong> In the paper they use a Hill saturation function instead of a logistic one. This is not important for the method. It works in both cases.</p>
+<p>We show that by adding ROAS estimations (e.g. coming from previous experiments or domain knowledge) as priors we are able to mitigate a significant amount of the omitted variable bias.</p>
+<p>We start with the estimation of the ROAS in the original scale. We set them so that they are close to the true values (i.e. assuming the experiment worked). In order to include them into the model we need to scale them (as always, the devil is in the details).</p>
+<pre class="python"><code>roas_x1_bar = 95
+roas_x2_bar = 170
+
+roas_x1_bar_scaled = roas_x1_bar / target_scaler.scale_.item()
+roas_x2_bar_scaled = roas_x2_bar / target_scaler.scale_.item()
+
+roas_bar_scaled = np.array([roas_x1_bar_scaled, roas_x2_bar_scaled])</code></pre>
+<p>For the prior distribution we choose a distribution which is centered at the (scaled) ROAS and has a standard deviation approximately equal to the uncertainty error of the estimation. We can use a log-normal distribution to ensure the ROAS values are positive.</p>
+<pre class="python"><code>error = 30
+error_scaled = error / target_scaler.scale_.item()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+pz.LogNormal(mu=np.log(roas_x1_bar_scaled), sigma=error_scaled).plot_pdf(
+    color=&quot;C0&quot;, ax=ax
+)
+ax.axvline(x=roas_x1_bar_scaled, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2)
+pz.LogNormal(mu=np.log(roas_x2_bar_scaled), sigma=error_scaled).plot_pdf(
+    color=&quot;C1&quot;, ax=ax
+)
+ax.axvline(x=roas_x2_bar_scaled, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2)
+ax.set(xlabel=&quot;ROAS (scaled)&quot;)
+ax.set_title(label=r&quot;Prior Distribution ROAS&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_183_1.png" style="width: 900px;"/>
+</center>
+<div id="model-specification-1" class="section level3">
+<h3>Model Specification</h3>
+<p>In the following model we set priors on the ROAS instead of the regression coefficients.</p>
+<pre class="python"><code>eps = np.finfo(float).eps
+
+
+with pm.Model(coords=coords) as model_3:
+    # --- Data Containers ---
+
+    index_scaled_data = pm.Data(
+        name=&quot;index_scaled&quot;,
+        value=index_scaled.to_numpy().flatten(),
+        mutable=True,
+        dims=&quot;date&quot;,
+    )
+
+    channels_scaled_data = pm.Data(
+        name=&quot;channels_scaled&quot;,
+        value=channels_scaled,
+        mutable=True,
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+
+    channels_cost_data = pm.Data(
+        name=&quot;channels_cost&quot;,
+        value=data_df[channels].to_numpy(),
+        mutable=True,
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+
+    fourier_features_data = pm.Data(
+        name=&quot;fourier_features&quot;,
+        value=fourier_features,
+        mutable=True,
+        dims=(&quot;date&quot;, &quot;fourier_mode&quot;),
+    )
+
+    y_scaled_data = pm.Data(
+        name=&quot;y_scaled&quot;,
+        value=target_scaled.to_numpy().flatten(),
+        mutable=True,
+        dims=&quot;date&quot;,
+    )
+
+    # --- Priors ---
+
+    amplitude_trend = pm.HalfNormal(name=&quot;amplitude_trend&quot;, sigma=1)
+    ls_trend_params = pm.find_constrained_prior(
+        distribution=pm.InverseGamma,
+        lower=0.1,
+        upper=0.9,
+        init_guess={&quot;alpha&quot;: 3, &quot;beta&quot;: 1},
+        mass=0.95,
+    )
+    ls_trend = pm.InverseGamma(name=&quot;ls_trend&quot;, **ls_trend_params)
+
+    alpha = pm.Beta(name=&quot;alpha&quot;, alpha=2, beta=3, dims=&quot;channel&quot;)
+    lam = pm.Gamma(name=&quot;lam&quot;, alpha=2, beta=2, dims=&quot;channel&quot;)
+    roas = pm.LogNormal(
+        name=&quot;roas&quot;,
+        mu=np.log(roas_bar_scaled),
+        sigma=error_scaled,
+        dims=&quot;channel&quot;,
+    )
+    beta_fourier = pm.Normal(name=&quot;beta_fourier&quot;, mu=0, sigma=1, dims=&quot;fourier_mode&quot;)
+
+    sigma = pm.HalfNormal(name=&quot;sigma&quot;, sigma=1)
+    nu = pm.Gamma(name=&quot;nu&quot;, alpha=25, beta=2)
+
+    # --- Parametrization ---
+
+    cov_trend = amplitude_trend * pm.gp.cov.ExpQuad(input_dim=1, ls=ls_trend)
+    gp_trend = pm.gp.HSGP(m=[20], c=1.5, cov_func=cov_trend)
+    f_trend = gp_trend.prior(name=&quot;f_trend&quot;, X=index_scaled_data[:, None], dims=&quot;date&quot;)
+
+    channel_adstock = pm.Deterministic(
+        name=&quot;channel_adstock&quot;,
+        var=geometric_adstock(
+            x=channels_scaled_data,
+            alpha=alpha,
+            l_max=l_max,
+            normalize=True,
+        ),
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+    channel_adstock_saturated = pm.Deterministic(
+        name=&quot;channel_adstock_saturated&quot;,
+        var=logistic_saturation(x=channel_adstock, lam=lam),
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+    beta_channel = pm.Deterministic(
+        name=&quot;beta_channel&quot;,
+        var=(channels_cost_data.sum(axis=0) * roas)
+        / (channel_adstock_saturated.sum(axis=0) + eps),
+        dims=&quot;channel&quot;,
+    )
+    channel_contributions = pm.Deterministic(
+        name=&quot;channel_contributions&quot;,
+        var=channel_adstock_saturated * beta_channel,
+        dims=(&quot;date&quot;, &quot;channel&quot;),
+    )
+
+    fourier_contribution = pm.Deterministic(
+        name=&quot;fourier_contribution&quot;,
+        var=pt.dot(fourier_features_data, beta_fourier),
+        dims=&quot;date&quot;,
+    )
+
+    mu = pm.Deterministic(
+        name=&quot;mu&quot;,
+        var=f_trend + channel_contributions.sum(axis=-1) + fourier_contribution,
+        dims=&quot;date&quot;,
+    )
+
+    # --- Likelihood ---
+    y = pm.StudentT(
+        name=&quot;y&quot;,
+        nu=nu,
+        mu=mu,
+        sigma=sigma,
+        observed=y_scaled_data,
+        dims=&quot;date&quot;,
+    )
+
+pm.model_to_graphviz(model=model_3)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_185_0.svg" style="width: 1000px;"/>
+</center>
+<p><strong>Remark:</strong> The <code>channels_cost_data</code> has the cost of each channel without any scaling. Note that you could use impressions to model the contribution of each channel (<code>channels_scaled_data</code>). This method is agnostic to the type of data you use.</p>
+</div>
+<div id="prior-predictive-checks-1" class="section level3">
+<h3>Prior Predictive Checks</h3>
+<p>Let’s see how this parametrization changes the prior predictive distribution:</p>
+<pre class="python"><code>with model_3:
+    prior_predictive_3 = pm.sample_prior_predictive(samples=2_000, random_seed=rng)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(data=prior_predictive_3, group=&quot;prior&quot;, kind=&quot;kde&quot;, ax=ax)
+ax.set_title(label=&quot;Prior Predictive - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_189_2.png" style="width: 900px;"/>
+</center>
+<p>It actually looks very similar to the first model.</p>
+</div>
+<div id="model-fitting-1" class="section level3">
+<h3>Model Fitting</h3>
+<p>We now fit the model.</p>
+<pre class="python"><code>with model_3:
+    idata_3 = pm.sample(
+        target_accept=0.9,
+        draws=2_000,
+        chains=4,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng,
+    )
+    posterior_predictive_3 = pm.sample_posterior_predictive(
+        trace=idata_3, random_seed=rng
+    )</code></pre>
+<p>The sampling time is comparable with the models above.</p>
+</div>
+<div id="model-diagnostics-2" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>We now take a look into the results.</p>
+<pre class="python"><code>idata_3[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<p><span class="math inline">\(\displaystyle 0\)</span></p>
+<pre class="python"><code>var_names = [
+    &quot;amplitude_trend&quot;,
+    &quot;ls_trend&quot;,
+    &quot;alpha&quot;,
+    &quot;lam&quot;,
+    &quot;roas&quot;,
+    &quot;beta_channel&quot;,
+    &quot;beta_fourier&quot;,
+    &quot;sigma&quot;,
+    &quot;nu&quot;,
+]
+
+az.summary(data=idata_3, var_names=var_names, round_to=3)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+amplitude_trend
+</th>
+<td>
+0.390
+</td>
+<td>
+0.354
+</td>
+<td>
+0.026
+</td>
+<td>
+1.066
+</td>
+<td>
+0.008
+</td>
+<td>
+0.005
+</td>
+<td>
+1577.531
+</td>
+<td>
+2360.063
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+ls_trend
+</th>
+<td>
+0.328
+</td>
+<td>
+0.047
+</td>
+<td>
+0.235
+</td>
+<td>
+0.410
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+1510.604
+</td>
+<td>
+1477.460
+</td>
+<td>
+1.003
+</td>
+</tr>
+<tr>
+<th>
+alpha[x1]
+</th>
+<td>
+0.035
+</td>
+<td>
+0.022
+</td>
+<td>
+0.002
+</td>
+<td>
+0.074
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8148.597
+</td>
+<td>
+4067.383
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+alpha[x2]
+</th>
+<td>
+0.527
+</td>
+<td>
+0.041
+</td>
+<td>
+0.452
+</td>
+<td>
+0.603
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8590.509
+</td>
+<td>
+6258.338
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+lam[x1]
+</th>
+<td>
+0.288
+</td>
+<td>
+0.160
+</td>
+<td>
+0.020
+</td>
+<td>
+0.569
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+7728.718
+</td>
+<td>
+3689.815
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+lam[x2]
+</th>
+<td>
+1.362
+</td>
+<td>
+0.880
+</td>
+<td>
+0.073
+</td>
+<td>
+2.986
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+6400.545
+</td>
+<td>
+4857.139
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+roas[x1]
+</th>
+<td>
+0.217
+</td>
+<td>
+0.012
+</td>
+<td>
+0.194
+</td>
+<td>
+0.239
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7185.918
+</td>
+<td>
+6334.511
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+roas[x2]
+</th>
+<td>
+0.294
+</td>
+<td>
+0.013
+</td>
+<td>
+0.269
+</td>
+<td>
+0.319
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+9086.750
+</td>
+<td>
+5634.668
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_channel[x1]
+</th>
+<td>
+3.640
+</td>
+<td>
+4.206
+</td>
+<td>
+0.713
+</td>
+<td>
+8.634
+</td>
+<td>
+0.071
+</td>
+<td>
+0.050
+</td>
+<td>
+7509.496
+</td>
+<td>
+3694.108
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_channel[x2]
+</th>
+<td>
+1.600
+</td>
+<td>
+7.306
+</td>
+<td>
+0.256
+</td>
+<td>
+3.892
+</td>
+<td>
+0.131
+</td>
+<td>
+0.093
+</td>
+<td>
+6502.806
+</td>
+<td>
+4805.879
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[0]
+</th>
+<td>
+0.008
+</td>
+<td>
+0.008
+</td>
+<td>
+-0.009
+</td>
+<td>
+0.020
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+2930.040
+</td>
+<td>
+1823.914
+</td>
+<td>
+1.002
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[1]
+</th>
+<td>
+0.042
+</td>
+<td>
+0.008
+</td>
+<td>
+0.029
+</td>
+<td>
+0.055
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+3880.937
+</td>
+<td>
+2236.211
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[2]
+</th>
+<td>
+-0.051
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.059
+</td>
+<td>
+-0.043
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+9493.599
+</td>
+<td>
+6236.470
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[3]
+</th>
+<td>
+-0.002
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.009
+</td>
+<td>
+0.005
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+17322.683
+</td>
+<td>
+5873.648
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[4]
+</th>
+<td>
+-0.003
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.010
+</td>
+<td>
+0.004
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16458.519
+</td>
+<td>
+5724.276
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+beta_fourier[5]
+</th>
+<td>
+0.002
+</td>
+<td>
+0.004
+</td>
+<td>
+-0.005
+</td>
+<td>
+0.009
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+14683.029
+</td>
+<td>
+5765.216
+</td>
+<td>
+1.001
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.027
+</td>
+<td>
+0.002
+</td>
+<td>
+0.023
+</td>
+<td>
+0.031
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7344.703
+</td>
+<td>
+5838.703
+</td>
+<td>
+1.000
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+12.098
+</td>
+<td>
+2.441
+</td>
+<td>
+7.685
+</td>
+<td>
+16.658
+</td>
+<td>
+0.025
+</td>
+<td>
+0.018
+</td>
+<td>
+9119.262
+</td>
+<td>
+4900.607
+</td>
+<td>
+1.001
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata_3,
+    var_names=var_names,
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (15, 17), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace - Model 3&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_197_1.png" style="width: 1000px;"/>
+</center>
+<p>Everything looks in order. Note that the ROAS posterior distribution is very close to the prior.</p>
+</div>
+<div id="posterior-predictive-checks-2" class="section level3">
+<h3>Posterior Predictive Checks</h3>
+<p>We now evaluate the model fit.</p>
+<pre class="python"><code>pp_vars_original_scale_3 = {
+    var_name: xr.apply_ufunc(
+        target_scaler.inverse_transform,
+        idata_3[&quot;posterior&quot;][var_name].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+        input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(dim=&quot;_&quot;)
+    for var_name in [&quot;mu&quot;, &quot;f_trend&quot;, &quot;fourier_contribution&quot;]
+}</code></pre>
+<pre class="python"><code>pp_vars_original_scale_3[&quot;channel_contributions&quot;] = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    idata_3[&quot;posterior&quot;][&quot;channel_contributions&quot;],
+    input_core_dims=[[&quot;date&quot;, &quot;channel&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;channel&quot;]],
+    vectorize=True,
+)
+
+pp_vars_original_scale_3[&quot;baseline&quot;] = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    (
+        idata_3[&quot;posterior&quot;][&quot;f_trend&quot;] + idata_3[&quot;posterior&quot;][&quot;fourier_contribution&quot;]
+    ).expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+    input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<pre class="python"><code>pp_likelihood_original_scale_3 = xr.apply_ufunc(
+    target_scaler.inverse_transform,
+    posterior_predictive_3[&quot;posterior_predictive&quot;][&quot;y&quot;].expand_dims(
+        dim={&quot;_&quot;: 1}, axis=-1
+    ),
+    input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+    vectorize=True,
+).squeeze(dim=&quot;_&quot;)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(data=model_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=target, ax=ax)
+az.plot_hdi(
+    x=date,
+    y=pp_likelihood_original_scale_3,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.1, &quot;label&quot;: r&quot;likelihood $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_3[&quot;mu&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$\mu$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(label=&quot;Posterior Predictive - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_203_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(
+    data=posterior_predictive_3,
+    num_pp_samples=1_000,
+    observed_rug=True,
+    random_seed=seed,
+    ax=ax,
+)
+ax.set_title(label=&quot;Posterior Predictive - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_204_2.png" style="width: 900px;"/>
+</center>
+<p>The posterior predictive distribution looks worse than the previous models.</p>
+</div>
+<div id="model-components-2" class="section level3">
+<h3>Model Components</h3>
+<p>We now plot the model components.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(data=model_df, x=&quot;date&quot;, y=&quot;y&quot;, color=&quot;black&quot;, label=target, ax=ax)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_3[&quot;channel_contributions&quot;].sel(channel=&quot;x1&quot;),
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x1$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_3[&quot;channel_contributions&quot;].sel(channel=&quot;x2&quot;),
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$x2$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_3[&quot;f_trend&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$f_\text{trend}$ $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_3[&quot;fourier_contribution&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;seasonality $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set_title(label=&quot;Components Contributions - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_207_1.png" style="width: 900px;"/>
+</center>
+<p>Observe that the <span class="math inline">\(94\%\)</span> HDI for both channels is much narrower than the previous models. This is because we are constraining the values through the ROAS tight priors.</p>
+<p>Let’s compare now the media contributions against the true values:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x1_effect&quot;,
+    data=data_df.assign(x1_effect=lambda x: amplitude * x[&quot;x1_effect&quot;]),
+    color=&quot;C0&quot;,
+    label=r&quot;$x1$ effect&quot;,
+    ax=ax[0],
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_3[&quot;channel_contributions&quot;].sel(channel=&quot;x1&quot;),
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$x1$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax[0],
+)
+ax[0].legend(loc=&quot;upper right&quot;)
+
+sns.lineplot(
+    x=&quot;date&quot;,
+    y=&quot;x2_effect&quot;,
+    data=data_df.assign(x2_effect=lambda x: amplitude * x[&quot;x2_effect&quot;]),
+    color=&quot;C1&quot;,
+    label=r&quot;$x2$ effect&quot;,
+    ax=ax[1],
+)
+az.plot_hdi(
+    x=date,
+    y=pp_vars_original_scale_3[&quot;channel_contributions&quot;].sel(channel=&quot;x2&quot;),
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$x2$ contribution $94\%$ HDI&quot;},
+    smooth=False,
+    ax=ax[1],
+)
+ax[1].legend(loc=&quot;upper right&quot;)
+
+fig.suptitle(&quot;Channel Contributions - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_210_1.png" style="width: 900px;"/>
+</center>
+<p>The result for both channels is much better than the previous models *remember we do not have <span class="math inline">\(z\)</span> in the model).</p>
+</div>
+<div id="media-parameters-2" class="section level3">
+<h3>Media Parameters</h3>
+<pre class="python"><code>alpha_posterior_3 = idata_3[&quot;posterior&quot;][&quot;alpha&quot;]
+lam_posterior_3 = idata_3[&quot;posterior&quot;][&quot;lam&quot;] * channels_scaler.scale_
+beta_channel_posterior_3 = idata_3[&quot;posterior&quot;][&quot;beta_channel&quot;] * channels_scaler.scale_</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=alpha_posterior_3, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(
+    x=alpha1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\alpha_1$ (true)&quot;
+)
+ax.axvline(
+    x=alpha2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\alpha_2$ (true)&quot;
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set_title(
+    label=r&quot;Adstock Parameter $\alpha$ ($94\%$ HDI) - Model 2&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_214_1.png" style="width: 700px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=lam_posterior_3, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(x=lam1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\lambda_1$ (true)&quot;)
+ax.axvline(x=lam2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\lambda_2$ (true)&quot;)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(
+    label=r&quot;Saturation Parameter $\lambda$ ($94\%$ HDI) - Model 2&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_215_1.png" style="width: 700px;"/>
+</center>
+<pre class="python"><code>beta_channel_posterior_3 = (
+    idata_3[&quot;posterior&quot;][&quot;beta_channel&quot;]
+    * (1 / channels_scaler.scale_)
+    * (target_scaler.scale_)
+    * (1 / amplitude)
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+az.plot_forest(
+    data=beta_channel_posterior_3, combined=True, hdi_prob=0.94, colors=&quot;black&quot;, ax=ax
+)
+ax.axvline(x=beta1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\beta_1$ (true)&quot;)
+ax.axvline(x=beta2, color=&quot;C1&quot;, linestyle=&quot;--&quot;, linewidth=2, label=r&quot;$\beta_2$ (true)&quot;)
+ax.legend(loc=&quot;upper right&quot;)
+ax.set_title(
+    label=r&quot;Channel $\beta$ ($94\%$ HDI) - Model 1&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_217_1.png" style="width: 700px;"/>
+</center>
+<ul>
+<li>For <span class="math inline">\(x_2\)</span> we recovered all the media parameters within the <span class="math inline">\(94\%\)</span> HDI.</li>
+<li>For <span class="math inline">\(x_1\)</span> the model heavily underestimated the carryover parameter <span class="math inline">\(\alpha_1\)</span> and on the other hand overestimated the regression coefficient <span class="math inline">\(\beta_1\)</span>. The saturation parameter <span class="math inline">\(\lambda_1\)</span> was closer to the true value, but still outside of the <span class="math inline">\(94\%\)</span> HDI.</li>
+</ul>
+</div>
+<div id="roas-estimation-2" class="section level3">
+<h3>ROAS Estimation</h3>
+<p>Finally, we compute the ROAS. We should expect them to be much closer to the true values than model 2 since we have explicit tight priors over them. Let’s start with the global ROAS:</p>
+<pre class="python"><code>predictions_roas_data_all_3 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in tqdm([&quot;x1&quot;, &quot;x2&quot;]):
+    with model_3:
+        pm.set_data(
+            new_data={
+                &quot;channels_scaled&quot;: channels_scaler.transform(
+                    data_df[channels].assign(**{channel: 0}),
+                ),
+                &quot;channels_cost&quot;: data_df[channels].assign(**{channel: 0}),
+            }
+        )
+        predictions_roas_data_all_3[channel] = pm.sample_posterior_predictive(
+            trace=idata_3, var_names=[&quot;y&quot;, &quot;mu&quot;], progressbar=False, random_seed=rng
+        )</code></pre>
+<p>Note we hat to replace the media model data (<code>channels_scaled</code>) and the media cost data (<code>channels_cost</code>). Here you can see that we could use impressions instead of cost to model the contribution of each channel.</p>
+<pre class="python"><code>predictions_roas_data_scaled_diff_all_3 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_data_scaled_diff_all_3[channel] = pp_vars_original_scale_3[
+        &quot;mu&quot;
+    ] - xr.apply_ufunc(
+        target_scaler.inverse_transform,
+        predictions_roas_data_all_3[channel][&quot;posterior_predictive&quot;][&quot;mu&quot;].expand_dims(
+            dim={&quot;_&quot;: 1}, axis=-1
+        ),
+        input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+        vectorize=True,
+    ).squeeze(dim=&quot;_&quot;)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+az.plot_hdi(
+    x=date,
+    y=predictions_roas_data_scaled_diff_all_3[&quot;x1&quot;],
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$E(y - y_{01})$ $94\%$ HDI&quot;},
+    ax=ax[0],
+)
+sns.lineplot(
+    data=data_df.assign(x1_effect=lambda x: amplitude * x[&quot;x1_effect&quot;]),
+    x=&quot;date&quot;,
+    y=&quot;x1_effect&quot;,
+    color=&quot;C0&quot;,
+    label=r&quot;$x1$ effect&quot;,
+    ax=ax[0],
+)
+az.plot_hdi(
+    x=date,
+    y=predictions_roas_data_scaled_diff_all_3[&quot;x2&quot;],
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$E(y - y_{02})$ $94\%$ HDI&quot;},
+    ax=ax[1],
+)
+sns.lineplot(
+    data=data_df.assign(x2_effect=lambda x: amplitude * x[&quot;x2_effect&quot;]),
+    x=&quot;date&quot;,
+    y=&quot;x2_effect&quot;,
+    color=&quot;C1&quot;,
+    label=r&quot;$x2$ effect&quot;,
+    ax=ax[1],
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[0].set(ylabel=None)
+ax[1].set(ylabel=None)
+fig.suptitle(&quot;Potential Outcomes Difference - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_223_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>predictions_roas_all_3 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_all_3[channel] = (
+        predictions_roas_data_scaled_diff_all_3[channel].sum(dim=&quot;date&quot;)
+        / data_df[channel].sum()
+    )</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 7), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+az.plot_posterior(predictions_roas_all_3[&quot;x1&quot;], ref_val=roas_all_1, ax=ax[0])
+ax[1].set(title=&quot;x1&quot;)
+az.plot_posterior(predictions_roas_all_3[&quot;x2&quot;], ref_val=roas_all_2, ax=ax[1])
+ax[1].set(title=&quot;x2&quot;, xlabel=&quot;ROAS&quot;)
+fig.suptitle(&quot;Global ROAS - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_225_1.png" style="width: 1000px;"/>
+</center>
+<p>The results look as expected 🚀! The ROAS estimate for <span class="math inline">\(x_1\)</span> is much closer to the true value than in the second model.</p>
+<p>We wrap up the analysis by computing the quarterly ROAS.</p>
+<pre class="python"><code>predictions_roas_data_3 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in tqdm([&quot;x1&quot;, &quot;x2&quot;]):
+    for q in tqdm(roas_data[channel].keys()):
+        with model_3:
+            pm.set_data(
+                new_data={
+                    &quot;channels_scaled&quot;: channels_scaler.transform(
+                        roas_data[channel][q][channels]
+                    ),
+                    &quot;channels_cost&quot;: roas_data[channel][q][channels],
+                }
+            )
+            predictions_roas_data_3[channel][q] = pm.sample_posterior_predictive(
+                trace=idata_3, var_names=[&quot;y&quot;, &quot;mu&quot;], progressbar=False, random_seed=rng
+            )</code></pre>
+<pre class="python"><code>predictions_roas_data_scaled_diff_3 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_data_scaled_diff_3[channel] = {
+        q: pp_vars_original_scale_3[&quot;mu&quot;]
+        - xr.apply_ufunc(
+            target_scaler.inverse_transform,
+            idata_q[&quot;posterior_predictive&quot;][&quot;mu&quot;].expand_dims(dim={&quot;_&quot;: 1}, axis=-1),
+            input_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+            output_core_dims=[[&quot;date&quot;, &quot;_&quot;]],
+            vectorize=True,
+        ).squeeze(dim=&quot;_&quot;)
+        for q, idata_q in tqdm(predictions_roas_data_3[channel].items())
+    }</code></pre>
+<pre class="python"><code>predictions_roas_3 = {&quot;x1&quot;: {}, &quot;x2&quot;: {}}
+
+for channel in [&quot;x1&quot;, &quot;x2&quot;]:
+    predictions_roas_3[channel] = {
+        q: idata_q.sum(dim=&quot;date&quot;) / data_df.query(&quot;quarter == @q&quot;)[channel].sum()
+        for q, idata_q in predictions_roas_data_scaled_diff_3[channel].items()
+    }</code></pre>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=xr.concat(
+        predictions_roas_3[&quot;x1&quot;].values(),
+        dim=pd.Index(data=predictions_roas_3[&quot;x1&quot;].keys(), name=&quot;quarter&quot;),
+    ),
+    figsize=(18, 15),
+    grid=(5, 2),
+    ref_val={&quot;mu&quot;: x1_ref_vals},
+    backend_kwargs={&quot;sharex&quot;: True, &quot;layout&quot;: &quot;constrained&quot;},
+)
+fig = axes.ravel()[0].get_figure()
+fig.suptitle(
+    t=&quot;Posterior Predictive - ROAS x1 - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_230_1.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=xr.concat(
+        predictions_roas_3[&quot;x2&quot;].values(),
+        dim=pd.Index(data=predictions_roas_3[&quot;x2&quot;].keys(), name=&quot;quarter&quot;),
+    ),
+    figsize=(18, 15),
+    grid=(5, 2),
+    ref_val={&quot;mu&quot;: x2_ref_vals},
+    backend_kwargs={&quot;sharex&quot;: True, &quot;layout&quot;: &quot;constrained&quot;},
+)
+fig = axes.ravel()[0].get_figure()
+fig.suptitle(
+    t=&quot;Posterior Predictive - ROAS x2 - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_231_1.png" style="width: 1000px;"/>
+</center>
+<p>The results at quarterly level are consistent with the global ROAS.</p>
+<hr />
+</div>
+</div>
+<div id="model-comparison" class="section level2">
+<h2>Model Comparison</h2>
+<p>In this final section we compare the posterior distribution of the channel ROAS for the three models.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 9), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+az.plot_forest(
+    data=[
+        predictions_roas_all_1[&quot;x1&quot;].rename(&quot;roas&quot;),
+        predictions_roas_all_2[&quot;x1&quot;].rename(&quot;roas&quot;),
+        predictions_roas_all_3[&quot;x1&quot;].rename(&quot;roas&quot;),
+    ],
+    model_names=[
+        &quot;Model 1 (causal)&quot;,
+        &quot;Model 2 (unobserved confounder)&quot;,
+        &quot;Model 3 (roas prior)&quot;,
+    ],
+    combined=True,
+    ax=ax[0],
+)
+ax[0].get_legend().update({&quot;loc&quot;: &quot;upper right&quot;})
+ax[0].axvline(x=roas_all_1, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=2)
+ax[0].set(title=&quot;x1&quot;)
+
+az.plot_forest(
+    data=[
+        predictions_roas_all_1[&quot;x2&quot;].rename(&quot;roas&quot;),
+        predictions_roas_all_2[&quot;x2&quot;].rename(&quot;roas&quot;),
+        predictions_roas_all_3[&quot;x2&quot;].rename(&quot;roas&quot;),
+    ],
+    model_names=[
+        &quot;Model 1 (causal)&quot;,
+        &quot;Model 2 (unobserved confounder)&quot;,
+        &quot;Model 3 (roas prior)&quot;,
+    ],
+    combined=True,
+    ax=ax[1],
+)
+ax[1].get_legend().update({&quot;loc&quot;: &quot;upper left&quot;})
+ax[1].axvline(x=roas_all_2, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=2)
+ax[1].set(title=&quot;x2&quot;)
+
+fig.suptitle(&quot;Global ROAS - Model Comparison&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_234_1.png" style="width: 1000px;"/>
+</center>
+<p>Lastly, we compare the estimated quarterly ROAS for <span class="math inline">\(x_1\)</span>:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_forest(
+    data=[
+        xr.concat(
+            predictions_roas_1[&quot;x1&quot;].values(),
+            dim=pd.Index(data=predictions_roas_1[&quot;x2&quot;].keys(), name=&quot;quarter&quot;),
+        ).rename(&quot;roas&quot;),
+        xr.concat(
+            predictions_roas_2[&quot;x1&quot;].values(),
+            dim=pd.Index(data=predictions_roas_2[&quot;x2&quot;].keys(), name=&quot;quarter&quot;),
+        ).rename(&quot;roas&quot;),
+        xr.concat(
+            predictions_roas_3[&quot;x1&quot;].values(),
+            dim=pd.Index(data=predictions_roas_2[&quot;x2&quot;].keys(), name=&quot;quarter&quot;),
+        ).rename(&quot;roas&quot;),
+    ],
+    model_names=[
+        &quot;Model 1 (causal)&quot;,
+        &quot;Model 2 (unobserved confounder)&quot;,
+        &quot;Model 3 (roas prior)&quot;,
+    ],
+    combined=True,
+    ax=ax,
+)
+ax.axvline(x=roas_all_1, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=2)
+ax.get_legend().update({&quot;loc&quot;: &quot;center left&quot;, &quot;bbox_to_anchor&quot;: (1, 0.5)})
+ax.set_title(
+    label=r&quot;Posterior Predictive - $x_1$ ROAS - Model Comparison&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+)</code></pre>
+<center>
+<img src="../images/mmm_roas_files/mmm_roas_236_1.png" style="width: 1000px;"/>
+</center>
+<hr />
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>With this simulated case study we have seen the benefit of using ROAS priors instead of regression coefficients. We have seen that the model with the ROAS priors was able to partially recover the true values of the ROAS in the presence of unobserved confounders. We also see that the ROAS are not the same as the specified prior since it balances out with the evidence from the media mix regression model. Hence, this approach serves as a more holistic ROAS estimation for real world scenarios.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

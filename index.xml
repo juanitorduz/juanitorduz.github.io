@@ -6,7 +6,16 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 08 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sun, 04 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Media Mix Model and Experimental Calibration: A Simulation Study</title>
+      <link>/mmm_roas/</link>
+      <pubDate>Sun, 04 Feb 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/mmm_roas/</guid>
+      <description>In this notebook we present a complete simulation study of the media mix model and experimental calibration method presented in the paper “Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al., where the authors propose a convenient parametrization the regression model in terms of the ROAs (return on advertising spend) instead of the classical regression (beta) coefficients. The benefit of this parametrization is that it allows for the use of Bayesian priors on the ROAs, which typically come from previous experiments or domain knowledge.</description>
+    </item>
+    
     <item>
       <title>Cohort Revenue Retention Analysis with Flax and NumPyro</title>
       <link>/revenue_retention_numpyro/</link>
