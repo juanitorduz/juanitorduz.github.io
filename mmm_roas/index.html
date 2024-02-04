@@ -78,7 +78,7 @@
 
   <article class="article">
     
-    <span class="article-duration">44 min read</span>
+    <span class="article-duration">45 min read</span>
     
 
     <h1 class="article-title">Media Mix Model and Experimental Calibration: A Simulation Study</h1>
@@ -98,6 +98,24 @@
 <li><a href="https://juanitorduz.github.io/pymc_mmm/">Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</a></li>
 </ul>
 <p>and the <a href="https://www.pymc-marketing.io/en/stable/"><code>PyMC-Marketing</code></a> MMM <a href="https://www.pymc-marketing.io/en/stable/notebooks/mmm/mmm_example.html">example</a>.</p>
+<hr />
+<div id="outline" class="section level2">
+<h2>Outline</h2>
+<p>Here is the outline of the study.</p>
+<ul>
+<li><p>Data Generating Process</p></li>
+<li><p>ROAS Computation (Analytically)</p></li>
+<li><p>Data Preparation</p></li>
+<li><p>Models:</p>
+<ul>
+<li><p><strong>Model 1 (Causal Model)</strong>: Model with all variables needed to specify causal effects of media channels. We test parameter recovery from the data generating process.</p></li>
+<li><p><strong>Model 2 (Unobserved Confounder)</strong>: Model with out a confounding variable. We show how the ROAS estimation in this case is quite off due omitted variable bias (confounding).</p></li>
+<li><p><strong>Model 3 (ROAS Calibration)</strong>: We keep out the confounding variable as in Model 2, but we set up priors in the ROAS instead of the regression (beta) coefficients of the media variables. When setting informative priors on the ROAS, we show the biad due the missing confounding variable decreases significantly. This implies this technique can be very effective to calibrate media mix models.</p></li>
+</ul></li>
+</ul>
+<p>All the results are fully reproducible!</p>
+<hr />
+</div>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import arviz as az
@@ -3515,7 +3533,7 @@ for channel in [&quot;x1&quot;, &quot;x2&quot;]:
 )
 
 az.plot_posterior(predictions_roas_all_2[&quot;x1&quot;], ref_val=roas_all_1, ax=ax[0])
-ax[1].set(title=&quot;x1&quot;)
+ax[0].set(title=&quot;x1&quot;)
 az.plot_posterior(predictions_roas_all_2[&quot;x2&quot;], ref_val=roas_all_2, ax=ax[1])
 ax[1].set(title=&quot;x2&quot;, xlabel=&quot;ROAS&quot;)
 fig.suptitle(&quot;Global ROAS - Model 2&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
@@ -4775,7 +4793,7 @@ for channel in [&quot;x1&quot;, &quot;x2&quot;]:
 )
 
 az.plot_posterior(predictions_roas_all_3[&quot;x1&quot;], ref_val=roas_all_1, ax=ax[0])
-ax[1].set(title=&quot;x1&quot;)
+ax[0].set(title=&quot;x1&quot;)
 az.plot_posterior(predictions_roas_all_3[&quot;x2&quot;], ref_val=roas_all_2, ax=ax[1])
 ax[1].set(title=&quot;x2&quot;, xlabel=&quot;ROAS&quot;)
 fig.suptitle(&quot;Global ROAS - Model 3&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
