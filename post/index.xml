@@ -6,7 +6,16 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 04 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sun, 11 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Notes on Exponential Smoothing with NumPyro</title>
+      <link>/exponential_smoothing_numpyro/</link>
+      <pubDate>Sun, 11 Feb 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/exponential_smoothing_numpyro/</guid>
+      <description>This notebook serves as personal notes on NumPyro’s implementation of the classic exponential smoothing forecasting method. I use Example: Holt-Winters Exponential Smoothing. The strategy is to go into the nitty-gritty details of the code presented in the example from the documentation: “Example: Holt-Winters Exponential Smoothing”. In particular, I want to understand the auto-regressive components using the scan function, which always confuses me 😅. After reproducing the example from the documentation, we go a step further and extend the algorithm to include a damped trend.</description>
+    </item>
+    
     <item>
       <title>Media Mix Model and Experimental Calibration: A Simulation Study</title>
       <link>/mmm_roas/</link>

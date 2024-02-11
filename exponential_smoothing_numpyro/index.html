@@ -1,0 +1,2852 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Notes on Exponential Smoothing with NumPyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Notes on Exponential Smoothing with NumPyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">20 min read</span>
+    
+
+    <h1 class="article-title">Notes on Exponential Smoothing with NumPyro</h1>
+
+    
+    <span class="article-date">2024-02-11</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This notebook serves as personal notes on <a href="https://num.pyro.ai/en/stable/index.html"><code>NumPyro</code></a>’s implementation of the classic <a href="https://en.wikipedia.org/wiki/Exponential_smoothing">exponential smoothing</a> forecasting method. I use <a href="https://num.pyro.ai/en/stable/examples/holt_winters.html">Example: Holt-Winters Exponential Smoothing</a>. The strategy is to go into the nitty-gritty details of the code presented in the example from the documentation: <a href="https://num.pyro.ai/en/stable/examples/holt_winters.html">“Example: Holt-Winters Exponential Smoothing”</a>. In particular, I want to understand the auto-regressive components using the <a href="https://num.pyro.ai/en/stable/primitives.html#scan"><code>scan</code></a> function, which always confuses me 😅. After reproducing the example from the documentation, we go a step further and extend the algorithm to include a damped trend.</p>
+<p>These notes do not aim to give a complete introduction to exponential smoothing. Instead, we focus on the implementation using NumPyro. For a detailed and comprehensive introduction to the subject (and forecasting topics in general), please refer to the great online book <a href="https://otexts.com/fpp3/">“Forecasting: Principles and Practice”</a> by Rob J Hyndman and George Athanasopoulos. In particular, see <a href="https://otexts.com/fpp3/expsmooth.html">Chapter 8</a> for an introduction to exponential smoothing.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from collections.abc import Callable
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+import preliz as pz
+from jax import random
+from jax.lax import fori_loop
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.contrib.control_flow import scan
+from numpyro.infer import MCMC, NUTS, Predictive
+from pydantic import BaseModel, Field
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<hr />
+</div>
+<div id="the-scan-function" class="section level2">
+<h2>The Scan Function</h2>
+<p>We start these notes by revisiting the <a href="https://num.pyro.ai/en/stable/primitives.html#scan"><code>scan</code></a> function as it is a key ingredient in the implementation of the exponential smoothing algorithm. The <code>scan</code> function is a generalization of the <code>for</code> loop. It is used to perform a computation that depends on the previous step’s output. This operator uses <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.scan.html"><code>jax.lax.scan</code></a> to allow NumpPyro primitives like <a href="https://num.pyro.ai/en/stable/primitives.html?highlight=scan#sample"><code>sample</code></a> and <a href="https://num.pyro.ai/en/stable/primitives.html?highlight=scan#deterministic"><code>deterministic</code></a> to be used in a loop. The <code>scan</code> function is used to implement the auto-regressive components of the exponential smoothing algorithm. To gain some intuition about this function, the <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.scan.html"><code>jax.lax.scan</code></a> documentation provides a rough pure Pyhton implementation of the <code>scan</code> function:</p>
+<pre class="python"><code>def scan(f, init, xs, length=None):
+  &quot;&quot;&quot;Pure Python implementation of scan.
+
+  Parameters
+  ----------
+  f : A  a Python function to be scanned.
+  init : An initial loop carry value
+  xs : The value over which to scan along the leading axis.
+  length :  Optional integer specifying the number of loop iterations,
+      which must agree with the sizes of leading axes of the arrays in
+      xs (but can be used to perform scans where no input xs are needed).
+  &quot;&quot;&quot;
+  if xs is None:
+    xs = [None] * length
+  carry = init
+  ys = []
+  for x in xs:
+    carry, y = f(carry, x)
+    ys.append(y)
+  return carry, np.stack(ys)</code></pre>
+<p>Whenever I read this I get a bit confused. So let’s try to understand the <code>scan</code> function by implementing a simple example.</p>
+<div id="example-sum-of-powers" class="section level3">
+<h3>Example: Sum of Powers</h3>
+<p>We will implement a simple sum of powers. We want to calculate the sum of the first <code>h</code> powers of a number <code>phi</code>.</p>
+<p><span class="math display">\[
+\phi \longmapsto \phi^1 + \phi^2 + \ldots + \phi^h
+\]</span></p>
+<p>We can do this using a <code>for</code> loop. However, we want to use the <code>scan</code> function to get a better understanding of how it works.</p>
+<p>First, we implement the sum of powers using a <code>for</code> loop.</p>
+<pre class="python"><code>def sum_of_powers_for_loop(phi: float, h: int) -&gt; float:
+    return sum(phi**i for i in range(1, h + 1))
+
+
+assert sum_of_powers_for_loop(2, 0) == 0
+assert sum_of_powers_for_loop(2, 1) == 2
+assert sum_of_powers_for_loop(2, 2) == 2 + 2**2
+assert sum_of_powers_for_loop(2, 3) == 2 + 2**2 + 2**3</code></pre>
+<p>Now, let’s look at the implementation using the <code>scan</code> function.</p>
+<pre class="python"><code>def sum_of_powers_scan(phi, h):
+    def transition_fn(carry, phi):
+        power_sum, power = carry
+        power = power * phi
+        power_sum = power_sum + power
+        return (power_sum, power), power_sum
+
+    (power_sum, _), _ = scan(f=transition_fn, init=(0, 1), xs=jnp.ones(h) * phi)
+    return power_sum</code></pre>
+<p>We can verify that the two implementations give the same result.</p>
+<pre class="python"><code>assert sum_of_powers_scan(2, 0) == sum_of_powers_for_loop(2, 0)
+assert sum_of_powers_scan(2, 1) == sum_of_powers_for_loop(2, 1)
+assert sum_of_powers_scan(2, 2) == sum_of_powers_for_loop(2, 2)
+assert sum_of_powers_scan(2, 3) == sum_of_powers_for_loop(2, 3)
+assert sum_of_powers_scan(2, 10) == sum_of_powers_for_loop(2, 10)</code></pre>
+<p>There is another handy function to write efficient for loops in JAX: the <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.fori_loop.html"><code>fori_loop</code></a> function. From the documentation we also get a pure Python implementation:</p>
+<pre class="python"><code>def fori_loop(lower, upper, body_fun, init_val):
+  val = init_val
+  for i in range(lower, upper):
+    val = body_fun(i, val)
+  return val</code></pre>
+<p>In this case we can easily implement the sum of powers using the <code>fori_loop</code> function.</p>
+<pre class="python"><code>def sum_of_powers_fori_loop(phi, h):
+    def body_fn(i, power_sum):
+        return power_sum + phi**i
+
+    return fori_loop(lower=1, upper=h + 1, body_fun=body_fn, init_val=0)</code></pre>
+<pre class="python"><code>assert sum_of_powers_scan(2, 0) == sum_of_powers_for_loop(2, 0)
+assert sum_of_powers_scan(2, 1) == sum_of_powers_for_loop(2, 1)
+assert sum_of_powers_scan(2, 2) == sum_of_powers_for_loop(2, 2)
+assert sum_of_powers_scan(2, 3) == sum_of_powers_for_loop(2, 3)
+assert sum_of_powers_scan(2, 10) == sum_of_powers_for_loop(2, 10)</code></pre>
+<p>After this brief introduction to the <code>scan</code> function, we are ready to dive into the implementation of the exponential smoothing algorithm using NumPyro.</p>
+<hr />
+</div>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>We start by generating some synthetic data. We will use a very similar data generation process as in the example from the documentation. We generate a time series with a trend and a seasonal component.</p>
+<pre class="python"><code>n_seasons = 15
+t = jnp.linspace(start=0, stop=n_seasons + 1, num=(n_seasons + 1) * n_seasons)
+y = jnp.cos(2 * jnp.pi * t) + jnp.log(t + 1) + 0.2 * random.normal(rng_key, t.shape)
+
+fig, ax = plt.subplots()
+ax.plot(t, y)
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_14_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
+<div id="train---test-split" class="section level2">
+<h2>Train - Test Split</h2>
+<p>We now split the data into a training and a test set. We will use the training set to fit the model and the test set to evaluate the model’s performance.</p>
+<pre class="python"><code>n = y.size
+
+prop_train = 0.8
+n_train = round(prop_train * n)
+
+y_train = y[:n_train]
+t_train = t[:n_train]
+
+y_test = y[n_train:]
+t_test = t[n_train:]
+
+fig, ax = plt.subplots()
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data Split&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_16_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
+<div id="level-model" class="section level2">
+<h2>Level Model</h2>
+<p>We do not look and the complete model from start. Instead, we progressively study and add components. We start with the most fundamental component of the model: the level model. The level model is a simple model that predicts the next value in the time series based on the previous value. The model is defined by the following equations:</p>
+<p><span class="math display">\[\begin{align*}
+\hat{y}_{t+h|t} = &amp; \: l_t \\
+l_t = &amp; \: \alpha y_t + (1 - \alpha)l_{t-1}
+\end{align*}\]</span></p>
+<p>Here:</p>
+<ul>
+<li><span class="math inline">\(y_t\)</span> is the observed value at time <span class="math inline">\(t\)</span>.</li>
+<li><span class="math inline">\(\hat{y}_{t+h|t}\)</span> is the forecast of the value at time <span class="math inline">\(t+h\)</span> given the information up to time <span class="math inline">\(t\)</span>.</li>
+<li><span class="math inline">\(l_t\)</span> is the level at time <span class="math inline">\(t\)</span>.</li>
+<li><span class="math inline">\(\alpha\)</span> is the smoothing parameter. It is a value between 0 and 1. A value of 1 means that the forecast is based only on the observed value at time <span class="math inline">\(t\)</span>. A value of 0 means that the forecast is based only on the previous level.</li>
+</ul>
+<p>Note that the level equation is a simple weighted average of the observed value and the previous level (for more details see <a href="https://otexts.com/fpp3/ses.html">8.1 Simple exponential smoothing</a>). Moreover, note that this equation is perfectly suited for the <code>scan</code> function.</p>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>We start by specifying the level model in NumPyro. We use the same priors from the example in the documentation. Note that we place uniform priors on the smoothing parameter <span class="math inline">\(\alpha\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.Beta(alpha=1, beta=1).plot_pdf(ax=ax)
+ax.set(title=&quot;Beta(1, 1) Prior&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_19_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>def level_model(y: ArrayImpl, future: int = 0) -&gt; None:
+    # Get time series length
+    t_max = y.shape[0]
+
+    # --- Priors ---
+
+    ## Level
+    level_smoothing = numpyro.sample(
+        &quot;level_smoothing&quot;, dist.Beta(concentration1=1, concentration0=1)
+    )
+    level_init = numpyro.sample(&quot;level_init&quot;, dist.Normal(loc=0, scale=1))
+
+    ## Noise
+    noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(scale=1))
+
+    # --- Transition Function ---
+
+    def transition_fn(carry, t):
+        previous_level = carry
+
+        level = jnp.where(
+            t &lt; t_max,
+            level_smoothing * y[t] + (1 - level_smoothing) * previous_level,
+            previous_level,
+        )
+
+        mu = previous_level
+        pred = numpyro.sample(&quot;pred&quot;, dist.Normal(loc=mu, scale=noise))
+
+        return level, pred
+
+    # --- Run Scan ---
+
+    with numpyro.handlers.condition(data={&quot;pred&quot;: y}):
+        _, preds = scan(
+            transition_fn,
+            level_init,
+            jnp.arange(t_max + future),
+        )
+
+    # --- Forecast ---
+    if future &gt; 0:
+        numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:])</code></pre>
+<p>Observe we are using the <a href="https://num.pyro.ai/en/stable/handlers.html#condition"><code>condition</code></a> effect handler to condition the model on the observed data. As explained in the example from the documentation <a href="https://num.pyro.ai/en/stable/tutorials/time_series_forecasting.html">“Time Series Forecasting”</a>:</p>
+<blockquote>
+<p><em>The reason is we also want to use this model for forecasting. In forecasting, future values of <code>y</code> are non-observable, so <code>obs=y[t]</code> does not make sense when <code>t &gt;= len(y)</code> (<strong>caution:</strong> index out-of-bound errors do not get raised in JAX, e.g. j<code>np.arange(3)[10] == 2</code>). Using <code>condition</code>, when the length of <code>scan</code> is larger than the length of the conditioned/observed site, unobserved values will be sampled from the distribution of that site.</em></p>
+</blockquote>
+</div>
+<div id="inference" class="section level3">
+<h3>Inference</h3>
+<p>We now proceed to use MCMC to fit the level model to the training data. We define some helper function as we will apply them to many models.</p>
+<pre class="python"><code>class InferenceParams(BaseModel):
+    num_warmup: int = Field(2_000, ge=1)
+    num_samples: int = Field(2_000, ge=1)
+    num_chains: int = Field(4, ge=1)
+
+
+def run_inference(
+    rng_key: ArrayImpl,
+    model: Callable,
+    args: InferenceParams,
+    *model_args,
+    **nuts_kwargs,
+) -&gt; MCMC:
+    sampler = NUTS(model, **nuts_kwargs)
+    mcmc = MCMC(
+        sampler=sampler,
+        num_warmup=args.num_warmup,
+        num_samples=args.num_samples,
+        num_chains=args.num_chains,
+    )
+    mcmc.run(rng_key, *model_args)
+    return mcmc</code></pre>
+<p>Let’s fit the model:</p>
+<pre class="python"><code>inference_params = InferenceParams()
+rng_key, rng_subkey = random.split(key=rng_key)
+level_mcmc = run_inference(rng_subkey, level_model, inference_params, y_train)</code></pre>
+<p>The diagnostics look good:</p>
+<pre class="python"><code>level_idata = az.from_numpyro(posterior=level_mcmc)
+
+az.summary(data=level_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+level_init
+</th>
+<td>
+1.013
+</td>
+<td>
+0.396
+</td>
+<td>
+0.275
+</td>
+<td>
+1.778
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+5411.0
+</td>
+<td>
+4042.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+level_smoothing
+</th>
+<td>
+0.974
+</td>
+<td>
+0.023
+</td>
+<td>
+0.931
+</td>
+<td>
+1.000
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4779.0
+</td>
+<td>
+3592.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+noise
+</th>
+<td>
+0.430
+</td>
+<td>
+0.022
+</td>
+<td>
+0.392
+</td>
+<td>
+0.472
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6447.0
+</td>
+<td>
+5120.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>print(f&quot;&quot;&quot;Divergences: {level_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()}&quot;&quot;&quot;)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=level_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Level Model Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_29_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="forecast" class="section level3">
+<h3>Forecast</h3>
+<p>Now we can use the fitted model to forecast the test set. As above, we define a helper function for this purpose:</p>
+<pre class="python"><code>def forecast(
+    rng_key: ArrayImpl, model: Callable, samples: dict[str, ArrayImpl], *model_args
+) -&gt; dict[str, ArrayImpl]:
+    predictive = Predictive(
+        model=model,
+        posterior_samples=samples,
+        return_sites=[&quot;y_forecast&quot;],
+    )
+    return predictive(rng_key, *model_args)</code></pre>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+level_forecast = forecast(
+    rng_subkey, level_model, level_mcmc.get_samples(), y_train, y_test.size
+)</code></pre>
+<pre class="python"><code>level_posterior_predictive = az.from_numpyro(
+    posterior_predictive=level_forecast,
+    coords={&quot;t&quot;: t_test},
+    dims={&quot;y_forecast&quot;: [&quot;t&quot;]},
+)</code></pre>
+<p>We can now visualize the forecast:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=level_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=level_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    level_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C2&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Level Model Forecast&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_36_1.png" style="width: 1000px;"/>
+</center>
+<p>As expected, the forecast is flat.</p>
+<hr />
+</div>
+</div>
+<div id="level-trend-model" class="section level2">
+<h2>Level + Trend Model</h2>
+<p>Next, we add a trend component to the model. The trend model is defined by the following equations:</p>
+<p><span class="math display">\[\begin{align*}
+\hat{y}_{t+h|t} = &amp; \: l_t + hb_t  \\
+l_t = &amp; \: \alpha y_t + (1 - \alpha)(l_{t-1} + b_{t-1}) \\
+b_t = &amp; \: \beta^*(l_t - l_{t - 1}) + (1-\beta^*)b_{t - 1}
+\end{align*}\]</span></p>
+<p>Here <span class="math inline">\(b_t\)</span> denotes the trend at time <span class="math inline">\(t\)</span> and <span class="math inline">\(\beta^*\)</span> is a smoothing parameter. The trend equation is a weighted average of the difference between the current level and the previous level and the previous trend.</p>
+<p><strong>Remark:</strong> The reason for the upper <span class="math inline">\(*\)</span> in the <span class="math inline">\(\beta^*\)</span> is just a result of the notation in the context of the state space representation of the model. See <a href="https://otexts.com/fpp3/ets.html#etsaan-holts-linear-method-with-additive-errors">here</a>.</p>
+<div id="model-specification-1" class="section level3">
+<h3>Model Specification</h3>
+<p>Note that given the level model above, we can easily extend it to include the trend component:</p>
+<pre class="python"><code>def level_trend_model(y: ArrayImpl, future: int = 0) -&gt; None:
+    # Get time series length
+    t_max = y.shape[0]
+
+    # --- Priors ---
+
+    ## Level
+    level_smoothing = numpyro.sample(
+        &quot;level_smoothing&quot;, dist.Beta(concentration1=1, concentration0=1)
+    )
+    level_init = numpyro.sample(&quot;level_init&quot;, dist.Normal(loc=0, scale=1))
+
+    ## Trend
+    trend_smoothing = numpyro.sample(
+        &quot;trend_smoothing&quot;, dist.Beta(concentration1=1, concentration0=1)
+    )
+    trend_init = numpyro.sample(&quot;trend_init&quot;, dist.Normal(loc=0, scale=1))
+
+    ## Noise
+    noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(scale=1))
+
+    # --- Transition Function ---
+
+    def transition_fn(carry, t):
+        previous_level, previous_trend = carry
+
+        level = jnp.where(
+            t &lt; t_max,
+            level_smoothing * y[t]
+            + (1 - level_smoothing) * (previous_level + previous_trend),
+            previous_level,
+        )
+
+        trend = jnp.where(
+            t &lt; t_max,
+            trend_smoothing * (level - previous_level)
+            + (1 - trend_smoothing) * previous_trend,
+            previous_trend,
+        )
+
+        step = jnp.where(t &lt; t_max, 1, t - t_max + 1)
+
+        mu = previous_level + step * previous_trend
+        pred = numpyro.sample(&quot;pred&quot;, dist.Normal(loc=mu, scale=noise))
+
+        return (level, trend), pred
+
+    # --- Run Scan ---
+
+    with numpyro.handlers.condition(data={&quot;pred&quot;: y}):
+        _, preds = scan(
+            transition_fn,
+            (level_init, trend_init),
+            jnp.arange(t_max + future),
+        )
+
+    # --- Forecast ---
+    if future &gt; 0:
+        numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:])</code></pre>
+</div>
+<div id="inference-1" class="section level3">
+<h3>Inference</h3>
+<p>We fit the model as before:</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+level_trend_mcmc = run_inference(
+    rng_subkey, level_trend_model, inference_params, y_train
+)</code></pre>
+<pre class="python"><code>level_trend_idata = az.from_numpyro(posterior=level_trend_mcmc)
+
+az.summary(data=level_trend_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+level_init
+</th>
+<td>
+1.224
+</td>
+<td>
+0.378
+</td>
+<td>
+0.518
+</td>
+<td>
+1.928
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+4965.0
+</td>
+<td>
+4681.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+level_smoothing
+</th>
+<td>
+0.641
+</td>
+<td>
+0.047
+</td>
+<td>
+0.560
+</td>
+<td>
+0.733
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+4481.0
+</td>
+<td>
+3110.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+noise
+</th>
+<td>
+0.430
+</td>
+<td>
+0.023
+</td>
+<td>
+0.388
+</td>
+<td>
+0.473
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5229.0
+</td>
+<td>
+5336.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trend_init
+</th>
+<td>
+0.011
+</td>
+<td>
+0.344
+</td>
+<td>
+-0.619
+</td>
+<td>
+0.664
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+4819.0
+</td>
+<td>
+4917.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing
+</th>
+<td>
+0.912
+</td>
+<td>
+0.077
+</td>
+<td>
+0.771
+</td>
+<td>
+1.000
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3466.0
+</td>
+<td>
+3557.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>print(f&quot;&quot;&quot;Divergences: {level_trend_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()}&quot;&quot;&quot;)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=level_trend_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Level + Trend Model Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_45_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="forecast-1" class="section level3">
+<h3>Forecast</h3>
+<p>We generate the forecast:</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+level_trend_forecast = forecast(
+    rng_subkey, level_trend_model, level_trend_mcmc.get_samples(), y_train, y_test.size
+)
+
+level_trend_posterior_predictive = az.from_numpyro(
+    posterior_predictive=level_trend_forecast,
+    coords={&quot;t&quot;: t_test},
+    dims={&quot;y_forecast&quot;: [&quot;t&quot;]},
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=level_trend_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=level_trend_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    level_trend_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C2&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Level + Trend Model Forecast&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_49_1.png" style="width: 1000px;"/>
+</center>
+<p>Ups! This is literally just extrapolating with s straight line 😒. Still, this is often quite a good forecasting baseline for short term horizons. We are clearly missing the seasonality component to complement the trend model. This is what we do next!</p>
+<hr />
+</div>
+</div>
+<div id="level-trend-seasonality-model-holt-winters" class="section level2">
+<h2>Level + Trend + Seasonality Model (Holt-Winters)</h2>
+<p>We have finally arrived at the (additive) level + trend + seasonality model, also known as Holt-Winters model. We extend the trend model to include a seasonal component:</p>
+<p><span class="math display">\[\begin{align*}
+\hat{y}_{t+h|t} = &amp; \: l_t + hb_t + s_{t + h - m(k + 1)}  \\
+l_t = &amp; \: \alpha(y_t - s_{t - m}) + (1 - \alpha)(l_{t - 1} + b_{t - 1}) \\
+b_t = &amp; \:  \beta^*(l_t - l_{t - 1}) + (1 - \beta^*)b_{t - 1} \\
+s_t = &amp; \:  \gamma(y_t - l_{t - 1} - b_{t - 1})+(1 - \gamma)s_{t - m}
+\end{align*}\]</span></p>
+<p>We have added the seasonal component <span class="math inline">\(s_t\)</span> with the corresponding smoothing parameter <span class="math inline">\(\gamma\)</span>. Here <span class="math inline">\(m\)</span> denotes the number of seasons. The parameter <span class="math inline">\(k\)</span> is the integer part of <span class="math inline">\((h - 1)/m\)</span> (this just takes the latest seasonality estimate for this time point). for example, in the case <span class="math inline">\((h - 1)/m\)</span> is an integer then</p>
+<p><span class="math display">\[
+t + h - m(k + 1) = t + h - m(h - 1)/m = t + h - (h - 1) = t + 1
+\]</span></p>
+<p><strong>Remark:</strong> Similar to the note on thee <span class="math inline">\(\beta^*\)</span> notation, the parameter <span class="math inline">\(\gamma\)</span> is often called an adjusted smoothing as it is of the form <span class="math inline">\(\gamma=\gamma^{*}(1 - \alpha)\)</span>, so that <span class="math inline">\(0 \leq \gamma^{*} \leq 1\)</span> translates to <span class="math inline">\(0 \leq \gamma \leq 1 - \alpha\)</span>. This is just a result of the state space representation of the model. See <a href="https://otexts.com/fpp3/holt-winters.html#holt-winters-additive-method">here</a>.</p>
+<div id="model-specification-2" class="section level3">
+<h3>Model Specification</h3>
+<p>We now use the model from the example:</p>
+<pre class="python"><code>def holt_winters_model(y: ArrayImpl, n_seasons: int, future: int = 0) -&gt; None:
+    # Get time series length
+    t_max = y.shape[0]
+
+    # --- Priors ---
+
+    ## Level
+    level_smoothing = numpyro.sample(
+        &quot;level_smoothing&quot;, dist.Beta(concentration1=1, concentration0=1)
+    )
+    level_init = numpyro.sample(&quot;level_init&quot;, dist.Normal(loc=0, scale=1))
+
+    ## Trend
+    trend_smoothing = numpyro.sample(
+        &quot;trend_smoothing&quot;, dist.Beta(concentration1=1, concentration0=1)
+    )
+    trend_init = numpyro.sample(&quot;trend_init&quot;, dist.Normal(loc=0, scale=1))
+
+    ## Seasonality
+    seasonality_smoothing = numpyro.sample(
+        &quot;seasonality_smoothing&quot;, dist.Beta(concentration1=1, concentration0=1)
+    )
+    adj_seasonality_smoothing = seasonality_smoothing * (1 - level_smoothing)
+
+    with numpyro.plate(&quot;n_seasons&quot;, n_seasons):
+        seasonality_init = numpyro.sample(
+            &quot;seasonality_init&quot;, dist.Normal(loc=0, scale=1)
+        )
+
+    ## Noise
+    noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(scale=1))
+
+    # --- Transition Function ---
+
+    def transition_fn(carry, t):
+        previous_level, previous_trend, previous_seasonality = carry
+
+        level = jnp.where(
+            t &lt; t_max,
+            level_smoothing * (y[t] - previous_seasonality[0])
+            + (1 - level_smoothing) * (previous_level + previous_trend),
+            previous_level,
+        )
+
+        trend = jnp.where(
+            t &lt; t_max,
+            trend_smoothing * (level - previous_level)
+            + (1 - trend_smoothing) * previous_trend,
+            previous_trend,
+        )
+
+        new_season = jnp.where(
+            t &lt; t_max,
+            adj_seasonality_smoothing * (y[t] - (previous_level + previous_trend))
+            + (1 - adj_seasonality_smoothing) * previous_seasonality[0],
+            previous_seasonality[0],
+        )
+
+        step = jnp.where(t &lt; t_max, 1, t - t_max + 1)
+
+        mu = previous_level + step * previous_trend + previous_seasonality[0]
+        pred = numpyro.sample(&quot;pred&quot;, dist.Normal(loc=mu, scale=noise))
+
+        seasonality = jnp.concatenate(
+            [previous_seasonality[1:], new_season[None]], axis=0
+        )
+
+        return (level, trend, seasonality), pred
+
+    # --- Run Scan ---
+
+    with numpyro.handlers.condition(data={&quot;pred&quot;: y}):
+        _, preds = scan(
+            transition_fn,
+            (level_init, trend_init, seasonality_init),
+            jnp.arange(t_max + future),
+        )
+
+    # --- Forecast ---
+    if future &gt; 0:
+        numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:])</code></pre>
+</div>
+<div id="inference-2" class="section level3">
+<h3>Inference</h3>
+<p>Note that all of these models sample super fast!</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+holt_winters_mcmc = run_inference(
+    rng_subkey,
+    holt_winters_model,
+    inference_params,
+    y_train,
+    n_seasons,
+)</code></pre>
+<pre class="python"><code>holt_winters_idata = az.from_numpyro(posterior=holt_winters_mcmc)
+
+az.summary(data=holt_winters_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+level_init
+</th>
+<td>
+0.162
+</td>
+<td>
+0.278
+</td>
+<td>
+-0.359
+</td>
+<td>
+0.681
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1153.0
+</td>
+<td>
+1703.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+level_smoothing
+</th>
+<td>
+0.117
+</td>
+<td>
+0.050
+</td>
+<td>
+0.024
+</td>
+<td>
+0.209
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2256.0
+</td>
+<td>
+2089.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+noise
+</th>
+<td>
+0.256
+</td>
+<td>
+0.014
+</td>
+<td>
+0.231
+</td>
+<td>
+0.282
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+3276.0
+</td>
+<td>
+4369.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[0]
+</th>
+<td>
+0.965
+</td>
+<td>
+0.296
+</td>
+<td>
+0.433
+</td>
+<td>
+1.545
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1317.0
+</td>
+<td>
+1721.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[1]
+</th>
+<td>
+0.908
+</td>
+<td>
+0.300
+</td>
+<td>
+0.372
+</td>
+<td>
+1.496
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1271.0
+</td>
+<td>
+1967.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[2]
+</th>
+<td>
+0.542
+</td>
+<td>
+0.297
+</td>
+<td>
+-0.023
+</td>
+<td>
+1.091
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1299.0
+</td>
+<td>
+1953.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[3]
+</th>
+<td>
+0.258
+</td>
+<td>
+0.296
+</td>
+<td>
+-0.282
+</td>
+<td>
+0.818
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1310.0
+</td>
+<td>
+1900.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[4]
+</th>
+<td>
+0.021
+</td>
+<td>
+0.298
+</td>
+<td>
+-0.544
+</td>
+<td>
+0.562
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1317.0
+</td>
+<td>
+1961.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[5]
+</th>
+<td>
+-0.661
+</td>
+<td>
+0.297
+</td>
+<td>
+-1.246
+</td>
+<td>
+-0.126
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1299.0
+</td>
+<td>
+1983.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[6]
+</th>
+<td>
+-0.836
+</td>
+<td>
+0.299
+</td>
+<td>
+-1.375
+</td>
+<td>
+-0.258
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1305.0
+</td>
+<td>
+1993.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[7]
+</th>
+<td>
+-0.989
+</td>
+<td>
+0.295
+</td>
+<td>
+-1.554
+</td>
+<td>
+-0.440
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1260.0
+</td>
+<td>
+1995.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[8]
+</th>
+<td>
+-0.773
+</td>
+<td>
+0.293
+</td>
+<td>
+-1.330
+</td>
+<td>
+-0.220
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1324.0
+</td>
+<td>
+2162.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[9]
+</th>
+<td>
+-0.824
+</td>
+<td>
+0.295
+</td>
+<td>
+-1.370
+</td>
+<td>
+-0.266
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1277.0
+</td>
+<td>
+1950.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[10]
+</th>
+<td>
+-0.542
+</td>
+<td>
+0.299
+</td>
+<td>
+-1.112
+</td>
+<td>
+0.005
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+1208.0
+</td>
+<td>
+1912.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[11]
+</th>
+<td>
+-0.091
+</td>
+<td>
+0.299
+</td>
+<td>
+-0.642
+</td>
+<td>
+0.475
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1354.0
+</td>
+<td>
+2243.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[12]
+</th>
+<td>
+0.387
+</td>
+<td>
+0.296
+</td>
+<td>
+-0.173
+</td>
+<td>
+0.939
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1309.0
+</td>
+<td>
+2039.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[13]
+</th>
+<td>
+0.663
+</td>
+<td>
+0.297
+</td>
+<td>
+0.111
+</td>
+<td>
+1.225
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1261.0
+</td>
+<td>
+1827.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[14]
+</th>
+<td>
+0.910
+</td>
+<td>
+0.298
+</td>
+<td>
+0.349
+</td>
+<td>
+1.459
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+1311.0
+</td>
+<td>
+1942.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_smoothing
+</th>
+<td>
+0.299
+</td>
+<td>
+0.082
+</td>
+<td>
+0.145
+</td>
+<td>
+0.454
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+2588.0
+</td>
+<td>
+1663.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trend_init
+</th>
+<td>
+0.029
+</td>
+<td>
+0.012
+</td>
+<td>
+0.007
+</td>
+<td>
+0.053
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+2908.0
+</td>
+<td>
+3843.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing
+</th>
+<td>
+0.069
+</td>
+<td>
+0.063
+</td>
+<td>
+0.000
+</td>
+<td>
+0.145
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+2153.0
+</td>
+<td>
+2119.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>print(
+    f&quot;&quot;&quot;Divergences: {holt_winters_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()}&quot;&quot;&quot;
+)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=holt_winters_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 12), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Holt Winters Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_59_1.png" style="width: 900px;"/>
+</center>
+<p>The diagnostics and the trace plot look good!</p>
+</div>
+<div id="forecast-2" class="section level3">
+<h3>Forecast</h3>
+<p>Let’s see if this model can forecast the test set better than the previous models:</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+holt_winters_forecast = forecast(
+    rng_subkey,
+    holt_winters_model,
+    holt_winters_mcmc.get_samples(),
+    y_train,
+    n_seasons,
+    y_test.size,
+)
+
+holt_winters_posterior_predictive = az.from_numpyro(
+    posterior_predictive=holt_winters_forecast,
+    coords={&quot;t&quot;: t_test},
+    dims={&quot;y_forecast&quot;: [&quot;t&quot;]},
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=holt_winters_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=holt_winters_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    holt_winters_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C2&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Holt Winters Model Forecast&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_63_1.png" style="width: 1000px;"/>
+</center>
+<p>Indeed! The forecast look pretty good 🚀! The point forecast is slighly over-forecasting, but still withing the credible range. Let’s see how we can make the trend forecast a bit more conservative 🤓.</p>
+<hr />
+</div>
+</div>
+<div id="damped-holt-winters" class="section level2">
+<h2>Damped Holt-Winters</h2>
+<p>As a final model, we present an extension of the model above. We add a damping parameter <span class="math inline">\(\phi\)</span> to the trend component. The damped Holt-Winters model is defined by the following equations:</p>
+<p><span class="math display">\[\begin{align*}
+\hat{y}_{t+h|t} = &amp; \: l_t + \phi_{h}b_t + s_{t + h - m(k + 1)}  \\
+l_t = &amp; \: \alpha(y_t - s_{t - m}) + (1 - \alpha)(l_{t - 1} + \phi b_{t - 1}) \\
+b_t = &amp; \:  \beta^*(l_t - l_{t - 1}) + (1 - \beta^*)\phi b_{t - 1} \\
+s_t = &amp; \:  \gamma(y_t - l_{t - 1} - \phi b_{t - 1})+(1 - \gamma)s_{t - m}
+\end{align*}\]</span></p>
+<p>where <span class="math inline">\(0 \leq \phi \leq 1\)</span> and <span class="math inline">\(\phi_{h} := \phi + \phi^2 + \ldots + \phi^{h}\)</span>.</p>
+<p><strong>Remark:</strong> Now you see why we were interested in the power sum <code>scan</code> example at the beginning of these notes 😅.</p>
+<div id="model-specification-3" class="section level3">
+<h3>Model Specification</h3>
+<p>Substituting <span class="math inline">\(b_{t -1} \longmapsto \phi b_{t -1}\)</span> is straightforward. What needs a bit more attention is the <span class="math inline">\(\phi_{h}\)</span> term. The for loop implementation is a no=go. The can one actually does not work as the size of the <code>xs</code> argument is dynamic. Heceen, the <code>fori_loop</code> function is thee way to go. Moreover, in order to help the sampler, wee impose more informative priors on the smoothing parameters.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.Beta(alpha=1, beta=1).plot_pdf(ax=ax)
+pz.Beta(alpha=2, beta=2).plot_pdf(ax=ax)
+pz.Beta(alpha=2, beta=5).plot_pdf(ax=ax)
+ax.set(title=&quot;Beta Priors&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_67_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>def damped_holt_winters_model(y: ArrayImpl, n_seasons: int, future: int = 0) -&gt; None:
+    # Get time series length
+    t_max = y.shape[0]
+
+    # --- Priors ---
+
+    ## Level
+    level_smoothing = numpyro.sample(&quot;level_smoothing&quot;, dist.Beta(2, 2))
+    level_init = numpyro.sample(&quot;level_init&quot;, dist.Normal(0, 1))
+
+    ## Trend
+    trend_smoothing = numpyro.sample(&quot;trend_smoothing&quot;, dist.Beta(2, 2))
+    trend_init = numpyro.sample(&quot;trend_init&quot;, dist.Normal(0.5, 1))
+
+    ## Seasonality
+    seasonality_smoothing = numpyro.sample(&quot;seasonality_smoothing&quot;, dist.Beta(2, 2))
+    adj_seasonality_smoothing = seasonality_smoothing * (1 - level_smoothing)
+
+    ## Damping
+    phi = numpyro.sample(&quot;phi&quot;, dist.Beta(2, 5))
+
+    with numpyro.plate(&quot;n_seasons&quot;, n_seasons):
+        seasonality_init = numpyro.sample(&quot;seasonality_init&quot;, dist.Normal(0, 1))
+
+    ## Noise
+    noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(1))
+
+    # --- Transition Function ---
+
+    def transition_fn(carry, t):
+        previous_level, previous_trend, previous_seasonality = carry
+
+        level = jnp.where(
+            t &lt; t_max,
+            level_smoothing * (y[t] - previous_seasonality[0])
+            + (1 - level_smoothing) * (previous_level + phi * previous_trend),
+            previous_level,
+        )
+
+        trend = jnp.where(
+            t &lt; t_max,
+            trend_smoothing * (level - previous_level)
+            + (1 - trend_smoothing) * phi * previous_trend,
+            previous_trend,
+        )
+
+        new_season = jnp.where(
+            t &lt; t_max,
+            adj_seasonality_smoothing * (y[t] - (previous_level + phi * previous_trend))
+            + (1 - adj_seasonality_smoothing) * previous_seasonality[0],
+            previous_seasonality[0],
+        )
+
+        step = jnp.where(t &lt; t_max, 1, t - t_max + 1)
+        phi_step = fori_loop(
+            lower=1, upper=step + 1, body_fun=lambda i, val: val + phi**i, init_val=0
+        )
+
+        mu = previous_level + phi_step * previous_trend + previous_seasonality[0]
+        pred = numpyro.sample(&quot;pred&quot;, dist.Normal(mu, noise))
+
+        seasonality = jnp.concatenate(
+            [previous_seasonality[1:], new_season[None]], axis=0
+        )
+
+        return (level, trend, seasonality), pred
+
+    # --- Run Scan ---
+
+    with numpyro.handlers.condition(data={&quot;pred&quot;: y}):
+        _, preds = scan(
+            transition_fn,
+            (level_init, trend_init, seasonality_init),
+            jnp.arange(t_max + future),
+        )
+
+    # --- Forecast ---
+    if future &gt; 0:
+        numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:])</code></pre>
+</div>
+<div id="inference-3" class="section level3">
+<h3>Inference</h3>
+<p>An important note is that the sampler needs the parameter <code>forward_mode_differentiation</code> as we are using the <code>fori_loop</code> function. This is because the <code>fori_loop</code> function is not compatible with reverse mode differentiation. This is a bit of a bummer as reverse mode differentiation is often more efficient. However, the sampler still runs pretty fast.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+damped_holt_winters_mcmc = run_inference(
+    rng_subkey,
+    damped_holt_winters_model,
+    inference_params,
+    y_train,
+    n_seasons,
+    target_accept_prob=0.95,
+    forward_mode_differentiation=True,
+)</code></pre>
+<pre class="python"><code>damped_holt_winters_idata = az.from_numpyro(posterior=damped_holt_winters_mcmc)
+
+az.summary(data=damped_holt_winters_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+level_init
+</th>
+<td>
+0.141
+</td>
+<td>
+0.375
+</td>
+<td>
+-0.575
+</td>
+<td>
+0.836
+</td>
+<td>
+0.011
+</td>
+<td>
+0.008
+</td>
+<td>
+1237.0
+</td>
+<td>
+3017.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+level_smoothing
+</th>
+<td>
+0.224
+</td>
+<td>
+0.050
+</td>
+<td>
+0.134
+</td>
+<td>
+0.320
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3590.0
+</td>
+<td>
+4847.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+noise
+</th>
+<td>
+0.262
+</td>
+<td>
+0.014
+</td>
+<td>
+0.235
+</td>
+<td>
+0.288
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4121.0
+</td>
+<td>
+4769.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+phi
+</th>
+<td>
+0.241
+</td>
+<td>
+0.132
+</td>
+<td>
+0.010
+</td>
+<td>
+0.471
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+3654.0
+</td>
+<td>
+3599.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[0]
+</th>
+<td>
+0.944
+</td>
+<td>
+0.289
+</td>
+<td>
+0.414
+</td>
+<td>
+1.501
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+803.0
+</td>
+<td>
+1878.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[1]
+</th>
+<td>
+0.893
+</td>
+<td>
+0.291
+</td>
+<td>
+0.385
+</td>
+<td>
+1.473
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+807.0
+</td>
+<td>
+2189.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[2]
+</th>
+<td>
+0.543
+</td>
+<td>
+0.292
+</td>
+<td>
+0.003
+</td>
+<td>
+1.087
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+797.0
+</td>
+<td>
+2162.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[3]
+</th>
+<td>
+0.275
+</td>
+<td>
+0.289
+</td>
+<td>
+-0.254
+</td>
+<td>
+0.829
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+803.0
+</td>
+<td>
+1939.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[4]
+</th>
+<td>
+0.053
+</td>
+<td>
+0.296
+</td>
+<td>
+-0.509
+</td>
+<td>
+0.595
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+819.0
+</td>
+<td>
+2140.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[5]
+</th>
+<td>
+-0.602
+</td>
+<td>
+0.286
+</td>
+<td>
+-1.117
+</td>
+<td>
+-0.050
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+792.0
+</td>
+<td>
+2124.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[6]
+</th>
+<td>
+-0.771
+</td>
+<td>
+0.288
+</td>
+<td>
+-1.294
+</td>
+<td>
+-0.211
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+819.0
+</td>
+<td>
+2157.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[7]
+</th>
+<td>
+-0.928
+</td>
+<td>
+0.287
+</td>
+<td>
+-1.448
+</td>
+<td>
+-0.365
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+774.0
+</td>
+<td>
+1975.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[8]
+</th>
+<td>
+-0.713
+</td>
+<td>
+0.289
+</td>
+<td>
+-1.261
+</td>
+<td>
+-0.179
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+866.0
+</td>
+<td>
+2105.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[9]
+</th>
+<td>
+-0.759
+</td>
+<td>
+0.289
+</td>
+<td>
+-1.302
+</td>
+<td>
+-0.215
+</td>
+<td>
+0.011
+</td>
+<td>
+0.008
+</td>
+<td>
+743.0
+</td>
+<td>
+1861.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[10]
+</th>
+<td>
+-0.479
+</td>
+<td>
+0.292
+</td>
+<td>
+-1.038
+</td>
+<td>
+0.053
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+813.0
+</td>
+<td>
+1992.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[11]
+</th>
+<td>
+-0.042
+</td>
+<td>
+0.298
+</td>
+<td>
+-0.603
+</td>
+<td>
+0.514
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+873.0
+</td>
+<td>
+1890.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[12]
+</th>
+<td>
+0.406
+</td>
+<td>
+0.289
+</td>
+<td>
+-0.108
+</td>
+<td>
+0.985
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+791.0
+</td>
+<td>
+1959.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[13]
+</th>
+<td>
+0.670
+</td>
+<td>
+0.291
+</td>
+<td>
+0.152
+</td>
+<td>
+1.245
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+824.0
+</td>
+<td>
+1971.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[14]
+</th>
+<td>
+0.895
+</td>
+<td>
+0.290
+</td>
+<td>
+0.366
+</td>
+<td>
+1.432
+</td>
+<td>
+0.010
+</td>
+<td>
+0.007
+</td>
+<td>
+790.0
+</td>
+<td>
+2190.0
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+seasonality_smoothing
+</th>
+<td>
+0.300
+</td>
+<td>
+0.093
+</td>
+<td>
+0.121
+</td>
+<td>
+0.480
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+2617.0
+</td>
+<td>
+1748.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+trend_init
+</th>
+<td>
+0.457
+</td>
+<td>
+0.880
+</td>
+<td>
+-1.215
+</td>
+<td>
+2.138
+</td>
+<td>
+0.015
+</td>
+<td>
+0.010
+</td>
+<td>
+3642.0
+</td>
+<td>
+4996.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing
+</th>
+<td>
+0.481
+</td>
+<td>
+0.222
+</td>
+<td>
+0.079
+</td>
+<td>
+0.864
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+5294.0
+</td>
+<td>
+4586.0
+</td>
+<td>
+1.00
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>print(
+    f&quot;&quot;&quot;Divergences: {
+        damped_holt_winters_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+    }
+&quot;&quot;&quot;
+)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=damped_holt_winters_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 12), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Holt Winters Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_73_1.png" style="width: 900px;"/>
+</center>
+<p>We do not get any divergences 🙌!</p>
+</div>
+<div id="forecast-3" class="section level3">
+<h3>Forecast</h3>
+<p>Finally, we generate the forecast for the damped Holt-Winters model:</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+damped_holt_winters_forecast = forecast(
+    rng_subkey,
+    damped_holt_winters_model,
+    holt_winters_mcmc.get_samples(),
+    y_train,
+    n_seasons,
+    y_test.size,
+)
+
+damped_holt_winters_posterior_predictive = az.from_numpyro(
+    posterior_predictive=damped_holt_winters_forecast,
+    coords={&quot;t&quot;: t_test},
+    dims={&quot;y_forecast&quot;: [&quot;t&quot;]},
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=damped_holt_winters_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=damped_holt_winters_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    damped_holt_winters_posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C2&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Damped Holt Winters Model Forecast&quot;)</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_files/exponential_smoothing_numpyro_77_1.png" style="width: 900px;"/>
+</center>
+<p>We indeed see a milder trend forecast as expected (note the posterior distribution of <span class="math inline">\(\phi\)</span> is far from <span class="math inline">\(1\)</span>)!</p>
+<hr />
+<p>This was a great learning exercise for me. It provided me intuition and practice to tackle more complex models like the one presented in the documentation: <a href="https://num.pyro.ai/en/stable/tutorials/time_series_forecasting.html">“Time Series Forecasting: Seasonal, Global Trend (SGT)”</a>.</p>
+<p>I hope you also found it useful!</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
