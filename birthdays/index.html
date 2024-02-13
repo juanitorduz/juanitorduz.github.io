@@ -613,7 +613,7 @@ b_day_of_year2 = pm.Normal(
 </div>
 <div id="prior-specifications" class="section level3">
 <h3>Prior Specifications</h3>
-<p>Most of the priors are not very informative. The only tricky part here is to think that we are working on the normalized log scale of the relative births data. For example, for the global trend we use a Gaussian process with an exponential quadratic kernel. We use a the following priors for the length scale:</p>
+<p>Most of the priors are not very informative. The only tricky part here is to think that we are working on the normalized log scale of the relative births data. For example, for the global trend we use a Gaussian process with an exponential quadratic kernel. We use the following priors for the length scale:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 pz.LogNormal(mu=np.log(700 / obs_std), sigma=1).plot_pdf(ax=ax)
 ax.set(xlim=(None, 4))
@@ -1471,7 +1471,7 @@ plt.gcf().suptitle(&quot;Trace&quot;, fontsize=16)</code></pre>
 </div>
 <div id="posterior-distribution-analysis" class="section level2">
 <h2>Posterior Distribution Analysis</h2>
-<p>Now we want to deep dive into the posterior distribution of the model and its components. We want to do this in the original scale. Therefore the first step is to transform the posterior samples back to the original scale.</p>
+<p>Now we want to do a deep dive into the posterior distribution of the model and its components. We want to do this in the original scale. Therefore the first step is to transform the posterior samples back to the original scale.</p>
 <ul>
 <li>Model Components</li>
 </ul>
