@@ -1026,6 +1026,11 @@ t + h - m(k + 1) = t + h - m(h - 1)/m = t + h - (h - 1) = t + 1
     # --- Forecast ---
     if future &gt; 0:
         numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:])</code></pre>
+<p><strong>Remark [Seasonality Looping]:</strong> Please note that the <code>new_season</code> variable in the <code>transition_fn</code> simply computes the next seasonal step as in the mathematical formulation of the model. Observe how the previous season <code>s_{t - m}</code> is given by <code>previous_seasonality[0]</code>. The index zero looks weird but it makes sense since we are looping the seasonality (carry) below as</p>
+<pre class="python"><code>seasonality = jnp.concatenate(
+    [previous_seasonality[1:], new_season[None]], axis=0
+)</code></pre>
+<p>so that the first item on such array always correspond to the desired previous seasonality in the iteration formula 💡.</p>
 </div>
 <div id="inference-2" class="section level3">
 <h3>Inference</h3>

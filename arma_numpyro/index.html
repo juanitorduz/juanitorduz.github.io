@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Notes on an ARMA(1, 1) Model with NumPyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Notes on an ARMA(1, 1) Model with NumPyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">8 min read</span>
+    
+
+    <h1 class="article-title">Notes on an ARMA(1, 1) Model with NumPyro</h1>
+
+    
+    <span class="article-date">2024-02-13</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This are some notes on how to implement an ARMA(1, 1) model using <a href="https://github.com/pyro-ppl/numpyro"><code>NumPyro</code></a> for time series forecasting. The ARMA(1, 1) model is given by</p>
+<p><span class="math display">\[y_t = \mu + \phi y_{t-1} + \theta \varepsilon_{t-1} + \varepsilon_t\]</span></p>
+<p>where <span class="math inline">\(y_t\)</span> is the time series, <span class="math inline">\(\mu\)</span> is the mean, <span class="math inline">\(\phi\)</span> is the autoregressive parameter, <span class="math inline">\(\theta\)</span> is the moving average parameter, and <span class="math inline">\(\varepsilon_t\)</span> is a white noise process with mean zero and variance <span class="math inline">\(\sigma^2\)</span>.</p>
+<p>We work ot an end-to-end example: from data generation to model fitting and forecasting. We consolidate this example following the <a href="https://num.pyro.ai/en/stable/examples/ar2.html">Example: AR(2) process</a> from the documentation and the discussion in the forum thread <a href="https://forum.pyro.ai/t/lax-scan-to-implement-arma-1-1/3203">Lax.scan to implement ARMA(1, 1)</a>. In addition, we use some code from some previous notes <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">exponential smoothing</a>.</p>
+<hr />
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from collections.abc import Callable
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+from jax import lax, random
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.contrib.control_flow import scan
+from numpyro.infer import MCMC, NUTS, Predictive
+from pydantic import BaseModel, Field
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.arima.model import ARIMA
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<hr />
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>Whenever getting started with time series models (specially the ones with autoregressive and moving average components), it is a good idea to generate some data to understand how the model works. In addition, we can verify our models by trying to recover the parameters. We generate a time series with <span class="math inline">\(100\)</span> observations using the ARMA(1, 1) model. We set the parameters <span class="math inline">\(\mu = 0.0\)</span>, <span class="math inline">\(\phi = 0.4\)</span>, <span class="math inline">\(\theta = 0.7\)</span>, and <span class="math inline">\(\sigma = 0.5\)</span>.</p>
+<pre class="python"><code>n_samples = 100 + 1
+
+mu = 0.0
+phi = 0.4
+theta = 0.7
+noise_scale = 0.5</code></pre>
+<div id="for-loop-approach" class="section level3">
+<h3>For-Loop Approach</h3>
+<p>To start with simple, we can generate the time series using a for-loop. This is a very transparent way to understand the process.</p>
+<pre class="python"><code>def generate_arma_1_1_data_for_loop(
+    rng_key: ArrayImpl, n_samples: int, phi: float, theta: float, noise_scale: float
+) -&gt; ArrayImpl:
+    # Generate noise
+    error = noise_scale * random.normal(rng_key, (n_samples,))
+    # Preallocate array
+    y = jnp.zeros(n_samples)
+    # Data generating process
+    for t in range(1, y.size):
+        ar_part = phi * y[t - 1]
+        ma_part = theta * error[t - 1]
+        y_t = ar_part + ma_part + error[t]
+        y = y.at[t].set(y_t)  # noqa
+    # Return the time series without the first element.
+    return y[1:]
+
+
+y_foor_loop = generate_arma_1_1_data_for_loop(
+    rng_key=rng_key, n_samples=n_samples, phi=phi, theta=theta, noise_scale=noise_scale
+)</code></pre>
+</div>
+<div id="scan-approach" class="section level3">
+<h3>Scan Approach</h3>
+<p>It is also instructive to generate the same time series using <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.scan.html"><code>lax.scan</code></a>. This is a more efficient way to generate the time series, and it is also the way to go when implementing the model in <code>NumPyro</code>. For an introduction to scan you can take a look into the previous post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">Notes on Exponential Smoothing with NumPyro</a>.</p>
+<pre class="python"><code>def generate_arma_1_1_data_scan(
+    rng_key: ArrayImpl, n_samples: int, phi: float, theta: float, noise_scale: float
+) -&gt; ArrayImpl:
+    # Generate noise
+    error = noise_scale * random.normal(rng_key, (n_samples,))
+
+    # Data generating process step
+    def arma_step(carry, noise):
+        y_prev, error_prev = carry
+        ar_part = phi * y_prev
+        ma_part = theta * error_prev
+        y_t = ar_part + ma_part + noise
+        return (y_t, noise), y_t
+
+    # Scan over the time series
+    init_carry = (0.0, error[0])
+    _, y = lax.scan(arma_step, init_carry, error[1:])
+    return y
+
+
+y_scan = generate_arma_1_1_data_scan(
+    rng_key=rng_key, n_samples=n_samples, phi=phi, theta=theta, noise_scale=noise_scale
+)</code></pre>
+<p>We can verify we get the same results (as we have used the same seed for the random number generator).</p>
+<pre class="python"><code>jnp.allclose(y_foor_loop, y_scan, atol=1e-7)</code></pre>
+<pre><code>Array(True, dtype=bool)</code></pre>
+<p>We can now visualize the time series.</p>
+<pre class="python"><code>y = y_scan
+t = jnp.arange(y.size)
+
+fix, ax = plt.subplots()
+ax.plot(t, y)
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data&quot;)</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/arma_numpyro_12_1.png" style="width: 900px;"/>
+</center>
+<p>We can plot the (partial) autocorrelation function to verify the time series has the expected structure.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(12, 8), layout=&quot;constrained&quot;
+)
+
+_ = plot_acf(y, lags=12, ax=ax[0])
+_ = plot_pacf(y, lags=12, ax=ax[1])</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/arma_numpyro_14_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="train-test-split" class="section level3">
+<h3>Train-Test Split</h3>
+<p>As usual, lets do a train-test split.</p>
+<pre class="python"><code>n = y.size
+
+prop_train = 0.9
+n_train = round(prop_train * n)
+
+y_train = y[:n_train]
+t_train = t[:n_train]
+
+y_test = y[n_train:]
+t_test = t[n_train:]
+
+fig, ax = plt.subplots()
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data Split&quot;)</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/arma_numpyro_16_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
+</div>
+<div id="arma-model-statsmodels" class="section level2">
+<h2>ARMA Model: Statsmodels</h2>
+<p>Before implementing the model in <code>NumPyro</code>, we can use the <code>statsmodels</code> library to fit the ARMA(1, 1) model. This is a good way to verify our implementation.</p>
+<pre class="python"><code>model = ARIMA(np.asarray(y_train), order=(1, 0, 1))
+result = model.fit()
+result.summary()</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/statsmodels_results_summary.png" style="width: 600px;"/>
+</center>
+<p>We see that we get the same parameters as we used to generate the data.</p>
+<p>We now use the fitted model to forecast on the test set.</p>
+<pre class="python"><code>forecast_94_df = result.get_forecast(steps=y_test.size).summary_frame(alpha=0.06)
+forecast_50_df = result.get_forecast(steps=y_test.size).summary_frame(alpha=0.5)
+
+fig, ax = plt.subplots()
+ax.fill_between(
+    t_test,
+    forecast_94_df[&quot;mean_ci_lower&quot;],
+    forecast_94_df[&quot;mean_ci_upper&quot;],
+    color=&quot;C2&quot;,
+    alpha=0.3,
+    label=r&quot;$94\%$ CI (mean) [statsmodels]&quot;,
+)
+ax.fill_between(
+    t_test,
+    forecast_50_df[&quot;mean_ci_lower&quot;],
+    forecast_50_df[&quot;mean_ci_upper&quot;],
+    color=&quot;C2&quot;,
+    alpha=0.5,
+    label=r&quot;$50\%$ CI (mean) [statsmodels]&quot;,
+)
+ax.plot(t_test, forecast_94_df[&quot;mean&quot;], color=&quot;C2&quot;, label=&quot;mean forecast [statsmodels]&quot;)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;ARMA(1, 1) Model Forecast (Statsmodels)&quot;)</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/arma_numpyro_21_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
+<div id="numpyro-arma1-1-model" class="section level2">
+<h2>NumPyro ARMA(1, 1) Model</h2>
+<p>Now we are ready to implement the ARMA(1, 1) model in <code>NumPyro</code>.</p>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>As mentioned in the introduction, we blend the strategies presented in the <a href="https://num.pyro.ai/en/stable/examples/ar2.html">Example: AR(2) process</a> from the documentation and the discussion in the forum thread <a href="https://forum.pyro.ai/t/lax-scan-to-implement-arma-1-1/3203">Lax.scan to implement ARMA(1, 1)</a>. Overall, the strategy is similar as in the <a href="https://juanitorduz.github.io/time_based_regression_pymc/">exponential smoothing case</a>: set priors, write the transition function and pass it trough <code>scan</code>. Still, there are two major differences (at least for my implementation):</p>
+<ul>
+<li><p>We do not condition on the data <code>y</code> but on the errors after passing them through scan. I learned this the hard was as the moving average parameter <span class="math inline">\(\theta\)</span> was unchanged from the prior when conditioning on <code>y</code>. This is simply because in the <code>scan</code> step the term <code>y[t] - pred</code> would vanish 🤦.</p></li>
+<li><p>Inside the model I had to write a custom prediction loop (via scan). The reason is that we want to recursively pass previous predictions for the autoregressive term. In addition, we need to set the errors to zero at prediction time (ecxept for the last one which we use the latest observed error). For a detailed discussion on the prediction step, please see the online chapter <a href="https://otexts.com/fpp3/arima-forecasting.html#arima-forecasting">Ch 9.8: ARIMA Models; Forecasting</a>.</p></li>
+</ul>
+<pre class="python"><code>def arma_1_1(y: ArrayImpl, future: int = 0) -&gt; None:
+    t_max = y.size
+    mu = numpyro.sample(&quot;mu&quot;, dist.Normal(loc=0, scale=1))
+    phi = numpyro.sample(&quot;phi&quot;, dist.Uniform(low=-1, high=1))
+    theta = numpyro.sample(&quot;theta&quot;, dist.Uniform(low=-1, high=1))
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.HalfNormal(scale=1))
+
+    def transition_fn(carry, t):
+        y_prev, error_prev = carry
+        ar_part = phi * y_prev
+        ma_part = theta * error_prev
+        pred = mu + ar_part + ma_part
+        error = y[t] - pred
+        return (y[t], error), error
+
+    error_0 = y[0] - (mu + phi * mu)
+    _, errors = scan(transition_fn, (y[0], error_0), jnp.arange(1, t_max + future))
+
+    errors = jnp.concat([error_0[None], errors])
+    numpyro.sample(&quot;errors&quot;, dist.Normal(loc=0, scale=sigma), obs=errors)
+
+    if future &gt; 0:
+
+        def prediction_fn(carry, _):
+            y_prev, error_prev = carry
+            ar_part = phi * y_prev
+            ma_part = theta * error_prev
+            pred = mu + ar_part + ma_part
+            error = 0.0
+            return (pred, error), pred
+
+        _, y_forecast = scan(prediction_fn, (y[-1], errors[-1]), jnp.arange(future))
+        numpyro.sample(&quot;y_forecast&quot;, dist.Normal(loc=y_forecast, scale=sigma))</code></pre>
+</div>
+<div id="inference" class="section level3">
+<h3>Inference</h3>
+<p>We are now ready to fit the model using <code>NumPyro</code>. We use the <code>NUTS</code> sampler.</p>
+<pre class="python"><code>class InferenceParams(BaseModel):
+    num_warmup: int = Field(2_000, ge=1)
+    num_samples: int = Field(2_000, ge=1)
+    num_chains: int = Field(4, ge=1)
+
+
+def run_inference(
+    rng_key: ArrayImpl,
+    model: Callable,
+    args: InferenceParams,
+    *model_args,
+    **nuts_kwargs,
+) -&gt; MCMC:
+    sampler = NUTS(model, **nuts_kwargs)
+    mcmc = MCMC(
+        sampler=sampler,
+        num_warmup=args.num_warmup,
+        num_samples=args.num_samples,
+        num_chains=args.num_chains,
+    )
+    mcmc.run(rng_key, *model_args)
+    return mcmc</code></pre>
+<pre class="python"><code>inference_params = InferenceParams()
+rng_key, rng_subkey = random.split(key=rng_key)
+mcmc = run_inference(rng_subkey, arma_1_1, inference_params, y_train)</code></pre>
+<p>Let’s look into the diagnostics and estimated parameters.</p>
+<pre class="python"><code>idata = az.from_numpyro(posterior=mcmc)
+
+az.summary(data=idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+mu
+</th>
+<td>
+-0.089
+</td>
+<td>
+0.089
+</td>
+<td>
+-0.266
+</td>
+<td>
+0.071
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6845.0
+</td>
+<td>
+5324.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+phi
+</th>
+<td>
+0.362
+</td>
+<td>
+0.115
+</td>
+<td>
+0.161
+</td>
+<td>
+0.590
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6520.0
+</td>
+<td>
+5058.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.498
+</td>
+<td>
+0.038
+</td>
+<td>
+0.429
+</td>
+<td>
+0.569
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7348.0
+</td>
+<td>
+5868.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+theta
+</th>
+<td>
+0.678
+</td>
+<td>
+0.083
+</td>
+<td>
+0.527
+</td>
+<td>
+0.831
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6446.0
+</td>
+<td>
+6010.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>print(f&quot;&quot;&quot;Divergences: {idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()}&quot;&quot;&quot;)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    compact=True,
+    lines=[
+        (&quot;mu&quot;, {}, mu),
+        (&quot;phi&quot;, {}, phi),
+        (&quot;theta&quot;, {}, theta),
+        (&quot;sigma&quot;, {}, noise_scale),
+    ],
+    backend_kwargs={&quot;figsize&quot;: (12, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/arma_numpyro_31_1.png" style="width: 1000px;"/>
+</center>
+<p>the model diagnostics look fine. Also, note that wee have successfully recovered the parameters used to generate the data 🚀!</p>
+</div>
+<div id="forecasting" class="section level3">
+<h3>Forecasting</h3>
+<p>We are now ready to forecast on the test set.</p>
+<pre class="python"><code>def forecast(
+    rng_key: ArrayImpl, model: Callable, samples: dict[str, ArrayImpl], *model_args
+) -&gt; dict[str, ArrayImpl]:
+    predictive = Predictive(
+        model=model,
+        posterior_samples=samples,
+        return_sites=[&quot;y_forecast&quot;, &quot;errors&quot;],
+    )
+    return predictive(rng_key, *model_args)</code></pre>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+forecast = forecast(rng_subkey, arma_1_1, mcmc.get_samples(), y_train, y_test.size)</code></pre>
+<pre class="python"><code>posterior_predictive = az.from_numpyro(
+    posterior_predictive=forecast,
+    coords={&quot;t_test&quot;: t_test, &quot;t&quot;: t},
+    dims={&quot;y_forecast&quot;: [&quot;t_test&quot;], &quot;errors&quot;: [&quot;t&quot;]},
+)</code></pre>
+<p>We can now visualize the forecast at various credible intervals.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;ARMA(1, 1) Model Forecast&quot;)</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/arma_numpyro_38_1.png" style="width: 900px;"/>
+</center>
+<p>The results look good and very comparable to the ones obtained using the <code>statsmodels</code> library:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;y_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_test, forecast_94_df[&quot;mean&quot;], color=&quot;C2&quot;, label=&quot;mean forecast [statsmodels]&quot;)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;ARMA(1, 1) Model Forecast - Model Comparison&quot;)</code></pre>
+<center>
+<img src="../images/arma_numpyro_files/arma_numpyro_40_1.png" style="width: 900px;"/>
+</center>
+<hr />
+<p>Using these learnings, it should not be hard to implement a general ARIMA(p, d, q) model. One has to be careful vectorizing the model to make it efficient.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

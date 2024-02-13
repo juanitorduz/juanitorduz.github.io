@@ -6,7 +6,18 @@
     <description>Recent content in Bayesian on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 11 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 13 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Notes on an ARMA(1, 1) Model with NumPyro</title>
+      <link>/arma_numpyro/</link>
+      <pubDate>Tue, 13 Feb 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/arma_numpyro/</guid>
+      <description>This are some notes on how to implement an ARMA(1, 1) model using NumPyro for time series forecasting. The ARMA(1, 1) model is given by
+\[y_t = \mu + \phi y_{t-1} + \theta \varepsilon_{t-1} + \varepsilon_t\]
+where \(y_t\) is the time series, \(\mu\) is the mean, \(\phi\) is the autoregressive parameter, \(\theta\) is the moving average parameter, and \(\varepsilon_t\) is a white noise process with mean zero and variance \(\sigma^2\).</description>
+    </item>
+    
     <item>
       <title>Notes on Exponential Smoothing with NumPyro</title>
       <link>/exponential_smoothing_numpyro/</link>
