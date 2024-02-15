@@ -352,17 +352,25 @@ mcmc = run_inference(rng_subkey, croston_model, inference_params, z, p_inv)</cod
 az.summary(data=idata)</code></pre>
 <center>
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
+<style>
+    .dataframe thead tr:only-child th {
+        text-align: right;
+        font-size: 15px;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 18px;
     }
 
     .dataframe tbody tr th {
         vertical-align: top;
+        font-size: 18px;
     }
-
-    .dataframe thead th {
-        text-align: right;
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 18px;
     }
 </style>
 <table border="1" class="dataframe">
@@ -642,7 +650,7 @@ az.plot_hdi(
     posterior_predictive[&quot;posterior_predictive&quot;][&quot;z_forecast&quot;],
     hdi_prob=0.94,
     color=&quot;C3&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HID&quot;},
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HID&quot;},
     ax=ax[0],
 )
 az.plot_hdi(
@@ -650,7 +658,7 @@ az.plot_hdi(
     posterior_predictive[&quot;posterior_predictive&quot;][&quot;z_forecast&quot;],
     hdi_prob=0.5,
     color=&quot;C3&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: r&quot;$50\%$ HID&quot;},
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HID&quot;},
     ax=ax[0],
 )
 ax[0].plot(
@@ -670,7 +678,7 @@ az.plot_hdi(
     posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;],
     hdi_prob=0.94,
     color=&quot;C3&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HID&quot;},
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HID&quot;},
     ax=ax[1],
 )
 az.plot_hdi(
@@ -678,7 +686,7 @@ az.plot_hdi(
     posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;],
     hdi_prob=0.5,
     color=&quot;C3&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: r&quot;$50\%$ HID&quot;},
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HID&quot;},
     ax=ax[1],
 )
 ax[1].plot(
