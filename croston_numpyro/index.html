@@ -254,11 +254,11 @@ ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Croston Optimi
 </div>
 <div id="crostons-method-in-numpyro" class="section level2">
 <h2>Croston’s Method in NumPyro</h2>
-<p>As described in the introduction, we can use the simple exponential smoothing (level) model presented in the previous post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">Notes on Exponential Smoothing with NumPyro</a>. The only thing we need to change is to select a prior for the smoothing parameter so that the support of the prior is close to the interval <span class="math inline">\([0.1, 0.3]\)</span>. As we are using a Beta distribution as a prior for the smoothing parameter, we can use a Beta distribution with parameters <span class="math inline">\(\alpha = 10\)</span> and <span class="math inline">\(\beta = 40\)</span>.</p>
+<p>As described in the introduction, we can use the simple exponential smoothing (level) model presented in the previous post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">Notes on Exponential Smoothing with NumPyro</a>. The only thing we need to change is to select a prior for the smoothing parameter so that the support of the prior is close to the interval <span class="math inline">\([0.1, 0.3]\)</span>. As we are using a Beta distribution as a prior for the smoothing parameter, we can use a Beta distribution with parameters <span class="math inline">\(\alpha = 2\)</span> and <span class="math inline">\(\beta = 20\)</span>.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-pz.Beta(10, 40).plot_pdf(ax=ax)
-ax.axvline(x=(10 / (40 + 10)), c=&quot;black&quot;, linestyle=&quot;--&quot;)  # mean
-ax.set(title=&quot;Beta(10, 40) PDF&quot;, xlabel=&quot;$\\alpha$&quot;)</code></pre>
+pz.Beta(2, 20).plot_pdf(ax=ax)
+ax.axvline(x=(2 / (20 + 2)), c=&quot;black&quot;, linestyle=&quot;--&quot;)  # mean
+ax.set(title=&quot;Beta(2, 20) PDF&quot;, xlabel=&quot;$\\alpha$&quot;)</code></pre>
 <center>
 <img src="../images/croston_numpyro_files/croston_numpyro_16_1.png" style="width: 900px;"/>
 </center>
