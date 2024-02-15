@@ -203,9 +203,11 @@ ax[1].set_title(&quot;Period&quot;)</code></pre>
 </center>
 <p>Once we have the demand size and demand interval time series, we can use simple exponential smoothing to forecast them. We can then combine the forecasts to get the final forecast as</p>
 <p><span class="math display">\[\hat{y}_{t+h} = \frac{\hat{z}_{t}}{\hat{p}_{t}}\]</span></p>
-<p><strong>Remarks [Smoothing Parameter]:</strong>
-- In the original Croston’s method, the smoothing parameters of both series is set to the same value. However, we can also estimate the smoothing parameters separately (Croston Optimized). We will use the latter approach in this notebook.
-- In principle, the smoothing parameter can take any value between 0 and 1. However, in practice, we often restrict it to a value closer to zero than to one. The reason being that for values closer to one, the forecast is more influenced by recent demand values which leads to a more volatile forecast.</p>
+<p><strong>Remarks [Smoothing Parameter]:</strong></p>
+<ul>
+<li><p>In the original Croston’s method, the smoothing parameters of both series is set to the same value. However, we can also estimate the smoothing parameters separately (Croston Optimized). We will use the latter approach in this notebook.</p></li>
+<li><p>In principle, the smoothing parameter can take any value between 0 and 1. However, in practice, we often restrict it to a value closer to zero than to one. The reason being that for values closer to one, the forecast is more influenced by recent demand values which leads to a more volatile forecast.</p></li>
+</ul>
 <hr />
 </div>
 <div id="crostons-method-with-statsforecast" class="section level2">
