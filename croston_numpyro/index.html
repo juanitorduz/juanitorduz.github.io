@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Croston&#39;s Method for Intermittent Demand Forecasting in NumPyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Croston&#39;s Method for Intermittent Demand Forecasting in NumPyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">9 min read</span>
+    
+
+    <h1 class="article-title">Croston&#39;s Method for Intermittent Demand Forecasting in NumPyro</h1>
+
+    
+    <span class="article-date">2024-02-15</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we will implement Croston’s method for intermittent demand forecasting using <a href="https://github.com/pyro-ppl/numpyro"><code>NumPyro</code></a>. Croston’s method is a popular forecasting method for intermittent demand data, which is characterized by a large number of zero values. The method is based on the idea of separating the demand size and the demand interval, and then forecasting them separately using simple exponential smoothing. We therefore can leverage on top of the previous post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">Notes on Exponential Smoothing with NumPyro</a>. Once we have the forecasts for the demand size and the demand interval, we can combine them to get the final forecast. For a succinct explanation of Croston’s method, I recommend the following blog post: <a href="https://www.pmorgan.com.au/tutorials/crostons-method/" class="uri">https://www.pmorgan.com.au/tutorials/crostons-method/</a>.</p>
+<hr />
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from collections.abc import Callable
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+import pandas as pd
+import preliz as pz
+from jax import random
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.contrib.control_flow import scan
+from numpyro.handlers import scope
+from numpyro.infer import MCMC, NUTS, Predictive
+from pydantic import BaseModel, Field
+from statsforecast import StatsForecast
+from statsforecast.models import CrostonOptimized
+from statsforecast.utils import ConformalIntervals
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<hr />
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>We start by generating synthetic time series with many zeros. We use a Poisson distribution to generate the samples:</p>
+<pre class="python"><code>n = 80
+lam = 0.3
+
+y = random.poisson(key=rng_key, lam=lam, shape=(n,)).astype(jnp.float32)
+t = jnp.arange(y.size)
+
+fig, ax = plt.subplots()
+ax.plot(t, y)
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data&quot;)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_4_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
+<div id="train-test-split" class="section level2">
+<h2>Train-Test Split</h2>
+<p>Next, we split the data into a training and a test set. We will use the training set to fit the model and the test set to evaluate the model’s performance.</p>
+<pre class="python"><code>n = y.size
+
+prop_train = 0.85
+n_train = round(prop_train * n)
+
+y_train = y[:n_train]
+t_train = t[:n_train]
+
+y_test = y[n_train:]
+t_test = t[n_train:]
+
+fig, ax = plt.subplots()
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data Split&quot;)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_6_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
+<div id="idea-of-crostons-method" class="section level2">
+<h2>Idea of Croston’s Method</h2>
+<p>As mentioned earlier, Croston’s method is based on the idea of separating the original series <span class="math inline">\(y_{t}\)</span> into the demand size and the demand interval.</p>
+<ul>
+<li><p>To generate the demand size time series <span class="math inline">\(z_{t}\)</span> we simply keep the non-zero values of the original series.</p></li>
+<li><p>To generate the demand interval time series <span class="math inline">\(y_{t}\)</span> we keep the time between non-zero values of the original series.</p></li>
+</ul>
+<p>Lets see how we can do this:</p>
+<pre class="python"><code># Demand time series
+z = y_train[y_train != 0]
+
+print(f&quot;Demand: {z}&quot;)
+
+# Demand intervals (periods)
+p_idx = jnp.flatnonzero(y_train).astype(jnp.float32)
+p = jnp.diff(p_idx, prepend=-1)
+
+print(&quot;Period, p: &quot;, p)</code></pre>
+<pre><code>Demand: [1. 1. 1. 1. 2. 1. 1. 1. 1. 1. 1. 1. 1. 3. 1. 1. 1. 1. 1. 2.]
+Period, p:  [ 4.  2.  3.  1.  3.  1.  3. 23.  2.  1.  1.  5.  1.  1.  1.  4.  1.  3.  5.  3.]</code></pre>
+<p>We can visualize the demand size and demand interval time series (note they have the same length!):</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 6), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+ax[0].plot(z)
+ax[0].set_title(&quot;Demand&quot;)
+ax[1].plot(p)
+ax[1].set_title(&quot;Period&quot;)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_10_1.png" style="width: 900px;"/>
+</center>
+<p>Once we have the demand size and demand interval time series, we can use simple exponential smoothing to forecast them. We can then combine the forecasts to get the final forecast as</p>
+<p><span class="math display">\[\hat{y}_{t+h} = \frac{\hat{z}_{t}}{\hat{p}_{t}}\]</span></p>
+<p><strong>Remarks [Smoothing Parameter]:</strong>
+- In the original Croston’s method, the smoothing parameters of both series is set to the same value. However, we can also estimate the smoothing parameters separately (Croston Optimized). We will use the latter approach in this notebook.
+- In principle, the smoothing parameter can take any value between 0 and 1. However, in practice, we often restrict it to a value closer to zero than to one. The reason being that for values closer to one, the forecast is more influenced by recent demand values which leads to a more volatile forecast.</p>
+<hr />
+</div>
+<div id="crostons-method-with-statsforecast" class="section level2">
+<h2>Croston’s Method with StatsForecast</h2>
+<p>Before we implement Croston’s method from scratch, we use the <a href="https://nixtlaverse.nixtla.io/statsforecast/index.html"><code>statsforecast</code></a> where there are many time series methods implemented. We use the <a href="https://nixtlaverse.nixtla.io/statsforecast/src/core/models.html#crostonoptimized"><code>CrostonOptimized</code></a> object to generate the forecast. From the documentation:</p>
+<blockquote>
+<p><em>A variation of the classic Croston’s method where the smooting paramater is optimally selected from the range <span class="math inline">\([0.1, 0.3]\)</span>. Both the non-zero demand <span class="math inline">\(z_{t}\)</span> and the inter-demand intervals <span class="math inline">\(p_{t}\)</span> are smoothed separately, so their smoothing parameters can be different.</em></p>
+</blockquote>
+<p>We use conformal prediction intervals to generate prediction intervals for the forecast.</p>
+<pre class="python"><code>sf = StatsForecast(
+    models=[CrostonOptimized()],
+    freq=1,
+    n_jobs=-1,
+)
+
+train_df = pd.DataFrame({&quot;unique_id&quot;: &quot;a&quot;, &quot;ds&quot;: t_train, &quot;y&quot;: y_train})
+
+sf_forecast = sf.forecast(
+    h=y_test.size,
+    df=train_df,
+    level=[94],
+    prediction_intervals=ConformalIntervals(n_windows=5),
+)
+
+
+fig, ax = plt.subplots()
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.fill_between(
+    t_test,
+    sf_forecast[&quot;CrostonOptimized-lo-94&quot;],
+    sf_forecast[&quot;CrostonOptimized-hi-94&quot;],
+    color=&quot;C2&quot;,
+    alpha=0.3,
+    label=&quot;$94\\%$ Conformal Interval&quot;,
+)
+ax.plot(t_test, sf_forecast[&quot;CrostonOptimized&quot;], color=&quot;C2&quot;, label=&quot;sf_forecast&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data Split&quot;)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_13_2.png" style="width: 900px;"/>
+</center>
+<p>It is a bit weird that the conformal intervals cover a lot of negative values (it is symmetric around the point forecast). It would be nice to have a model that can generate prediction intervals that are always positive.</p>
+<hr />
+</div>
+<div id="crostons-method-in-numpyro" class="section level2">
+<h2>Croston’s Method in NumPyro</h2>
+<p>As described in the introduction, we can use the simple exponential smoothing (level) model presented in the previous post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">Notes on Exponential Smoothing with NumPyro</a>. The only thing we need to change is to select a prior for the smoothing parameter so that the support of the prior is close to the interval <span class="math inline">\([0.1, 0.3]\)</span>. As we are using a Beta distribution as a prior for the smoothing parameter, we can use a Beta distribution with parameters <span class="math inline">\(\alpha = 10\)</span> and <span class="math inline">\(\beta = 40\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.Beta(10, 40).plot_pdf(ax=ax)
+ax.axvline(x=(10 / (40 + 10)), c=&quot;black&quot;, linestyle=&quot;--&quot;)  # mean
+ax.set(title=&quot;Beta(10, 40) PDF&quot;, xlabel=&quot;$\\alpha$&quot;)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_16_1.png" style="width: 900px;"/>
+</center>
+<p>Recall the model structure for the simple exponential smoothing (level) model:</p>
+<pre class="python"><code>def level_model(ts: ArrayImpl, future: int = 0) -&gt; None:
+    t_max = ts.size
+
+    # --- Priors ---
+
+    ## Level
+    level_smoothing = numpyro.sample(
+        &quot;level_smoothing&quot;, dist.Beta(concentration1=2, concentration0=20)
+    )
+    level_init = numpyro.sample(&quot;level_init&quot;, dist.Normal(loc=0, scale=1))
+
+    ## Noise
+    noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(scale=1))
+
+    # --- Transition Function ---
+
+    def transition_fn(carry, t):
+        previous_level = carry
+
+        level = jnp.where(
+            t &lt; t_max,
+            level_smoothing * y[t] + (1 - level_smoothing) * previous_level,
+            previous_level,
+        )
+
+        mu = previous_level
+        pred = numpyro.sample(&quot;pred&quot;, dist.Normal(loc=mu, scale=noise))
+
+        return level, pred
+
+    # --- Run Scan ---
+
+    with numpyro.handlers.condition(data={&quot;pred&quot;: ts}):
+        _, preds = scan(
+            transition_fn,
+            level_init,
+            jnp.arange(t_max + future),
+        )
+
+    # --- Forecast ---
+
+    if future &gt; 0:
+        return numpyro.deterministic(&quot;ts_forecast&quot;, preds[-future:])
+    return None</code></pre>
+<p><strong>Remark</strong>: Taking the quotient of two posterior distribution samples which can be very close to zero brings numerical instability. Hence, we model the inverse of the periods instead of the periods themselves. This way, we can take the product of the demand size and the inverse of the periods to get the forecast.</p>
+<pre class="python"><code>p_inv = 1 / p</code></pre>
+<p>We need an auxiliary function combine the forecasts.</p>
+<pre class="python"><code>def croston_model(z: ArrayImpl, p_inv: ArrayImpl, future: int = 0) -&gt; None:
+    z_forecast = scope(level_model, &quot;demand&quot;)(z, future)
+    p_inv_forecast = scope(level_model, &quot;period_inv&quot;)(p_inv, future)
+
+    if future &gt; 0:
+        numpyro.deterministic(&quot;z_forecast&quot;, z_forecast)
+        numpyro.deterministic(&quot;p_inv_forecast&quot;, p_inv_forecast)
+        numpyro.deterministic(&quot;forecast&quot;, z_forecast * p_inv_forecast)</code></pre>
+<p>Note that we can use the <a href="https://num.pyro.ai/en/stable/handlers.html#scope"><code>scope</code></a> effect handler to reuse the same model for the demand size and the demand interval.</p>
+<div id="inference" class="section level3">
+<h3>Inference</h3>
+<p>We now fit the model:</p>
+<pre class="python"><code>class InferenceParams(BaseModel):
+    num_warmup: int = Field(2_000, ge=1)
+    num_samples: int = Field(2_000, ge=1)
+    num_chains: int = Field(4, ge=1)
+
+
+def run_inference(
+    rng_key: ArrayImpl,
+    model: Callable,
+    args: InferenceParams,
+    *model_args,
+    **nuts_kwargs,
+) -&gt; MCMC:
+    sampler = NUTS(model, **nuts_kwargs)
+    mcmc = MCMC(
+        sampler=sampler,
+        num_warmup=args.num_warmup,
+        num_samples=args.num_samples,
+        num_chains=args.num_chains,
+    )
+    mcmc.run(rng_key, *model_args)
+    return mcmc</code></pre>
+<pre class="python"><code>inference_params = InferenceParams()
+rng_key, rng_subkey = random.split(key=rng_key)
+mcmc = run_inference(rng_subkey, croston_model, inference_params, z, p_inv)</code></pre>
+<pre class="python"><code>idata = az.from_numpyro(posterior=mcmc)
+
+az.summary(data=idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+demand/level_init
+</th>
+<td>
+1.348
+</td>
+<td>
+0.195
+</td>
+<td>
+0.985
+</td>
+<td>
+1.710
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+7094.0
+</td>
+<td>
+5060.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+demand/level_smoothing
+</th>
+<td>
+0.029
+</td>
+<td>
+0.020
+</td>
+<td>
+0.002
+</td>
+<td>
+0.065
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6165.0
+</td>
+<td>
+4928.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+demand/noise
+</th>
+<td>
+0.594
+</td>
+<td>
+0.108
+</td>
+<td>
+0.418
+</td>
+<td>
+0.803
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+8106.0
+</td>
+<td>
+5338.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+period_inv/level_init
+</th>
+<td>
+0.645
+</td>
+<td>
+0.166
+</td>
+<td>
+0.324
+</td>
+<td>
+0.956
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+6946.0
+</td>
+<td>
+5112.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+period_inv/level_smoothing
+</th>
+<td>
+0.084
+</td>
+<td>
+0.055
+</td>
+<td>
+0.003
+</td>
+<td>
+0.182
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+6785.0
+</td>
+<td>
+4405.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+period_inv/noise
+</th>
+<td>
+0.399
+</td>
+<td>
+0.070
+</td>
+<td>
+0.278
+</td>
+<td>
+0.527
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+9086.0
+</td>
+<td>
+4615.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>print(f&quot;&quot;&quot;Divergences: {idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()}&quot;&quot;&quot;)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<p>The model seems to be fitting well. Let’s look into the trace:</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 10), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Croston Model Trace&quot;, fontsize=16)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_30_1.png" style="width: 1000px;"/>
+</center>
+<p>It is worth noting that the posterior distribution of the smoothing parameters between the demand size and the demand interval are different.</p>
+</div>
+<div id="forecast" class="section level3">
+<h3>Forecast</h3>
+<p>We now generate the forecast:</p>
+<pre class="python"><code>def forecast(
+    rng_key: ArrayImpl, model: Callable, samples: dict[str, ArrayImpl], *model_args
+) -&gt; dict[str, ArrayImpl]:
+    predictive = Predictive(
+        model=model,
+        posterior_samples=samples,
+        return_sites=[&quot;z_forecast&quot;, &quot;p_inv_forecast&quot;, &quot;forecast&quot;],
+    )
+    return predictive(rng_key, *model_args)</code></pre>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+croston_forecast = forecast(
+    rng_subkey, croston_model, mcmc.get_samples(), z, p_inv, y_test.size
+)</code></pre>
+<pre class="python"><code>posterior_predictive = az.from_numpyro(
+    posterior_predictive=croston_forecast,
+    coords={&quot;t&quot;: t_test},
+    dims={&quot;z_forecast&quot;: [&quot;t&quot;], &quot;p_inv_forecast&quot;: [&quot;t&quot;], &quot;forecast&quot;: [&quot;t&quot;]},
+)</code></pre>
+<p>First, let us look into the forecast for each component:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3, ncols=1, figsize=(12, 9), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+ax[0].plot(z)
+az.plot_hdi(
+    range(z.size, z.size + y_test.size),
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;z_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HID&quot;},
+    ax=ax[0],
+)
+az.plot_hdi(
+    range(z.size, z.size + y_test.size),
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;z_forecast&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: r&quot;$50\%$ HID&quot;},
+    ax=ax[0],
+)
+ax[0].plot(
+    range(z.size, z.size + y_test.size),
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;z_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax[0].legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax[0].set_title(&quot;Demand&quot;)
+
+ax[1].plot(1 / p)
+az.plot_hdi(
+    range(z.size, z.size + y_test.size),
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HID&quot;},
+    ax=ax[1],
+)
+az.plot_hdi(
+    range(z.size, z.size + y_test.size),
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: r&quot;$50\%$ HID&quot;},
+    ax=ax[1],
+)
+ax[1].plot(
+    range(z.size, z.size + y_test.size),
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax[1].legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax[1].set_title(&quot;Period (inverse)&quot;)
+
+ax[2].plot(p)
+az.plot_hdi(
+    range(z.size, z.size + y_test.size),
+    1 / posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HID&quot;},
+    ax=ax[2],
+)
+az.plot_hdi(
+    range(z.size, z.size + y_test.size),
+    1 / posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HID&quot;},
+    ax=ax[2],
+)
+ax[2].plot(
+    range(z.size, z.size + y_test.size),
+    1
+    / posterior_predictive[&quot;posterior_predictive&quot;][&quot;p_inv_forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax[2].legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax[2].set_title(&quot;Period&quot;)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_37_1.png" style="width: 1000px;"/>
+</center>
+<p>We can combine the forecasts to get the final result:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=posterior_predictive[&quot;posterior_predictive&quot;][&quot;forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;forecast&quot;].mean(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(
+    t_test,
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;forecast&quot;].median(
+        dim=(&quot;chain&quot;, &quot;draw&quot;)
+    ),
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;median forecast&quot;,
+)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.plot(t_test, sf_forecast[&quot;CrostonOptimized&quot;], color=&quot;C2&quot;, label=&quot;sf_forecast&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Croston Model Forecast&quot;)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_39_1.png" style="width: 1000px;"/>
+</center>
+<ul>
+<li><p>It is interesting to see that the forecast generated by the <code>statsforecast</code> package lies in between the mean and the median of the posterior predictive distribution. There seems to be some skewness in the posterior distribution.</p></li>
+<li><p>Note that the credible intervals are narrower than the conformal intervals generated by the <code>statsforecast</code> package.Moreover, they over less negative values.</p></li>
+</ul>
+<p>Finally, we can plot the posterior distribution of the forecast as a density:</p>
+<pre class="python"><code>az.plot_posterior(
+    posterior_predictive[&quot;posterior_predictive&quot;][&quot;forecast&quot;].sel(t=n_train),
+    ref_val=sf_forecast[&quot;CrostonOptimized&quot;].head(1).item(),
+)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_42_1.png" style="width: 900px;"/>
+</center>
+<p>We indeed see that the forecast is skewed to the right.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

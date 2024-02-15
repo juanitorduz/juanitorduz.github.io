@@ -6,7 +6,16 @@
     <description>Recent content in python, numpyro, forecasting on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 13 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 15 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Croston&#39;s Method for Intermittent Demand Forecasting in NumPyro</title>
+      <link>/croston_numpyro/</link>
+      <pubDate>Thu, 15 Feb 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/croston_numpyro/</guid>
+      <description>In this notebook, we will implement Croston’s method for intermittent demand forecasting using NumPyro. Croston’s method is a popular forecasting method for intermittent demand data, which is characterized by a large number of zero values. The method is based on the idea of separating the demand size and the demand interval, and then forecasting them separately using simple exponential smoothing. We therefore can leverage on top of the previous post Notes on Exponential Smoothing with NumPyro.</description>
+    </item>
+    
     <item>
       <title>Notes on an ARMA(1, 1) Model with NumPyro</title>
       <link>/arma_numpyro/</link>
