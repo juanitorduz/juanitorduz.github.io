@@ -78,7 +78,7 @@
 
   <article class="article">
     
-    <span class="article-duration">9 min read</span>
+    <span class="article-duration">11 min read</span>
     
 
     <h1 class="article-title">Croston&#39;s Method for Intermittent Time Series Forecasting in NumPyro</h1>
@@ -104,6 +104,7 @@ import numpyro
 import numpyro.distributions as dist
 import pandas as pd
 import preliz as pz
+import xarray as xr
 from jax import random
 from jaxlib.xla_extension import ArrayImpl
 from numpyro.contrib.control_flow import scan
@@ -113,6 +114,7 @@ from pydantic import BaseModel, Field
 from statsforecast import StatsForecast
 from statsforecast.models import CrostonOptimized
 from statsforecast.utils import ConformalIntervals
+from tqdm.notebook import tqdm
 
 az.style.use(&quot;arviz-darkgrid&quot;)
 plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
@@ -790,7 +792,94 @@ ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Croston Model 
 <img src="../images/croston_numpyro_files/croston_numpyro_42_1.png" style="width: 900px;"/>
 </center>
 <p>We indeed see that the forecast is skewed to the right.</p>
+<hr />
 </div>
+</div>
+<div id="time-slice-cross-validation" class="section level2">
+<h2>Time Slice Cross Validation</h2>
+<p>In this last section we do a time-slice cross validation to illustrate a key point about the Croston’s method: The forecast does not change much as the training data increases and keep seeing zero values. That is, no matter how many new zero values we see, the forecast will remain the same. This is because the forecast is based on the non-zero values and the time between them. This might be problematic in applications as the forecast will be constant for a long time even if we just keep seeing zero values.</p>
+<pre class="python"><code>def croston_time_slice_cross_validation(
+    rng_key: ArrayImpl, y: ArrayImpl, n_splits: int, inference_params: InferenceParams
+) -&gt; xr.Dataset:
+    forecast_list = []
+    for i in tqdm(range(n_splits)):
+        # Prepare data
+        y_train = y[: -(n_splits - i)]
+        z = y_train[y_train != 0]
+        p_idx = jnp.flatnonzero(y_train).astype(jnp.float32)
+        p = jnp.diff(p_idx, prepend=-1)
+        p_inv = 1 / p
+        # Inference
+        rng_key, rng_subkey = random.split(key=rng_key)
+        mcmc = run_inference(rng_subkey, croston_model, inference_params, z, p_inv)
+        # Forecast
+        rng_key, rng_subkey = random.split(key=rng_key)
+        tsb_forecast = forecast(
+            rng_subkey, croston_model, mcmc.get_samples(), z, p_inv, 1
+        )
+        forecast_list.append(
+            az.from_numpyro(
+                posterior_predictive=tsb_forecast,
+                coords={&quot;t&quot;: [y_train.size]},
+                dims={&quot;ts_forecast&quot;: [&quot;t&quot;]},
+            )
+        )
+    # Concatenate forecasts
+    return (
+        xr.concat(
+            [x[&quot;posterior_predictive&quot;] for x in forecast_list],
+            dim=(&quot;t&quot;),
+        )
+        .squeeze(dim=&quot;p_inv_forecast_dim_0&quot;)
+        .squeeze(dim=&quot;z_forecast_dim_0&quot;)
+        .squeeze(dim=&quot;forecast_dim_0&quot;)
+        .transpose(..., &quot;t&quot;)
+    )
+
+
+rng_key, rng_subkey = random.split(key=rng_key)
+forecast_cv = croston_time_slice_cross_validation(
+    rng_key=rng_subkey, y=y, n_splits=y_test.size, inference_params=inference_params
+)</code></pre>
+<p>We can not visualize the forecast for each time slice:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, marker=&quot;o&quot;, markersize=4, color=&quot;C1&quot;, label=&quot;test (cv)&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+az.plot_hdi(
+    x=t_test,
+    y=forecast_cv[&quot;forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=forecast_cv[&quot;forecast&quot;],
+    hdi_prob=0.50,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    forecast_cv[&quot;forecast&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    marker=&quot;o&quot;,
+    markersize=4,
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=5)
+ax.set(
+    xlabel=&quot;time&quot;,
+    ylabel=&quot;y&quot;,
+    title=&quot;Croston Model Forecast - 1 Step Ahead Cross-Validation&quot;,
+)</code></pre>
+<center>
+<img src="../images/croston_numpyro_files/croston_numpyro_48_1.png" style="width: 1000px;"/>
+</center>
+<p>We indeed see that the forecast does not change much as the training data increases with zeros. We do se a slight change when the first non-zero value appears, but the effect is very mild. There are adaptations of Croston’s method that try to address this issue, such as the <a href="https://juanitorduz.github.io/tsb_numpyro/">TSB method</a>.</p>
 </div>
 
     </div>
