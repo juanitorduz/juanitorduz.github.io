@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Bayesian Censoring Data Modeling - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Bayesian Censoring Data Modeling - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">14 min read</span>
+    
+
+    <h1 class="article-title">Bayesian Censoring Data Modeling</h1>
+
+    
+    <span class="article-date">2024-02-26</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we explore using Bayesian modeling to estimate the parameters of a censored data set. These datasets are common in many fields, including survival analysis and supply chain management. I was motivated to write this notebook after reading the excellent blog post <a href="https://kylejcaron.github.io/posts/censored_demand/2024-02-06-censored-demand.html">“Modeling Anything With First Principles: Demand under extreme stockouts”</a> by <a href="https://kylejcaron.github.io/">Kyle Caron</a> where he uses these techniques to model and balance demand under extreme stockouts and other constraints.</p>
+<p>We do not provide a complete theoretical introduction to censoring modeling but focus on the fundamental concepts we illustrate via explicit code implementations. We work out two examples: a continuous and a discrete likelihood. Both cases follow the same structure but differ in a small detail, which we want to highlight. We use <a href="http://num.pyro.ai/"><code>NumPyro</code></a> to build the models <em>by hand</em> by using the <a href="https://en.wikipedia.org/wiki/Cumulative_distribution_function">cumulative distribution function</a> (CDF) <a href="https://forum.pyro.ai/t/censoring-model-observing-on-delta/1811">parametrization</a> described in Uber’s blog post <a href="https://www.uber.com/en-DE/blog/modeling-censored-time-to-event-data-using-pyro/">“Modeling Censored Time-to-Event Data Using Pyro, an Open Source Probabilistic Programming Language”</a> (see <a href="https://gist.github.com/hesenp/90877ea3d5801214098fecd3b9e089bc">here</a> the original gist code). We then show how we can quickly implement the same models using <a href="https://docs.pymc.io/"><code>PyMC</code></a> by leveraging the <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/censored.html"><code>pm.Censored</code></a> distribution. For a detailed example of how to use <code>pm.Censored</code> (and its implications), we refer to the example notebook <a href="https://www.pymc.io/projects/examples/en/latest/generalized_linear_models/GLM-truncated-censored-regression.html">“Bayesian regression with truncated or censored data”</a> from the PyMC example gallery. From this example, we take a definition of censoring:</p>
+<blockquote>
+<p><strong>Censoring</strong> occurs when a measurement has a sensitivity with a certain set of bounds. But rather than discard data outside these bounds, you would record a measurement at the bound which it exceeded.</p>
+</blockquote>
+<p>Let’s make this more precise and intuitive with code 💻!</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+import preliz as pz
+import pymc as pm
+from jax import random
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.handlers import mask
+from numpyro.infer import MCMC, NUTS, Predictive
+from pydantic import BaseModel, Field
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<hr />
+</div>
+<div id="part-i-continuous-distribution" class="section level1">
+<h1>Part I: Continuous Distribution</h1>
+<p>We start by considering the continuous case. We assume that we have a dataset of observations <span class="math inline">\(y\)</span> that are censored from below and above at a known thresholds. We want to estimate the parameters of a distribution that generated these observations. We assume that the distribution is a gamma distribution (with parameters <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\beta\)</span>), but the same approach can be used for other distributions.</p>
+<div id="generate-censored-data" class="section level2">
+<h2>Generate Censored Data</h2>
+<p>We generate data from a gamma distribution and we <em>clip</em> the data to be between the thresholds <code>lower</code> and <code>upper</code>. We then plot the histogram of the data and the true gamma distribution.</p>
+<pre class="python"><code>class CensoredGammaDataParams(BaseModel):
+    alpha: float = Field(..., description=&quot;Concentration parameter&quot;, gt=0)
+    beta: float = Field(..., description=&quot;Rate parameter&quot;, gt=0)
+    lower: float = Field(..., description=&quot;Lower censoring bound&quot;, gt=0)
+    upper: float = Field(..., description=&quot;Upper censoring bound&quot;, gt=0)
+    n: int = Field(..., description=&quot;Number of samples&quot;, gt=0)
+
+
+def generate_censored_gamma_samples(
+    rng_key: ArrayImpl, params: CensoredGammaDataParams
+) -&gt; ArrayImpl:
+    raw_samples = dist.Gamma(concentration=params.alpha, rate=params.beta).sample(
+        rng_key, (params.n,)
+    )
+    return jnp.clip(raw_samples, params.lower, params.upper)
+
+
+censored_gamma_data_params = CensoredGammaDataParams(
+    alpha=3.0, beta=1.0, lower=0.5, upper=5.0, n=100
+)
+rng_key, rng_subkey = random.split(rng_key)
+censored_gamma_samples = generate_censored_gamma_samples(
+    rng_key=rng_subkey, params=censored_gamma_data_params
+)
+
+fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_gamma_samples,
+    bins=20,
+    density=True,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_gamma_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_gamma_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Gamma(
+    alpha=censored_gamma_data_params.alpha, beta=censored_gamma_data_params.beta
+).plot_pdf(color=&quot;C0&quot;, ax=ax)
+ax.set_title(&quot;Censored Gamma Sample Data&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_5_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="naive-model" class="section level2">
+<h2>Naive Model</h2>
+<p>Before we implement the censoring model, we start with a naive model that does not take into account the censoring component. We simply use a gamma distribution with parameters <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\beta\)</span> to model the data. We then plot the posterior distribution of the parameters and compare them with the true values.</p>
+<pre class="python"><code>def gamma_model(y: ArrayImpl) -&gt; None:
+    alpha = numpyro.sample(&quot;alpha&quot;, dist.Exponential(1.0))
+    beta = numpyro.sample(&quot;beta&quot;, dist.Exponential(1.0))
+    numpyro.sample(&quot;obs&quot;, dist.Gamma(concentration=alpha, rate=beta), obs=y)
+
+
+class InferenceParams(BaseModel):
+    num_warmup: int = Field(2_000, ge=1)
+    num_samples: int = Field(2_000, ge=1)
+    num_chains: int = Field(4, ge=1)
+
+
+inference_params = InferenceParams()
+
+gamma_kernel = NUTS(gamma_model)
+gamma_mcmc = MCMC(
+    gamma_kernel,
+    num_warmup=inference_params.num_warmup,
+    num_samples=inference_params.num_samples,
+    num_chains=inference_params.num_chains,
+)
+rng_key, rng_subkey = random.split(rng_key)
+gamma_mcmc.run(rng_key, y=censored_gamma_samples)</code></pre>
+<p>We also generate posterior predictive samples.</p>
+<pre class="python"><code>gamma_predictive = Predictive(
+    model=gamma_model, posterior_samples=gamma_mcmc.get_samples()
+)
+rng_key, rng_subkey = random.split(rng_key)
+gamma_posterior_predictive = gamma_predictive(rng_subkey, y=None)
+
+gamma_idata = az.from_numpyro(posterior=gamma_mcmc)
+gamma_idata.extend(az.from_numpyro(posterior_predictive=gamma_posterior_predictive))</code></pre>
+<p>Now we plot the trace and compare the true and estimated parameters.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gamma_idata,
+    compact=True,
+    lines=[
+        (&quot;alpha&quot;, {}, censored_gamma_data_params.alpha),
+        (&quot;beta&quot;, {}, censored_gamma_data_params.beta),
+    ],
+    backend_kwargs={&quot;figsize&quot;: (12, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Gamma Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_11_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=gamma_idata,
+    ref_val=[censored_gamma_data_params.alpha, censored_gamma_data_params.beta],
+    round_to=3,
+    figsize=(12, 5),
+)
+plt.gcf().suptitle(&quot;Gamma Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_12_1.png" style="width: 900px;"/>
+</center>
+<p>Despite the fact that the true parameters are in the <span class="math inline">\(94\%\)</span> HDI, we do see a bias in the estimation of the parameters. This is expected since we are not taking into account the censoring in the model.</p>
+<p>We can visualize the inferred distribution and compare it with the true distribution from the data generating process.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_gamma_samples,
+    bins=20,
+    density=True,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_gamma_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_gamma_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Gamma(
+    alpha=censored_gamma_data_params.alpha, beta=censored_gamma_data_params.beta
+).plot_pdf(color=&quot;C0&quot;, ax=ax)
+az.plot_kde(
+    gamma_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].to_numpy().flatten(),
+    plot_kwargs={&quot;color&quot;: &quot;C2&quot;, &quot;label&quot;: &quot;Posterior predictive&quot;},
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Gamma Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_15_1.png" style="width: 900px;"/>
+</center>
+<p>Here see that the distributions do not match well.</p>
+</div>
+<div id="censored-gamma-model" class="section level2">
+<h2>Censored Gamma Model</h2>
+<p>As mentioned in the introduction, the main idea to implement the censoring model is to use the CDF parametrization. The reason is because <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/censored.html">the probability density function PDF of a censored distribution is</a></p>
+<p><span class="math display">\[
+\begin{cases}
+    0 &amp; \text{for } y &lt; lower, \\
+    \text{CDF}(lower, dist) &amp; \text{for } y = lower, \\
+    \text{PDF}(y, dist) &amp; \text{for } lower &lt; y &lt; upper, \\
+    1-\text{CDF}(upper, dist) &amp; \text {for } y = upper, \\
+    0 &amp; \text{for } y &gt; upper,
+\end{cases}
+\]</span></p>
+<p>Hence, we <em>just</em> need too implement these conditions as a custom likelihood function. To do this in NumPyro we follow the approach described in the <a href="https://gist.github.com/hesenp/90877ea3d5801214098fecd3b9e089bc">gist</a> of Uber’s blog post. To follow this strategy we need an indicator function to encode the censoring:</p>
+<pre class="python"><code>def get_truncation_label(y: ArrayImpl, lower: float, upper: float) -&gt; ArrayImpl:
+    return jnp.where(y == lower, -1, jnp.where(y == upper, 1, 0))
+
+
+truncation_label = get_truncation_label(
+    y=censored_gamma_samples,
+    lower=censored_gamma_data_params.lower,
+    upper=censored_gamma_data_params.upper,
+)</code></pre>
+<p>We are now ready to implement the model. For points in the interval <span class="math inline">\(lower &lt; y &lt; upper\)</span> we simply sample form a gamma distribution. On the other hand, points on the boundary follow Bernoulli distribution (if we model the censoring mask value) where the truncation probability can be parametrized by the CDF. Let’s see how to do this concretely:</p>
+<pre class="python"><code>def censored_gamma_model(
+    y: ArrayImpl, lower: float, upper: float, truncation_label: ArrayImpl
+) -&gt; None:
+    alpha = numpyro.sample(&quot;alpha&quot;, dist.Exponential(1.0))
+    beta = numpyro.sample(&quot;beta&quot;, dist.Exponential(1.0))
+
+    distribution = dist.Gamma(concentration=alpha, rate=beta)
+
+    with mask(mask=truncation_label == -1):
+        truncation_prob_lower = distribution.cdf(lower)
+        numpyro.sample(
+            &quot;truncated_label_lower&quot;, dist.Bernoulli(truncation_prob_lower), obs=1
+        )
+
+    with mask(mask=truncation_label == 0):
+        numpyro.sample(&quot;obs&quot;, distribution, obs=y)
+
+    with mask(mask=truncation_label == 1):
+        truncation_prob_upper = 1 - distribution.cdf(upper)
+        numpyro.sample(
+            &quot;truncated_label_upper&quot;, dist.Bernoulli(truncation_prob_upper), obs=1
+        )</code></pre>
+<pre class="python"><code>censored_gamma_kernel = NUTS(censored_gamma_model)
+censored_gamma_mcmc = MCMC(
+    censored_gamma_kernel,
+    num_warmup=inference_params.num_warmup,
+    num_samples=inference_params.num_samples,
+    num_chains=inference_params.num_chains,
+)
+rng_key, rng_subkey = random.split(rng_key)
+censored_gamma_mcmc.run(
+    rng_key,
+    y=censored_gamma_samples,
+    lower=censored_gamma_data_params.lower,
+    upper=censored_gamma_data_params.upper,
+    truncation_label=truncation_label,
+)</code></pre>
+<p><strong>Remark:</strong> Note that is straightforward to add lower and upper censoring components to the model (Uber’s blog post has just one censoring component).</p>
+<p>We now fit the model and evaluate the results:</p>
+<pre class="python"><code>censored_gamma_predictive = Predictive(
+    model=censored_gamma_model,
+    posterior_samples=censored_gamma_mcmc.get_samples(),
+    return_sites=[&quot;obs&quot;],
+)
+rng_key, rng_subkey = random.split(rng_key)
+censored_gamma_posterior_predictive = censored_gamma_predictive(
+    rng_subkey,
+    y=None,
+    lower=censored_gamma_data_params.lower,
+    upper=censored_gamma_data_params.upper,
+    truncation_label=truncation_label,
+)
+
+censored_gamma_idata = az.from_numpyro(posterior=censored_gamma_mcmc)
+censored_gamma_idata.extend(
+    az.from_numpyro(posterior_predictive=censored_gamma_posterior_predictive)
+)</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=censored_gamma_idata,
+    compact=True,
+    lines=[
+        (&quot;alpha&quot;, {}, censored_gamma_data_params.alpha),
+        (&quot;beta&quot;, {}, censored_gamma_data_params.beta),
+    ],
+    backend_kwargs={&quot;figsize&quot;: (12, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Censored Gamma Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_25_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=censored_gamma_idata,
+    ref_val=[censored_gamma_data_params.alpha, censored_gamma_data_params.beta],
+    round_to=3,
+    figsize=(12, 5),
+)
+plt.gcf().suptitle(&quot;Censored Gamma Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_26_1.png" style="width: 900px;"/>
+</center>
+<p>We clearly see that the true parameters are in correspond to the mean and mode of the posterior distribution. The censoring model is able to recover the true parameters.</p>
+<p>As we did for the naive model, we visualize the inferred distribution and compare it with the true distribution from the data generating process.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_gamma_samples,
+    bins=20,
+    density=True,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_gamma_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_gamma_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Gamma(
+    alpha=censored_gamma_data_params.alpha, beta=censored_gamma_data_params.beta
+).plot_pdf(color=&quot;C0&quot;, ax=ax)
+az.plot_kde(
+    censored_gamma_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].to_numpy().flatten(),
+    plot_kwargs={&quot;color&quot;: &quot;C2&quot;, &quot;label&quot;: &quot;Posterior predictive&quot;},
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Censored Gamma Model (no clipping)&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_28_1.png" style="width: 900px;"/>
+</center>
+<p>This look much better than the naive model. However, there something wring as we are just sampling from the <code>obs</code> variable! We should not have posterior samples outside the censoring bounds. We can easily fix this by clipping the samples to the bounds.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_gamma_samples,
+    bins=20,
+    density=True,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_gamma_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_gamma_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Gamma(
+    alpha=censored_gamma_data_params.alpha, beta=censored_gamma_data_params.beta
+).plot_pdf(color=&quot;C0&quot;, ax=ax)
+az.plot_kde(
+    censored_gamma_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;]
+    .clip(min=censored_gamma_data_params.lower, max=censored_gamma_data_params.upper)
+    .to_numpy()
+    .flatten(),
+    plot_kwargs={&quot;color&quot;: &quot;C2&quot;, &quot;label&quot;: &quot;Posterior predictive&quot;},
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Censored Gamma Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_30_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="censored-gamma-model-with-pymc" class="section level2">
+<h2>Censored Gamma Model with PyMC</h2>
+<p>Fitting the same model in PyMC is straightforward as it provides a convenient API through the <a href="https://www.pymc.io/projects/docs/en/stable/api/distributions/censored.html"><code>pm.Censored</code></a> distribution. We get the exact same results as in NumPyro.</p>
+<pre class="python"><code>with pm.Model() as pymc_censored_gamma_model:
+    alpha = pm.Exponential(&quot;alpha&quot;, lam=1.0)
+    beta = pm.Exponential(&quot;beta&quot;, lam=1.0)
+
+    distribution = pm.Gamma.dist(alpha=alpha, beta=beta)
+    pm.Censored(
+        &quot;obs&quot;,
+        dist=distribution,
+        lower=censored_gamma_data_params.lower,
+        upper=censored_gamma_data_params.upper,
+        observed=censored_gamma_samples,
+    )</code></pre>
+<p>We can even sample using the NumPyro sampler 😅!</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+with pymc_censored_gamma_model:
+    pymc_censored_gamma_idata = pm.sample(
+        tune=inference_params.num_warmup,
+        draws=inference_params.num_samples,
+        chains=inference_params.num_chains,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng_subkey[0].item(),
+    )
+
+    pymc_censored_gamma_idata.extend(
+        pm.sample_posterior_predictive(trace=pymc_censored_gamma_idata)
+    )</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=pymc_censored_gamma_idata,
+    compact=True,
+    lines=[
+        (&quot;alpha&quot;, {}, censored_gamma_data_params.alpha),
+        (&quot;beta&quot;, {}, censored_gamma_data_params.beta),
+    ],
+    backend_kwargs={&quot;figsize&quot;: (12, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;PyMC Censored Gamma Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_35_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=pymc_censored_gamma_idata,
+    ref_val=[censored_gamma_data_params.alpha, censored_gamma_data_params.beta],
+    round_to=3,
+    figsize=(12, 5),
+)
+plt.gcf().suptitle(
+    &quot;Censored Gamma PyMC Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_36_1.png" style="width: 900px;"/>
+</center>
+<p>We get essentially the same results as before.</p>
+<p>Note that when we sample from the posterior predictive distribution, we do not need to clip the samples to the bounds as PyMC takes care of this for us.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_gamma_samples,
+    bins=20,
+    density=True,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_gamma_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_gamma_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Gamma(
+    alpha=censored_gamma_data_params.alpha, beta=censored_gamma_data_params.beta
+).plot_pdf(color=&quot;C0&quot;, ax=ax)
+az.plot_kde(
+    pymc_censored_gamma_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].to_numpy().flatten(),
+    plot_kwargs={&quot;color&quot;: &quot;C2&quot;, &quot;label&quot;: &quot;Posterior predictive&quot;},
+    ax=ax,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Censored Gamma PyMC Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_38_1.png" style="width: 900px;"/>
+</center>
+<hr />
+</div>
+</div>
+<div id="part-ii-discrete-distribution" class="section level1">
+<h1>Part II: Discrete Distribution</h1>
+<p>In this second part we do the same as in the first part but for a discrete distribution. Again, we assume that we have a dataset of observations <span class="math inline">\(y\)</span> that are censored from below and above at a known thresholds. This time we assume the data follows a Poisson distribution (with parameter <span class="math inline">\(\lambda\)</span>). We want to recover the true parameter <span class="math inline">\(\lambda\)</span>. The censoring model has the same structure as in the continuous case, but there is a small detail in the upper bound. We need to add term to to the truncation probability to account for the probability of the upper bound. Specifically we need to add the probability of the upper bound using the PDF.</p>
+<div id="generate-censored-data-1" class="section level2">
+<h2>Generate Censored Data</h2>
+<p>We generate data from a Poisson distribution and we <em>clip</em> the data to be between the thresholds <code>lower</code> and <code>upper</code>. We then plot the histogram of the data and the true Poisson distribution.</p>
+<pre class="python"><code>class CensoredPoissonDataParams(BaseModel):
+    rate: float = Field(..., description=&quot;Rate parameter&quot;, gt=0)
+    lower: float = Field(..., description=&quot;Lower censoring bound&quot;, gt=0)
+    upper: float = Field(..., description=&quot;Upper censoring bound&quot;, gt=0)
+    n: int = Field(..., description=&quot;Number of samples&quot;, gt=0)
+
+
+def generate_censored_poisson_samples(
+    rng_key: ArrayImpl, params: CensoredPoissonDataParams
+) -&gt; ArrayImpl:
+    raw_samples = dist.Poisson(rate=params.rate).sample(rng_key, (params.n,))
+    return jnp.clip(raw_samples, params.lower, params.upper)
+
+
+censored_poisson_data_params = CensoredPoissonDataParams(
+    rate=1, lower=1, upper=4, n=100
+)
+rng_key, rng_subkey = random.split(rng_key)
+censored_poisson_samples = generate_censored_poisson_samples(
+    rng_key=rng_subkey, params=censored_poisson_data_params
+)
+
+fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_poisson_samples,
+    bins=20,
+    density=True,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+    align=&quot;left&quot;,
+)
+ax.axvline(censored_gamma_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_poisson_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Poisson(mu=censored_poisson_data_params.rate).plot_pdf(color=&quot;C0&quot;, ax=ax)
+ax.set_title(&quot;Censored Poisson Sample Data&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_40_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="naive-model-1" class="section level2">
+<h2>Naive Model</h2>
+<p>Just as in the continuous case, we start with a naive model that does not take into account the censoring component. We simply use a Poisson distribution with parameter <span class="math inline">\(\lambda\)</span> to model the data.</p>
+<pre class="python"><code>def poisson_model(y: ArrayImpl) -&gt; None:
+    rate = numpyro.sample(&quot;rate&quot;, dist.Exponential(1.0))
+    numpyro.sample(&quot;obs&quot;, dist.Poisson(rate), obs=y)
+
+
+poisson_kernel = NUTS(poisson_model)
+poisson_mcmc = MCMC(
+    poisson_kernel,
+    num_warmup=inference_params.num_warmup,
+    num_samples=inference_params.num_samples,
+    num_chains=inference_params.num_chains,
+)
+rng_key, rng_subkey = random.split(rng_key)
+poisson_mcmc.run(rng_key, y=censored_poisson_samples)</code></pre>
+<pre class="python"><code>poisson_predictive = Predictive(
+    model=poisson_model, posterior_samples=poisson_mcmc.get_samples()
+)
+rng_key, rng_subkey = random.split(rng_key)
+poisson_posterior_predictive = poisson_predictive(rng_subkey, y=None)
+
+poisson_idata = az.from_numpyro(posterior=poisson_mcmc)
+poisson_idata.extend(az.from_numpyro(posterior_predictive=poisson_posterior_predictive))</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=poisson_idata,
+    compact=True,
+    lines=[(&quot;rate&quot;, {}, censored_poisson_data_params.rate)],
+    backend_kwargs={&quot;figsize&quot;: (10, 4), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Poisson Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_44_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=poisson_idata,
+    ref_val=[censored_poisson_data_params.rate],
+    round_to=3,
+    figsize=(10, 6),
+)
+plt.gcf().suptitle(&quot;Poisson Model Parameter&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_45_1.png" style="width: 900px;"/>
+</center>
+<p>We clearly see a bias in the estimation of the parameter. The true value of the rate parameter <span class="math inline">\(\lambda\)</span> is not even in the <span class="math inline">\(94\%\)</span> HDI.</p>
+<p>We can also take a look into the posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_poisson_samples,
+    bins=20,
+    density=True,
+    align=&quot;left&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_poisson_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_poisson_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Poisson(mu=censored_poisson_data_params.rate).plot_pdf(color=&quot;C0&quot;, ax=ax)
+_ = ax.hist(
+    poisson_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].to_numpy().flatten(),
+    bins=50,
+    density=True,
+    align=&quot;right&quot;,
+    color=&quot;C2&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Poisson Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_48_1.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="censored-poisson-model" class="section level2">
+<h2>Censored Poisson Model</h2>
+<p>Now we work out the censored model. As before, we need to get the censoring labels to manage the likelihood components:</p>
+<pre class="python"><code>truncation_label = get_truncation_label(
+    y=censored_poisson_samples,
+    lower=censored_poisson_data_params.lower,
+    upper=censored_poisson_data_params.upper,
+)</code></pre>
+<p>Now, finally regarding the detail about the upper censoring component.</p>
+<ul>
+<li>We want to consider the <strong>closed</strong> interval <span class="math inline">\(P(lower \leq y \leq upper)\)</span>.</li>
+<li>For the upper interval we use <span class="math inline">\(1 - CDF(upper) = 1- P(y \leq upper) = P(y &gt; upper)\)</span>, but we actually need <span class="math inline">\((P \geq upper)\)</span>.</li>
+<li>Hence we need to add <span class="math inline">\(P(y= upper)\)</span> in the upper truncation probability.</li>
+<li>Observe that this discussion is irrelevant for the <em>continuous</em> case as the probability of a single point is zero so <span class="math inline">\(P(y &gt; upper) = P(y \geq upper)\)</span>.</li>
+</ul>
+<p>The implementation of the model should be clearer now.</p>
+<pre class="python"><code>def censored_poisson_model(
+    y: ArrayImpl, lower: float, upper: float, truncation_label: ArrayImpl
+) -&gt; None:
+    rate = numpyro.sample(&quot;rate&quot;, dist.Exponential(1.0))
+
+    distribution = dist.Poisson(rate)
+
+    with mask(mask=truncation_label == -1):
+        truncation_prob_lower = distribution.cdf(lower)
+        numpyro.sample(
+            &quot;truncated_label_lower&quot;, dist.Bernoulli(truncation_prob_lower), obs=1
+        )
+
+    with mask(mask=truncation_label == 0):
+        numpyro.sample(&quot;obs&quot;, distribution, obs=y)
+
+    with mask(mask=truncation_label == 1):
+        ccdf_upper = 1 - distribution.cdf(upper)
+        pmf_upper = jnp.exp(distribution.log_prob(upper))
+        truncation_prob_upper = ccdf_upper + pmf_upper
+        numpyro.sample(
+            &quot;truncated_label_upper&quot;, dist.Bernoulli(truncation_prob_upper), obs=1
+        )</code></pre>
+<p><strong>Remark:</strong> This was an important detail pointed out by <a href="https://kylejcaron.github.io/">Kyle Caron</a> in his blog post <a href="https://kylejcaron.github.io/posts/censored_demand/2024-02-06-censored-demand.html">“Modeling Anything With First Principles: Demand under extreme stockouts”</a>.</p>
+<p>We proceed to fit the model and compare the results with the true parameter.</p>
+<pre class="python"><code>censored_poisson_kernel = NUTS(censored_poisson_model)
+censored_poisson_mcmc = MCMC(
+    censored_poisson_kernel,
+    num_warmup=inference_params.num_warmup,
+    num_samples=inference_params.num_samples,
+    num_chains=inference_params.num_chains,
+)
+rng_key, rng_subkey = random.split(rng_key)
+censored_poisson_mcmc.run(
+    rng_key,
+    y=censored_poisson_samples,
+    lower=censored_poisson_data_params.lower,
+    upper=censored_poisson_data_params.upper,
+    truncation_label=truncation_label,
+)</code></pre>
+<pre class="python"><code>censores_poisson_predictive = Predictive(
+    model=censored_poisson_model,
+    posterior_samples=censored_poisson_mcmc.get_samples(),
+    return_sites=[&quot;obs&quot;],
+)
+rng_key, rng_subkey = random.split(rng_key)
+censored_poisson_posterior_predictive = censores_poisson_predictive(
+    rng_subkey,
+    y=None,
+    lower=censored_poisson_data_params.lower,
+    upper=censored_poisson_data_params.upper,
+    truncation_label=truncation_label,
+)
+
+censored_poisson_idata = az.from_numpyro(posterior=censored_poisson_mcmc)
+censored_poisson_idata.extend(
+    az.from_numpyro(posterior_predictive=censored_poisson_posterior_predictive)
+)</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=censored_poisson_idata,
+    compact=True,
+    lines=[(&quot;rate&quot;, {}, censored_poisson_data_params.rate)],
+    backend_kwargs={&quot;figsize&quot;: (10, 4), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Censored Poisson Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_57_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=censored_poisson_idata,
+    ref_val=[censored_poisson_data_params.rate],
+    round_to=3,
+    figsize=(10, 6),
+)
+plt.gcf().suptitle(&quot;Censored Poisson Model Parameter&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_58_1.png" style="width: 900px;"/>
+</center>
+<p>We see that we have recovered the true value of the rate parameter <span class="math inline">\(\lambda = 1\)</span>.</p>
+<p>Here is the posterior predictive distribution:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_poisson_samples,
+    bins=20,
+    density=True,
+    align=&quot;left&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_poisson_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_poisson_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Poisson(mu=censored_poisson_data_params.rate).plot_pdf(color=&quot;C0&quot;, ax=ax)
+_ = ax.hist(
+    censored_poisson_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].to_numpy().flatten(),
+    bins=50,
+    density=True,
+    align=&quot;right&quot;,
+    color=&quot;C2&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Censored Poisson Model (no clipping)&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_61_1.png" style="width: 900px;"/>
+</center>
+<p>As before, to have a correct posterior predictive distribution we need to clip the samples to the bounds.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_poisson_samples,
+    bins=20,
+    density=True,
+    align=&quot;left&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_poisson_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_poisson_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Poisson(mu=censored_poisson_data_params.rate).plot_pdf(color=&quot;C0&quot;, ax=ax)
+_ = ax.hist(
+    censored_poisson_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;]
+    .clip(
+        min=censored_poisson_data_params.lower, max=censored_poisson_data_params.upper
+    )
+    .to_numpy()
+    .flatten(),
+    bins=20,
+    density=True,
+    align=&quot;right&quot;,
+    color=&quot;C2&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Censored Poisson Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_63_1.png" style="width: 900px;"/>
+</center>
+<p>Here we see that the observed and predicted distributions match well.</p>
+</div>
+<div id="centered-poisson-model-with-pymc" class="section level2">
+<h2>Centered Poisson Model with PyMC</h2>
+<p>Finally, we fit the same model in PyMC and verify we get the same results as in NumPyro implementation. Note that we do not need to worry about the upper truncation probability extra term as PyMC takes care of this for us. This is very convenient.</p>
+<pre class="python"><code>with pm.Model() as pymc_censored_poisson_model:
+    rate = pm.Exponential(&quot;rate&quot;, lam=1.0)
+    pm.Censored(
+        &quot;obs&quot;,
+        dist=pm.Poisson.dist(mu=rate),
+        lower=censored_poisson_data_params.lower,
+        upper=censored_poisson_data_params.upper,
+        observed=censored_poisson_samples,
+    )</code></pre>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+with pymc_censored_poisson_model:
+    pymc_censored_poisson_idata = pm.sample(
+        tune=inference_params.num_warmup,
+        draws=inference_params.num_samples,
+        chains=inference_params.num_chains,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng_subkey[0].item(),
+    )
+
+    pymc_censored_poisson_idata.extend(
+        pm.sample_posterior_predictive(trace=pymc_censored_poisson_idata)
+    )</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=pymc_censored_poisson_idata,
+    compact=True,
+    lines=[(&quot;rate&quot;, {}, censored_poisson_data_params.rate)],
+    backend_kwargs={&quot;figsize&quot;: (10, 4), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;PyMC Censored Poisson Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_68_1.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>axes = az.plot_posterior(
+    data=pymc_censored_poisson_idata,
+    ref_val=[censored_poisson_data_params.rate],
+    round_to=3,
+    figsize=(10, 6),
+)
+plt.gcf().suptitle(
+    &quot;Censored Poisson PyMC Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;
+)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_69_1.png" style="width: 900px;"/>
+</center>
+<p>We indeed get the same results as the NumPyro implementation.</p>
+<p>As in the continuous case we verify that we get the expected results for the posterior predictive distribution for the censored model in PyMC.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+_ = ax.hist(
+    censored_poisson_samples,
+    bins=20,
+    density=True,
+    align=&quot;left&quot;,
+    color=&quot;C1&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.axvline(censored_poisson_data_params.lower, color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.axvline(
+    censored_poisson_data_params.upper,
+    color=&quot;k&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Censoring bounds&quot;,
+)
+pz.Poisson(mu=censored_poisson_data_params.rate).plot_pdf(color=&quot;C0&quot;, ax=ax)
+_ = ax.hist(
+    pymc_censored_poisson_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].to_numpy().flatten(),
+    bins=20,
+    density=True,
+    align=&quot;right&quot;,
+    color=&quot;C2&quot;,
+    alpha=0.5,
+    label=&quot;Censored data&quot;,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;Censored Poisson PyMC Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
+<center>
+<img src="../images/censoring_files/censoring_72_1.png" style="width: 900px;"/>
+</center>
+<hr />
+<p>Censoring is an important concept in many fields and it is important to take it into account when modeling data. We have shown how to implement a censoring model in both NumPyro and PyMC. We have also shown how to implement the model for both continuous and discrete distributions. We hope this notebook is useful for those who want to learn how to implement censoring models in these two popular probabilistic programming libraries. I will be exploring more censoring models in the context of time series and supply chain management applications (again thanks to Kyle Caron for the inspiration).</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
