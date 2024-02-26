@@ -286,37 +286,37 @@ ax.set_title(&quot;Gamma Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)<
 \end{cases}
 \]</span></p>
 <p>Hence, we <em>just</em> need too implement these conditions as a custom likelihood function. To do this in NumPyro we follow the approach described in the <a href="https://gist.github.com/hesenp/90877ea3d5801214098fecd3b9e089bc">gist</a> of Uber’s blog post. To follow this strategy we need an indicator function to encode the censoring:</p>
-<pre class="python"><code>def get_truncation_label(y: ArrayImpl, lower: float, upper: float) -&gt; ArrayImpl:
+<pre class="python"><code>def get_censoring_label(y: ArrayImpl, lower: float, upper: float) -&gt; ArrayImpl:
     return jnp.where(y == lower, -1, jnp.where(y == upper, 1, 0))
 
 
-truncation_label = get_truncation_label(
+censoring_label = get_censoring_label(
     y=censored_gamma_samples,
     lower=censored_gamma_data_params.lower,
     upper=censored_gamma_data_params.upper,
 )</code></pre>
-<p>We are now ready to implement the model. For points in the interval <span class="math inline">\(lower &lt; y &lt; upper\)</span> we simply sample form a gamma distribution. On the other hand, points on the boundary follow Bernoulli distribution (if we model the censoring mask value) where the truncation probability can be parametrized by the CDF. Let’s see how to do this concretely:</p>
+<p>We are now ready to implement the model. For points in the interval <span class="math inline">\(lower &lt; y &lt; upper\)</span> we simply sample form a gamma distribution. On the other hand, points on the boundary follow Bernoulli distribution (if we model the censoring mask value) where the censoring probability can be parametrized by the CDF. Let’s see how to do this concretely:</p>
 <pre class="python"><code>def censored_gamma_model(
-    y: ArrayImpl, lower: float, upper: float, truncation_label: ArrayImpl
+    y: ArrayImpl, lower: float, upper: float, censoring_label: ArrayImpl
 ) -&gt; None:
     alpha = numpyro.sample(&quot;alpha&quot;, dist.Exponential(1.0))
     beta = numpyro.sample(&quot;beta&quot;, dist.Exponential(1.0))
 
     distribution = dist.Gamma(concentration=alpha, rate=beta)
 
-    with mask(mask=truncation_label == -1):
-        truncation_prob_lower = distribution.cdf(lower)
+    with mask(mask=censoring_label == -1):
+        censoring_prob_lower = distribution.cdf(lower)
         numpyro.sample(
-            &quot;truncated_label_lower&quot;, dist.Bernoulli(truncation_prob_lower), obs=1
+            &quot;censoring_label_lower&quot;, dist.Bernoulli(censoring_prob_lower), obs=1
         )
 
-    with mask(mask=truncation_label == 0):
+    with mask(mask=censoring_label == 0):
         numpyro.sample(&quot;obs&quot;, distribution, obs=y)
 
-    with mask(mask=truncation_label == 1):
-        truncation_prob_upper = 1 - distribution.cdf(upper)
+    with mask(mask=censoring_label == 1):
+        censoring_prob_upper = 1 - distribution.cdf(upper)
         numpyro.sample(
-            &quot;truncated_label_upper&quot;, dist.Bernoulli(truncation_prob_upper), obs=1
+            &quot;censoring_label_upper&quot;, dist.Bernoulli(censoring_prob_upper), obs=1
         )</code></pre>
 <pre class="python"><code>censored_gamma_kernel = NUTS(censored_gamma_model)
 censored_gamma_mcmc = MCMC(
@@ -331,7 +331,7 @@ censored_gamma_mcmc.run(
     y=censored_gamma_samples,
     lower=censored_gamma_data_params.lower,
     upper=censored_gamma_data_params.upper,
-    truncation_label=truncation_label,
+    censoring_label=censoring_label,
 )</code></pre>
 <p><strong>Remark:</strong> Note that is straightforward to add lower and upper censoring components to the model (Uber’s blog post has just one censoring component).</p>
 <p>We now fit the model and evaluate the results:</p>
@@ -346,7 +346,7 @@ censored_gamma_posterior_predictive = censored_gamma_predictive(
     y=None,
     lower=censored_gamma_data_params.lower,
     upper=censored_gamma_data_params.upper,
-    truncation_label=truncation_label,
+    censoring_label=censoring_label,
 )
 
 censored_gamma_idata = az.from_numpyro(posterior=censored_gamma_mcmc)
@@ -532,7 +532,7 @@ ax.set_title(&quot;Censored Gamma PyMC Model&quot;, fontsize=16, fontweight=&quo
 </div>
 <div id="part-ii-discrete-distribution" class="section level1">
 <h1>Part II: Discrete Distribution</h1>
-<p>In this second part we do the same as in the first part but for a discrete distribution. Again, we assume that we have a dataset of observations <span class="math inline">\(y\)</span> that are censored from below and above at a known thresholds. This time we assume the data follows a Poisson distribution (with parameter <span class="math inline">\(\lambda\)</span>). We want to recover the true parameter <span class="math inline">\(\lambda\)</span>. The censoring model has the same structure as in the continuous case, but there is a small detail in the upper bound. We need to add term to to the truncation probability to account for the probability of the upper bound. Specifically we need to add the probability of the upper bound using the PDF.</p>
+<p>In this second part we do the same as in the first part but for a discrete distribution. Again, we assume that we have a dataset of observations <span class="math inline">\(y\)</span> that are censored from below and above at a known thresholds. This time we assume the data follows a Poisson distribution (with parameter <span class="math inline">\(\lambda\)</span>). We want to recover the true parameter <span class="math inline">\(\lambda\)</span>. The censoring model has the same structure as in the continuous case, but there is a small detail in the upper bound. We need to add term to to the censoring probability to account for the probability of the upper bound. Specifically we need to add the probability of the upper bound using the PDF.</p>
 <div id="generate-censored-data-1" class="section level2">
 <h2>Generate Censored Data</h2>
 <p>We generate data from a Poisson distribution and we <em>clip</em> the data to be between the thresholds <code>lower</code> and <code>upper</code>. We then plot the histogram of the data and the true Poisson distribution.</p>
@@ -664,7 +664,7 @@ ax.set_title(&quot;Poisson Model&quot;, fontsize=16, fontweight=&quot;bold&quot;
 <div id="censored-poisson-model" class="section level2">
 <h2>Censored Poisson Model</h2>
 <p>Now we work out the censored model. As before, we need to get the censoring labels to manage the likelihood components:</p>
-<pre class="python"><code>truncation_label = get_truncation_label(
+<pre class="python"><code>censoring_label = get_censoring_label(
     y=censored_poisson_samples,
     lower=censored_poisson_data_params.lower,
     upper=censored_poisson_data_params.upper,
@@ -673,32 +673,32 @@ ax.set_title(&quot;Poisson Model&quot;, fontsize=16, fontweight=&quot;bold&quot;
 <ul>
 <li>We want to consider the <strong>closed</strong> interval <span class="math inline">\(P(lower \leq y \leq upper)\)</span>.</li>
 <li>For the upper interval we use <span class="math inline">\(1 - CDF(upper) = 1- P(y \leq upper) = P(y &gt; upper)\)</span>, but we actually need <span class="math inline">\((P \geq upper)\)</span>.</li>
-<li>Hence we need to add <span class="math inline">\(P(y= upper)\)</span> in the upper truncation probability.</li>
+<li>Hence we need to add <span class="math inline">\(P(y= upper)\)</span> in the upper censoring probability.</li>
 <li>Observe that this discussion is irrelevant for the <em>continuous</em> case as the probability of a single point is zero so <span class="math inline">\(P(y &gt; upper) = P(y \geq upper)\)</span>.</li>
 </ul>
 <p>The implementation of the model should be clearer now.</p>
 <pre class="python"><code>def censored_poisson_model(
-    y: ArrayImpl, lower: float, upper: float, truncation_label: ArrayImpl
+    y: ArrayImpl, lower: float, upper: float, censoring_label: ArrayImpl
 ) -&gt; None:
     rate = numpyro.sample(&quot;rate&quot;, dist.Exponential(1.0))
 
     distribution = dist.Poisson(rate)
 
-    with mask(mask=truncation_label == -1):
-        truncation_prob_lower = distribution.cdf(lower)
+    with mask(mask=censoring_label == -1):
+        censoring_prob_lower = distribution.cdf(lower)
         numpyro.sample(
-            &quot;truncated_label_lower&quot;, dist.Bernoulli(truncation_prob_lower), obs=1
+            &quot;censoring_label_lower&quot;, dist.Bernoulli(censoring_prob_lower), obs=1
         )
 
-    with mask(mask=truncation_label == 0):
+    with mask(mask=censoring_label == 0):
         numpyro.sample(&quot;obs&quot;, distribution, obs=y)
 
-    with mask(mask=truncation_label == 1):
+    with mask(mask=censoring_label == 1):
         ccdf_upper = 1 - distribution.cdf(upper)
         pmf_upper = jnp.exp(distribution.log_prob(upper))
-        truncation_prob_upper = ccdf_upper + pmf_upper
+        censoring_prob_upper = ccdf_upper + pmf_upper
         numpyro.sample(
-            &quot;truncated_label_upper&quot;, dist.Bernoulli(truncation_prob_upper), obs=1
+            &quot;censoring_label_upper&quot;, dist.Bernoulli(censoring_prob_upper), obs=1
         )</code></pre>
 <p><strong>Remark:</strong> This was an important detail pointed out by <a href="https://kylejcaron.github.io/">Kyle Caron</a> in his blog post <a href="https://kylejcaron.github.io/posts/censored_demand/2024-02-06-censored-demand.html">“Modeling Anything With First Principles: Demand under extreme stockouts”</a>.</p>
 <p>We proceed to fit the model and compare the results with the true parameter.</p>
@@ -715,7 +715,7 @@ censored_poisson_mcmc.run(
     y=censored_poisson_samples,
     lower=censored_poisson_data_params.lower,
     upper=censored_poisson_data_params.upper,
-    truncation_label=truncation_label,
+    censoring_label=censoring_label,
 )</code></pre>
 <pre class="python"><code>censores_poisson_predictive = Predictive(
     model=censored_poisson_model,
@@ -728,7 +728,7 @@ censored_poisson_posterior_predictive = censores_poisson_predictive(
     y=None,
     lower=censored_poisson_data_params.lower,
     upper=censored_poisson_data_params.upper,
-    truncation_label=truncation_label,
+    censoring_label=censoring_label,
 )
 
 censored_poisson_idata = az.from_numpyro(posterior=censored_poisson_mcmc)
@@ -831,7 +831,7 @@ ax.set_title(&quot;Censored Poisson Model&quot;, fontsize=16, fontweight=&quot;b
 </div>
 <div id="centered-poisson-model-with-pymc" class="section level2">
 <h2>Centered Poisson Model with PyMC</h2>
-<p>Finally, we fit the same model in PyMC and verify we get the same results as in NumPyro implementation. Note that we do not need to worry about the upper truncation probability extra term as PyMC takes care of this for us. This is very convenient.</p>
+<p>Finally, we fit the same model in PyMC and verify we get the same results as in NumPyro implementation. Note that we do not need to worry about the upper censoring probability extra term as PyMC takes care of this for us. This is very convenient.</p>
 <pre class="python"><code>with pm.Model() as pymc_censored_poisson_model:
     rate = pm.Exponential(&quot;rate&quot;, lam=1.0)
     pm.Censored(
