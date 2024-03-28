@@ -584,7 +584,7 @@ ax.set_title(
 <ol style="list-style-type: decimal">
 <li><strong>Global trend.</strong> We use a Gaussian process with an exponential quadratic kernel.</li>
 <li><strong>Periodicity over years</strong>: We use a Gaussian process with a periodic kernel. Observe that, since we are working on the normalized scale, the period should be <code>period=365.25 / obs_std</code> (and not <code>period=365.25</code> !).</li>
-<li><strong>Weekly seasonality</strong>: We use a zero-sum-normal distribution to capture the relative difference across weekdays. We couple it with a multiplicative factor parametrized by a Gaussian process (trough a exponential function).</li>
+<li><strong>Weekly seasonality</strong>: We use a zero-sum-normal distribution to capture the relative difference across weekdays. We couple it with a multiplicative factor parametrized by a Gaussian process (through an exponential function).</li>
 <li><strong>Yearly seasonality</strong>: We use a Student-t distribution over the <code>day_of_year2</code>.</li>
 <li><strong>Likelihood</strong>: We use a Gaussian distribution.</li>
 </ol>
