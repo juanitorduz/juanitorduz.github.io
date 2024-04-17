@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Bayesian, Gaussian Processes on Dr. Juan Camilo Orduz</title>
+    <link>/categories/bayesian-gaussian-processes/</link>
+    <description>Recent content in Bayesian, Gaussian Processes on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Thu, 18 Apr 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-gaussian-processes/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods</title>
+      <link>/hsgp_intro/</link>
+      <pubDate>Thu, 18 Apr 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/hsgp_intro/</guid>
+      <description>In this notebook, we explore the (conceptual) ideas and (practical) implementation details of the Hilbert Space approximation for Gaussian processes introduced in the article “Hilbert space methods for reduced-rank Gaussian process regression” by Arno Solin and Simo Särkkä. We do not go deep into the mathematical details (proofs) but focus on the core ideas to help us understand the main concepts guiding the technical implementation. We provide examples, both in NumPyro and PyMC, so that users can learn from cross-framework comparison so that we abstract the core ideas.</description>
+    </item>
+    
+  </channel>
+</rss>

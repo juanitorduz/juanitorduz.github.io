@@ -1,0 +1,2941 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">45 min read</span>
+    
+
+    <h1 class="article-title">A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods</h1>
+
+    
+    <span class="article-date">2024-04-18</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we explore the (conceptual) ideas and (practical) implementation details of the <em>Hilbert Space</em> approximation for Gaussian processes introduced in the article <a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">“Hilbert space methods for reduced-rank Gaussian process regression”</a> by Arno Solin and Simo Särkkä. We do not go deep into the mathematical details (proofs) but focus on the core ideas to help us understand the main concepts guiding the technical implementation. We provide examples, both in <a href="https://github.com/pyro-ppl/numpyro"><code>NumPyro</code></a> and <a href="https://github.com/pymc-devs/pymc"><code>PyMC</code></a>, so that users can learn from cross-framework comparison so that we abstract the core ideas.</p>
+<p>Before jumping into the approximation technique, we recall the notion of Gaussian processes to set up notation and understand the problem the Hilbert Space approximation is trying to solve. For a detailed treatment of the topic, please refer to the classical (free and online available!) book <a href="https://gaussianprocess.org/gpml/chapters/">“Gaussian Processes for Machine Learning”</a> by Carl Edward Rasmussen and Christopher K. I. Williams. I have also written some blog posts with code about Gaussian process regression:</p>
+<ul>
+<li><a href="https://juanitorduz.github.io/reg_bayesian_regression/">Bayesian Regression as a Gaussian Process</a></li>
+<li><a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a></li>
+</ul>
+<p>Another recommended reference is the online post <a href="https://betanalpha.github.io/assets/case_studies/gaussian_processes.html">“Robust Gaussian Process Modeling”</a> by <a href="https://betanalpha.github.io/">Michael Betancourt</a></p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from collections.abc import Callable
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import preliz as pz
+import pymc as pm
+import seaborn as sns
+from jax import random, scipy, vmap
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.handlers import seed, trace
+from numpyro.infer import MCMC, NUTS, Predictive
+from pydantic import BaseModel, Field
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>For the purpose of this notebook, we generate synthetic data in a one-dimensional space. We use the same functional form as in the blogpost <a href="https://juanitorduz.github.io/gaussian_process_reg/">An Introduction to Gaussian Process Regression</a>,</p>
+<p><span class="math display">\[
+y = f(x) + \varepsilon
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[f(x) = \sin(4 \pi x) + \sin(7 \pi x)\]</span></p>
+<p>and <span class="math inline">\(\varepsilon \sim \text{Normal}(0, 0.3)\)</span>. We generate <span class="math inline">\(80\)</span> points in the interval <span class="math inline">\([0, 1]\)</span> as <em>training set</em> and <span class="math inline">\(100\)</span> points in the interval <span class="math inline">\([-0.2, 1.2]\)</span> as <em>test set</em>.</p>
+<pre class="python"><code>def generate_synthetic_data(
+    rng_key: ArrayImpl, start: float, stop: float, num: int, scale: float
+) -&gt; tuple[ArrayImpl, ArrayImpl, ArrayImpl]:
+    x = jnp.linspace(start=start, stop=stop, num=num)
+    y = jnp.sin(4 * jnp.pi * x) + jnp.sin(7 * jnp.pi * x)
+    y_obs = y + scale * random.normal(rng_key, shape=(num,))
+    return x, y, y_obs
+
+
+n_train = 80
+n_test = 100
+scale = 0.3
+
+rng_key, rng_subkey = random.split(rng_key)
+x_train, y_train, y_train_obs = generate_synthetic_data(
+    rng_key=rng_subkey, start=0, stop=1, num=n_train, scale=scale
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+x_test, y_test, y_test_obs = generate_synthetic_data(
+    rng_key=rng_subkey, start=-0.2, stop=1.2, num=n_test, scale=scale
+)</code></pre>
+<p>Let’s visualize the synthetic dataset (training and test set).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.scatter(x_test, y_test_obs, c=&quot;C1&quot;, label=&quot;observed (test)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, label=&quot;mean (latent)&quot;)
+ax.axvline(x=0, color=&quot;C0&quot;, alpha=0.3, linestyle=&quot;--&quot;, linewidth=2)
+ax.axvline(
+    x=1, color=&quot;C0&quot;, linestyle=&quot;--&quot;, alpha=0.3, linewidth=2, label=&quot;training range&quot;
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;Synthetic Data&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_6_0.png" style="width: 1000px;"/>
+</center>
+<p>Observe that, intentionally, the test set range is wider than the training set. The reason is because we want to understand the extrapolations capabilities of the Gaussian process of this example.</p>
+<hr />
+</div>
+<div id="part-i-gaussian-processes-gps" class="section level1">
+<h1>Part I: Gaussian Processes (GPs)</h1>
+<p>In this first part we recall the notion of Gaussian processes and the problem of inference in the context of regression. To showcase the main components of a Gaussian process model, we do it “by hand” using JAX and NumPyro. Afterwards, we show how to use the <a href="https://www.pymc.io/projects/docs/en/stable/api/gp.html"><code>gp</code></a> module in <code>PyMC</code> to generate the same results.</p>
+<div id="numpyro-gaussian-process-model" class="section level2">
+<h2>NumPyro Gaussian Process Model</h2>
+<p>For the NumPyro implementation, we use the the code from some examples of the tutorial pages:</p>
+<ul>
+<li><a href="https://num.pyro.ai/en/stable/examples/gp.html">Example: Gaussian Process</a></li>
+<li><a href="https://num.pyro.ai/en/stable/examples/thompson_sampling.html">Example: Thompson sampling for Bayesian Optimization with GPs</a></li>
+</ul>
+<div id="kernel-specification" class="section level3">
+<h3>Kernel Specification</h3>
+<p>Given the data (and context of the application), we as modelers need to specify a kernel function that captures the structure of the data. The kernel function is a measure of similarity (covariance) between two points in the input space. The most common kernel function is the squared exponential kernel (also known as Gaussian kernel or RBF kernel):</p>
+<p><span class="math display">\[
+\text{cov}(f_{p}, f_{q}) = k_{a, \ell}(x_p, x_q) = a^{2} \: \exp\left(-\frac{1}{2\ell^2} ||x_p - x_q||^2\right)
+\]</span></p>
+<p>This kernel, which depends on two parameters <span class="math inline">\(a\)</span> and <span class="math inline">\(\ell\)</span>, will produce <em>smooth</em> functions. The parameter <span class="math inline">\(a\)</span> is the amplitude and <span class="math inline">\(\ell\)</span> is the length-scale. The length-scale controls how wiggly the function is. If <span class="math inline">\(\ell\)</span> is large, the function will be very flat , and if <span class="math inline">\(\ell\)</span> is small, the function will be wiggly.</p>
+<p>There are many more kernels used in applications. For example:</p>
+<ul>
+<li>We can also use the Matérn kernel, which is a generalization of the squared exponential kernel. The Matérn kernel has an additional parameter <span class="math inline">\(\nu\)</span> that controls the smoothness of the function. The squared exponential kernel is a special case of the Matérn kernel when <span class="math inline">\(\nu \to \infty\)</span>.</li>
+<li>Periodic kernel, which is useful for modeling periodic functions.</li>
+</ul>
+<p>For a great introduction to kernels, I recommend the example notebook <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/GP-MeansAndCovs.html">“Mean and Covariance Functions”</a> from the PyMC <a href="https://www.pymc.io/projects/examples/en/latest/gallery.html">example gallery</a>. If you want to go deeper into the subject then I strongly recommend <a href="https://gaussianprocess.org/gpml/chapters/RW4.pdf">“Gaussian Processes for Machine Learning - Chapter 4: Covariance Functions”</a></p>
+<p><strong>Remark:</strong> The sum of kernels is also a valid kernel. This is useful to model functions that have different scales or periodic components. For example, the kernel <span class="math inline">\(k(x, x&#39;) = k_1(x, x&#39;) + k_2(x, x&#39;)\)</span> is a valid kernel. Also, the product of kernels is a valid kernel. For example, the kernel <span class="math inline">\(k(x, x&#39;) = k_1(x, x&#39;) \cdot k_2(x, x&#39;)\)</span> is a valid kernel.</p>
+<p>Let’s write the squared exponential kernel in JAX:</p>
+<pre class="python"><code># https://num.pyro.ai/en/stable/examples/gp.html
+def squared_exponential_kernel(
+    xp: ArrayImpl, xq: ArrayImpl, amplitude: float, length_scale: float
+) -&gt; ArrayImpl:
+    r = xp[:, None] - xq[None, :]
+    delta = (r / length_scale) ** 2
+    return amplitude**2 * jnp.exp(-0.5 * delta)</code></pre>
+<p>We can compute the associated kernel matrix for the training data and fixed values for the amplitude and length-scale. The kernel matrix is a matrix <span class="math inline">\(K\)</span> such that <span class="math inline">\(K_{ij} = k(x_i, x_j)\)</span>.</p>
+<pre class="python"><code>kernel = squared_exponential_kernel(x_train, x_train, amplitude=1.0, length_scale=0.1)</code></pre>
+<p>One can visualize the kernel matrix as a heatmap to understand the structure of the covariance:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.heatmap(
+    data=kernel,
+    square=True,
+    cmap=&quot;viridis&quot;,
+    cbar=True,
+    xticklabels=False,
+    yticklabels=False,
+    ax=ax,
+)
+ax.set_title(&quot;Squared Exponential Kernel&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_16_0.png" style="width: 700px;"/>
+</center>
+<p>As expected, the kernel matrix is symmetric and the diagonal elements are all equal to <span class="math inline">\(a^2\)</span>.</p>
+<pre class="python"><code>assert (kernel == kernel.T).all().item()
+assert (jnp.diag(kernel) == 1).all().item()</code></pre>
+<p>The kernel matrices have an additional property: they are positive semi-definite. This means that their eigenvalues are non-negative.</p>
+<p><strong>Remark:</strong> In this notebook we will be talking a lot about the spectrum (eigenvalues and eigenvector) of a matrix / operator. Recall that given a matrix <span class="math inline">\(A\)</span> (or a linear operator) the eigenvalues and eigenvectors are the solutions to the equation <span class="math inline">\(A v = \lambda v\)</span> where <span class="math inline">\(v\)</span> is the eigenvector and <span class="math inline">\(\lambda \neq 0\)</span> is the eigenvalue. The spectrum of a matrix is the set of its eigenvalues. For more details see the blog post <a href="https://juanitorduz.github.io/the-spectral-theorem-for-matrices/">“The Spectral Theorem for Matrices”</a>. We will discuss more about eigenvalues and eigenvectors later.</p>
+<p>We can verify this for this specific example by computing the eigenvalues of the kernel matrix on the training set:</p>
+<pre class="python"><code>spectrum_kernel = jnp.linalg.eigh(kernel)
+
+fig, ax = plt.subplots(figsize=(10, 7))
+ax.plot(
+    spectrum_kernel.eigenvalues, marker=&quot;o&quot;, markersize=5, linestyle=&quot;--&quot;, color=&quot;black&quot;
+)
+ax.set(xlabel=&quot;Eigenvalue Index (sorted)&quot;, ylabel=&quot;Eigenvalue&quot;)
+ax.set_title(&quot;Training Set&quot;)
+fig.suptitle(
+    &quot;Spectrum of the Squared-Exponential Kernel ($a=1$ and $\\ell=0.1$)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_20_0.png" style="width: 900px;"/>
+</center>
+<p>We indeed see that all of the eigenvalues are non-negative (up to some numerical error).</p>
+</div>
+<div id="gaussian-process-model" class="section level3">
+<h3>Gaussian Process Model</h3>
+<p>In this subsection we describe the Gaussian process model. We summarize the main concepts from <a href="https://gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Chapter 2: Regression</a>. Recall we used the kernel to construct the kernel matrix <span class="math inline">\(K := K(X,X)\)</span> from the training data <span class="math inline">\(X\)</span>. We can use this matrix to set a prior distribution over functions. Namely, we can consider a multivariate normal distribution with mean zero and covariance matrix <span class="math inline">\(K\)</span> so that the <em>sample functions</em> can be realized by sampling from it (in practice we sample a finite number of points and not a function itself). If we denote the test set by <span class="math inline">\(X_{*}\)</span> and all related quantities regarding this set by lower star, then the joint distribution of <span class="math inline">\(y\)</span> (observations of the training sets) and <span class="math inline">\(f_{*}\)</span> (latent GP realization on the test set) is given by (see Equation (2.18) in <a href="https://gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Chapter 2: Regression</a>)</p>
+<p><span class="math display">\[
+\left(
+\begin{array}{c}
+y \\
+f_*
+\end{array}
+\right)
+\sim
+\text{MultivariateNormal}(0, \mathcal{K})
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+\mathcal{K} =
+\left(
+\begin{array}{cc}
+K(X, X) + \sigma^2_n I &amp; K(X, X_*) \\
+K(X_*, X) &amp; K(X_*, X_*)
+\end{array}
+\right)
+\]</span></p>
+<p>Observe that we need to add the term <span class="math inline">\(\sigma^2_n I\)</span> to the upper left component to account for noise.</p>
+<p>As described in our main reference, <em>to get the posterior distribution over functions we need to restrict this joint
+prior distribution to contain only those functions which agree with the observed
+data points</em>, that is, we are interested in computing <span class="math inline">\(f_*|X, y, X_*\)</span>. Using the results of <a href="http://www.gaussianprocess.org/gpml/chapters/RWA.pdf">Gaussian Processes for Machine Learning, Appendinx A.2</a>, one can show that (see Equation (2.19) in <a href="https://gaussianprocess.org/gpml/chapters/RW2.pdf">Gaussian Processes for Machine Learning, Chapter 2: Regression</a>)</p>
+<p><span class="math display">\[
+f_*|X, y, X_*
+\sim
+\text{MultivariateNormal}(\bar{f}_*, \text{cov}(f_*))
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+\bar{f}_* = K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} y \in \mathbb{R}^{n_*}
+\]</span></p>
+<p>and</p>
+<p><span class="math display">\[
+\text{cov}(f_*) = K(X_*, X_*) - K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} K(X, X_*) \in M_{n_*}(\mathbb{R})
+\]</span></p>
+<p>For the NumPyro implementation, we will use these expressions to sample from the posterior distribution over functions on the train and test sets. Note that we are assuming we know the parameters of the kernel function. In practice, we need to infer these parameters from the data. We will discuss this in the next sections.</p>
+</div>
+<div id="parameter-priors" class="section level3">
+<h3>Parameter Priors</h3>
+<p>After having a better understanding of the theory behind the Gaussian process model, we can now proceed to the computational aspects. As we are Bayesians (right?), we need to specify priors for the parameters of the kernel function and the noise. This bit itself is a huge topic! (see the great blog post <a href="https://dansblog.netlify.app/posts/2022-09-07-priors5/priors5.html">“Priors for the parameters in a Gaussian process”</a> by <a href="https://dansblog.netlify.app/">Dan Simpson</a>). A common choice for the length-scale and amplitude parameters is to use an <a href="https://en.wikipedia.org/wiki/Inverse-gamma_distribution">inverse-gamma distribution</a> as it is positive and drops to zero for values close to zero (this help us to avoid dividing by zero). We expect different ranges for length-scale and amplitude parameters since the former controls the smoothness of the function and the latter the amplitude of the covariance. We can use the function <a href="https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.find_constrained_prior.html"><code>pm.find_constrained_prior</code></a> to find <em>optimal</em> parameters of the inverse-gamma distribution that align to our believes of the parameters given the data (e.g. plot). In addition, we can use <a href="https://github.com/arviz-devs/preliz"><code>preliz</code></a> to visualize the resulting prior distributions.</p>
+<pre class="python"><code>inverse_gamma_params_1 = pm.find_constrained_prior(
+    distribution=pm.InverseGamma,
+    lower=0.01,
+    upper=0.4,
+    init_guess={&quot;alpha&quot;: 5, &quot;beta&quot;: 3},
+    mass=0.94,
+)
+inverse_gamma_params_2 = pm.find_constrained_prior(
+    distribution=pm.InverseGamma,
+    lower=0.5,
+    upper=1.5,
+    init_guess={&quot;alpha&quot;: 5, &quot;beta&quot;: 6},
+    mass=0.94,
+)
+
+fig, ax = plt.subplots()
+pz.InverseGamma(**inverse_gamma_params_1).plot_pdf(color=&quot;C0&quot;, ax=ax)
+pz.InverseGamma(**inverse_gamma_params_2).plot_pdf(color=&quot;C1&quot;, ax=ax)
+ax.set(xlim=(0, 2))
+ax.set_title(&quot;Prior Distributions&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_24_0.png" style="width: 1000px;"/>
+</center>
+<p><strong>Remark:</strong> In this example we use the same priors for the amplitude and noise parameters as it is well suited for the synthetic data. In practice, we would need to use different priors for these parameters.</p>
+</div>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>We now specify the model as described above: we use the kernel function to compute the kernel matrix and then use this matrix to set the prior distribution over functions as a multivariate normal distribution.</p>
+<pre class="python"><code>def gp_model(x, y=None, jitter=1.0e-6) -&gt; None:
+    # --- Priors ---
+    kernel_amplitude = numpyro.sample(
+        &quot;kernel_amplitude&quot;,
+        dist.InverseGamma(
+            concentration=inverse_gamma_params_2[&quot;alpha&quot;],
+            rate=inverse_gamma_params_2[&quot;beta&quot;],
+        ),
+    )
+    kernel_length_scale = numpyro.sample(
+        &quot;kernel_length_scale&quot;,
+        dist.InverseGamma(
+            concentration=inverse_gamma_params_1[&quot;alpha&quot;],
+            rate=inverse_gamma_params_1[&quot;beta&quot;],
+        ),
+    )
+    noise = numpyro.sample(
+        &quot;noise&quot;,
+        dist.InverseGamma(
+            concentration=inverse_gamma_params_2[&quot;alpha&quot;],
+            rate=inverse_gamma_params_2[&quot;beta&quot;],
+        ),
+    )
+    # --- Parametrization ---
+    mean = jnp.zeros(x.shape[0])
+    kernel = squared_exponential_kernel(x, x, kernel_amplitude, kernel_length_scale)
+    covariance_matrix = kernel + (noise + jitter) * jnp.eye(x.shape[0])
+    # --- Likelihood ---
+    numpyro.sample(
+        &quot;likelihood&quot;,
+        dist.MultivariateNormal(loc=mean, covariance_matrix=covariance_matrix),
+        obs=y,
+    )</code></pre>
+<p>We can visualize the model representation in <a href="https://en.wikipedia.org/wiki/Plate_notation">plate notation</a>:</p>
+<pre class="python"><code>numpyro.render_model(
+    model=gp_model,
+    model_args=(x_train, y_train_obs),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_29_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="prior-predictive-check" class="section level3">
+<h3>Prior Predictive Check</h3>
+<p>Before fitting the model to the data, we can use the model above to generate samples from the prior distribution over functions. This will help us to understand the behavior of the model before seeing the data.</p>
+<pre class="python"><code>gp_numpyro_prior_predictive = Predictive(gp_model, num_samples=1_000)
+rng_key, rng_subkey = random.split(rng_key)
+gp_numpyro_prior_samples = gp_numpyro_prior_predictive(rng_subkey, x_train)
+
+gp_numpyro_prior_idata = az.from_numpyro(prior=gp_numpyro_prior_samples)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_train,
+    gp_numpyro_prior_idata.prior[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_train,
+    gp_numpyro_prior_idata.prior[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_train,
+    gp_numpyro_prior_idata.prior[&quot;likelihood&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C0&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+for i in range(5):
+    label = &quot;prior samples&quot; if i == 0 else None
+    ax.plot(
+        x_train,
+        gp_numpyro_prior_idata.prior[&quot;likelihood&quot;].sel(chain=0, draw=i),
+        color=&quot;C0&quot;,
+        alpha=0.3,
+        label=label,
+    )
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;GP NumPyro Model - Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_32_0.png" style="width: 1000px;"/>
+</center>
+<p>We see that the generated functions (range and smoothness) are reasonable candidates for the true function. Hence, we can proceed to fit the model to the data.</p>
+</div>
+<div id="model-fitting" class="section level3">
+<h3>Model Fitting</h3>
+<p>We define some helper objects to fit the model to the data so that we can reuse them later.</p>
+<pre class="python"><code>class InferenceParams(BaseModel):
+    num_warmup: int = Field(2_000, ge=1)
+    num_samples: int = Field(2_000, ge=1)
+    num_chains: int = Field(4, ge=1)
+
+
+def run_inference(
+    rng_key: ArrayImpl,
+    model: Callable,
+    args: InferenceParams,
+    *model_args,
+    **nuts_kwargs,
+) -&gt; MCMC:
+    sampler = NUTS(model, **nuts_kwargs)
+    mcmc = MCMC(
+        sampler=sampler,
+        num_warmup=args.num_warmup,
+        num_samples=args.num_samples,
+        num_chains=args.num_chains,
+    )
+    mcmc.run(rng_key, *model_args)
+    return mcmc
+
+
+inference_params = InferenceParams()
+rng_key, rng_subkey = random.split(key=rng_key)
+gp_mcmc = run_inference(rng_subkey, gp_model, inference_params, x_train, y_train_obs)</code></pre>
+</div>
+<div id="model-diagnostics" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>The model samples quite fast! We can now look into the posterior distributions and model diagnostics:</p>
+<pre class="python"><code>gp_numpyro_idata = az.from_numpyro(posterior=gp_mcmc)
+
+az.summary(data=gp_numpyro_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+kernel_amplitude
+</th>
+<td>
+1.190
+</td>
+<td>
+0.267
+</td>
+<td>
+0.729
+</td>
+<td>
+1.672
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+5426.0
+</td>
+<td>
+4562.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+kernel_length_scale
+</th>
+<td>
+0.089
+</td>
+<td>
+0.011
+</td>
+<td>
+0.069
+</td>
+<td>
+0.109
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5004.0
+</td>
+<td>
+4967.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+noise
+</th>
+<td>
+0.278
+</td>
+<td>
+0.043
+</td>
+<td>
+0.204
+</td>
+<td>
+0.359
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+5928.0
+</td>
+<td>
+4826.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gp_numpyro_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;GP NumPyro - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_38_0.png" style="width: 1000px;"/>
+</center>
+<p>Everything looks good! We are ready to generate predictions for the test set.</p>
+</div>
+<div id="out-of-sample-prediction" class="section level3">
+<h3>Out of Sample Prediction</h3>
+<p>Recall from the Gaussian model description that we can generate samples on the test set as:</p>
+<p><span class="math display">\[
+f_*|X, y, X_*
+\sim
+\text{MultivariateNormal}(\bar{f}_*, \text{cov}(f_*))
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+\bar{f}_* = K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} y
+\]</span></p>
+<p>and</p>
+<p><span class="math display">\[
+\text{cov}(f_*) = K(X_*, X_*) - K(X_*, X)(K(X, X) + \sigma^2_n I)^{-1} K(X, X_*)
+\]</span></p>
+<p>We now simply write these expressions in JAX code:</p>
+<pre class="python"><code>def get_kernel_matrices_train_test(
+    kernel, x, x_test, noise, jitter=1.0e-6, **kernel_kwargs
+) -&gt; tuple[ArrayImpl, ArrayImpl, ArrayImpl]:
+    k = kernel(x, x, **kernel_kwargs) + (noise + jitter) * jnp.eye(x.shape[0])
+    k_star = kernel(x_test, x, **kernel_kwargs)
+    k_star_star = kernel(x_test, x_test, **kernel_kwargs) + (noise + jitter) * jnp.eye(
+        x_test.shape[0]
+    )
+    return k, k_star, k_star_star
+
+
+def sample_test(rng_key, kernel, x, y, x_test, noise, jitter=1.0e-6, **kernel_kwargs):
+    k, k_star, k_star_star = get_kernel_matrices_train_test(
+        kernel, x, x_test, noise, jitter, **kernel_kwargs
+    )
+    k_inv = jnp.linalg.inv(k)
+    mean_star = k_star @ (k_inv @ y)
+    cov_star = k_star_star - (k_star @ k_inv @ k_star.T)
+    return random.multivariate_normal(rng_key, mean=mean_star, cov=cov_star)</code></pre>
+<p>We now <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.vmap.html"><code>vmap</code></a> (i.e. paralellize) these functions to generate samples from the posterior distribution over functions on the test set.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+vmap_args = (
+    random.split(
+        rng_subkey, inference_params.num_samples * inference_params.num_chains
+    ),
+    gp_mcmc.get_samples()[&quot;noise&quot;],
+    gp_mcmc.get_samples()[&quot;kernel_amplitude&quot;],
+    gp_mcmc.get_samples()[&quot;kernel_length_scale&quot;],
+)
+
+posterior_predictive_test = vmap(
+    lambda rng_key, noise, amplitude, length_scale: sample_test(
+        rng_key,
+        squared_exponential_kernel,
+        x_train,
+        y_train_obs,
+        x_test,
+        noise,
+        amplitude=amplitude,
+        length_scale=length_scale,
+    ),
+)(*vmap_args)
+
+gp_numpyro_idata.extend(
+    az.from_dict(
+        posterior_predictive={
+            &quot;y_pred_test&quot;: posterior_predictive_test[None, ...],
+        },
+        coords={&quot;x&quot;: x_test},
+        dims={&quot;y_pred_test&quot;: [&quot;x&quot;]},
+    )
+)</code></pre>
+<p>Here is the final result:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_test,
+    gp_numpyro_idata.posterior_predictive[&quot;y_pred_test&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    gp_numpyro_idata.posterior_predictive[&quot;y_pred_test&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_test,
+    gp_numpyro_idata.posterior_predictive[&quot;y_pred_test&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C1&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean (test)&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.scatter(x_test, y_test_obs, c=&quot;C1&quot;, label=&quot;observed (test)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;GP NumPyro Model - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_45_0.png" style="width: 1000px;"/>
+</center>
+<p>It looks very good 🚀! The in-sample fit captures very well the latent Gaussian process mean (black line). The out of sample also works well close to the boundaries (note how the uncertainty grows as we get far away from the training space, as expected). In the following plot we add indicators of one length scale the posterior distribution shift from the boundaries, until where we expect the model to work relatively well.</p>
+<pre class="python"><code>kernel_length_scale_hdi = az.hdi(gp_numpyro_idata.posterior)[
+    &quot;kernel_length_scale&quot;
+].to_numpy()
+
+
+fig, ax = plt.subplots()
+plt.axvspan(
+    xmin=x_train.min().item() - kernel_length_scale_hdi[1],
+    xmax=x_train.min().item() - kernel_length_scale_hdi[0],
+    color=&quot;C7&quot;,
+    alpha=0.3,
+    label=&quot;x_train_min - length scale $94\\%$ HDI&quot;,
+)
+plt.axvspan(
+    xmin=x_train.max().item() + kernel_length_scale_hdi[1],
+    xmax=x_train.max().item() + kernel_length_scale_hdi[0],
+    color=&quot;C8&quot;,
+    alpha=0.3,
+    label=&quot;x_train_max + length scale $94\\%$ HDI&quot;,
+)
+az.plot_hdi(
+    x_test,
+    gp_numpyro_idata.posterior_predictive[&quot;y_pred_test&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    gp_numpyro_idata.posterior_predictive[&quot;y_pred_test&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_test,
+    gp_numpyro_idata.posterior_predictive[&quot;y_pred_test&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C1&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean (test)&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.scatter(x_test, y_test_obs, c=&quot;C1&quot;, label=&quot;observed (test)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=2)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;GP NumPyro Model - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_47_0.png" style="width: 1000px;"/>
+</center>
+</div>
+</div>
+<div id="pymc-gaussian-process-model" class="section level2">
+<h2>PyMC Gaussian Process Model</h2>
+<p>In this section we show how to use the <a href="https://www.pymc.io/projects/docs/en/stable/api/gp.html"><code>gp</code></a> module in <code>PyMC</code> to generate the same results as in the <code>NumPyro</code> implementation. The data, priors and sampling parameters are the same as above.</p>
+<p>To define a Gaussian process component in PyMC we can use the <a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/pymc.gp.Latent.html"><code>pm.Latent</code></a> class. This class allows us to define a Gaussian process with a given mean and kernel function. Moreover, we can use the <a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/classmethods/pymc.gp.Latent.conditional.html#pymc.gp.Latent.conditional"><code>conditional</code></a> method to generate samples from the posterior distribution over functions on the test set without the need to write the expressions by hand. Let’s see how to do this.</p>
+<pre class="python"><code>with pm.Model() as gp_pymc_model:
+    x_data = pm.MutableData(&quot;x_data&quot;, value=x_train)
+
+    kernel_amplitude = pm.InverseGamma(
+        &quot;kernel_amplitude&quot;,
+        alpha=inverse_gamma_params_2[&quot;alpha&quot;],
+        beta=inverse_gamma_params_2[&quot;beta&quot;],
+    )
+    kernel_length_scale = pm.InverseGamma(
+        &quot;kernel_length_scale&quot;,
+        alpha=inverse_gamma_params_1[&quot;alpha&quot;],
+        beta=inverse_gamma_params_1[&quot;beta&quot;],
+    )
+    noise = pm.InverseGamma(
+        &quot;noise&quot;,
+        alpha=inverse_gamma_params_2[&quot;alpha&quot;],
+        beta=inverse_gamma_params_2[&quot;beta&quot;],
+    )
+
+    mean = pm.gp.mean.Zero()
+    cov = kernel_amplitude**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=kernel_length_scale)
+    gp = pm.gp.Latent(mean_func=mean, cov_func=cov)
+    f = gp.prior(&quot;f&quot;, X=x_data[:, None])
+
+    pm.Normal(&quot;likelihood&quot;, mu=f, sigma=noise, observed=y_train_obs)
+
+
+pm.model_to_graphviz(model=gp_pymc_model)</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_49_0.svg" style="width: 800px;"/>
+</center>
+<p>Before fitting the model we run a prior predictive check. We expect this to be very similar to the <code>NumPyro</code> model as the priors and kernel are the same.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+with gp_pymc_model:
+    gp_pymc_prior_predictive = pm.sample_prior_predictive(
+        samples=2_000, random_seed=rng_subkey[0].item()
+    )</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_train,
+    gp_pymc_prior_predictive.prior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_train,
+    gp_pymc_prior_predictive.prior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_train,
+    gp_pymc_prior_predictive.prior_predictive[&quot;likelihood&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C0&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+for i in range(5):
+    label = &quot;prior samples&quot; if i == 0 else None
+    ax.plot(
+        x_train,
+        gp_pymc_prior_predictive.prior_predictive[&quot;likelihood&quot;].sel(chain=0, draw=i),
+        color=&quot;C0&quot;,
+        alpha=0.3,
+        label=label,
+    )
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;GP PyMC Model - Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_52_0.png" style="width: 1000px;"/>
+</center>
+<p>The prior predictive check looks indeed very similar as above. We proceed to fit the model to the data.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+with gp_pymc_model:
+    gp_pymc_idata = pm.sample(
+        target_accept=0.9,
+        draws=inference_params.num_samples,
+        chains=inference_params.num_chains,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng_subkey[0].item(),
+    )</code></pre>
+<p>The sampling time is not as fast as in the <code>NumPyro</code> implementation. It is slow, but it is still reasonable. We can now look into the posterior distributions and model diagnostics:</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=gp_pymc_idata,
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;GP PyMC - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_56_0.png" style="width: 1000px;"/>
+</center>
+<p>We can see that the posterior distributions of both frameworks are almost the same:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=3,
+    figsize=(12, 7),
+    sharex=&quot;col&quot;,
+    sharey=False,
+    constrained_layout=True,
+)
+
+az.plot_posterior(
+    data=gp_numpyro_idata,
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;],
+    round_to=2,
+    kind=&quot;kde&quot;,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    textsize=12,
+    ax=ax[0, :],
+)
+az.plot_posterior(
+    data=gp_pymc_idata,
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;],
+    round_to=2,
+    kind=&quot;kde&quot;,
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    textsize=12,
+    ax=ax[1, :],
+)
+fig.suptitle(
+    &quot;GP - Posterior Distributions - NumPyro &amp; PyMC Models&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.05,
+);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_58_0.png" style="width: 1000px;"/>
+</center>
+<p>Next, we generate samples from the posterior distribution over functions on the test set. Here is where the <code>conditional</code> method comes into play:</p>
+<pre class="python"><code>with gp_pymc_model:
+    x_star_data = pm.MutableData(&quot;x_star_data&quot;, x_test)
+    f_star = gp.conditional(&quot;f_star&quot;, x_star_data[:, None])
+    pm.Normal(&quot;likelihood_test&quot;, mu=f_star, sigma=noise)
+
+    gp_pymc_idata.extend(
+        pm.sample_posterior_predictive(
+            trace=gp_pymc_idata,
+            var_names=[&quot;f_star&quot;, &quot;likelihood_test&quot;],
+            random_seed=rng_subkey[1].item(),
+        )
+    )</code></pre>
+<p>Finally, we plot the posterior distribution over functions on the test set of both the likelihood and the latent Gaussian process:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_test,
+    gp_pymc_idata.posterior_predictive[&quot;likelihood_test&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    gp_pymc_idata.posterior_predictive[&quot;likelihood_test&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    gp_pymc_idata.posterior_predictive[&quot;f_star&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$f \\: 94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    gp_pymc_idata.posterior_predictive[&quot;f_star&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$f \\: 50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_test,
+    gp_pymc_idata.posterior_predictive[&quot;f_star&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C3&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean (test)&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.scatter(x_test, y_test_obs, c=&quot;C1&quot;, label=&quot;observed (test)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;GP PyMC Model - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_62_0.png" style="width: 1000px;"/>
+</center>
+<p>We again see that the posterior predictive distribution of both frameworks are almost the same 🙌!</p>
+<hr />
+</div>
+</div>
+<div id="part-ii-hilbert-space-gaussian-processes-hsgps" class="section level1">
+<h1>Part II: Hilbert Space Gaussian Processes (HSGPs)</h1>
+<p>In this part we focus on the Hilbert Space Gaussian Process (HSGP) approximation method description following very closely the articles</p>
+<ul>
+<li><a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">“Hilbert space methods for reduced-rank Gaussian process regression”</a></li>
+<li><a href="https://link.springer.com/article/10.1007/s11222-022-10167-2">“Practical Hilbert space approximate Bayesian Gaussian processes for probabilistic programming”</a></li>
+</ul>
+<p>We strongly recommend looking into these articles to get the details of the method. Here we simply provide a description of the key ingredients and steps so that we can do a simple version of the implementation ourselves.</p>
+<p><strong>Why do we need an approximation?</strong> Gaussian processes do not scale well with the number of data points. Recall we had to invert the kernel matrix! The computational complexity of the Gaussian process model is <span class="math inline">\(\mathcal{O}(n^3)\)</span>, where <span class="math inline">\(n\)</span> is the number of data points. This is due to the inversion of the kernel matrix. The HSGP approximation method is a way to reduce the computational complexity of the Gaussian process model to <span class="math inline">\(\mathcal{O}(n)\)</span>.</p>
+<p>The outline of this part of the notebook is as follows:</p>
+<ul>
+<li><p>First we briefly describe the scaling challenge to really understand the problem we are trying to solve with this approximation.</p></li>
+<li><p>Then we do a linear algebra D-tour where we recall certain key results of eigenvalues and eigenvectors of a matrix. These concepts will appear constantly in the HSGP approximation method.</p></li>
+<li><p>Finally we go through the main steps of the approximation.</p></li>
+</ul>
+<p><strong>Approximation Strategy Steps:</strong></p>
+<ol style="list-style-type: decimal">
+<li>We recall the definition of the spectral density <span class="math inline">\(S(\omega)\)</span> associated with a stationary kernel function <span class="math inline">\(k\)</span>.</li>
+<li>We approximate the spectral density <span class="math inline">\(S(\omega)\)</span> as a polynomial series in <span class="math inline">\(||\omega||^2\)</span>.</li>
+<li>We can interpret these polynomial terms as “powers” of the Laplacian operator. The key observation is that the Fourier transform of the Laplacian operator is <span class="math inline">\(||\omega||^2\)</span>.</li>
+<li>Next, we impose Dirichlet boundary conditions on the Laplacian operator which makes it self-adjoint and with discrete spectrum (we do a D-tour in the main ideas and consequences of the spectral theorem).</li>
+<li>We identify the expansion in (2) with the sum of powers of the Laplacian operator in the eigenbasis of (4).</li>
+<li>We arrive at the final approximation formula and explicitly compute the terms for the squared exponential kernel in the one-dimensional case.</li>
+</ol>
+<p>Here is a summay diagram of whan we plan to discuss and how it comes together:</p>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_approximation.png" style="width: 700px;"/>
+</center>
+<div id="the-scaling-challenge" class="section level3">
+<h3>The Scaling Challenge</h3>
+<p>Why do Gaussian processes scale poorly with the number of data points? In the introduction of the paper <a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">“Hilbert space methods for reduced-rank Gaussian process regression”</a> the authors give a great summary:</p>
+<blockquote>
+<p><em>One of the main limitations of GPs in machine learning is the computational and memory requirements that scale as <span class="math inline">\(\mathcal{O}(n^3)\)</span> and <span class="math inline">\(\mathcal{O}(n^2)\)</span> in a direct implementation. This limits the applicability of GPs when the number of training samples <span class="math inline">\(n\)</span> grows large. The computational requirements arise because in solving the GP regression problem we need to invert the <span class="math inline">\(n \times n\)</span> Gram matrix <span class="math inline">\(K + \sigma_{n}^{2}I\)</span>, where <span class="math inline">\(K=k(x_i, x_j)\)</span>, which is an <span class="math inline">\(\mathcal{O}(n^3)\)</span> operation in general.</em></p>
+</blockquote>
+<p><strong>Remark:</strong> In real applications, one does not invert the matrix but rather use the si called, Cholesky decomposition, since it is faster and numerically more stable. The Cholesky decomposition is an <span class="math inline">\(\mathcal{O}(n^3)\)</span> operation and it is defined as a factorization of the form <span class="math inline">\(K = LL^{T}\)</span> where <span class="math inline">\(L\)</span> is a lower triangular matrix. See <a href="https://gaussianprocess.org/gpml/chapters/RWA.pdf">“Gaussian Processes for Machine Learning - Appendix A4: Cholesky Decomposition”</a>.</p>
+</div>
+<div id="the-spectral-theorem" class="section level3">
+<h3>The Spectral Theorem</h3>
+<p>In this small subsection we recall the main ideas of the spectral theorem. For a detailed practical introduction for the finite-dimensional case (i.e. matrices), please see my blog post <a href="https://juanitorduz.github.io/the-spectral-theorem-for-matrices/">“The Spectral Theorem for Matrices”</a>.
+When we talk about spectrum we mean eigenvalues and eigenvectors of a matrix or operator. The spectral theorem is a statement that says that we can write any symmetric matrix as a sum of its eigenvectors and eigenvalues. In such representation (basis), the matrix becomes diagonal. There are generalizations of such result to much more general spaces and operators (e.g. differential operators).</p>
+<p>Let’s work it out with a simple example. Consider the <span class="math inline">\(2 \times 2\)</span> matrix:</p>
+<p><span class="math display">\[
+A = \begin{pmatrix}
+1 &amp; 2 \\
+2 &amp; 1
+\end{pmatrix}
+\]</span></p>
+<pre class="python"><code>A = jnp.array([[1.0, 2.0], [2.0, 1.0]])</code></pre>
+<p>It is easy to see that the eigenvalues of <span class="math inline">\(A\)</span> are <span class="math inline">\(\lambda_1 = 3\)</span> and <span class="math inline">\(\lambda_2 = -1\)</span> with eigenvectors:</p>
+<p><span class="math display">\[
+v_1 = \frac{1}{\sqrt{2}} \begin{pmatrix}
+1 \\
+1
+\end{pmatrix}
+\]</span>
+and</p>
+<p><span class="math display">\[
+v_2 = \frac{1}{\sqrt{2}} \begin{pmatrix}
+-1 \\
+1
+\end{pmatrix}
+\]</span></p>
+<p>respectively. We include the <span class="math inline">\(1/\sqrt{2}\)</span> factor so that <span class="math inline">\(\{v_1, v_2\}\)</span> is an orthonormal basis of <span class="math inline">\(\mathbb{R}^2\)</span>. That is,</p>
+<p><span class="math display">\[
+v_1^{T} v_2 = 0 \quad \text{and} \quad v_1^{T} v_1 = v_2^{T} v_2 = 1
+\]</span></p>
+<p>We can see this numerically:</p>
+<pre class="python"><code>eigenvalues, eigenvectors = jnp.linalg.eig(A)
+
+print(f&quot;Eigenvalues: {eigenvalues}\nEigenvectors:\n{eigenvectors}&quot;)</code></pre>
+<pre><code>Eigenvalues: [ 3.+0.j -1.+0.j]
+Eigenvectors:
+[[ 0.70710678+0.j -0.70710678+0.j]
+ [ 0.70710678+0.j  0.70710678+0.j]]</code></pre>
+<p>The spectral theorem states that we can always find such orthonormal basis of eigenvectors for a symmetric matrix. Observe that if we consider the change-of-basis matrix</p>
+<p><span class="math display">\[
+Q = \begin{pmatrix}
+v_1 &amp; v_2
+\end{pmatrix}
+\]</span></p>
+<p>then we can write the matrix <span class="math inline">\(A\)</span> in the new basis as</p>
+<p><span class="math display">\[
+D = Q^{T} A Q = \begin{pmatrix}
+3 &amp; 0 \\
+0 &amp; -1
+\end{pmatrix}.
+\]</span></p>
+<p>We can verify this in JAX:</p>
+<pre class="python"><code>Q = eigenvectors
+
+Q.T @ A @ Q</code></pre>
+<pre><code>Array([[ 3.00000000e+00+0.j,  4.44089210e-16+0.j],
+       [ 6.10622664e-16+0.j, -1.00000000e+00+0.j]], dtype=complex128)</code></pre>
+<p><strong>Remark:</strong> Since <span class="math inline">\(Q\)</span> is defined trough an orthonormal basis, then <span class="math inline">\(Q \in O(2)\)</span> and <span class="math inline">\(QQ^{T} = Q^{T}Q = I_2\)</span>.</p>
+<pre class="python"><code>Q @ Q.T</code></pre>
+<pre><code>Array([[1.+0.j, 0.+0.j],
+       [0.+0.j, 1.+0.j]], dtype=complex128)</code></pre>
+<p>Another important consequence of the spectral theorem is that we can decompose the matrix <span class="math inline">\(A\)</span> as a sum of projections onto its eigenspaces. That is, we can write
+is as</p>
+<p><span class="math display">\[
+A = \sum_{j=1}^{2} \lambda_i v_j v_j^{T}
+\]</span></p>
+<p>Observe that the operator <span class="math inline">\(P_{j} = v_j v_j ^{T}\)</span> is indeed a projection operator, that is <span class="math inline">\(P^2 = P\)</span> and <span class="math inline">\(P^T = P\)</span>, since the <span class="math inline">\(v_j\)</span> constitute an orthonormal basis.</p>
+<p>We can write each individual projection as:</p>
+<pre class="python"><code>def proj(v, x):
+    return jnp.dot(v, x) * v</code></pre>
+<p>So that the weighted sum of projections is the matrix <span class="math inline">\(A\)</span>:</p>
+<pre class="python"><code>def matrix_proj(x):
+    return eigenvalues[0] * proj(Q[:, 0], x) + eigenvalues[1] * proj(Q[:, 1], x)</code></pre>
+<p>We can verify that the action on a vector <span class="math inline">\(x\)</span> is the same as the action of the matrix <span class="math inline">\(A\)</span>:</p>
+<ul>
+<li>Eigenvector <span class="math inline">\(v_1\)</span>:</li>
+</ul>
+<pre class="python"><code>matrix_proj(Q[:, 0]) / eigenvalues[0]</code></pre>
+<pre><code>Array([0.70710678+0.j, 0.70710678+0.j], dtype=complex128)</code></pre>
+<ul>
+<li>Eigenvector <span class="math inline">\(v_2\)</span>:</li>
+</ul>
+<pre class="python"><code>matrix_proj(Q[:, 1]) / eigenvalues[1]</code></pre>
+<pre><code>Array([-0.70710678-0.j,  0.70710678-0.j], dtype=complex128)</code></pre>
+<ul>
+<li>Arbitrary vector <span class="math inline">\(v\)</span>:</li>
+</ul>
+<pre class="python"><code>v = jnp.array([1.0, 2.0])
+
+jnp.allclose(jnp.dot(A, v), matrix_proj(v))</code></pre>
+<pre><code>Array(True, dtype=bool)</code></pre>
+<p>The last consequence of the spectral theorem we want to mention is the <a href="https://en.wikipedia.org/wiki/Spectral_theorem#Functional_calculus">functional calculus</a> of operators. This is a generalization of the Taylor series for functions to operators. Given a function <span class="math inline">\(f\)</span> we can define the operator <span class="math inline">\(f(A)\)</span> as</p>
+<p><span class="math display">\[
+f(A) = \sum_{j=1}^{2} f(\lambda_j) v_j v_j^{T}
+\]</span></p>
+<p>Observe that in particular cases:</p>
+<ul>
+<li><span class="math inline">\(f(z) = z\)</span> we recover the operator <span class="math inline">\(A\)</span>.</li>
+<li><span class="math inline">\(f(z) = 1\)</span> we recover the identity operator <span class="math inline">\(I\)</span>.</li>
+</ul>
+<p>To illustrate this, we can evaluate the exponential of the matrix <span class="math inline">\(A\)</span> defined as</p>
+<p><span class="math display">\[
+\exp(A) = \sum_{j=0}^{\infty} \frac{A^j}{j!}
+\]</span></p>
+<p>We can use the existing implmenetation to compute this directly:</p>
+<pre class="python"><code>scipy.linalg.expm(A)</code></pre>
+<pre><code>Array([[10.22670818,  9.85882874],
+       [ 9.85882874, 10.22670818]], dtype=float64)</code></pre>
+<p>On the other hand, we can use the fact that <span class="math inline">\(A = Q D Q^{T}\)</span> and that <span class="math inline">\(Q\)</span> is an orthogonal matrix to write</p>
+<p><span class="math display">\[
+\exp(A) = \sum_{j=0}^{\infty} \frac{(Q D Q^{T})^j}{j!} = Q \left(\sum_{j=0}^{\infty} \frac{D^j}{j!}\right) Q^{T} = Q \exp(D) Q^{T}
+\]</span></p>
+<p>and observe that <span class="math inline">\(\exp(D)\)</span> is a diagonal matrix with the exponential of the diagonal elements:</p>
+<pre class="python"><code>Q @ jnp.diag(jnp.exp(eigenvalues)) @ Q.T</code></pre>
+<pre><code>Array([[10.22670818+0.j,  9.85882874+0.j],
+       [ 9.85882874+0.j, 10.22670818+0.j]], dtype=complex128)</code></pre>
+<p>We indeed see that both methods give the same result.</p>
+<p>Through the functional calculus we can define a large class of operators by evaluating functions on the eigenvalues.</p>
+<p>The spectral theorem has generalization to more general operators, including differential operators between Sobolev spaces. The theory is much more involved but the main ideas are the same. We do not go into details here (for a reference see <a href="https://link.springer.com/book/10.1007/978-94-007-4753-1">“Unbounded Self-adjoint Operators on Hilbert Space”</a> by Konrad Schmüdgen).</p>
+<p>After this short D-tour, we are ready to go through the main steps of the HSGP approximation method.</p>
+</div>
+<div id="spectral-densities" class="section level3">
+<h3>Spectral Densities</h3>
+<p>In the case a kernel function is <em>stationary</em>, i.e. when the kernel just depends in the difference <span class="math inline">\(r := x - x&#39;\)</span> so that <span class="math inline">\(k(x, x&#39;) = k(x - x&#39;) = k(r)\)</span> (for example, the square exponential), we can use certain spectral representation of the kernel function to write it as an integral operator. The spectral representation of a kernel function is given by (<a href="https://en.wikipedia.org/wiki/Bochner%27s_theorem">Bochner’s theorem</a>)</p>
+<p><span class="math display">\[
+k(r) = \frac{1}{(2 \pi)^{d}}\int_{\mathbb{R}^{d}} e^{i \omega^{T} r} d\mu(\omega)
+\]</span></p>
+<p>where <span class="math inline">\(\mu\)</span> is a positive measure. If this measure has a density, it is called the <em>spectral density</em> <span class="math inline">\(S(\omega)\)</span> corresponding to the covariance function
+<span class="math inline">\(k(r)\)</span>. That is, we can write the kernel function as</p>
+<p><span class="math display">\[
+k(x, x&#39;) = \frac{1}{(2 \pi)^{d}} \int_{\mathbb{R}^{d}} e^{i \omega^{T} r} S(\omega) d\omega
+\]</span></p>
+<p>See <a href="https://gaussianprocess.org/gpml/chapters/RW4.pdf">“Gaussian Processes for Machine Learning - Chapter 4: Covariance Functions”</a>.</p>
+<p><strong>Remark:</strong> In the context of unbounded operators the spectral theorem can be stated in the language of spectral projections and measures. This is way out of the scope of this exposition. Nevertheless, it is interesting to see how the spectral theorem at this level can have key implications for concrete applications.</p>
+<p><strong>Remark:</strong> Note the similarity between the spectral density and the <a href="https://en.wikipedia.org/wiki/Fourier_transform">Fourier transform</a>. For Gaussian-like kernels, like the squared exponential, we therefore expect the associated spectral density to also be Gaussian-like. Of course, we care about the constants and parameters of the kernel. This motivates the following example.</p>
+<p><strong>Example:</strong> For the squared exponential kernel, it can be shown that the spectral density is given by</p>
+<p><span class="math display">\[
+S(\omega) = a^2(2 \pi \ell^2)^{d/2} \exp\left(-2\pi^2\ell^2\omega^2\right)
+\]</span></p>
+<p>where <span class="math inline">\(a\)</span> is the amplitude and <span class="math inline">\(\ell\)</span> is the length-scale parameter.</p>
+<p>For the special case <span class="math inline">\(d=1\)</span> we have</p>
+<p><span class="math display">\[
+S(\omega) = a^2 \sqrt{2 \pi} \ell \exp\left(-2\pi^2\ell^2\omega^2\right)
+\]</span></p>
+<p>We can write this spectral density as a function in JAX:</p>
+<pre class="python"><code>def squared_exponential_spectral_density(w, amplitude, length_scale):
+    c = amplitude**2 * jnp.sqrt(2 * jnp.pi) * length_scale
+    e = jnp.exp(-0.5 * (length_scale**2) * (w**2))
+    return c * e</code></pre>
+<p>For an amplitude of one, we can plot the spectral density for different length-scales:</p>
+<pre class="python"><code>w = jnp.linspace(start=0, stop=10, num=100)
+length_scales = [0.3, 0.5, 1.0, 2.0]
+
+fig, ax = plt.subplots()
+for i, length_scale in enumerate(length_scales):
+    ax.plot(
+        w,
+        squared_exponential_spectral_density(
+            w, amplitude=1.0, length_scale=length_scale
+        ),
+        c=f&quot;C{i}&quot;,
+        linewidth=3,
+        label=f&quot;length_scale={length_scale}&quot;,
+    )
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(xlabel=&quot;Frequency ($\\omega$)&quot;, ylabel=&quot;Spectral Density $S(\\omega)$&quot;)
+ax.set_title(&quot;Squared Exponential Spectral Density&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_95_0.png" style="width: 1000px;"/>
+</center>
+<p>Observe that the spectral density is a bell-shaped curve centered at zero. In particular they decay fast at infinity. The length-scale parameter controls the width of the curve. The larger the length-scale, the narrower the curve.</p>
+<p><strong>Remark [On the interpretation of spectral densities from Rasmussen &amp; Williams]:</strong>
+<em>The complex exponentials <span class="math inline">\(\exp(2 \pi i \omega x)\)</span> are eigenfunctions of a stationary kernel</em>
+<span class="math display">\[
+k(x, x&#39;) = \int_{\mathbb{R}} e^{2\pi i \omega (x - x&#39;)} d\mu
+\]</span>
+<em>with respect to Lebesgue measure <span class="math inline">\(d\mu\)</span> . Thus <span class="math inline">\(S(\omega)\)</span> is, loosely speaking, the amount of power allocated on average to the eigenfunction <span class="math inline">\(\exp(2\pi i \omega x)\)</span> with frequency <span class="math inline">\(\omega\)</span>.</em></p>
+</div>
+<div id="formal-power-expansion-of-the-spectral-density" class="section level3">
+<h3>Formal Power Expansion of the Spectral Density</h3>
+<p>Next, we describe a convenient polynomial expansion of an spectral density, just like we do with <a href="https://en.wikipedia.org/wiki/Taylor_series">Taylor series</a> for functions. On the way, I will add comments relevant for the audience familiar with (pseudo) differential operators. This is not necessary to understand the main ideas but it is a nice connection to other areas of mathematics.</p>
+<p>Let us assume the kernel function is isotropic, i.e. it only depends on the Euclidean (or <span class="math inline">\(L^2\)</span>) norm <span class="math inline">\(||r||\)</span>. In this case the associated spectral density <span class="math inline">\(S(\omega)\)</span> is also isotropic, i.e. <span class="math inline">\(S(\omega) = S(||\omega||)\)</span>. We can formally write <span class="math inline">\(S(||\omega||) = \psi(||\omega||^2)\)</span> for a suitable function <span class="math inline">\(\psi\)</span>. We can expand <span class="math inline">\(\psi\)</span> (for example, by requiring that <span class="math inline">\(\psi\)</span> is an analytic function) in a power series:</p>
+<p><span class="math display">\[
+S(||\omega||) = \psi(||\omega||^2) = a_0 + a_1 (||\omega||^2) + a_2 (||\omega||^2)^2 +  a_3 (||\omega||^2)^3 +  \cdots
+\]</span></p>
+</div>
+<div id="fourier-transform-of-the-laplacian" class="section level3">
+<h3>Fourier Transform of the Laplacian</h3>
+<p>At first sight, it looks very strange to expand the spectral density in terms of <span class="math inline">\(||\omega||^2\)</span> instead of <span class="math inline">\(\omega\)</span>. The reason for this, as we will see below, is that we want to match this expansion with the one coming from the Laplace operator (via the spectral theorem). As the Laplace operator is a second order differential operator, its Fourier transform is a second order polynomial in <span class="math inline">\(\omega\)</span> (recall that the Fourier transform maps derivatives to polynomials). This is the link 😉!</p>
+<p>Concretely, if we denote by <span class="math inline">\(\mathcal{F}\)</span> the Fourier transform operator, then</p>
+<p><span class="math display">\[
+\mathcal{F}[\nabla^2 f](\omega) = - ||\omega||^2 \mathcal{F}[f]
+\]</span></p>
+<p><strong>Remark [Ellipticity]:</strong> This also shows that the Laplacian is an <a href="https://en.wikipedia.org/wiki/Elliptic_operator">elliptic operator</a>, as its principal symbol (highest order of the Fourier transform) is <span class="math inline">\(||\omega||^2\)</span>, which is invertible for <span class="math inline">\(\omega \neq 0\)</span>. This is a key property for the existence of discrete eigenvalues and eigenfunctions.</p>
+<p>Given the above, we can connect the spectral density expansion with the Laplacian operator by taking the inverse Fourier transform of the expansions of the spectral density. This will give us a polynomial expansion of the kernel operator</p>
+<p><span class="math display">\[
+\mathcal{K} := \int_{\mathbb{R}^d} k(\cdot, x&#39;)\phi(x&#39;) dx&#39;
+\]</span></p>
+<p>in terms of the Laplacian operator:</p>
+<p><span class="math display">\[
+\mathcal{K} = a_0  + a_1 (- \nabla^2) + a_2 (-\nabla^2)^2 - a_3 (-\nabla^2)^3 + \cdots
+\]</span></p>
+<p>which is not a differential operator but a <a href="https://en.wikipedia.org/wiki/Pseudo-differential_operator">pseudo-differential operator</a>.</p>
+<p>Our goal now is to use the spectral decomposition of the Laplacian (in terms of things we can explicitly compute) to approximate the kernel operator using the formula above. This is the main idea behind the Hilbert space approximation.</p>
+</div>
+<div id="dirichlets-laplacian" class="section level3">
+<h3>Dirichlet’s Laplacian</h3>
+<p>Recall that an unbounded operator is not only defined by its action, but also by its domain of definition. In the case of the Laplacian on an open domain <span class="math inline">\(\Omega \subset \mathbb{R}^d\)</span> (with boundary <span class="math inline">\(\partial \Omega\)</span> sufficiently smooth), we need to specify the boundary conditions. The most common boundary conditions are the <a href="https://en.wikipedia.org/wiki/Dirichlet_eigenvalue">Dirichlet boundary conditions</a>, which are defined by requiring that the function vanishes on the boundary of the domain. The Laplacian with Dirichlet boundary conditions is a self-adjoint operator defined on the Hilbert space <span class="math inline">\(L^{2}(\Omega)\)</span> equipped with the Lebesgue measure. That is, it satisfies the following property:</p>
+<p><span class="math display">\[
+  \int_{\Omega} (-\nabla^2 f(x)) g(x) dx = \int_{\Omega} f(x) (-\nabla^2 g(x)) dx
+\]</span></p>
+<p>In addition, it has discrete spectrum with eigenvalues <span class="math inline">\(\lambda_j \rightarrow \infty\)</span> and eigenfunctions <span class="math inline">\(\phi_j\)</span> that form an orthonormal basis of <span class="math inline">\(L^2(\Omega)\)</span>, so that
+<span class="math display">\[
+\int_{\Omega} \phi_{j}(x) \phi_{k}(x) dx = \delta_{jk}
+\]</span></p>
+<p><strong>Example [One Dimension]:</strong> One can easily find the spectral decomposition of the Laplacian on the interval <span class="math inline">\([-L, L]\)</span> with Dirichlet boundary conditions. We just need to solve the equation</p>
+<p><span class="math display">\[
+\frac{d^2 \phi}{dx^2} = - \lambda \phi \quad \text{with} \quad \phi(-L) = \phi(L) = 0
+\]</span></p>
+<p>It is easy to see that the solutions are given by</p>
+<p><span class="math display">\[
+\phi_j(x) = \sqrt{\frac{1}{L}} \sin\left(\frac{\pi j (x + L)}{2L}\right)
+\]</span></p>
+<p>with eigenvalues</p>
+<p><span class="math display">\[
+\lambda_j = \left(\frac{j \pi}{2L}\right)^2.
+\]</span></p>
+</div>
+<div id="hilbert-space-gaussian-process-approximation" class="section level3">
+<h3>Hilbert Space Gaussian Process Approximation</h3>
+<p>Using the functional calculus of the spectral decomposition (see details in the section above), one can write the Laplacian as acting on function <span class="math inline">\(f\)</span> in the domain of definition as:</p>
+<p><span class="math display">\[
+-\nabla^2 f(x) = \int_{\Omega} l(x, x&#39;) f(x&#39;) dx&#39;
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+l(x, x&#39;) = \sum_{j} \lambda_{j} \phi_{j}(x) \phi_{j}(x&#39;)
+\]</span></p>
+<p>is the kernel operator associated with the Laplacian. Note that this resembles the finite-dimensional case, where we use the dot product instead of the integral.</p>
+<p>The functional calculus allows us to consider powers of the Laplacian <span class="math inline">\((- \nabla^2)^{s}\)</span>,</p>
+<p><span class="math display">\[
+(- \nabla^2)^{s} f(x) = \int_{\Omega} l^{s}(x, x&#39;) f(x&#39;) dx&#39;.
+\]</span></p>
+<p>We can use this expression and compare it with the expansion of the spectral density to approximate the kernel operator of the Gaussian process:</p>
+<p><span class="math display">\[\begin{align*}
+&amp; \left[ a_{0} + a_{1}(-\nabla^2) + a_{2}(-\nabla^2)^2 + \cdots \right]f(x) = \\
+&amp;\int_{\Omega} \left[a_{0} + a_{1} l(x, x&#39;) + a_{2} l^{2}(x, x&#39;) + \cdots \right] f(x&#39;) dx&#39;
+\end{align*}\]</span></p>
+<p>This implies we can approximate the kernel as</p>
+<p><span class="math display">\[\begin{align*}
+k(x, x&#39;) \approx &amp; \: a_{0} + a_{1} l(x, x&#39;) + a_{2} l^{2}(x, x&#39;) + \cdots \\
+\approx &amp; \sum_{j} \left[ a_{0} + a_{1} \lambda_{j} + a_{2} \lambda_{j}^2 + \cdots \right] \phi_{j}(x) \phi_{j}(x&#39;)
+\end{align*}\]</span></p>
+<p><strong>which is only an approximation to the covariance function due to the restriction of the domain to Ω and the boundary conditions.</strong></p>
+<p>Finally, recall that the coefficients <span class="math inline">\(a_j\)</span> were defined by the polynomial expansion of the spectral density, so if we take <span class="math inline">\(||\omega||^2 = \lambda_j\)</span> then we arrive at the final expression for the approximation formula:</p>
+<p><span class="math display">\[
+\boxed{
+k(x, x&#39;) \approx \sum_{j} S(\sqrt{\lambda_j})\phi_{j}(x) \phi_{j}(x&#39;)
+}
+\]</span></p>
+<p>That is, the model of the Gaussian process <span class="math inline">\(f\)</span> can be written as</p>
+<p><span class="math display">\[
+f(x) \sim \text{MultivariateNormal}(\boldsymbol{\mu}, \Phi\mathcal{D}\Phi^{T})
+\]</span></p>
+<p>where <span class="math inline">\(\mathcal{D} = \text{diag}(S(\sqrt{\lambda_1}), S(\sqrt{\lambda_2}), \ldots, S(\sqrt{\lambda_{m}}))\)</span>.</p>
+<p>As a result, we can write the approximation as</p>
+<p><span class="math display">\[
+f(x) \approx \sum_{j = 1}^{m}
+\overbrace{\color{red}{\left(S(\sqrt{\lambda_j})\right)^{1/2}}}^{\text{all hyperparameters are here!}}
+\times
+\underbrace{\color{blue}{\phi_{j}(x)}}_{\text{easy to compute!}}
+\times
+\overbrace{\color{green}{\beta_{j}}}^{\sim \: \text{Normal}(0,1)}
+\]</span></p>
+<p>From where we see two important properties:</p>
+<ul>
+<li><p>The only dependence on the hyperparameters is through the spectral density.</p></li>
+<li><p>The computational cost of evaluating the log posterior density of univariate HSGPs scales as <span class="math inline">\(\mathcal{O}(nm + m)\)</span>.</p></li>
+</ul>
+<p><strong>Example [One Dimension]:</strong> Coming back to the one-dimensional case, we can use this formula to approximate the squared exponential kernel in terms of the Dirichlet’s Laplacian on the interval <span class="math inline">\([-L, L]\)</span>,</p>
+<p><span class="math display">\[
+k(x, x&#39;) \approx
+\sum_{j} \underbrace{a^2 \sqrt{2 \pi} \ell \exp\left(-2\pi^2\ell^2 \left(\frac{\pi j}{2L}\right)^2 \right) }_{S(\sqrt{\lambda_j})}
+\overbrace{\left(\sqrt{\frac{1}{L}} \sin\left(\frac{\pi j (x + L)}{2L}\right)\right)}^{\phi_{j}(x)}
+\overbrace{\left(\sqrt{\frac{1}{L}} \sin\left(\frac{\pi j (x&#39; + L)}{2L}\right)\right)}^{\phi_{j}(x&#39;)}
+\]</span></p>
+<p>In the next section we use this formula to approximate the squared exponential kernel in the one-dimensional case.</p>
+<p><strong>Remark:</strong> Note that the eigenvectors <span class="math inline">\(\phi_j\)</span> <strong>do not</strong> depend on the kernel parameters <span class="math inline">\(a\)</span> and <span class="math inline">\(\ell\)</span>. This is a key property as this is essentially reducing the problem to a <em>linear regression</em> problem in the eigenvector basis. This is where the speed-up comes from 🤓!</p>
+</div>
+<div id="numpyro-hilbert-space-gaussian-process-model" class="section level2">
+<h2>NumPyro Hilbert Space Gaussian Process Model</h2>
+<p>Now that we have a theoretical understanding of the Hilbert space Gaussian process approximation and have explicit formulas for the case of the squared exponential kernel in one dimension, we can implement the approximation in JAX and NumPyro for the same synthetic data as before. We follow closelly the implementation described in NumPyro’s documentation <a href="https://num.pyro.ai/en/stable/examples/hsgp.html">“Example: Hilbert space approximation for Gaussian processes”</a>.</p>
+<div id="hilbert-space-approximation-step-by-step" class="section level3">
+<h3>Hilbert Space Approximation Step by Step</h3>
+<p>In the last part we already implemented the spectral density for the squared exponential kernel in one dimension. Next, we need to write the expressions of the eigenvalues and eigenvector of the Laplacian in the interval <span class="math inline">\([-L, L]\)</span> (we use the <code>l_max</code> for <span class="math inline">\(L\)</span> as we do not like upper-case for function arguments 😅).</p>
+<pre class="python"><code>def laplacian_sqrt_eigenvalues(l_max: float, m: int):
+    sqrt_base_eigenvalue = jnp.pi / (2 * l_max)
+    return sqrt_base_eigenvalue * jnp.arange(1, 1 + m)
+
+
+def diag_squared_exponential_spectral_density(
+    amplitude: float, length_scale: float, l_max: float, m: int
+):
+    sqrt_eigenvalues = laplacian_sqrt_eigenvalues(l_max, m)
+    return squared_exponential_spectral_density(
+        sqrt_eigenvalues, amplitude, length_scale
+    )</code></pre>
+<p>Recall that the weights in the approximation formula are given by the spectral density evaluated on the square root of the eigenvalues of the Laplacian. Let’s see how these look for various length scales and fixed amplitude <span class="math inline">\(a=1\)</span> and box length <span class="math inline">\(L=1.5\)</span>.</p>
+<pre class="python"><code>m = 8
+l_max = 1.5
+
+
+fig, ax = plt.subplots()
+for i, length_scale in enumerate(length_scales):
+    ax.plot(
+        laplacian_sqrt_eigenvalues(l_max=l_max, m=m),
+        diag_squared_exponential_spectral_density(
+            amplitude=1.0, length_scale=length_scale, l_max=l_max, m=m
+        ),
+        marker=&quot;o&quot;,
+        c=f&quot;C{i}&quot;,
+        linewidth=3,
+        markersize=8,
+        label=f&quot;length_scale={length_scale}&quot;,
+    )
+ax.legend(loc=&quot;upper right&quot;)
+ax.set(
+    xlabel=&quot;Laplacian Sqrt Eigenvalue $\\sqrt{\\lambda}$&quot;,
+    ylabel=&quot;Spectral Density $S(\\sqrt{\\lambda})$&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Squared Exponential Spectral Density
+    as a Function of the Laplacian Eigenvalues (sqrt)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_105_0.png" style="width: 1000px;"/>
+</center>
+<p>From this plot we see how the concentration of the spectral density varies with the langth-scale parameter. The larger the length-scale, the more concentrated the spectral density is around zero.</p>
+<p>We continue by looking into the Laplacian eigenfunctions</p>
+<p><span class="math display">\[
+\phi_j(x) = \sqrt{\frac{1}{L}} \sin\left(\frac{\pi j (x + L)}{2L}\right)
+\]</span></p>
+<p>We can compute them in a vectorized way:</p>
+<pre class="python"><code>def laplace_eigenfunctions(x, l_max, m):
+    sqrt_eigenvalues = laplacian_sqrt_eigenvalues(l_max, m)
+    rep_x = jnp.tile(l_max + x[:, None], reps=m)
+    diag_sqrt_eigenvalues = jnp.diag(sqrt_eigenvalues)
+    num = jnp.sin(rep_x @ diag_sqrt_eigenvalues)
+    den = jnp.sqrt(l_max)
+    return num / den
+
+
+phi = laplace_eigenfunctions(x_train, l_max, m)
+
+assert phi.shape == (n_train, m)</code></pre>
+<p>We can visualize the first few eigenfunctions on the domain of the training data:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+for i in range(m):
+    ax.plot(
+        x_train,
+        phi[:, i],
+        linewidth=3,
+        c=f&quot;C{i}&quot;,
+        label=f&quot;eigenfunction {i + 1}&quot;,
+    )
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;eigenfunction value&quot;)
+ax.set_title(&quot;Laplacian Eigenfunctions&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_110_0.png" style="width: 1000px;"/>
+</center>
+<p><strong>Remark:</strong> Although it is not strictly necessary, it is recommended to center the training data <code>x_train</code> so that it has mean zero and it is symmetrically located in a bounded box <span class="math inline">\([-L, L]\)</span>. This is automatically handled in the PyMC implementation as we will see below (see <a href="https://link.springer.com/article/10.1007/s11222-022-10167-2">“Practical Hilbert space approximate Bayesian Gaussian processes for probabilistic programming”</a>).</p>
+<p>Now we can put everything together as a function that computes the Hilbert space approximation of the squared exponential kernel in one dimension:</p>
+<pre class="python"><code>def hs_approx_squared_exponential_ncp(x, amplitude, length_scale, l_max, m):
+    phi = laplace_eigenfunctions(x, l_max, m)
+    spd = jnp.sqrt(
+        diag_squared_exponential_spectral_density(amplitude, length_scale, l_max, m)
+    )
+    with numpyro.plate(&quot;basis&quot;, m):
+        beta = numpyro.sample(&quot;beta&quot;, dist.Normal(0, 1))
+
+    return numpyro.deterministic(&quot;f&quot;, phi @ (spd * beta))</code></pre>
+<p><strong>Remark:</strong> This implementation is using the so called <em>non-centered</em> parametrization. It is the same mathematical model but just written in a way that it samples more efficiently. This is a common practice in hierarchical models. The main idea is that sampling from a normal distribution</p>
+<p><span class="math display">\[x \sim \text{Normal}(\mu, \sigma)\]</span></p>
+<p>is equivalent to sampling from the standard normal distribution and then transforming the samples as</p>
+<p><span class="math display">\[x = \mu + \sigma z \quad \text{with} \quad z \sim \text{Normal}(0, 1).\]</span></p>
+<p>For details, see the example <a href="https://www.pymc.io/projects/examples/en/latest/generalized_linear_models/multilevel_modeling.html">“A Primer on Bayesian Methods for Multilevel Modeling”</a>.</p>
+<p>In order to get a feeling on the implementation, let’s sample from this component using the mean of the parameters (amplitude and length-scale) from the model fitted in the first part. We use take <span class="math inline">\(40\)</span> samples with <span class="math inline">\(m=8\)</span> eigenfunctions to approximate the kernel and we keep the box size <span class="math inline">\(L=1.5\)</span>.</p>
+<pre class="python"><code># prior sample from the HSGP component
+def prior_sample_f_approx_se_ncp(rng_key, *args, **kwargs):
+    model = seed(hs_approx_squared_exponential_ncp, rng_key)
+    model_trace = trace(model).get_trace(*args, **kwargs)
+    return model_trace[&quot;f&quot;][&quot;value&quot;]
+
+
+# set parameters
+m = 8
+l_max = 1.5
+amplitude = gp_mcmc.get_samples()[&quot;kernel_amplitude&quot;].mean()
+length_scale = gp_mcmc.get_samples()[&quot;kernel_length_scale&quot;].mean()
+
+# vectorize the computation
+# see https://num.pyro.ai/en/stable/tutorials/bayesian_regression.html#Predictive-Utility-With-Effect-Handlers
+vmap_prior_sample_f_approx_se_ncp = vmap(
+    lambda rng_key: prior_sample_f_approx_se_ncp(
+        rng_key=rng_key,
+        x=x_train,
+        amplitude=amplitude,
+        length_scale=length_scale,
+        l_max=l_max,
+        m=m,
+    ),
+    in_axes=0,
+    out_axes=-1,
+)</code></pre>
+<pre class="python"><code>n_prior_samples = 40
+rng_key, rng_subkey = random.split(rng_key)
+prior_samples_f_approx_se_ncp = vmap_prior_sample_f_approx_se_ncp(
+    rng_key=random.split(rng_subkey, n_prior_samples)
+)
+
+fig, ax = plt.subplots()
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.plot(x_train, prior_samples_f_approx_se_ncp, c=&quot;C3&quot;, alpha=0.5, linewidth=0.5)
+ax.plot(
+    x_train,
+    prior_samples_f_approx_se_ncp[:, 0],
+    c=&quot;C3&quot;,
+    alpha=1,
+    linewidth=2,
+    label=&quot;prior sample (given amplitude and length_scale)&quot;,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(
+    &quot;HSGP Prior Samples (Given Amplitude and Length Scale)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_117_0.png" style="width: 1000px;"/>
+</center>
+<p>These prior predictive samples look very reasonable!</p>
+</div>
+<div id="model-specification-1" class="section level3">
+<h3>Model Specification</h3>
+<p>Having implemented the Hilbert space approximation component, we are ready to define the whole model in NumPyro. We use the same priors for the amplitude and length-scale parameters as in the first part. We also use the same priors for the noise parameter.</p>
+<pre class="python"><code>def hsgp_model(x, l_max, m, y=None) -&gt; None:
+    &quot;&quot;&quot;Hilbert Space Gaussian Process (HSGP) model with a
+    squared-exponential kernel in one dimension.
+
+    Parameters
+    ----------
+    x : feature variable
+    l_max : box size L (well, the box size is in fact 2L)
+    m : number of eigenfunctions to select
+    y : target variable
+    &quot;&quot;&quot;
+    # --- Priors ---
+    kernel_amplitude = numpyro.sample(
+        &quot;kernel_amplitude&quot;,
+        dist.InverseGamma(
+            concentration=inverse_gamma_params_2[&quot;alpha&quot;],
+            rate=inverse_gamma_params_2[&quot;beta&quot;],
+        ),
+    )
+    kernel_length_scale = numpyro.sample(
+        &quot;kernel_length_scale&quot;,
+        dist.InverseGamma(
+            concentration=inverse_gamma_params_1[&quot;alpha&quot;],
+            rate=inverse_gamma_params_1[&quot;beta&quot;],
+        ),
+    )
+    noise = numpyro.sample(
+        &quot;noise&quot;,
+        dist.InverseGamma(
+            concentration=inverse_gamma_params_2[&quot;alpha&quot;],
+            rate=inverse_gamma_params_2[&quot;beta&quot;],
+        ),
+    )
+    # --- Parametrization ---
+    f = hs_approx_squared_exponential_ncp(
+        x, kernel_amplitude, kernel_length_scale, l_max, m
+    )
+    # --- Likelihood ---
+    with numpyro.plate(&quot;data&quot;, x.shape[0]):
+        numpyro.sample(&quot;likelihood&quot;, dist.Normal(loc=f, scale=noise), obs=y)</code></pre>
+<pre class="python"><code>numpyro.render_model(
+    model=hsgp_model,
+    model_kwargs={&quot;x&quot;: x_train, &quot;l_max&quot;: 1.5, &quot;m&quot;: 8, &quot;y&quot;: y_train_obs},
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_122_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+<div id="prior-predictive-check-1" class="section level3">
+<h3>Prior Predictive Check</h3>
+<p>For this specific example we choose:</p>
+<pre class="python"><code>l_max = 1.3
+m = 20</code></pre>
+<p>Before fitting the model to the data, we can use the model above to generate samples from the prior distribution over functions.</p>
+<pre class="python"><code>hsgp_numpyro_prior_predictive = Predictive(hsgp_model, num_samples=1_000)
+rng_key, rng_subkey = random.split(rng_key)
+hsgp_numpyro_prior_samples = hsgp_numpyro_prior_predictive(
+    rng_subkey, x_train, l_max, m
+)
+
+hsgp_numpyro_prior_idata = az.from_numpyro(prior=hsgp_numpyro_prior_samples)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_train,
+    hsgp_numpyro_prior_idata.prior[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_train,
+    hsgp_numpyro_prior_idata.prior[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_train,
+    hsgp_numpyro_prior_idata.prior[&quot;likelihood&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C0&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean (test)&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+for i in range(5):
+    label = &quot;prior samples&quot; if i == 0 else None
+    ax.plot(
+        x_train,
+        hsgp_numpyro_prior_idata.prior[&quot;likelihood&quot;].sel(chain=0, draw=i),
+        color=&quot;C0&quot;,
+        alpha=0.3,
+        label=label,
+    )
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;HSGP NumPyro Model - Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_128_0.png" style="width: 1000px;"/>
+</center>
+<p>The prior predictive samples look similar to the ones from the first part (vanilla Gaussian process model).</p>
+</div>
+<div id="model-fitting-1" class="section level3">
+<h3>Model Fitting</h3>
+<p>We can fit the model as usual:</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+hsgp_mcmc = run_inference(
+    rng_subkey,
+    hsgp_model,
+    inference_params,
+    x_train,
+    l_max,
+    m,
+    y_train_obs,
+    target_accept_prob=0.9,
+)</code></pre>
+<p>Observe that it runs very fast!</p>
+</div>
+<div id="model-diagnostics-1" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>The model diagnostics look good:</p>
+<pre class="python"><code>hsgp_numpyro_idata = az.from_numpyro(posterior=hsgp_mcmc)
+
+az.summary(
+    data=hsgp_numpyro_idata,
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;, &quot;beta&quot;],
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+kernel_amplitude
+</th>
+<td>
+1.283
+</td>
+<td>
+0.254
+</td>
+<td>
+0.842
+</td>
+<td>
+1.740
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+4465.0
+</td>
+<td>
+5147.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+kernel_length_scale
+</th>
+<td>
+0.077
+</td>
+<td>
+0.012
+</td>
+<td>
+0.055
+</td>
+<td>
+0.098
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7337.0
+</td>
+<td>
+5679.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+noise
+</th>
+<td>
+0.327
+</td>
+<td>
+0.029
+</td>
+<td>
+0.275
+</td>
+<td>
+0.382
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+10151.0
+</td>
+<td>
+5634.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[0]
+</th>
+<td>
+-0.121
+</td>
+<td>
+0.654
+</td>
+<td>
+-1.349
+</td>
+<td>
+1.097
+</td>
+<td>
+0.008
+</td>
+<td>
+0.007
+</td>
+<td>
+6735.0
+</td>
+<td>
+5550.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[1]
+</th>
+<td>
+-0.006
+</td>
+<td>
+0.721
+</td>
+<td>
+-1.382
+</td>
+<td>
+1.309
+</td>
+<td>
+0.009
+</td>
+<td>
+0.008
+</td>
+<td>
+6754.0
+</td>
+<td>
+5913.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[2]
+</th>
+<td>
+-0.006
+</td>
+<td>
+0.676
+</td>
+<td>
+-1.357
+</td>
+<td>
+1.183
+</td>
+<td>
+0.008
+</td>
+<td>
+0.007
+</td>
+<td>
+6529.0
+</td>
+<td>
+5918.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[3]
+</th>
+<td>
+0.236
+</td>
+<td>
+0.725
+</td>
+<td>
+-1.156
+</td>
+<td>
+1.564
+</td>
+<td>
+0.009
+</td>
+<td>
+0.008
+</td>
+<td>
+6355.0
+</td>
+<td>
+6020.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[4]
+</th>
+<td>
+-0.164
+</td>
+<td>
+0.692
+</td>
+<td>
+-1.504
+</td>
+<td>
+1.130
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+5802.0
+</td>
+<td>
+5631.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[5]
+</th>
+<td>
+0.061
+</td>
+<td>
+0.752
+</td>
+<td>
+-1.315
+</td>
+<td>
+1.503
+</td>
+<td>
+0.009
+</td>
+<td>
+0.008
+</td>
+<td>
+7008.0
+</td>
+<td>
+5944.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[6]
+</th>
+<td>
+-0.373
+</td>
+<td>
+0.726
+</td>
+<td>
+-1.748
+</td>
+<td>
+0.968
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+7131.0
+</td>
+<td>
+5508.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[7]
+</th>
+<td>
+0.422
+</td>
+<td>
+0.764
+</td>
+<td>
+-1.052
+</td>
+<td>
+1.845
+</td>
+<td>
+0.009
+</td>
+<td>
+0.008
+</td>
+<td>
+7514.0
+</td>
+<td>
+5620.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[8]
+</th>
+<td>
+0.604
+</td>
+<td>
+0.734
+</td>
+<td>
+-0.793
+</td>
+<td>
+1.977
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+7412.0
+</td>
+<td>
+5687.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[9]
+</th>
+<td>
+-1.300
+</td>
+<td>
+0.787
+</td>
+<td>
+-2.762
+</td>
+<td>
+0.194
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+7615.0
+</td>
+<td>
+6307.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[10]
+</th>
+<td>
+0.305
+</td>
+<td>
+0.727
+</td>
+<td>
+-1.024
+</td>
+<td>
+1.667
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+6679.0
+</td>
+<td>
+6302.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[11]
+</th>
+<td>
+1.025
+</td>
+<td>
+0.742
+</td>
+<td>
+-0.382
+</td>
+<td>
+2.412
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+6983.0
+</td>
+<td>
+6127.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[12]
+</th>
+<td>
+-0.753
+</td>
+<td>
+0.761
+</td>
+<td>
+-2.177
+</td>
+<td>
+0.669
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+6856.0
+</td>
+<td>
+5939.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[13]
+</th>
+<td>
+0.019
+</td>
+<td>
+0.725
+</td>
+<td>
+-1.346
+</td>
+<td>
+1.364
+</td>
+<td>
+0.009
+</td>
+<td>
+0.008
+</td>
+<td>
+6710.0
+</td>
+<td>
+6176.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[14]
+</th>
+<td>
+-0.420
+</td>
+<td>
+0.725
+</td>
+<td>
+-1.832
+</td>
+<td>
+0.900
+</td>
+<td>
+0.009
+</td>
+<td>
+0.007
+</td>
+<td>
+6578.0
+</td>
+<td>
+5359.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[15]
+</th>
+<td>
+0.633
+</td>
+<td>
+0.715
+</td>
+<td>
+-0.692
+</td>
+<td>
+1.982
+</td>
+<td>
+0.008
+</td>
+<td>
+0.007
+</td>
+<td>
+7306.0
+</td>
+<td>
+6027.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[16]
+</th>
+<td>
+0.936
+</td>
+<td>
+0.729
+</td>
+<td>
+-0.417
+</td>
+<td>
+2.296
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+7465.0
+</td>
+<td>
+6252.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[17]
+</th>
+<td>
+-2.396
+</td>
+<td>
+0.772
+</td>
+<td>
+-3.891
+</td>
+<td>
+-1.003
+</td>
+<td>
+0.009
+</td>
+<td>
+0.006
+</td>
+<td>
+7241.0
+</td>
+<td>
+6058.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[18]
+</th>
+<td>
+1.219
+</td>
+<td>
+0.679
+</td>
+<td>
+0.030
+</td>
+<td>
+2.568
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+6848.0
+</td>
+<td>
+6025.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta[19]
+</th>
+<td>
+0.998
+</td>
+<td>
+0.561
+</td>
+<td>
+-0.077
+</td>
+<td>
+2.035
+</td>
+<td>
+0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+6375.0
+</td>
+<td>
+5778.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=hsgp_numpyro_idata,
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;, &quot;beta&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;HSGP NumPyro - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_135_0.png" style="width: 1000px;"/>
+</center>
+<p>We can compare the posterior distributions of the parameters of the Hilbert space approximation with the ones of the Gaussian process model:</p>
+<pre class="python"><code>axes = az.plot_forest(
+    data=[gp_numpyro_idata, hsgp_numpyro_idata],
+    model_names=[&quot;GP&quot;, &quot;HSGP&quot;],
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;],
+    combined=True,
+    hdi_prob=0.94,
+    figsize=(10, 6),
+)
+axes[0].figure.suptitle(&quot;NumPyro Models&quot;, fontsize=18, fontweight=&quot;bold&quot;, x=0.32);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_137_0.png" style="width: 1000px;"/>
+</center>
+<p>They look very similar!</p>
+</div>
+<div id="out-of-sample-prediction-1" class="section level3">
+<h3>Out of Sample Prediction</h3>
+<p>Finally, we can generate samples from the posterior distribution over functions on the test set. Note that we need to ensure these values lie inside the approximation domain <span class="math inline">\([-L, L]\)</span>.</p>
+<pre class="python"><code>hpgp_mcmc_samples_no_f = {
+    k: v for (k, v) in hsgp_mcmc.get_samples().items() if k != &quot;f&quot;
+}
+
+rng_key, rng_subkey = random.split(rng_key)
+hsgp_numpyro_idata.extend(
+    az.from_numpyro(
+        posterior_predictive=Predictive(hsgp_model, hpgp_mcmc_samples_no_f)(
+            rng_subkey, x_test, l_max, m
+        )
+    )
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_test,
+    hsgp_numpyro_idata.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_numpyro_idata.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_numpyro_idata.posterior_predictive[&quot;f&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$f \\: 94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_numpyro_idata.posterior_predictive[&quot;f&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$f \\: 50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_test,
+    hsgp_numpyro_idata.posterior_predictive[&quot;f&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C3&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean (test)&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.scatter(x_test, y_test_obs, c=&quot;C1&quot;, label=&quot;observed (test)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(
+    &quot;HSGP NumPyro Model - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_141_0.png" style="width: 1000px;"/>
+</center>
+<p>We have successfully implemented the Hilbert space Gaussian process approximation in NumPyro and applied it to the same synthetic data as in the first part. The results look very good 🚀!</p>
+<p>Next, let’s see how to leverage PyMC’s API to do the same!</p>
+</div>
+</div>
+<div id="pymc-hilbert-space-gaussian-process-model" class="section level2">
+<h2>PyMC Hilbert Space Gaussian Process Model</h2>
+<p>NumPyro + JAX is a great framework for developing and creating custom components as the Hilbert space Gaussian process approximation as above. In many applications, one does not want to write everything from scratch but rather use a high-level API, especially when the model has many GP components with different kernels (and therefore different spectral densities). PyMC offers a convenient API for using the HSGP components is a very intuitive and efficient way. Moreover, we can still use NumPyro’s backend for the sampling, so it is a win-win situation!</p>
+<p>There are two ways to use the HSGP components in PyMC depending on the requirements of the application. To illustrate them both we use the same synthetic data as before.</p>
+<div id="hsgp.prior" class="section level3">
+<h3><a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/classmethods/pymc.gp.HSGP.prior.html#pymc.gp.HSGP.prior"><code>HSGP.prior</code></a></h3>
+<p>This first implementation follows the PyMC’s GP module API and therefore changing from a vanilla Gaussian process to the corresponding Hilbert space approximation requires changing no more than <span class="math inline">\(3\)</span> lines of code:</p>
+<pre class="python"><code>with pm.Model() as hsgp_pymc_model:
+    x_data = pm.MutableData(&quot;x_data&quot;, value=x_train)
+    y_data = pm.MutableData(&quot;y_data&quot;, y_train_obs)
+
+    kernel_amplitude = pm.InverseGamma(
+        &quot;kernel_amplitude&quot;,
+        alpha=inverse_gamma_params_2[&quot;alpha&quot;],
+        beta=inverse_gamma_params_2[&quot;beta&quot;],
+    )
+    kernel_length_scale = pm.InverseGamma(
+        &quot;kernel_length_scale&quot;,
+        alpha=inverse_gamma_params_1[&quot;alpha&quot;],
+        beta=inverse_gamma_params_1[&quot;beta&quot;],
+    )
+    noise = pm.InverseGamma(
+        &quot;noise&quot;,
+        alpha=inverse_gamma_params_2[&quot;alpha&quot;],
+        beta=inverse_gamma_params_2[&quot;beta&quot;],
+    )
+
+    mean = pm.gp.mean.Zero()
+    cov = kernel_amplitude**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=kernel_length_scale)
+    gp = pm.gp.HSGP(m=[20], L=[1.3], mean_func=mean, cov_func=cov)
+    f = gp.prior(&quot;f&quot;, X=x_data[:, None])
+
+    pm.Normal(&quot;likelihood&quot;, mu=f, sigma=noise, observed=y_data)
+
+
+pm.model_to_graphviz(model=hsgp_pymc_model)</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_145_0.svg" style="width: 800px;"/>
+</center>
+<p>Let’s inspect the <a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/pymc.gp.HSGP.html"><code>HSGP</code></a> class</p>
+<pre class="python"><code>print(pm.gp.HSGP.__doc__)</code></pre>
+<pre><code>    Hilbert Space Gaussian process approximation.
+
+    The `gp.HSGP` class is an implementation of the Hilbert Space Gaussian process.  It is a
+    reduced rank GP approximation that uses a fixed set of basis vectors whose coefficients are
+    random functions of a stationary covariance function&#39;s power spectral density.  Its usage
+    is largely similar to `gp.Latent`.  Like `gp.Latent`, it does not assume a Gaussian noise model
+    and can be used with any likelihood, or as a component anywhere within a model.  Also like
+    `gp.Latent`, it has `prior` and `conditional` methods.  It supports any sum of covariance
+    functions that implement a `power_spectral_density` method. (Note, this excludes the
+    `Periodic` covariance function, which uses a different set of basis functions for a
+    low rank approximation, as described in `HSGPPeriodic`.).
+
+    For information on choosing appropriate `m`, `L`, and `c`, refer to Ruitort-Mayol et al. or to
+    the PyMC examples that use HSGP.
+
+    To work with the HSGP in its &quot;linearized&quot; form, as a matrix of basis vectors and a vector of
+    coefficients, see the method `prior_linearized`.
+
+    Parameters
+    ----------
+    m: list
+        The number of basis vectors to use for each active dimension (covariance parameter
+        `active_dim`).
+    L: list
+        The boundary of the space for each `active_dim`.  It is called the boundary condition.
+        Choose L such that the domain `[-L, L]` contains all points in the column of X given by the
+        `active_dim`.
+    c: float
+        The proportion extension factor.  Used to construct L from X.  Defined as `S = max|X|` such
+        that `X` is in `[-S, S]`.  `L` is calculated as `c * S`.  One of `c` or `L` must be
+        provided.  Further information can be found in Ruitort-Mayol et al.
+    drop_first: bool
+        Default `False`. Sometimes the first basis vector is quite &quot;flat&quot; and very similar to
+        the intercept term.  When there is an intercept in the model, ignoring the first basis
+        vector may improve sampling. 
+    parameterization: str
+        Whether to use the `centered` or `noncentered` parameterization when multiplying the
+        basis by the coefficients.
+    cov_func: Covariance function, must be an instance of `Stationary` and implement a
+        `power_spectral_density` method.
+    mean_func: None, instance of Mean
+        The mean function.  Defaults to zero.
+
+    Examples
+    --------
+    .. code:: python
+
+        # A three dimensional column vector of inputs.
+        X = np.random.rand(100, 3)
+
+        with pm.Model() as model:
+            # Specify the covariance function.
+            # Three input dimensions, but we only want to use the last two.
+            cov_func = pm.gp.cov.ExpQuad(3, ls=0.1, active_dims=[1, 2])
+
+            # Specify the HSGP.
+            # Use 25 basis vectors across each active dimension for a total of 25 * 25 = 625.
+            # The value `c = 4` means the boundary of the approximation
+            # lies at four times the half width of the data.
+            # In this example the data lie between zero and one,
+            # so the boundaries occur at -1.5 and 2.5.  The data, both for
+            # training and prediction should reside well within that boundary..
+            gp = pm.gp.HSGP(m=[25, 25], c=4.0, cov_func=cov_func)
+
+            # Place a GP prior over the function f.
+            f = gp.prior(&quot;f&quot;, X=X)
+
+        ...
+
+        # After fitting or sampling, specify the distribution
+        # at new points with .conditional
+        Xnew = np.linspace(-1, 2, 50)[:, None]
+
+        with model:
+            fcond = gp.conditional(&quot;fcond&quot;, Xnew=Xnew)
+
+    References
+    ----------
+    -   Ruitort-Mayol, G., and Anderson, M., and Solin, A., and Vehtari, A. (2022). Practical
+        Hilbert Space Approximate Bayesian Gaussian Processes for Probabilistic Programming
+
+    -   Solin, A., Sarkka, S. (2019) Hilbert Space Methods for Reduced-Rank Gaussian Process
+        Regression.
+    </code></pre>
+<p>Observe that the <code>parametrization</code> argument allow us to select between <code>centered</code> and <code>non-centered</code> parametrizations automatically 🤩!</p>
+<p>Sampling from this model is much faster that the GP model from the fist part!</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+with hsgp_pymc_model:
+    hsgp_pymc_idata = pm.sample(
+        target_accept=0.9,
+        draws=inference_params.num_samples,
+        chains=inference_params.num_chains,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng_subkey[0].item(),
+    )</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=hsgp_pymc_idata,
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;HSGP PyMC - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_151_0.png" style="width: 1000px;"/>
+</center>
+<p>We can generate out of sample predictions using the <code>conditional</code> method as before.</p>
+<pre class="python"><code>with hsgp_pymc_model:
+    x_star_data = pm.MutableData(&quot;x_star_data&quot;, x_test)
+    f_star = gp.conditional(&quot;f_star&quot;, x_star_data[:, None])
+    pm.set_data({&quot;x_data&quot;: x_test, &quot;y_data&quot;: np.ones_like(x_test)})
+    hsgp_pymc_idata.extend(
+        pm.sample_posterior_predictive(
+            trace=hsgp_pymc_idata,
+            var_names=[&quot;f_star&quot;, &quot;likelihood&quot;],
+            random_seed=rng_subkey[1].item(),
+        )
+    )</code></pre>
+<p>Let’s see the final fit:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_test,
+    hsgp_pymc_idata.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$\\: 94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_pymc_idata.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$\\: 50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_pymc_idata.posterior_predictive[&quot;f_star&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$f \\: 94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_pymc_idata.posterior_predictive[&quot;f_star&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$f \\: 50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_test,
+    hsgp_pymc_idata.posterior_predictive[&quot;f_star&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C3&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean (test)&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.scatter(x_test, y_test_obs, c=&quot;C1&quot;, label=&quot;observed (test)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(&quot;HSGP PyMC Model - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_155_0.png" style="width: 1000px;"/>
+</center>
+<p>🙌 !</p>
+</div>
+</div>
+<div id="hsgp.prior_linearized" class="section level2">
+<h2><a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/classmethods/pymc.gp.HSGP.prior_linearized.html#pymc.gp.HSGP.prior_linearized"><code>HSGP.prior_linearized</code></a></h2>
+<p>The alternative implementation is to extract the spectral density expressions and the Laplacian eigenfunctions explicitly so that we can use them as a component in the model. This provides a lot of flexibility! Note that in the implementation below we are using the non-centered parametrization as well.</p>
+<pre class="python"><code>with pm.Model() as hsgp_linearized_pymc_model:
+    x_train_mean = np.array(x_train).mean(axis=0)
+    x_data = pm.MutableData(&quot;x_data&quot;, value=x_train)
+    x_data_centered = x_data - x_train_mean
+    y_data = pm.MutableData(&quot;y_data&quot;, value=y_train_obs)
+
+    kernel_amplitude = pm.InverseGamma(
+        &quot;kernel_amplitude&quot;,
+        alpha=inverse_gamma_params_2[&quot;alpha&quot;],
+        beta=inverse_gamma_params_2[&quot;beta&quot;],
+    )
+    kernel_length_scale = pm.InverseGamma(
+        &quot;kernel_length_scale&quot;,
+        alpha=inverse_gamma_params_1[&quot;alpha&quot;],
+        beta=inverse_gamma_params_1[&quot;beta&quot;],
+    )
+    noise = pm.InverseGamma(
+        &quot;noise&quot;,
+        alpha=inverse_gamma_params_2[&quot;alpha&quot;],
+        beta=inverse_gamma_params_2[&quot;beta&quot;],
+    )
+
+    mean = pm.gp.mean.Zero()
+    cov = kernel_amplitude**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=kernel_length_scale)
+    gp = pm.gp.HSGP(m=[20], L=[1.3], mean_func=mean, cov_func=cov)
+    phi, sqrt_psd = gp.prior_linearized(Xs=x_data_centered[:, None])
+
+    beta = pm.Normal(&quot;beta&quot;, mu=0, sigma=1, size=gp._m_star)
+    f = f = pm.Deterministic(&quot;f&quot;, phi @ (beta * sqrt_psd))
+
+    pm.Normal(&quot;likelihood&quot;, mu=f, sigma=noise, observed=y_data)
+
+
+pm.model_to_graphviz(model=hsgp_linearized_pymc_model)</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_157_0.svg" style="width: 800px;"/>
+</center>
+<p>Fitting the model is again very fast!</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+with hsgp_linearized_pymc_model:
+    hsgp_linearized_pymc_idata = pm.sample(
+        target_accept=0.92,
+        draws=inference_params.num_samples,
+        chains=inference_params.num_chains,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng_subkey[0].item(),
+    )</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=hsgp_linearized_pymc_idata,
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;, &quot;beta&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;HSGP (Linearized) PyMC - Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_160_0.png" style="width: 1000px;"/>
+</center>
+<p>Using this approach we can generate out-of-sample predictions as one would do with a simple linear model using <a href="https://www.pymc.io/projects/docs/en/stable/api/model/generated/pymc.model.core.set_data.html"><code>pm.set_data</code></a>, see <a href="https://www.pymc.io/projects/examples/en/latest/generalized_linear_models/GLM-out-of-sample-predictions.html">“Out-Of-Sample Predictions”</a>.</p>
+<pre class="python"><code>with hsgp_pymc_model:
+    pm.set_data({&quot;x_data&quot;: x_test, &quot;y_data&quot;: np.ones_like(x_test)})
+    hsgp_linearized_pymc_idata.extend(
+        pm.sample_posterior_predictive(
+            trace=hsgp_pymc_idata,
+            var_names=[
+                &quot;f&quot;,
+                &quot;likelihood&quot;,
+            ],
+            random_seed=rng_subkey[1].item(),
+        )
+    )</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_hdi(
+    x_test,
+    hsgp_linearized_pymc_idata.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$f \\: 94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_linearized_pymc_idata.posterior_predictive[&quot;likelihood&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$f \\: 50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_linearized_pymc_idata.posterior_predictive[&quot;f&quot;],
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$f \\: 94\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x_test,
+    hsgp_linearized_pymc_idata.posterior_predictive[&quot;f&quot;],
+    hdi_prob=0.5,
+    color=&quot;C3&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$f \\: 50\\%$ HDI (test)&quot;},
+    ax=ax,
+)
+ax.plot(
+    x_test,
+    hsgp_linearized_pymc_idata.posterior_predictive[&quot;f&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C3&quot;,
+    linewidth=3,
+    label=&quot;posterior predictive mean (test)&quot;,
+)
+ax.scatter(x_train, y_train_obs, c=&quot;C0&quot;, label=&quot;observed (train)&quot;)
+ax.scatter(x_test, y_test_obs, c=&quot;C1&quot;, label=&quot;observed (test)&quot;)
+ax.plot(x_train, y_train, color=&quot;black&quot;, linewidth=3, alpha=0.7, label=&quot;mean (latent)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;)
+ax.set_title(
+    &quot;HSGP (Linearized) PyMC Model - Posterior Predictive&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_163_0.png" style="width: 1000px;"/>
+</center>
+<p>Finally, we can compare the results of the the three models: vanilla Gaussian process, Hilbert space Gaussian process approximation and the linearized Hilbert space Gaussian process approximation.</p>
+<pre class="python"><code>axes = az.plot_forest(
+    data=[gp_pymc_idata, hsgp_pymc_idata, hsgp_linearized_pymc_idata],
+    model_names=[&quot;GP&quot;, &quot;HSGP&quot;, &quot;HSGP (Linearized)&quot;],
+    var_names=[&quot;kernel_amplitude&quot;, &quot;kernel_length_scale&quot;, &quot;noise&quot;],
+    combined=True,
+    hdi_prob=0.94,
+    figsize=(10, 6),
+)
+axes[0].figure.suptitle(&quot;PyMC Models&quot;, fontsize=18, fontweight=&quot;bold&quot;, x=0.3);</code></pre>
+<center>
+<img src="../images/hsgp_intro_files/hsgp_intro_165_0.png" style="width: 1000px;"/>
+</center>
+<p>The results look very similar 🤗!</p>
+<hr />
+<p>I hope this notebook gave you enough tools to understand the main ideas behind the Hilbert space approximation for Gaussian processes and some tips on how to implement this in NumPyro and PyMC. This opens a huge modeling space for applications at scale. Now is your turn to apply this to your own problems! 🚀</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
