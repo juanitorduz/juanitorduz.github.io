@@ -78,7 +78,7 @@
 
   <article class="article">
     
-    <span class="article-duration">45 min read</span>
+    <span class="article-duration">46 min read</span>
     
 
     <h1 class="article-title">A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods</h1>
@@ -1017,6 +1017,15 @@ ax.set_title(&quot;GP PyMC Model - Posterior Predictive&quot;, fontsize=18, font
 <li><p>Then we do a linear algebra D-tour where we recall certain key results of eigenvalues and eigenvectors of a matrix. These concepts will appear constantly in the HSGP approximation method.</p></li>
 <li><p>Finally we go through the main steps of the approximation.</p></li>
 </ul>
+<div id="approach-summary" class="section level3">
+<h3>Approach Summary 🤓</h3>
+<p>Let’s get the <em>executive summary</em> of the approximation strategy from <a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">Hilbert space methods for reduced-rank Gaussian process regression</a>:</p>
+<ul>
+<li><p><strong>Strategy:</strong> Approximate the Gram matrix <span class="math inline">\(K\)</span> with a matrix <span class="math inline">\(\tilde{K}\)</span> with a smaller rank <span class="math inline">\(m &lt; n\)</span>.</p></li>
+<li><p><strong>Key Idea:</strong> Interpret the covariance function as the kernel of a pseudo-differential operator and approximate it using Hilbert space methods.</p></li>
+<li><p><strong>Result:</strong> A reduced-rank approximation for the covariance function, where the basis functions are independent of the covariance functions and their parameters (plus asymptotic convergence).</p></li>
+</ul>
+<p>We now break it down into more granular steps.</p>
 <p><strong>Approximation Strategy Steps:</strong></p>
 <ol style="list-style-type: decimal">
 <li>We recall the definition of the spectral density <span class="math inline">\(S(\omega)\)</span> associated with a stationary kernel function <span class="math inline">\(k\)</span>.</li>
@@ -1026,10 +1035,11 @@ ax.set_title(&quot;GP PyMC Model - Posterior Predictive&quot;, fontsize=18, font
 <li>We identify the expansion in (2) with the sum of powers of the Laplacian operator in the eigenbasis of (4).</li>
 <li>We arrive at the final approximation formula and explicitly compute the terms for the squared exponential kernel in the one-dimensional case.</li>
 </ol>
-<p>Here is a summay diagram of whan we plan to discuss and how it comes together:</p>
+<p><strong>Here is a summary diagram of what we plan to discuss and how it comes together:</strong></p>
 <center>
 <img src="../images/hsgp_intro_files/hsgp_approximation.png" style="width: 700px;"/>
 </center>
+</div>
 <div id="the-scaling-challenge" class="section level3">
 <h3>The Scaling Challenge</h3>
 <p>Why do Gaussian processes scale poorly with the number of data points? In the introduction of the paper <a href="https://link.springer.com/article/10.1007/s11222-019-09886-w">“Hilbert space methods for reduced-rank Gaussian process regression”</a> the authors give a great summary:</p>
