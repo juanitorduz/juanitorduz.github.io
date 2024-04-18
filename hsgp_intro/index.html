@@ -232,7 +232,7 @@ ax.set_title(&quot;Squared Exponential Kernel&quot;, fontsize=18, fontweight=&qu
 <pre class="python"><code>assert (kernel == kernel.T).all().item()
 assert (jnp.diag(kernel) == 1).all().item()</code></pre>
 <p>The kernel matrices have an additional property: they are positive semi-definite. This means that their eigenvalues are non-negative.</p>
-<p><strong>Remark:</strong> In this notebook we will be talking a lot about the spectrum (eigenvalues and eigenvector) of a matrix / operator. Recall that given a matrix <span class="math inline">\(A\)</span> (or a linear operator) the eigenvalues and eigenvectors are the solutions to the equation <span class="math inline">\(A v = \lambda v\)</span> where <span class="math inline">\(v\)</span> is the eigenvector and <span class="math inline">\(\lambda \neq 0\)</span> is the eigenvalue. The spectrum of a matrix is the set of its eigenvalues. For more details see the blog post <a href="https://juanitorduz.github.io/the-spectral-theorem-for-matrices/">“The Spectral Theorem for Matrices”</a>. We will discuss more about eigenvalues and eigenvectors later.</p>
+<p><strong>Remark:</strong> In this notebook we will be talking a lot about the spectrum (eigenvalues and eigenvector) of a matrix / operator. Recall that given a matrix <span class="math inline">\(A\)</span> (or a linear operator) the eigenvalues and eigenvectors are the solutions to the equation <span class="math inline">\(A v = \lambda v\)</span> where <span class="math inline">\(v \neq \vec{0}\)</span> is the eigenvector and <span class="math inline">\(\lambda\)</span> is the eigenvalue. The spectrum of a matrix is the set of its eigenvalues. For more details see the blog post <a href="https://juanitorduz.github.io/the-spectral-theorem-for-matrices/">“The Spectral Theorem for Matrices”</a>. We will discuss more about eigenvalues and eigenvectors later.</p>
 <p>We can verify this for this specific example by computing the eigenvalues of the kernel matrix on the training set:</p>
 <pre class="python"><code>spectrum_kernel = jnp.linalg.eigh(kernel)
 
@@ -2770,7 +2770,7 @@ ax.set_title(&quot;HSGP PyMC Model - Posterior Predictive&quot;, fontsize=18, fo
     phi, sqrt_psd = gp.prior_linearized(Xs=x_data_centered[:, None])
 
     beta = pm.Normal(&quot;beta&quot;, mu=0, sigma=1, size=gp._m_star)
-    f = f = pm.Deterministic(&quot;f&quot;, phi @ (beta * sqrt_psd))
+    f = pm.Deterministic(&quot;f&quot;, phi @ (beta * sqrt_psd))
 
     pm.Normal(&quot;likelihood&quot;, mu=f, sigma=noise, observed=y_data)
 
