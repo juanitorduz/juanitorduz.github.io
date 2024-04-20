@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Bayesian, Forecasting on Dr. Juan Camilo Orduz</title>
+    <link>/categories/bayesian-forecasting/</link>
+    <description>Recent content in Bayesian, Forecasting on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 21 Apr 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Demand Forecasting with Censored Likelihood</title>
+      <link>/demand/</link>
+      <pubDate>Sun, 21 Apr 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/demand/</guid>
+      <description>In this notebook we will explore the use of censored likelihoods for demand forecasting.
+Business Problem: Let us assume we have a store with a single product. We want to forecast the (true!) demand for this product for the next 30 days using historical data. The historical data consists of the daily sales of the product for the last year (approximately). An important challenge is that our historical sales data is censored.</description>
+    </item>
+    
+  </channel>
+</rss>

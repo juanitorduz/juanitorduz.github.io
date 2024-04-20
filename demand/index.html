@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Demand Forecasting with Censored Likelihood - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Demand Forecasting with Censored Likelihood - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">12 min read</span>
+    
+
+    <h1 class="article-title">Demand Forecasting with Censored Likelihood</h1>
+
+    
+    <span class="article-date">2024-04-21</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we will explore the use of censored likelihoods for demand forecasting.</p>
+<p><strong>Business Problem</strong>: Let us assume we have a store with a single product. We want to forecast the (true!) demand for this product for the next 30 days using historical data. The historical data consists of the daily sales of the product for the last year (approximately). An important challenge is that our historical sales data is censored. This means that we only observe the sales of the product when it is in stock. If the product is out of stock, we do not observe any sales. This includes when the product is not available in the store or when we sold out of the product.</p>
+<p>In many practical scenarios, the demand data is censored as described above. Nevertheless, we usually use classical forecasting methods like ARIMA, ETS, or Croston’s method (for intermittent demand) to forecast the demand. These methods do not take into account the censored nature of the data. In this notebook, we will explore the use of censored likelihood for demand forecasting. We describe the data generating process from the business problem above and compare the performance of the censored likelihood method with the classical forecasting methods.</p>
+<p>For an introduction on how to model censored data with Bayesian methods, see the blog post <a href="https://juanitorduz.github.io/censoring/">“Bayesian Censoring Data Modeling”</a> and the PyMC example notebook <a href="https://www.pymc.io/projects/examples/en/latest/generalized_linear_models/GLM-truncated-censored-regression.html">“Bayesian regression with truncated or censored data”</a></p>
+<p><strong>Remark</strong>: This idea was motivated by the great blog post <a href="https://kylejcaron.github.io/posts/censored_demand/2024-02-06-censored-demand.html">“Modeling Anything With First Principles: Demand under extreme stockouts”</a> by <a href="https://kylejcaron.github.io/">Kyle Caron</a> where he uses these techniques to model and balance demand under extreme stockouts and other constraints.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import pandas as pd
+from jax import random
+from numpyro.contrib.control_flow import scan
+from numpyro.infer import MCMC, NUTS, Predictive
+from pydantic import BaseModel, Field
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.arima.model import ARIMA
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="data-generating-process" class="section level2">
+<h2>Data Generating Process</h2>
+<p>We are going to simulate the data generating process for the business problem described above:</p>
+<ul>
+<li>We generate the true demand for time series as an auto-regressive <span class="math inline">\(AR(2)\)</span> process with a seasonal component.</li>
+<li>We generate sales data based on this true demand. The sales are less than or equal to the true demand.
+<ul>
+<li>We add days where the product is out of stock. We assume that the product is out of stock for 10% of the time.</li>
+<li>We also put a cap on the sales based on the maximum stock level (i.e. how many products I can have in stock during a day).</li>
+<li>The range of the demand and sales is a real (<code>float</code>) number which can indicate hundreds or thousands of units sold.</li>
+</ul></li>
+</ul>
+<p>The following class contained the parameters for the data generating process.</p>
+<pre class="python"><code>class DataGeneratingProcessParams(BaseModel):
+    &quot;&quot;&quot;Parameters for the data generating process.&quot;&quot;&quot;
+
+    n: int = Field(..., description=&quot;Number of samples&quot;)
+    ar_1_demand: float = Field(..., description=&quot;AR(1) coefficient for the demand&quot;)
+    ar_2_demand: float = Field(..., description=&quot;AR(2) coefficient for the demand&quot;)
+    seasonal_frequency_demand: int = Field(
+        ..., description=&quot;Seasonal frequency for the demand&quot;, gt=0
+    )
+    seasonal_amplitude_demand: float = Field(
+        ..., description=&quot;Amplitude of the seasonality&quot;
+    )
+    constant_term_demand: float = Field(..., description=&quot;Constant term for the demand&quot;)
+    demand_sales_delta: float = Field(
+        ..., description=&quot;Delta between demand and sales&quot;, gt=0
+    )
+    sigma_noise_demand: float = Field(
+        ..., description=&quot;Standard deviation of the noise for the demand&quot;, gt=0
+    )
+    sigma_noise_sales: float = Field(
+        ..., description=&quot;Standard deviation of the noise for the sales&quot;, gt=0
+    )
+    is_available_rate: float = Field(
+        ..., description=&quot;Rate of availability of the product&quot;, ge=0, le=1
+    )
+    max_caparity: float = Field(
+        ...,
+        description=&quot;Maximum capacity of the product (max possible sales per period)&quot;,
+        gt=0,
+    )
+
+
+data_params = DataGeneratingProcessParams(
+    n=180,
+    ar_1_demand=0.6,
+    ar_2_demand=0.3,
+    seasonal_frequency_demand=7,
+    seasonal_amplitude_demand=0.6,
+    constant_term_demand=0.2,
+    demand_sales_delta=0.25,
+    sigma_noise_demand=0.3,
+    sigma_noise_sales=0.5,
+    is_available_rate=0.80,
+    max_caparity=2.2,
+)</code></pre>
+<p>We now use these parameters to simulate the data.</p>
+<pre class="python"><code>def demand_sales_dgp(rng_key, params):
+    &quot;&quot;&quot;Simulate the demand and sales for a product.
+
+    We model the demand as an AR(2) process with a seasonal component. The sales are
+    generated by adding noise to the demand and subtracting the delta between demand
+    and sales. The sales are also subject to availability capacity constraints.
+
+    Parameters
+    ----------
+    rng_key : jax.random.PRNGKey
+        Random key for reproducibility
+    params : DataGeneratingProcessParams
+        Parameters for the data generating process.
+
+    Returns
+    -------
+    Tuple
+        Tuple with the time, demand, sales, sales observed, and availability data.
+    &quot;&quot;&quot;
+    t = jnp.arange(start=0, stop=params.n, step=1)
+    demand = 2 * jnp.ones_like(t, dtype=jnp.float32)
+    sales = jnp.zeros_like(t, dtype=jnp.float32)
+    sales_obs = jnp.zeros_like(t, dtype=jnp.float32)
+
+    rng_key, rng_subkey = random.split(rng_key)
+    noise_demand = params.sigma_noise_demand * random.normal(
+        rng_subkey, shape=(t.size,)
+    )
+
+    rng_key, rng_subkey = random.split(rng_key)
+    noise_sales = params.sigma_noise_sales * random.normal(rng_subkey, shape=(t.size,))
+
+    rng_key, rng_subkey = random.split(rng_key)
+    is_available = random.bernoulli(
+        rng_subkey, params.is_available_rate, shape=(t.size,)
+    ).astype(jnp.float32)
+
+    for i in range(2, t.size):
+        demand_i = (
+            params.ar_1_demand * demand[i - 1]
+            + params.ar_2_demand * demand[i - 2]
+            + params.seasonal_amplitude_demand * jnp.sin(2 * jnp.pi * t[i] / 7)
+            + params.constant_term_demand
+            + noise_demand[i]
+        )
+        demand_i = jnp.maximum(demand_i, 0)
+        demand = demand.at[i].set(demand_i)
+
+        sales_i = demand[i] + noise_sales[i] - params.demand_sales_delta
+        sales_i = jnp.minimum(sales_i, demand_i)
+        sales_i = jnp.maximum(sales_i, 0)
+        sales_i_obs = is_available[i] * sales_i
+        sales_i_obs = jnp.minimum(sales_i_obs, params.max_caparity)
+        sales = sales.at[i].set(sales_i) 
+        sales_obs = sales_obs.at[i].set(sales_i_obs) 
+
+    return t, demand, sales, sales_obs, is_available
+
+
+rng_key, rng_subkey = random.split(rng_key)
+t, demand, sales, sales_obs, is_available = demand_sales_dgp(rng_subkey, data_params)</code></pre>
+<p>Let’s visualize the true demand and the sales data.</p>
+<ul>
+<li><p>The <span style="color:black">black</span> time series represents the true demand.</p></li>
+<li><p>The <span style="color:blue">blue</span> time series represents the sales data without any stock restrictions.</p></li>
+<li><p>The <span style="color:orange">orange</span> time series represents the observed sales data (the only data available to generate forecast).</p></li>
+<li><p>The <span style="color:gray">gray</span> time series represents the out-of-stock days.</p></li>
+</ul>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(12, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+ax[0].plot(t, demand, c=&quot;black&quot;, label=&quot;demand&quot;)
+ax[0].plot(t, sales, c=&quot;C0&quot;, label=&quot;sales&quot;)
+ax[0].legend(loc=&quot;center left&quot;, bbox_to_anchor=(1.05, 0.5))
+
+ax[1].plot(t, sales, c=&quot;C0&quot;, label=&quot;sales&quot;)
+ax[1].plot(t, sales_obs, c=&quot;C1&quot;, label=&quot;sales_obs&quot;)
+ax1_twin = ax[1].twinx()
+ax1_twin.plot(t, is_available, c=&quot;gray&quot;, alpha=0.5, label=&quot;is_available&quot;)
+ax[1].axhline(
+    data_params.max_caparity, color=&quot;C4&quot;, linestyle=&quot;--&quot;, label=&quot;max_capacity&quot;
+)
+ax1_twin.grid(None)
+ax[1].legend(loc=&quot;center left&quot;, bbox_to_anchor=(1.05, 0.5))
+fig.suptitle(&quot;Demand and Sales Simulation&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/demand_files/demand_8_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="train-test-split" class="section level2">
+<h2>Train-Test Split</h2>
+<p>We split the data into a training set and a test set.</p>
+<pre class="python"><code>forecast_horizon = 30
+
+t_train = t[:-forecast_horizon]
+demand_train = demand[:-forecast_horizon]
+sales_train = sales[:-forecast_horizon]
+sales_obs_train = sales_obs[:-forecast_horizon]
+is_available_train = is_available[:-forecast_horizon]
+max_capacity_train = (sales_obs_train == data_params.max_caparity).astype(int)
+
+t_test = t[-forecast_horizon:]
+demand_test = demand[-forecast_horizon:]
+sales_test = sales[-forecast_horizon:]
+sales_obs_test = sales_obs[-forecast_horizon:]
+is_available_test = is_available[-forecast_horizon:]
+is_available_test_expected = jnp.ones_like(is_available_test)
+max_capacity_test_expected = jnp.zeros_like(sales_obs_test)</code></pre>
+</div>
+<div id="classical-forecasting-model-arima-fourier-modes" class="section level2">
+<h2>Classical Forecasting Model: ARIMA + Fourier Modes</h2>
+<p>Let us use an ARIMA model as a baseline model. The ARIMA model is a classical time series model that can capture the auto-regressive and seasonal components (through the Fourier modes in this example). In general, it performs well as an out-of-the-box model for time series forecasting.</p>
+<p>Let’s look into the (partial) autocorrelation function of the observed sales data to determine the order of the ARIMA model.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, figsize=(10, 6), layout=&quot;constrained&quot;
+)
+
+_ = plot_acf(sales_obs_train, lags=12, ax=ax[0])
+_ = plot_pacf(sales_obs_train, lags=12, ax=ax[1])</code></pre>
+<center>
+<img src="../images/demand_files/demand_13_0.png" style="width: 800px;"/>
+</center>
+<p>From the plot, we can see that the partial autocorrelation function (PACF) has a significant spike at lag #2#. This suggests that the ARIMA model should have an auto-regressive component of order <span class="math inline">\(2\)</span>.</p>
+<p>In addition, by simply looking at the sales data, we can see that there is a weekly (7 days) seasonal component. We can capture this seasonal component by adding Fourier modes to the ARIMA model. Let’s generate such features.</p>
+<pre class="python"><code># order of the Fourier features
+n_order = 2  # this implies we will have 4 features (sin and cos for order 1 and 2)
+
+fourier_features_df = pd.DataFrame(
+    {
+        f&quot;{func}_order_{order}&quot;: getattr(np, func)(2 * np.pi * t * order / 7)
+        for order in range(1, n_order + 1)
+        for func in (&quot;sin&quot;, &quot;cos&quot;)
+    }
+)
+
+fourier_features_train_df = fourier_features_df.iloc[: len(t_train)]
+fourier_features_test_df = fourier_features_df.iloc[len(t_train) :]</code></pre>
+<p>These features look as follows:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+fourier_features_df.head(8).plot(marker=&quot;o&quot;, ax=ax)
+ax.set(xlabel=&quot;time&quot;, ylabel=None)
+ax.set_title(&quot;Fourier Features&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/demand_files/demand_17_0.png" style="width: 1000px;"/>
+</center>
+<p>We also do a train-test split of these seasonal features.</p>
+<pre class="python"><code>fourier_features = jnp.array(fourier_features_df.to_numpy(), dtype=jnp.float32)
+
+fourier_features_train = fourier_features[:-forecast_horizon]
+fourier_features_test = fourier_features[-forecast_horizon:]</code></pre>
+<p>Next, we prepare the dataframe of exogenous variables for the ARIMA model. We include the seasonal features and out-of-stock indicator (<code>is_available</code>).</p>
+<p><strong>Remark</strong>: Adding the out-of-stock indicator as an exogenous variable is a simple (maybe too simple?) way to “incorporate” the censored nature of the data into the ARIMA model. This is not the best way to model censored data, but it is a simple way to show the difference between the classical and the censored likelihood method.</p>
+<pre class="python"><code>x_train_df = fourier_features_train_df
+x_train_df = x_train_df.assign(is_available=is_available_train)
+
+x_test_df = fourier_features_test_df
+x_test_df = x_test_df.assign(is_available=is_available_test_expected)</code></pre>
+<p>We are ready to fit the model:</p>
+<pre class="python"><code>model = ARIMA(
+    endog=np.asarray(sales_obs_train),
+    exog=x_train_df,
+    order=(2, 0, 0),
+)
+result = model.fit()
+result.summary()</code></pre>
+<center>
+<img src="../images/demand_files/sarimax_results.png" style="width: 700px;"/>
+</center>
+<p>Let’s look at the forecast for the next 30 days. We plot the point forecast and the <span class="math inline">\(94\%\)</span> and <span class="math inline">\(50\%\)</span> confidence intervals.</p>
+<pre class="python"><code>forecast_94_df = result.get_forecast(
+    steps=sales_obs_test.size, exog=x_test_df
+).summary_frame(alpha=0.06)
+
+forecast_50_df = result.get_forecast(
+    steps=sales_obs_test.size, exog=x_test_df
+).summary_frame(alpha=0.5)
+
+fig, ax = plt.subplots()
+ax.fill_between(
+    t_test,
+    forecast_94_df[&quot;mean_ci_lower&quot;],
+    forecast_94_df[&quot;mean_ci_upper&quot;],
+    color=&quot;C2&quot;,
+    alpha=0.3,
+    label=r&quot;$94\%$ CI (mean) [statsmodels]&quot;,
+)
+ax.fill_between(
+    t_test,
+    forecast_50_df[&quot;mean_ci_lower&quot;],
+    forecast_50_df[&quot;mean_ci_upper&quot;],
+    color=&quot;C2&quot;,
+    alpha=0.5,
+    label=r&quot;$50\%$ CI (mean) [statsmodels]&quot;,
+)
+ax.plot(t_test, forecast_94_df[&quot;mean&quot;], color=&quot;C2&quot;, label=&quot;mean forecast [statsmodels]&quot;)
+ax.plot(t_train, sales_obs_train, color=&quot;C0&quot;, label=&quot;sales_obs_train&quot;)
+ax.plot(t_test, demand_test, color=&quot;black&quot;, label=&quot;demand_test&quot;)
+ax.plot(t_test, sales_test, color=&quot;C1&quot;, label=&quot;sales_test&quot;)
+ax.axhline(y=data_params.max_caparity, c=&quot;C4&quot;, linestyle=&quot;--&quot;, label=&quot;max_capacity&quot;)
+ax.axvline(x=t_train[-1], c=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;train-test split&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(
+    xlabel=&quot;time&quot;,
+    ylabel=&quot;y&quot;,
+)
+ax.set_title(
+    &quot;ARIMAX$(2, 0, 0)$ + Fourier Seasonality Model Forecast (Statsmodels)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/demand_files/demand_25_0.png" style="width: 1000px;"/>
+</center>
+<p>We see that the forecast is very seasonal and does not show a significant trend component as it tries to stay withing the range of the observed sales data. The problem with this forecast it that when planning the stock, we are underestimating the demand. This is because the model does not take into account the censored nature of the data. In real applications, this is ket to decide if we need to rotate or replace products in the store.</p>
+</div>
+<div id="auto-regressive-censored-model" class="section level2">
+<h2>Auto-Regressive Censored Model</h2>
+<p>In this section, we combine the methods from the blog posts:</p>
+<ul>
+<li><a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">Notes on Exponential Smoothing with NumPyro</a></li>
+<li><a href="https://juanitorduz.github.io/arma_numpyro/">Notes on an ARMA(1, 1) Model with NumPyro</a></li>
+<li><a href="https://juanitorduz.github.io/censoring/">Bayesian Censoring Data Modeling</a></li>
+</ul>
+<p>to implement an auto-regressive (with Fourier modes to model seasonality) censored model for demand forecasting (please refer to these previous blog posts for details on the implementation).</p>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>First, let us write the seasonal component:</p>
+<pre class="python"><code>def seasonal_component(fourier_features):
+    n_modes = fourier_features.shape[1]
+    with numpyro.plate(&quot;seasonal_order&quot;, n_modes):
+        beta_mode = numpyro.sample(&quot;beta_mode&quot;, dist.Normal(loc=0, scale=1))
+    return jnp.dot(fourier_features, beta_mode)</code></pre>
+<p>Next, we write the censored normal distribution:</p>
+<pre class="python"><code>def censored_normal(loc, scale, y, censored):
+    distribution = dist.Normal(loc=loc, scale=scale)
+    ccdf = 1 - distribution.cdf(y)
+    numpyro.sample(
+        &quot;censored_label&quot;, dist.Bernoulli(probs=ccdf).mask(censored == 1), obs=censored
+    )
+    return numpyro.sample(&quot;pred&quot;, distribution.mask(censored != 1))</code></pre>
+<p>Finally, we add the auto-regressive component and put it all together in the model:</p>
+<pre class="python"><code>def ar2_seasonal(y, censored, is_available, fourier_features, future=0):
+    &quot;&quot;&quot;Censored AR(2) model with seasonal component via Fourier modes.
+
+    Parameters
+    ----------
+    y : observed sales data
+    censored : censored sales data (when sales reach max capacity)
+    is_available : availability indicator (1 if available, 0 otherwise)
+    fourier_features : Fourier features for the seasonal component
+    future : number of future time steps to forecast
+    &quot;&quot;&quot;
+    t_max = y.size
+    # --- Priors ---
+    # Constant term
+    mu = numpyro.sample(&quot;mu&quot;, dist.Normal(loc=1, scale=1))
+    # AR(2) coefficients
+    phi_1 = numpyro.sample(&quot;phi_1&quot;, dist.Normal(loc=0, scale=1))
+    phi_2 = numpyro.sample(&quot;phi_2&quot;, dist.Normal(loc=0, scale=1))
+    # Noise
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.HalfNormal(scale=1))
+
+    # --- Parametrization ---
+    ## Seasonal component
+    seasonal = seasonal_component(fourier_features)
+
+    ## Transition function for AR(2)
+    def transition_fn(carry, t):
+        y_prev_1, y_prev_2 = carry
+        ar_part = phi_1 * y_prev_1 + phi_2 * y_prev_2
+        pred_mean = mu + ar_part + seasonal[t]
+        # Censored likelihood
+        pred = censored_normal(pred_mean, sigma, y[t], censored[t])
+        return (pred, y_prev_1), pred
+
+    init = (y[1], y[0])
+    timesteps = jnp.arange(t_max - 2 + future)
+
+    # Mask observations where the product is not available
+    with numpyro.handlers.mask(mask=is_available[2:] == 1):
+        # We condition on the observed data.
+        # We also remove the first two time steps because of the AR(2) model
+        with numpyro.handlers.condition(data={&quot;pred&quot;: y[2:], &quot;censored&quot;: censored[2:]}):
+            _, preds = scan(transition_fn, init, timesteps)
+
+        # Forecast future time steps
+        if future &gt; 0:
+            numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:])</code></pre>
+</div>
+<div id="inference" class="section level3">
+<h3>Inference</h3>
+<p>We are now ready to fit the model to the data using MCMC.</p>
+<pre class="python"><code>sampler = NUTS(ar2_seasonal, target_accept_prob=0.90)
+mcmc = MCMC(sampler, num_warmup=2_000, num_samples=4_000, num_chains=4)
+rng_key, rng_subkey = random.split(rng_key)
+mcmc.run(
+    rng_key=rng_subkey,
+    y=sales_obs_train,
+    censored=max_capacity_train,
+    is_available=is_available_train,
+    fourier_features=fourier_features_train,
+)</code></pre>
+<p>Let’s check the model diagnostics.</p>
+<pre class="python"><code>idata = az.from_numpyro(posterior=mcmc)
+
+print(f&quot;Divergences: {idata.sample_stats.diverging.sum().item()}&quot;)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>idata = az.from_numpyro(
+    posterior=mcmc, coords={&quot;t_train&quot;: t_train[2:]}, dims={&quot;pred&quot;: [&quot;t_train&quot;]}
+)
+
+var_names = [&quot;mu&quot;, &quot;phi_1&quot;, &quot;phi_2&quot;, &quot;beta_mode&quot;, &quot;sigma&quot;]
+
+az.summary(data=idata, var_names=var_names)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+mu
+</th>
+<td>
+0.943
+</td>
+<td>
+0.134
+</td>
+<td>
+0.704
+</td>
+<td>
+1.209
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+12814.0
+</td>
+<td>
+11201.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+phi_1
+</th>
+<td>
+0.185
+</td>
+<td>
+0.080
+</td>
+<td>
+0.035
+</td>
+<td>
+0.338
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+16599.0
+</td>
+<td>
+11876.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+phi_2
+</th>
+<td>
+0.353
+</td>
+<td>
+0.084
+</td>
+<td>
+0.195
+</td>
+<td>
+0.509
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+14144.0
+</td>
+<td>
+11273.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_mode[0]
+</th>
+<td>
+0.190
+</td>
+<td>
+0.093
+</td>
+<td>
+0.017
+</td>
+<td>
+0.366
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+17769.0
+</td>
+<td>
+13208.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_mode[1]
+</th>
+<td>
+0.278
+</td>
+<td>
+0.088
+</td>
+<td>
+0.112
+</td>
+<td>
+0.440
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+17350.0
+</td>
+<td>
+12015.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_mode[2]
+</th>
+<td>
+-0.001
+</td>
+<td>
+0.085
+</td>
+<td>
+-0.157
+</td>
+<td>
+0.163
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+20412.0
+</td>
+<td>
+11215.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_mode[3]
+</th>
+<td>
+-0.050
+</td>
+<td>
+0.087
+</td>
+<td>
+-0.214
+</td>
+<td>
+0.112
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+19405.0
+</td>
+<td>
+11503.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.646
+</td>
+<td>
+0.049
+</td>
+<td>
+0.560
+</td>
+<td>
+0.740
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+17682.0
+</td>
+<td>
+11698.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    kind=&quot;rank_vlines&quot;,
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (12, 10), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Posterior Rank Lines&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/demand_files/demand_41_0.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the model seems to have converged well.</p>
+</div>
+<div id="forecast" class="section level3">
+<h3>Forecast</h3>
+<p>We are now ready to forecast the demand for the next <span class="math inline">\(30\)</span> days.</p>
+<pre class="python"><code>predictive = Predictive(
+    model=ar2_seasonal,
+    posterior_samples=mcmc.get_samples(),
+    return_sites=[&quot;pred&quot;, &quot;y_forecast&quot;],
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+forecast = predictive(
+    rng_subkey,
+    y=sales_obs_train,
+    censored=jnp.concat([max_capacity_train, max_capacity_test_expected], axis=0),
+    is_available=jnp.concatenate([is_available_train, is_available_test_expected]),
+    fourier_features=jnp.concatenate([fourier_features_train, fourier_features_test]),
+    future=forecast_horizon,
+)</code></pre>
+<p>We extend our inference object to store the forecast.</p>
+<pre class="python"><code>idata.extend(
+    az.from_numpyro(
+        posterior_predictive=forecast,
+        coords={&quot;t_test&quot;: t_test, &quot;t&quot;: t[2:]},
+        dims={&quot;pred&quot;: [&quot;t&quot;], &quot;y_forecast&quot;: [&quot;t_test&quot;]},
+    )
+)</code></pre>
+<p>We can now visualize the forecast and compare it with the classical ARIMA model above.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(
+    t_test,
+    forecast_94_df[&quot;mean&quot;],
+    linewidth=2,
+    color=&quot;C2&quot;,
+    label=&quot;mean forecast [statsmodels]&quot;,
+)
+az.plot_hdi(
+    t_test,
+    idata.posterior_predictive[&quot;y_forecast&quot;],
+    smooth=False,
+    hdi_prob=0.94,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+)
+az.plot_hdi(
+    t_test,
+    idata.posterior_predictive[&quot;y_forecast&quot;],
+    smooth=False,
+    hdi_prob=0.50,
+    color=&quot;C3&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+)
+ax.plot(
+    t_test,
+    idata.posterior_predictive[&quot;y_forecast&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    linewidth=2,
+    color=&quot;C3&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_train, sales_obs_train, color=&quot;C0&quot;, label=&quot;sales_obs_train&quot;)
+ax.plot(t_test, demand_test, color=&quot;black&quot;, linewidth=2, label=&quot;demand_test&quot;)
+ax.plot(t_test, sales_test, color=&quot;C1&quot;, linewidth=2, label=&quot;sales_test&quot;)
+ax.axhline(y=data_params.max_caparity, c=&quot;C4&quot;, linestyle=&quot;--&quot;, label=&quot;max_capacity&quot;)
+ax.axvline(x=t_train[-1], c=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;train-test split&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;)
+ax.set_title(
+    &quot;Censored AR(2) + Fourier Modes - Forecast&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/demand_files/demand_48_0.png" style="width: 1000px;"/>
+</center>
+<p>We clearly see that the mean forecast and the high-density-intervals (HDI) of censored likelihood model are much closer to the “raw” sales data and the demand. The reason is because we are allowing the model to consider points higher than the historical maximum capacity. The forecast of the censored model shows a good seasonality fit and a much better trend component estimation 🙂.</p>
+<p><strong>Remark [Evaluation Metrics]</strong>: If we treat this problem as a pure prediction problem, and compare the accuracy against a hold-out-set (test set), we probably always choose the classical ARIMA model as we are never seeing the true demand. However, if we consider the business problem, the censored likelihood model is much more useful as it provides a better estimate of the demand for planning and optimization purposes.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
