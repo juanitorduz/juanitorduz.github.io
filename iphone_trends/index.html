@@ -2258,12 +2258,14 @@ plt.gcf().suptitle(
 <center>
 <img src="../images/iphone_trends_files/iphone_trends_47_1.png" style="width: 900px;"/>
 </center>
-<p>Here are some remarks from these partial dependence plots:
-- Overall, the contribution of the decay component is small 9expected from the plot above).
-- The <code>age</code>’s contribution decays monotonically.
-- The variable <code>model_age</code> presents a bump around week <span class="math inline">\(50\)</span>, which seems to be be related to the release of the next iPhone model. We could add this feature to the model to capture this behavior.
-- We see a mild seasonality contribution from the <code>month</code> variable, attaining a maximum around September when the new iPhone models are usually released.
-- We also a mild contribution from the holidays variable. A better encoding would be a multiplicative interaction with the model age.</p>
+<p>Here are some remarks from these partial dependence plots:</p>
+<ul>
+<li><p>Overall, the contribution of the decay component is small 9expected from the plot above).</p></li>
+<li><p>The <code>age</code>’s contribution decays monotonically.</p></li>
+<li><p>The variable <code>model_age</code> presents a bump around week <span class="math inline">\(50\)</span>, which seems to be be related to the release of the next iPhone model. We could add this feature to the model to capture this behavior.</p></li>
+<li><p>We see a mild seasonality contribution from the <code>month</code> variable, attaining a maximum around September when the new iPhone models are usually released.</p></li>
+<li><p>We also a mild contribution from the holidays variable. A better encoding would be a multiplicative interaction with the model age.</p></li>
+</ul>
 </div>
 <div id="out-of-sample-predictions" class="section level2">
 <h2>Out-of-Sample Predictions</h2>
