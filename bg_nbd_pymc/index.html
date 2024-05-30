@@ -104,27 +104,29 @@
 <p><strong>Remark:</strong> The content of this post was presented at the <a href="https://www.meetup.com/berlinbayesians/">Berlin Bayesians MeetUp</a> in <a href="https://www.meetup.com/berlinbayesians/events/288023821/">September 2022</a>. <a href="../html/berlin_bayesians_btyd.html">Here</a> you can find the slides.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
-<pre class="python"><code>import arviz as az
+<pre class="python"><code>mport arviz as az
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
-from lifetimes.datasets import load_cdnow_summary
-from lifetimes import BetaGeoFitter
 import pymc as pm
-import pymc.sampling_jax
-from scipy.special import expit, hyp2f1
-import aesara.tensor as at
+import pytensor.tensor as pt
+import seaborn as sns
 
-plt.style.use(&quot;bmh&quot;)
-plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+from lifetimes import BetaGeoFitter
+
+
+from lifetimes.datasets import load_cdnow_summary
+from scipy.special import expit, hyp2f1
+
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
 plt.rcParams[&quot;figure.dpi&quot;] = 100
 plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
 
 seed = sum(map(ord, &quot;juanitorduz&quot;))
 rng = np.random.default_rng(seed)
 
-%load_ext rich
 %load_ext autoreload
 %autoreload 2
 %config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
@@ -481,8 +483,7 @@ L(\lambda, p | X=x, T) = (1 - p)^{x}\lambda^{x}e^{-\lambda T} + \delta_{X &gt; 0
 \]</span></p>
 <p>Here is the model in <code>pymc</code>:</p>
 <pre class="python"><code>with pm.Model() as model_full:
-
-    # hyper priors for the Gamma params    
+    # hyper priors for the Gamma params
     a = pm.HalfNormal(name=&quot;a&quot;, sigma=10)
     b = pm.HalfNormal(name=&quot;b&quot;, sigma=10)
 
@@ -494,12 +495,14 @@ L(\lambda, p | X=x, T) = (1 - p)^{x}\lambda^{x}e^{-\lambda T} + \delta_{X &gt; 0
     p = pm.Beta(name=&quot;p&quot;, alpha=a, beta=b, shape=n)
 
     def logp(x, t_x, T, x_zero):
-        log_term_a = x * at.log(1 - p) + x * at.log(lam) - t_x * lam
+        log_term_a = x * pt.log(1 - p) + x * pt.log(lam) - t_x * lam
         term_b_1 = -lam * (T - t_x)
-        term_b_2 = at.log(p) - at.log(1 - p)
-        log_term_b = pm.math.switch(x_zero, pm.math.logaddexp(term_b_1, term_b_2), term_b_1)
+        term_b_2 = pt.log(p) - pt.log(1 - p)
+        log_term_b = pm.math.switch(
+            x_zero, pm.math.logaddexp(term_b_1, term_b_2), term_b_1
+        )
 
-        return at.sum(log_term_a) + at.sum(log_term_b)
+        return pt.sum(log_term_a) + pt.sum(log_term_b)
 
     likelihood = pm.Potential(
         name=&quot;likelihood&quot;,
@@ -511,11 +514,12 @@ pm.model_to_graphviz(model=model_full)</code></pre>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_13_0.svg" style="width: 800px;"/>
 </center>
 <pre class="python"><code>with model_full:
-    trace_full = pm.sampling_jax.sample_numpyro_nuts(
-        tune=3000,
-        draws=6000,
+    trace_full = pm.sample(
+        tune=2_000,
+        draws=4_000,
         chains=4,
         target_accept=0.95,
+        nuts_sampler=&quot;numpyro&quot;,
     )</code></pre>
 <p>This model takes a while to run and the results coincide with the ones from obtained using <code>lifetimes</code>.</p>
 <pre class="python"><code>axes = az.plot_trace(
@@ -531,14 +535,13 @@ pm.model_to_graphviz(model=model_full)</code></pre>
     backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
 )
 fig = axes[0][0].get_figure()
-fig.suptitle(&quot;Full BG/NBD Model Trace&quot;, fontsize=16)
-</code></pre>
+fig.suptitle(&quot;Full BG/NBD Model Trace&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_16_0.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_pair(data=trace_full, var_names=[&quot;a&quot;, &quot;b&quot;, &quot;alpha&quot;, &quot;r&quot;], figsize=(12, 12))
 fig = axes[0][0].get_figure()
-fig.suptitle(&quot;Full BG/NBD Model Parameters Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+fig.suptitle(&quot;Full BG/NBD Model Parameters Pairplot&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_17_0.png" style="width: 800px;"/>
 </center>
@@ -741,9 +744,8 @@ A_{2} &amp; = \frac{\Gamma(a + b)\Gamma(b + x)}{\Gamma(b)\Gamma(a + b + x)} \\
 A_{3} &amp; = \left(\frac{1}{\alpha + T}\right)^{r+x} \\
 A_{4} &amp; = \left(\frac{a}{b + x - 1}\right)\left(\frac{1}{\alpha + t_x}\right)^{r + x}
 \end{align*}\]</span></p>
-<p>Computing the <span class="math inline">\(\log (L(a, b, \alpha, r|X=x, t_x, T))\)</span> is straight forward from these explicit expressions <span class="math inline">\(a_{i} := \log(A_{i})\)</span>. Note however that one has to be careful with the <span class="math inline">\(a_{4} := \log(A_4)\)</span> term since we need to ensure that <span class="math inline">\(b + x - 1 &gt;0\)</span> (otherwise should be zero). Fortunately, we wan simple re-factor the log-likelihood method code of th <code>lifetimes</code>’s <code>BetaGeoFitter</code> class from <code>numpy</code> to <code>theano</code> (see <a href="https://github.com/CamDavidsonPilon/lifetimes/blob/master/lifetimes/fitters/beta_geo_fitter.py#L164"><code>lifetimes.BetaGeoFitter._negative_log_likelihood</code></a>).</p>
+<p>Computing the <span class="math inline">\(\log (L(a, b, \alpha, r|X=x, t_x, T))\)</span> is straight forward from these explicit expressions <span class="math inline">\(a_{i} := \log(A_{i})\)</span>. Note however that one has to be careful with the <span class="math inline">\(a_{4} := \log(A_4)\)</span> term since we need to ensure that <span class="math inline">\(b + x - 1 &gt;0\)</span> (otherwise should be zero). Fortunately, we can simple re-factor the log-likelihood method code of th <code>lifetimes</code>’s <code>BetaGeoFitter</code> class from <code>numpy</code> to <code>pytensor</code> (see <a href="https://github.com/CamDavidsonPilon/lifetimes/blob/master/lifetimes/fitters/beta_geo_fitter.py#L164"><code>lifetimes.BetaGeoFitter._negative_log_likelihood</code></a>).</p>
 <pre class="python"><code>with pm.Model() as model:
-   
     a = pm.HalfNormal(name=&quot;a&quot;, sigma=10)
     b = pm.HalfNormal(name=&quot;b&quot;, sigma=10)
 
@@ -751,14 +753,27 @@ A_{4} &amp; = \left(\frac{a}{b + x - 1}\right)\left(\frac{1}{\alpha + t_x}\right
     r = pm.HalfNormal(name=&quot;r&quot;, sigma=10)
 
     def logp(x, t_x, T, x_zero):
-        a1 = at.gammaln(r + x) - at.gammaln(r) + r * at.log(alpha)
-        a2 = at.gammaln(a + b) + at.gammaln(b + x) - at.gammaln(b) - at.gammaln(a + b + x)
-        a3 = -(r + x) * at.log(alpha + T)
-        a4 =  at.log(a) - at.log(b + at.maximum(x, 1) - 1) - (r + x) * at.log(t_x + alpha)
-        max_a3_a4 = at.maximum(a3, a4)
-        ll_1 = a1 + a2 
-        ll_2 = at.log(at.exp(a3 - max_a3_a4) + at.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)) + max_a3_a4
-        return at.sum(ll_1 + ll_2)
+        a1 = pt.gammaln(r + x) - pt.gammaln(r) + r * pt.log(alpha)
+        a2 = (
+            pt.gammaln(a + b)
+            + pt.gammaln(b + x)
+            - pt.gammaln(b)
+            - pt.gammaln(a + b + x)
+        )
+        a3 = -(r + x) * pt.log(alpha + T)
+        a4 = (
+            pt.log(a) - pt.log(b + pt.maximum(x, 1) - 1) - (r + x) * pt.log(t_x + alpha)
+        )
+        max_a3_a4 = pt.maximum(a3, a4)
+        ll_1 = a1 + a2
+        ll_2 = (
+            pt.log(
+                pt.exp(a3 - max_a3_a4)
+                + pt.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)
+            )
+            + max_a3_a4
+        )
+        return pt.sum(ll_1 + ll_2)
 
     likelihood = pm.Potential(
         name=&quot;likelihood&quot;,
@@ -771,11 +786,12 @@ pm.model_to_graphviz(model=model)</code></pre>
 </center>
 <p>Let us compute the posterior distributions:</p>
 <pre class="python"><code>with model:
-    trace = pm.sampling_jax.sample_numpyro_nuts(
-        tune=3000,
-        draws=6000,
+    trace = pm.sample(
+        tune=2_000,
+        draws=4_000,
         chains=4,
         target_accept=0.95,
+        nuts_sampler=&quot;numpyro&quot;,
     )</code></pre>
 <p>This model is much faster to train! We can now take a look at the traces, pairplots and summary statistics.</p>
 <pre class="python"><code>axes = az.plot_trace(
@@ -790,14 +806,14 @@ pm.model_to_graphviz(model=model)</code></pre>
     backend_kwargs={&quot;figsize&quot;: (12, 9), &quot;layout&quot;: &quot;constrained&quot;},
 )
 fig = axes[0][0].get_figure()
-fig.suptitle(&quot;BG/NBD Model Trace&quot;, fontsize=16)
+fig.suptitle(&quot;BG/NBD Model Trace&quot;, fontsize=16, fontweight=&quot;bold&quot;);
 </code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_25_0.png" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_pair(data=trace, figsize=(12, 12))
 fig = axes[0][0].get_figure()
-fig.suptitle(&quot;BG/NBD Model Parameters Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+ig.suptitle(&quot;BG/NBD Model Parameters Pairplot&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_26_0.png" style="width: 800px;"/>
 </center>
@@ -992,7 +1008,7 @@ the BG/NBD Model</a>. Again, we can simply port the corresponding method from <a
 <pre class="python"><code># See https://docs.pymc.io/en/stable/pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html
 def _sample(array, n_samples):
     &quot;&quot;&quot;Little utility function, sample n_samples with replacement.&quot;&quot;&quot;
-    idx = np.random.choice(np.arange(len(array)), n_samples, replace=True)
+    idx = rng.choice(np.arange(len(array)), n_samples, replace=True)
     return array[idx]
 
 
@@ -1004,10 +1020,9 @@ def conditional_probability_alive(trace, x, t_x, T):
     alpha = _sample(array=trace.posterior[&quot;alpha&quot;].to_numpy(), n_samples=n_vals)
     r = _sample(array=trace.posterior[&quot;r&quot;].to_numpy(), n_samples=n_vals)
 
-    log_div = (
-        (r + x[..., None]) * np.log((alpha + T[..., None]) / (alpha + t_x[..., None]))
-        + np.log(a / (b + np.maximum(x[..., None], 1) - 1))
-    )
+    log_div = (r + x[..., None]) * np.log(
+        (alpha + T[..., None]) / (alpha + t_x[..., None])
+    ) + np.log(a / (b + np.maximum(x[..., None], 1) - 1))
     return np.where(x[..., None] == 0, 1.0, expit(-log_div))
 
 
@@ -1021,16 +1036,12 @@ p_alive_sample = conditional_probability_alive(trace, x, t_x, T)</code></pre>
     ax.set(title=f&quot;idx={idx}&quot;)
     return ax
 
-fig, axes = plt.subplots(
-    nrows=3,
-    ncols=3,
-    figsize=(9, 9),
-    layout=&quot;constrained&quot;
-)
+
+fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(9, 9), layout=&quot;constrained&quot;)
 for idx, ax in enumerate(axes.flatten()):
     plot_conditional_probability_alive(p_alive_sample, p_alive, idx, ax)
 
-fig.suptitle(&quot;Conditional Probability Alive&quot;, fontsize=16);</code></pre>
+fig.suptitle(&quot;Conditional Probability Alive&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_34_1.png" style="width: 800px;"/>
 </center>
@@ -1140,9 +1151,11 @@ sns.rugplot(
 
 ax.legend(loc=&quot;upper left&quot;)
 ax.set(
-    title=f&quot;Conditional Expected Number of Purchases Up to Time: {t} days&quot;,
     xlabel=&quot;Expected Number of Purchases (BetaGeoFitter)&quot;,
-    ylabel=&quot;Expected Number of Purchases (BetaGeoFitter - PyMC)&quot;
+    ylabel=&quot;Expected Number of Purchases (BetaGeoFitter - PyMC)&quot;,
+)
+ax.set_title(
+    f&quot;Conditional Expected Number of Purchases Up to Time: {t} days&quot;, fontweight=&quot;bold&quot;
 );</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_42_0.png" style="width: 800px;"/>
@@ -1157,7 +1170,7 @@ ax.set(
     ess=True,
     figsize=(10, 9)
 )
-plt.gcf().suptitle(&quot;Model Comparison&quot;, y=0.95, fontsize=16);</code></pre>
+plt.gcf().suptitle(&quot;Model Comparison&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_44_0.png" style="width: 800px;"/>
 </center>
@@ -1179,7 +1192,7 @@ b &amp; \longmapsto b_{0}\exp(\gamma_{3}^{T}z_{2})
 # construct covariate
 mu = 0.4
 rho = 0.7
-z = np.random.binomial(n=1, p=mu, size=x.size)
+z = rng.binomial(n=1, p=mu, size=x.size)
 # change frequency values by reducing it the values where z !=0
 x_z = np.floor(x * (1 - (rho * z)))
 # make sure the recency is zero whenever the frequency is zero
@@ -1306,12 +1319,11 @@ b
 <p>Next, we write the bayesian model, which adds term <span class="math inline">\(\alpha \longmapsto \alpha_{0}\exp(-\gamma_{1}^{T}z_{1})\)</span> to model the effect of <span class="math inline">\(z\)</span> on the to explain the cross-sectional heterogeneity in the purchasing process (because we are modifying the frequency as a function of <span class="math inline">\(z\)</span>).</p>
 <p><strong>Remark:</strong> I also tried adding the covariate <span class="math inline">\(z_2 = z\)</span>, but the resulting model had trouble sampling. By looking into the pair-plots of the posterior distributions (which had many divergences) I found that the terms <span class="math inline">\(a_0\)</span> and <span class="math inline">\(b_0\)</span> where highly correlated (actually, <span class="math inline">\(g_2\)</span> (<span class="math inline">\(=\gamma_{2}\)</span>)and <span class="math inline">\(g_3\)</span> (<span class="math inline">\(=\gamma_{3}\)</span>) as well, see notation below). This indicates that we might need a different and more appropriate parametrization of the log-likelihood function.</p>
 <pre class="python"><code>with pm.Model() as model_cov:
-
     # a0 = pm.HalfNormal(name=&quot;a0&quot;, sigma=10)
     # g2 = pm.Normal(name=&quot;g2&quot;, mu=0, sigma=10)
     # a = a0 * tt.exp(g2 * z)
     a = pm.HalfNormal(name=&quot;a&quot;, sigma=10)
-    
+
     # b0 = pm.HalfNormal(name=&quot;b0&quot;, sigma=10)
     # g3 = pm.Normal(name=&quot;g3&quot;, mu=0, sigma=10)
     # b = tt.exp(g3 * z)
@@ -1319,19 +1331,32 @@ b
 
     alpha0 = pm.HalfNormal(name=&quot;alpha0&quot;, sigma=10)
     g1 = pm.Normal(name=&quot;g1&quot;, mu=0, sigma=10)
-    alpha = pm.Deterministic(name=&quot;alpha&quot;, var=alpha0 * at.exp(- g1 * z))
-    
+    alpha = pm.Deterministic(name=&quot;alpha&quot;, var=alpha0 * pt.exp(-g1 * z))
+
     r = pm.HalfNormal(name=&quot;r&quot;, sigma=10)
 
     def logp(x, t_x, T, x_zero):
-        a1 = at.gammaln(r + x) - at.gammaln(r) + r * at.log(alpha)
-        a2 = at.gammaln(a + b) + at.gammaln(b + x) - at.gammaln(b) - at.gammaln(a + b + x)
-        a3 = -(r + x) * at.log(alpha + T)
-        a4 =  at.log(a) - at.log(b + at.maximum(x, 1) - 1) - (r + x) * at.log(t_x + alpha)
-        max_a3_a4 = at.maximum(a3, a4)
-        ll_1 = a1 + a2 
-        ll_2 = at.log(at.exp(a3 - max_a3_a4) + at.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)) + max_a3_a4
-        return at.sum(ll_1 + ll_2)
+        a1 = pt.gammaln(r + x) - pt.gammaln(r) + r * pt.log(alpha)
+        a2 = (
+            pt.gammaln(a + b)
+            + pt.gammaln(b + x)
+            - pt.gammaln(b)
+            - pt.gammaln(a + b + x)
+        )
+        a3 = -(r + x) * pt.log(alpha + T)
+        a4 = (
+            pt.log(a) - pt.log(b + pt.maximum(x, 1) - 1) - (r + x) * pt.log(t_x + alpha)
+        )
+        max_a3_a4 = pt.maximum(a3, a4)
+        ll_1 = a1 + a2
+        ll_2 = (
+            pt.log(
+                pt.exp(a3 - max_a3_a4)
+                + pt.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)
+            )
+            + max_a3_a4
+        )
+        return pt.sum(ll_1 + ll_2)
 
     likelihood = pm.Potential(
         name=&quot;likelihood&quot;,
@@ -1343,11 +1368,12 @@ pm.model_to_graphviz(model=model_cov)</code></pre>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_52_0.svg" style="width: 800px;"/>
 </center>
 <pre class="python"><code>with model_cov:
-    trace_cov = pm.sampling_jax.sample_numpyro_nuts(
-        tune=3000,
-        draws=6000,
+    trace_cov = pm.sample(
+        tune=2_000,
+        draws=4_000,
         chains=4,
         target_accept=0.95,
+        nuts_sampler=&quot;numpyro&quot;,
     )</code></pre>
 <pre class="python"><code>az.summary(data=trace_cov, var_names=[&quot;~alpha&quot;])</code></pre>
 <center>
@@ -1569,33 +1595,36 @@ r
     var_names=[&quot;~alpha&quot;],
     lines=[(k, {}, [v]) for k, v in bgf_cov.summary[&quot;coef&quot;].items()],
     compact=True,
-    backend_kwargs={
-        &quot;figsize&quot;: (12, 15),
-        &quot;layout&quot;: &quot;constrained&quot;
-    }
+    backend_kwargs={&quot;figsize&quot;: (12, 15), &quot;layout&quot;: &quot;constrained&quot;},
 )
 fig = axes[0][0].get_figure()
-fig.suptitle(&quot;BG/NBD Model (Time-Invariant Covariates) Trace&quot;, fontsize=16);</code></pre>
+fig.suptitle(
+    &quot;BG/NBD Model (Time-Invariant Covariates) Trace&quot;, fontsize=16, fontweight=&quot;bold&quot;
+);</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_55_1.png" style="width: 1000px;"/>
 </center>
 <p>We indeed see a difference in the model parameters as compared with the model without covariates <code>bgf_cov</code> (note specially the shift in <span class="math inline">\(r\)</span>).</p>
 <pre class="python"><code>axes = az.plot_pair(data=trace_cov, var_names=[&quot;~alpha&quot;], figsize=(12, 12))
 fig = axes[0][0].get_figure()
-fig.suptitle(&quot;BG/NBD Model Parameters (Time-Invariant Covariates) Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+fig.suptitle(
+    &quot;BG/NBD Model Parameters (Time-Invariant Covariates) Pairplot&quot;,
+    fontsize=16,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
 <center>
 <img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_57_0.png" style="width: 800px;"/>
 </center>
 <p>Finally, let us see the two different values (for <span class="math inline">\(z=0\)</span> and <span class="math inline">\(z=1\)</span>) of the <code>alpha</code> parameter.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
-sns.histplot(
-    x=trace_cov.posterior[&quot;alpha&quot;][:, :, z == 0].to_numpy().flatten(),
+az.plot_dist(
+    values=trace_cov.posterior[&quot;alpha&quot;][:, :, z == 0].to_numpy().flatten(),
     color=&quot;C0&quot;,
     label=r&quot;z = 0&quot;,
     ax=ax,
 )
-sns.histplot(
-    x=trace_cov.posterior[&quot;alpha&quot;][:, :, z == 1].to_numpy().flatten(),
+az.plot_dist(
+    values=trace_cov.posterior[&quot;alpha&quot;][:, :, z == 1].to_numpy().flatten(),
     color=&quot;C1&quot;,
     label=r&quot;z = 1&quot;,
     ax=ax,
@@ -1647,7 +1676,7 @@ for g, group_df in data_df.groupby(&quot;group&quot;):
     )
     group_summaries.append(group_summary_df)
 
-group_summaries = pd.concat(group_summaries, axis=0)</code></pre>
+group_summaries = pd.concat(group_summaries, axis=0).reset_index(drop=True)</code></pre>
 <pre class="python"><code>group_summaries</code></pre>
 <center>
 <div>
@@ -2066,6 +2095,7 @@ g4
     data=group_summaries,
     x=&quot;group&quot;,
     y=&quot;coef&quot;,
+    hue=&quot;group&quot;,
     col=&quot;parameter&quot;,
     col_wrap=2,
     kind=&quot;bar&quot;,
@@ -2074,9 +2104,11 @@ g4
     height=4,
 )
 
-g.fig.suptitle(&quot;BG/NBD Model Parameters by Group&quot;, y=1.05, fontsize=16);</code></pre>
+g.figure.suptitle(
+    &quot;BG/NBD Model Parameters by Group&quot;, y=1.05, fontsize=16, fontweight=&quot;bold&quot;
+);</code></pre>
 <center>
-<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_66_0.png" style="width: 800px;"/>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_65_1.png" style="width: 800px;"/>
 </center>
 <p>Now we specify the hierarchical model.</p>
 <pre class="python"><code>group_idx, groups = data_df[&quot;group&quot;].factorize(sort=True)
@@ -2087,7 +2119,6 @@ coords = {
 }
 
 with pm.Model(coords=coords) as model_h:
-
     # hyper-priors
     alpha_a = pm.Gamma(name=&quot;alpha_a&quot;, alpha=1, beta=1)
     beta_a = pm.Gamma(name=&quot;beta_a&quot;, alpha=1, beta=1)
@@ -2100,10 +2131,12 @@ with pm.Model(coords=coords) as model_h:
     beta_r = pm.Gamma(name=&quot;beta_r&quot;, alpha=1, beta=1)
 
     # priors
-    a_group= pm.Gamma(name=&quot;a&quot;, alpha=alpha_a, beta=beta_a, dims=&quot;group&quot;)
-    b_group = pm.Gamma(name=&quot;b&quot;, alpha=alpha_b, beta=beta_b,  dims=&quot;group&quot;)
+    a_group = pm.Gamma(name=&quot;a&quot;, alpha=alpha_a, beta=beta_a, dims=&quot;group&quot;)
+    b_group = pm.Gamma(name=&quot;b&quot;, alpha=alpha_b, beta=beta_b, dims=&quot;group&quot;)
 
-    alpha_group = pm.Gamma(name=&quot;alpha&quot;, alpha=alpha_alpha, beta=beta_alpha, dims=&quot;group&quot;)
+    alpha_group = pm.Gamma(
+        name=&quot;alpha&quot;, alpha=alpha_alpha, beta=beta_alpha, dims=&quot;group&quot;
+    )
     r_group = pm.Gamma(name=&quot;r&quot;, alpha=alpha_r, beta=beta_r, dims=&quot;group&quot;)
 
     # cohort-specific parameters
@@ -2114,28 +2147,42 @@ with pm.Model(coords=coords) as model_h:
 
     # log-likelihood
     def logp(x, t_x, T, x_zero):
-        a1 = at.gammaln(r + x) - at.gammaln(r) + r * at.log(alpha)
-        a2 = at.gammaln(a + b) + at.gammaln(b + x) - at.gammaln(b) - at.gammaln(a + b + x)
-        a3 = -(r + x) * at.log(alpha + T)
-        a4 =  at.log(a) - at.log(b + at.maximum(x, 1) - 1) - (r + x) * at.log(t_x + alpha)
-        max_a3_a4 = at.maximum(a3, a4)
-        ll_1 = a1 + a2 
-        ll_2 = at.log(at.exp(a3 - max_a3_a4) + at.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)) + max_a3_a4
-        return at.sum(ll_1 + ll_2)
+        a1 = pt.gammaln(r + x) - pt.gammaln(r) + r * pt.log(alpha)
+        a2 = (
+            pt.gammaln(a + b)
+            + pt.gammaln(b + x)
+            - pt.gammaln(b)
+            - pt.gammaln(a + b + x)
+        )
+        a3 = -(r + x) * pt.log(alpha + T)
+        a4 = (
+            pt.log(a) - pt.log(b + pt.maximum(x, 1) - 1) - (r + x) * pt.log(t_x + alpha)
+        )
+        max_a3_a4 = pt.maximum(a3, a4)
+        ll_1 = a1 + a2
+        ll_2 = (
+            pt.log(
+                pt.exp(a3 - max_a3_a4)
+                + pt.exp(a4 - max_a3_a4) * pm.math.switch(x_zero, 1, 0)
+            )
+            + max_a3_a4
+        )
+        return pt.sum(ll_1 + ll_2)
 
     likelihood = pm.Potential(name=&quot;likelihood&quot;, var=logp(x, t_x, T, x_zero))
 
 
 pm.model_to_graphviz(model=model_h)</code></pre>
 <center>
-<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_68_0.svg" style="width: 1000px;"/>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_67_0.svg" style="width: 1000px;"/>
 </center>
 <pre class="python"><code>with model_h:
-    trace_h = pm.sampling_jax.sample_numpyro_nuts(
-        tune=3000,
-        draws=6000,
+    trace_h = pm.sample(
+        tune=2_000,
+        draws=4_000,
         chains=4,
         target_accept=0.95,
+        nuts_sampler=&quot;numpyro&quot;,
     )</code></pre>
 <pre class="python"><code>axes = az.plot_trace(
     data=trace_h,
@@ -2150,7 +2197,7 @@ pm.model_to_graphviz(model=model_h)</code></pre>
 fig = axes[0][0].get_figure()
 fig.suptitle(&quot;Hierarchical BG/NBD Model Trace&quot;, fontsize=16);</code></pre>
 <center>
-<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_70_0.png" style="width: 1000px;"/>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_69_0.png" style="width: 1000px;"/>
 </center>
 <p>Let’s look into the summary:</p>
 <pre class="python"><code>az.summary(data=trace_h)</code></pre>
@@ -2978,7 +3025,7 @@ r[g4]
 </center>
 <p>Finally, let’s compare the parameter of the <code>lifetimes</code> model with the predictions of the hierarchical model.</p>
 <pre class="python"><code>fig, axes = plt.subplots(
-    nrows=2, ncols=2, figsize=(12, 11), sharex=False, sharey=False, layout=&quot;constrained&quot;
+    nrows=2, ncols=2, figsize=(15, 15), sharex=False, sharey=False, layout=&quot;constrained&quot;
 )
 
 axes = axes.flatten()
@@ -3047,9 +3094,13 @@ for i, parameter in enumerate([&quot;r&quot;, &quot;alpha&quot;, &quot;a&quot;, 
 
     ax.set(title=parameter, xlabel=&quot;lifetimes&quot;, ylabel=&quot;hierarchical model&quot;)
 
-fig.suptitle(&quot;Parameters - Hierarchical BG/NBD Model vs. Lifetimes&quot;, fontsize=16);</code></pre>
+fig.suptitle(
+    &quot;Parameters - Hierarchical BG/NBD Model vs. Lifetimes&quot;,
+    fontsize=20,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
 <center>
-<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_74_0.png" style="width: 1000px;"/>
+<img src="../images/bg_nbd_pymc_files/bg_nbd_pymc_73_0.png" style="width: 1000px;"/>
 </center>
 <p>Here we can see the <em>shrinkage</em> effect of the hierarchical model. The model parameters are closer to the global estimates (i.e. the estimates of the model without cohorts).</p>
 </div>

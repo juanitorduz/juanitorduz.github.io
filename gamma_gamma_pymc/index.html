@@ -89,30 +89,33 @@
 
     <div class="article-content">
       
-<script src="../rmarkdown-libs/header-attrs/header-attrs.js"></script>
 
 
 <p>In this notebook we describe how to fit Fader’s and Hardie’s <em>gamma-gamma model</em> presented in the paper <a href="http://www.brucehardie.com/papers/rfm_clv_2005-02-16.pdf">“RFM and CLV: Using Iso-value Curves
 for Customer Base Analysis”</a> and the note <a href="http://www.brucehardie.com/notes/025/gamma_gamma.pdf">“The Gamma-Gamma Model of Monetary
-Value”</a>. The approach is very similar as the one presented in the previous post <a href="https://juanitorduz.github.io/bg_nbd_pymc/">BG/NBD Model in PyMC</a> where we simply ported the log-likelihood of the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package from <code>numpy</code> to <code>theano</code>.</p>
+Value”</a>. The approach is very similar as the one presented in the previous post <a href="https://juanitorduz.github.io/bg_nbd_pymc/">BG/NBD Model in PyMC</a> where we simply ported the log-likelihood of the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package from <code>numpy</code> to <code>pytensor</code>.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import arviz as az
 import matplotlib.pyplot as plt
 import numpy as np
+import pymc as pm
+import pytensor.tensor as pt
 import seaborn as sns
-from lifetimes.datasets import load_cdnow_summary_data_with_monetary_value
 from lifetimes import GammaGammaFitter
-import pymc3 as pm
-import theano.tensor as tt
+from lifetimes.datasets import load_cdnow_summary_data_with_monetary_value
 
-plt.style.use(&quot;bmh&quot;)
-plt.rcParams[&quot;figure.figsize&quot;] = [8, 6]
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
 plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+seed = sum(map(ord, &quot;juanitorduz&quot;))
+rng = np.random.default_rng(seed)
 
 %load_ext autoreload
 %autoreload 2
-%config InlineBackend.figure_format = &quot;svg&quot;</code></pre>
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
 </div>
 <div id="load-data" class="section level2">
 <h2>Load Data</h2>
@@ -138,20 +141,19 @@ memory usage: 92.1 KB</code></pre>
 </ul>
 <p>LEt us plot the distribution of the features of interest:</p>
 <pre class="python"><code>fig, ax = plt.subplots(
-    nrows=1,
-    ncols=2,
-    figsize=(9, 4),
-    sharex=False,
-    sharey=False,
-    layout=&quot;constrained&quot;
+    nrows=1, ncols=2, figsize=(9, 4), sharex=False, sharey=False, layout=&quot;constrained&quot;
 )
-sns.kdeplot(x=&quot;frequency&quot;, data=data_df, color=&quot;C2&quot;, clip=(0.0, None), fill=True, ax=ax[0])
-ax[0].set(title=&quot;Frequency&quot;,xlabel=&quot;frequency (log)&quot;,xscale=&quot;log&quot;)
-sns.kdeplot(x=&quot;monetary_value&quot;, data=data_df, color=&quot;C3&quot;, clip=(0.0, None), fill=True, ax=ax[1])
-ax[1].set(title=&quot;Monetary Value&quot;,xlabel=&quot;monetary value (log)&quot;,xscale=&quot;log&quot;)
-fig.suptitle(&quot;Data Distribution (log scale)&quot;, fontsize=16);</code></pre>
+sns.kdeplot(
+    x=&quot;frequency&quot;, data=data_df, color=&quot;C2&quot;, clip=(0.0, None), fill=True, ax=ax[0]
+)
+ax[0].set(title=&quot;Frequency&quot;, xlabel=&quot;frequency (log)&quot;, xscale=&quot;log&quot;)
+sns.kdeplot(
+    x=&quot;monetary_value&quot;, data=data_df, color=&quot;C3&quot;, clip=(0.0, None), fill=True, ax=ax[1]
+)
+ax[1].set(title=&quot;Monetary Value&quot;, xlabel=&quot;monetary value (log)&quot;, xscale=&quot;log&quot;)
+fig.suptitle(&quot;Data Distribution (log scale)&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
-<img src="../images/gamma_gamma_files/gamma_gamma_6_0.svg" />
+<img src="../images/gamma_gamma_files/gamma_gamma_6_0.png" height=400 />
 </center>
 </div>
 <div id="gamma-gamma-model-lifetimes" class="section level2">
@@ -184,7 +186,7 @@ Value”</a>). First, here are the assumptions:</p>
 <li>The Gamma-Gamma model assumes that there is no relationship between the monetary value and the purchase frequency.</li>
 </ol>
 <p>For the first condition we simply filter out the data:</p>
-<pre class="python"><code>data_df.query(&quot;frequency &gt; 0&quot;, inplace=True)</code></pre>
+<pre class="python"><code>data_df = data_df.query(&quot;frequency &gt; 0&quot;)</code></pre>
 <p>For the second condition we compute the correlation:</p>
 <pre class="python"><code>data_df.filter([&quot;frequency&quot;, &quot;monetary_value&quot;]).corr()</code></pre>
 <center>
@@ -245,12 +247,14 @@ monetary_value
 <p>The correlation is not very high. Let us see it ins a scatter plot:</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 sns.scatterplot(x=&quot;frequency&quot;, y=&quot;monetary_value&quot;, data=data_df, ax=ax)
-ax.set(title=&quot;Frequency vs Monetary Value&quot;,xlabel=&quot;frequency&quot;,ylabel=&quot;monetary value&quot;);</code></pre>
+ax.set(
+    title=&quot;Frequency vs Monetary Value&quot;, xlabel=&quot;frequency&quot;, ylabel=&quot;monetary value&quot;
+);</code></pre>
 <center>
-<img src="../images/gamma_gamma_files/gamma_gamma_12_0.svg" />
+<img src="../images/gamma_gamma_files/gamma_gamma_12_0.png" height=500 />
 </center>
 <p>There does not seem to be a high relation between these features, so we can move and fir the <code>lifetimes</code> model.</p>
-<pre class="python"><code># extract the data using the paper&#39;s (and lifetimes) notation 
+<pre class="python"><code># extract the data using the paper&#39;s (and lifetimes) notation.
 x = data_df[&quot;frequency&quot;].to_numpy()
 m = data_df[&quot;monetary_value&quot;].to_numpy()</code></pre>
 <pre class="python"><code>ggf = GammaGammaFitter(penalizer_coef=0.0)
@@ -353,35 +357,30 @@ v
 <h2>Bayesian Model</h2>
 <p>We use the same strategy of the post <a href="https://juanitorduz.github.io/bg_nbd_pymc/">BG/NBD Model in PyMC</a> where we rewrite the log-likelihood of the <a href="https://github.com/CamDavidsonPilon/lifetimes"><code>lifetimes</code></a> package from <code>numpy</code> to <code>theano</code>. In this case the expression is much simpler, see the <code>staticmethod</code> of the class <code>GammaGammaFitter._negative_log_likelihood</code>.</p>
 <pre class="python"><code>with pm.Model() as model:
-
-    p = pm.HalfNormal(name=&quot;p&quot;, sd=10)
-    q = pm.HalfNormal(name=&quot;q&quot;, sd=10)
-    v = pm.HalfNormal(name=&quot;v&quot;, sd=10)
+    p = pm.HalfNormal(name=&quot;p&quot;, sigma=10)
+    q = pm.HalfNormal(name=&quot;q&quot;, sigma=10)
+    v = pm.HalfNormal(name=&quot;v&quot;, sigma=10)
 
     def logp(x, m):
         return (
-            tt.gammaln(p * x + q)
-            - tt.gammaln(p * x)
-            - tt.gammaln(q)
-            + q * tt.log(v)
-            + (p * x - 1) * tt.log(m)
-            + (p * x) * tt.log(x)
-            - (p * x + q) * tt.log(x * m + v)
+            pt.gammaln(p * x + q)
+            - pt.gammaln(p * x)
+            - pt.gammaln(q)
+            + q * pt.log(v)
+            + (p * x - 1) * pt.log(m)
+            + (p * x) * pt.log(x)
+            - (p * x + q) * pt.log(x * m + v)
         )
-    
-    likelihood = pm.DensityDist(
-        name=&quot;likelihood&quot;,
-        logp=logp,
-        observed = {&quot;x&quot;:x, &quot;m&quot;: m}
-    )</code></pre>
+
+    likelihood = pm.Potential(name=&quot;likelihood&quot;, var=logp(x, m))</code></pre>
 <p>Next, we estimate the posterior distribution.</p>
 <pre class="python"><code>with model:
     trace = pm.sample(
         tune=2000,
         draws=6000,
         chains=4,
-        target_accept=0.95,
-        return_inferencedata=True
+        target_accept=0.90,
+        nuts_sampler=&quot;numpyro&quot;,
     )</code></pre>
 <p>Let us take a look at the model summary:</p>
 <pre class="python"><code>az.summary(data=trace, var_names=[&quot;p&quot;, &quot;q&quot;, &quot;v&quot;])</code></pre>
@@ -540,23 +539,20 @@ v
     data=trace,
     lines=[(k, {}, [v]) for k, v in ggf.summary[&quot;coef&quot;].items()],
     compact=True,
-    backend_kwargs={
-        &quot;figsize&quot;: (10, 7),
-        &quot;layout&quot;: &quot;constrained&quot;
-    },
+    backend_kwargs={&quot;figsize&quot;: (10, 7), &quot;layout&quot;: &quot;constrained&quot;},
 )
 fig = axes[0][0].get_figure()
-fig.suptitle(&quot;Gamma-Gamma Model Trace&quot;);</code></pre>
+fig.suptitle(&quot;Gamma-Gamma Model Trace&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
-<img src="../images/gamma_gamma_files/gamma_gamma_24_0.svg" />
+<img src="../images/gamma_gamma_files/gamma_gamma_24_0.png" height=700 />
 </center>
 <p>The results look comparable!</p>
 <p>Finally, let’s look into the pair-plot of the posterior distributions:</p>
 <pre class="python"><code>axes = az.plot_pair(data=trace, var_names=[&quot;p&quot;, &quot;q&quot;, &quot;v&quot;], figsize=(8, 8))
 fig = plt.gcf()
-fig.suptitle(&quot;Gamma-Gamma Model Parameters Pairplot&quot;, y=0.95, fontsize=16);</code></pre>
+fig.suptitle(&quot;Gamma-Gamma Model Parameters Pairplot&quot;, fontsize=16, fontweight=&quot;bold&quot;);</code></pre>
 <center>
-<img src="../images/gamma_gamma_files/gamma_gamma_26_0.svg" />
+<img src="../images/gamma_gamma_files/gamma_gamma_26_0.png" height=700 />
 </center>
 <p>It is interesting to see that the <code>p</code> and <code>v</code> distributions seem to obey a non-linear relationship.</p>
 </div>
@@ -570,7 +566,7 @@ Value”</a>).</p>
 <pre class="python"><code># pymc-examples/examples/time_series/Air_passengers-Prophet_with_Bayesian_workflow.html
 def _sample(array, n_samples):
     &quot;&quot;&quot;Little utility function, sample n_samples with replacement.&quot;&quot;&quot;
-    idx = np.random.choice(np.arange(len(array)), n_samples, replace=True)
+    idx = rng.choice(np.arange(len(array)), n_samples, replace=True)
     return array[idx]
 
 def conditional_expected_average_profit(trace, x, m, n_samples):
@@ -584,7 +580,7 @@ def conditional_expected_average_profit(trace, x, m, n_samples):
     return (population_mean * (1 - individual_weight)) + (individual_weight * m)
 
 
-n_samples = 1000
+n_samples = 1_000
 
 pymc_ceap = conditional_expected_average_profit(trace, x, m, n_samples)</code></pre>
 <p>Finally, we can compare the results:</p>
@@ -595,24 +591,18 @@ ax.errorbar(
     y=pymc_ceap.mean(axis=0),
     yerr=az.hdi(ary=pymc_ceap).T,
     fmt=&quot;o&quot;,
-    ecolor=&quot;C6&quot;,
+    ecolor=&quot;C0&quot;,
     markeredgecolor=&quot;C1&quot;,
     markerfacecolor=&quot;C1&quot;,
     markersize=5,
     alpha=0.5,
     capsize=2,
 )
-ax.axline(
-    xy1=(0, 0),
-    slope=1,
-    color=&quot;black&quot;,
-    linestyle=&quot;--&quot;,
-    label=&quot;diagonal&quot;
-)
+ax.axline(xy1=(0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
 ax.legend(loc=&quot;upper left&quot;)
 ax.set(title=&quot;Model Comparison&quot;, xlabel=&quot;lifetimes&quot;, ylabel=&quot;pymc&quot;);</code></pre>
 <center>
-<img src="../images/gamma_gamma_files/gamma_gamma_33_0.svg" />
+<img src="../images/gamma_gamma_files/gamma_gamma_33_0.png" height=700 />
 </center>
 <p>Note that the credible intervals increase as the monetary value increases. This is no surprise given the data distribution (see first plot above).</p>
 <p><strong>Remark:</strong> Note that the credible intervals are always positive:</p>
