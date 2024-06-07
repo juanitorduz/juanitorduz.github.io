@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Hierarchical Exponential Smoothing Model - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Hierarchical Exponential Smoothing Model - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">15 min read</span>
+    
+
+    <h1 class="article-title">Hierarchical Exponential Smoothing Model</h1>
+
+    
+    <span class="article-date">2024-06-07</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this blog post, we experiment with a hierarchical exponential smoothing forecasting model, extending the ideas from the univariate case presented in the blog post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">“Notes on Exponential Smoothing with NumPyro”</a>. We use <a href="https://github.com/pyro-ppl/numpyro">NumPyro</a> and compare the NUTS and SVI results. For such a purpose, we use <strong>Continuous Ranked Probability Score</strong> (<a href="https://towardsdatascience.com/crps-a-scoring-function-for-bayesian-machine-learning-models-dd55a7a337a8">CRPS</a>). We also compare these forecasts with univariate statistical models like Holt-Winters, AutoETS and Seasonal Naive from the great <a href="https://nixtlaverse.nixtla.io/statsforecast/index.html">Statsforecast</a> package. These baseline models are, in general, hard to beat!</p>
+<p>A (partial) motivation for this experiment is the recently released package <a href="https://github.com/felipeangelimvieira/prophetverse">Prophetverse</a>, which extends the model ideas from <a href="https://facebook.github.io/prophet/">Prophet</a> to hierarchical models (also in NumPyro) and with custom likelihoods. Even though Prophet does not perform as expected in many real applications (see, for example <a href="https://sarem-seitz.com/posts/facebook-prophet-covid-and-why-i-dont-trust-the-prophet/">here</a> among others), the Bayesian approach of the Prophetverse package is certainly very interesting.</p>
+<p>On this occasion, we do not do a proper model benchmark against Prophetverse; we do use one of the data sets provided in the documentation: the <a href="https://felipeangelimvieira.github.io/prophetverse/examples/hierarchical/"><em>tourism dataset</em></a>. The main difference with the example provided in the documentation is that we use a different level of aggregation so that we get more time series to test with (<span class="math inline">\(308\)</span> vs <span class="math inline">\(5\)</span>). We are particularly interested in seeing how well it scales.</p>
+<p><strong>Experiment Takeaways</strong></p>
+<p>Here is a concise summary of the findings from this experiment:</p>
+<ul>
+<li><p>NumPyro is a great and flexible framework for developing custom time series models at scale. Extending the univariate case to the multivariate hierarchical one is relatively straightforward. One has to pay particular attention to the tensor dimensions (see <a href="https://pyro.ai/examples/tensor_shapes.html">Tensor shapes in Pyro</a>).</p></li>
+<li><p>Hierarchical models are great for pooling information across time series. For this particular example, we see a benefit in having a hierarchy on the trend component.</p></li>
+<li><p>Stochastic variational inference (SVI) is an excellent inference approach for models with a lot of data. In this concrete example, SVI performs comparably to NUTS (as a point estimate and probabilistic model via CRPS).</p></li>
+<li><p>We can use this hierarchical model as a baseline to develop more complex and custom models.</p></li>
+<li><p>Statistical models like <a href="https://nixtlaverse.nixtla.io/statsforecast/docs/models/autoets.html">AutoETS</a> are challenging to beat. Our hierarchical model is marginally better than this model. It might not always pay off the NumPyrro maintenance if there is no real benefit from a custom component (for example, a custom likelihood as described in the blog post <a href="https://juanitorduz.github.io/censoring/">“Bayesian Censoring Data Modeling”</a>)</p></li>
+</ul>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from collections.abc import Callable
+from datetime import UTC, datetime
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import polars as pl
+import seaborn as sns
+from jax import random
+from jaxlib.xla_extension import ArrayImpl
+from numpyro.contrib.control_flow import scan
+from numpyro.infer import MCMC, NUTS, SVI, Predictive, Trace_ELBO
+from numpyro.infer.autoguide import AutoDiagonalNormal
+from numpyro.infer.initialization import init_to_sample
+from pydantic import BaseModel, Field
+from statsforecast import StatsForecast
+from statsforecast.models import AutoETS, HoltWinters, SeasonalNaive
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-in-data" class="section level2">
+<h2>Read in Data</h2>
+<p>We read the data from the Prophetverse repository:</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/felipeangelimvieira/prophetverse/main/docs/examples/tourism.csv&quot;
+
+raw_data_df = pl.read_csv(data_path, try_parse_dates=True)
+
+data_df = raw_data_df.select(pl.all().name.to_lowercase())
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 6)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+</th>
+<th>
+quarter
+</th>
+<th>
+region
+</th>
+<th>
+state
+</th>
+<th>
+purpose
+</th>
+<th>
+trips
+</th>
+</tr>
+<tr>
+<td>
+i64
+</td>
+<td>
+date
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+1
+</td>
+<td>
+1998-01-01
+</td>
+<td>
+"Adelaide"
+</td>
+<td>
+"South Australia"
+</td>
+<td>
+"Business"
+</td>
+<td>
+135.07769
+</td>
+</tr>
+<tr>
+<td>
+2
+</td>
+<td>
+1998-04-01
+</td>
+<td>
+"Adelaide"
+</td>
+<td>
+"South Australia"
+</td>
+<td>
+"Business"
+</td>
+<td>
+109.987316
+</td>
+</tr>
+<tr>
+<td>
+3
+</td>
+<td>
+1998-07-01
+</td>
+<td>
+"Adelaide"
+</td>
+<td>
+"South Australia"
+</td>
+<td>
+"Business"
+</td>
+<td>
+166.034687
+</td>
+</tr>
+<tr>
+<td>
+4
+</td>
+<td>
+1998-10-01
+</td>
+<td>
+"Adelaide"
+</td>
+<td>
+"South Australia"
+</td>
+<td>
+"Business"
+</td>
+<td>
+127.160464
+</td>
+</tr>
+<tr>
+<td>
+5
+</td>
+<td>
+1999-01-01
+</td>
+<td>
+"Adelaide"
+</td>
+<td>
+"South Australia"
+</td>
+<td>
+"Business"
+</td>
+<td>
+137.448533
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="exploratory-data-analysis" class="section level2">
+<h2>Exploratory Data Analysis</h2>
+<p>We do a basic exploratory data analysis to understand the data structure. We start by counting the numer if regios per state:</p>
+<pre class="python"><code>data_df.group_by(&quot;state&quot;).agg(pl.col(&quot;region&quot;).n_unique().alias(&quot;n_regions&quot;))</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (7, 2)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+state
+</th>
+<th>
+n_regions
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+<td>
+u32
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"South Australia"
+</td>
+<td>
+12
+</td>
+</tr>
+<tr>
+<td>
+"Western Australia"
+</td>
+<td>
+5
+</td>
+</tr>
+<tr>
+<td>
+"Northern Territory"
+</td>
+<td>
+13
+</td>
+</tr>
+<tr>
+<td>
+"Queensland"
+</td>
+<td>
+12
+</td>
+</tr>
+<tr>
+<td>
+"New South Wales"
+</td>
+<td>
+13
+</td>
+</tr>
+<tr>
+<td>
+"ACT"
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<td>
+"Victoria"
+</td>
+<td>
+21
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We aslo make sure taht regions are mapped to a unique state:</p>
+<pre class="python"><code>assert (
+    data_df[&quot;region&quot;].n_unique()
+    == data_df.group_by(&quot;state&quot;)
+    .agg(pl.col(&quot;region&quot;).n_unique().alias(&quot;n_regions&quot;))[&quot;n_regions&quot;]
+    .sum()
+)</code></pre>
+<p>Next, we look into the <code>purpose</code> feature:</p>
+<pre class="python"><code>data_df[&quot;purpose&quot;].unique()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (4,)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+purpose
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"Visiting"
+</td>
+</tr>
+<tr>
+<td>
+"Business"
+</td>
+</tr>
+<tr>
+<td>
+"Other"
+</td>
+</tr>
+<tr>
+<td>
+"Holiday"
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>In this case, every region has the <span class="math inline">\(4\)</span> possible purposes split:</p>
+<pre class="python"><code>assert (
+    data_df[&quot;purpose&quot;].unique().shape[0]
+    == data_df.group_by(&quot;region&quot;)
+    .agg(pl.col(&quot;purpose&quot;).n_unique().alias(&quot;n_purposes&quot;))[&quot;n_purposes&quot;]
+    .unique()
+    .item()
+)</code></pre>
+<p>For the purpose of this example, we will consider the time series generated by the <code>state</code> + <code>region</code> + <code>purpose</code> combination. Let’s count the number of resulting time series:</p>
+<pre class="python"><code>data_df = data_df.with_columns(
+    unique_id=pl.concat_str(
+        [pl.col(&quot;state&quot;), pl.col(&quot;region&quot;), pl.col(&quot;purpose&quot;)], separator=&quot;::&quot;
+    )
+)
+
+data_df[&quot;unique_id&quot;].n_unique()</code></pre>
+<pre><code>308</code></pre>
+<p>We plot a sample of the time series:</p>
+<pre class="python"><code>n_series = 16
+
+unique_ids = data_df.select(&quot;unique_id&quot;).sample(
+    n=n_series, with_replacement=False, seed=42
+)
+
+fig, axes = plt.subplots(
+    nrows=n_series,
+    ncols=1,
+    figsize=(15, 25),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
+    ax = axes[i]
+    sns.lineplot(
+        data=data_df.filter(pl.col(&quot;unique_id&quot;) == unique_id),
+        x=&quot;quarter&quot;,
+        y=&quot;trips&quot;,
+        ax=ax,
+    )
+    ax.set(title=unique_id)
+
+fig.suptitle(&quot;Times Series Samples&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_16_0.png" style="width: 1000px;"/>
+</center>
+<p>Here are some observations about the time series structure:</p>
+<ul>
+<li><p>Most of the time series have a yearly seasonality. The pattern is clearer for some of these series than for others.</p></li>
+<li><p>The series looks stationary overall (mean and variance do not change over time). We see a mild trend component in some of the series.</p></li>
+</ul>
+</div>
+<div id="prepare-data" class="section level2">
+<h2>Prepare Data</h2>
+<p>For this simple example we do a simple train-test split. For real applications it is <strong>strongly</strong> recommended to use a time series cross-validation strategy (see <a href="https://nixtlaverse.nixtla.io/statsforecast/docs/getting-started/getting_started_complete.html#evaluate-the-models-performance">Evaluate the model’s performance</a>).</p>
+<pre class="python"><code>train_test_split_date = datetime(year=2014, month=1, day=1, tzinfo=UTC)
+
+train_data_df = data_df.filter(pl.col(&quot;quarter&quot;) &lt; pl.lit(train_test_split_date))
+test_data_df = data_df.filter(pl.col(&quot;quarter&quot;) &gt;= pl.lit(train_test_split_date))
+
+n_test = test_data_df[&quot;quarter&quot;].n_unique()
+
+assert train_data_df.shape[0] + test_data_df.shape[0] == data_df.shape[0]</code></pre>
+<pre class="python"><code>pivot_data_train_df = train_data_df.pivot(  # noqa: PD010
+    index=&quot;quarter&quot;, columns=&quot;unique_id&quot;, values=&quot;trips&quot;
+)
+pivot_data_test_df = test_data_df.pivot(  # noqa: PD010
+    index=&quot;quarter&quot;, columns=&quot;unique_id&quot;, values=&quot;trips&quot;
+)</code></pre>
+<pre class="python"><code>y_train = pivot_data_train_df.drop(&quot;quarter&quot;).to_jax()
+y_test = pivot_data_test_df.drop(&quot;quarter&quot;).to_jax()</code></pre>
+<pre class="python"><code>train_unique_ids = pivot_data_train_df.drop(&quot;quarter&quot;).columns
+test_unique_ids = pivot_data_test_df.drop(&quot;quarter&quot;).columns
+
+train_dates = pivot_data_train_df[&quot;quarter&quot;].dt.strftime(&quot;%Y-%m-%d&quot;).to_numpy()
+test_dates = pivot_data_test_df[&quot;quarter&quot;].dt.strftime(&quot;%Y-%m-%d&quot;).to_numpy()</code></pre>
+</div>
+<div id="statsforecast-model" class="section level2">
+<h2>Statsforecast Model</h2>
+<p>We start by fitting some univariate models from the Statsforecast package.</p>
+<pre class="python"><code>n_seasons = 4
+
+models = [
+    AutoETS(season_length=n_seasons),
+    HoltWinters(season_length=n_seasons),
+    SeasonalNaive(season_length=n_seasons),
+]
+
+sf = StatsForecast(models=models, freq=&quot;1q&quot;)
+
+sf_forecast = sf.forecast(
+    h=n_test,
+    df=train_data_df.select([&quot;unique_id&quot;, &quot;quarter&quot;, &quot;trips&quot;]),
+    time_col=&quot;quarter&quot;,
+    target_col=&quot;trips&quot;,
+    level=[94, 50],
+)</code></pre>
+<p>Let’s look into the point forecasts on the test set:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=n_series,
+    ncols=1,
+    figsize=(15, 35),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
+    ax = axes[i]
+    sns.lineplot(
+        x=pivot_data_train_df[&quot;quarter&quot;],
+        y=pivot_data_train_df[unique_id],
+        color=&quot;C0&quot;,
+        label=&quot;train&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=pivot_data_test_df[unique_id],
+        color=&quot;C1&quot;,
+        label=&quot;test&quot;,
+        ax=ax,
+    )
+
+    for j, model_name in enumerate(m.alias for m in models):
+        temp_df = sf_forecast.filter(pl.col(&quot;unique_id&quot;) == pl.lit(unique_id))
+        sns.lineplot(
+            x=temp_df[&quot;quarter&quot;],
+            y=temp_df[f&quot;{model_name}&quot;],
+            color=f&quot;C{j + 2}&quot;,
+            label=model_name,
+            ax=ax,
+        )
+
+    ax.axvline(
+        train_test_split_date,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train-test split&quot;,
+    )
+
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+    ax.set(title=unique_id, ylabel=&quot;trips&quot;)
+
+fig.suptitle(&quot;Univariate Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_26_0.png" style="width: 1000px;"/>
+</center>
+<p>The AutoETS model is very conservative when the signal does not have a clear seasonal pattern. In many cases it preficts a straight line. The Seasonal Naive model is the most aggressive one, and the Holt-Winters model is in between.</p>
+<p>We can now look into the prediction intervals of the Holt-Winters model. We are interested in this model as we will compare it with our hierarchical model version in NumPyro.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=n_series,
+    ncols=1,
+    figsize=(15, 35),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
+    ax = axes[i]
+    sns.lineplot(
+        x=pivot_data_train_df[&quot;quarter&quot;],
+        y=pivot_data_train_df[unique_id],
+        color=&quot;C0&quot;,
+        label=&quot;train&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=pivot_data_test_df[unique_id],
+        color=&quot;C1&quot;,
+        label=&quot;test&quot;,
+        ax=ax,
+    )
+
+    for j, level in enumerate([94, 50]):
+        temp_df = sf_forecast.filter(pl.col(&quot;unique_id&quot;) == pl.lit(unique_id))
+        ax.fill_between(
+            temp_df[&quot;quarter&quot;],
+            temp_df[f&quot;HoltWinters-lo-{level}&quot;],
+            temp_df[f&quot;HoltWinters-hi-{level}&quot;],
+            alpha=0.3 * (j + 1),
+            color=&quot;C2&quot;,
+            label=f&quot;{level}% CI&quot;,
+        )
+
+    sns.lineplot(
+        data=sf_forecast.filter(pl.col(&quot;unique_id&quot;) == pl.lit(unique_id)),
+        x=&quot;quarter&quot;,
+        y=&quot;HoltWinters&quot;,
+        color=&quot;C2&quot;,
+        label=&quot;HoltWinters forecast&quot;,
+        ax=ax,
+    )
+    ax.axvline(
+        train_test_split_date,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train-test split&quot;,
+    )
+
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+    ax.set(title=unique_id, ylabel=&quot;trips&quot;)
+
+fig.suptitle(&quot;Holt Winters Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_29_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="numpyro-model" class="section level2">
+<h2>NumPyro Model</h2>
+<p>Now we implement the hierarchical model in NumPyro. In essence, we are extending the univariate model from the blog post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">“Notes on Exponential Smoothing with NumPyro”</a>. On top of the simple extension by vectorization via <code>plates</code>. We add a hierarchical component to the noise, trend component and seasonal components. We keep the level components independent. We could build better hierarchies through <code>states</code>, but for now we keep it simple.</p>
+<pre class="python"><code>def model(y: ArrayImpl, n_seasons: int, future: int = 0) -&gt; None:
+    t_max, n_series = y.shape
+
+    trend_smoothing_concentration1 = numpyro.sample(
+        &quot;trend_smoothing_concentration1&quot;,
+        dist.Gamma(concentration=4, rate=2),
+    )
+
+    trend_smoothing_concentration0 = numpyro.sample(
+        &quot;trend_smoothing_concentration0&quot;,
+        dist.Gamma(concentration=10, rate=2),
+    )
+
+    seasonality_smoothing_concentration1 = numpyro.sample(
+        &quot;seasonality_smoothing_concentration1&quot;,
+        dist.Gamma(concentration=4, rate=2),
+    )
+
+    seasonality_smoothing_concentration0 = numpyro.sample(
+        &quot;seasonality_smoothing_concentration0&quot;,
+        dist.Gamma(concentration=4, rate=2),
+    )
+
+    noise_scale = numpyro.sample(&quot;noise_scale&quot;, dist.Gamma(concentration=80.0, rate=4))
+
+    with numpyro.plate(&quot;series&quot;, n_series, dim=-1):
+        # Level
+        level_smoothing = numpyro.sample(
+            &quot;level_smoothing&quot;, dist.Beta(concentration1=1, concentration0=1)
+        )
+
+        level_init = numpyro.sample(&quot;level_init&quot;, dist.Normal(loc=0, scale=1))
+
+        # Trend
+        trend_smoothing = numpyro.sample(
+            &quot;trend_smoothing&quot;,
+            dist.Beta(
+                concentration1=trend_smoothing_concentration1,
+                concentration0=trend_smoothing_concentration0,
+            ),
+        )
+
+        trend_init = numpyro.sample(&quot;trend_init&quot;, dist.Normal(loc=0, scale=1))
+
+        # Seasonality
+        seasonality_smoothing = numpyro.sample(
+            &quot;seasonality_smoothing&quot;,
+            dist.Beta(
+                concentration1=seasonality_smoothing_concentration1,
+                concentration0=seasonality_smoothing_concentration0,
+            ),
+        )
+        adj_seasonality_smoothing = seasonality_smoothing * (1 - level_smoothing)
+
+        with numpyro.plate(&quot;n_seasons&quot;, n_seasons, dim=-2):
+            seasonality_init = numpyro.sample(
+                &quot;seasonality_init&quot;, dist.Normal(loc=0, scale=1)
+            )
+
+        ## Noise
+        noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(scale=noise_scale))
+
+    def transition_fn(carry, t):
+        previous_level, previous_trend, previous_seasonality = carry
+
+        level = jnp.where(
+            t &lt; t_max,
+            level_smoothing * y[t] + (1 - level_smoothing) * previous_level,
+            previous_level,
+        )
+
+        trend = jnp.where(
+            t &lt; t_max,
+            trend_smoothing * (level - previous_level)
+            + (1 - trend_smoothing) * previous_trend,
+            previous_trend,
+        )
+
+        new_season = jnp.where(
+            t &lt; t_max,
+            adj_seasonality_smoothing * (y[t] - (previous_level + previous_trend))
+            + (1 - adj_seasonality_smoothing) * previous_seasonality[0],
+            previous_seasonality[0],
+        )
+
+        step = jnp.where(t &lt; t_max, 1, t - t_max + 1)
+
+        mu = previous_level + step * previous_trend + previous_seasonality[0]
+
+        pred = numpyro.sample(&quot;pred&quot;, dist.Normal(loc=mu, scale=noise).to_event(1))
+
+        seasonality = jnp.concatenate(
+            [previous_seasonality[1:], new_season[None]], axis=0
+        )
+
+        return (level, trend, seasonality), pred
+
+    with numpyro.handlers.condition(data={&quot;pred&quot;: y}):
+        _, preds = scan(
+            transition_fn,
+            (level_init, trend_init, seasonality_init),
+            jnp.arange(t_max + future),
+        )
+
+    if future &gt; 0:
+        numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:, ...])</code></pre>
+</div>
+<div id="nuts-inference" class="section level2">
+<h2>NUTS Inference</h2>
+<p>The first inference approach we use is NUTS. We fit the model to the training data and make predictions on the test set. Fitting this model in my local machine (Mac M3) takes around <span class="math inline">\(3\)</span> minutes (not bad for a medium-size data set).</p>
+<pre class="python"><code>class InferenceParams(BaseModel):
+    num_warmup: int = Field(2_500, ge=1)
+    num_samples: int = Field(4_000, ge=1)
+    num_chains: int = Field(4, ge=1)
+
+
+def run_inference(
+    rng_key: ArrayImpl,
+    model: Callable,
+    args: InferenceParams,
+    *model_args,
+    **nuts_kwargs,
+) -&gt; MCMC:
+    sampler = NUTS(model, **nuts_kwargs)
+    mcmc = MCMC(
+        sampler=sampler,
+        num_warmup=args.num_warmup,
+        num_samples=args.num_samples,
+        num_chains=args.num_chains,
+    )
+    mcmc.run(rng_key, *model_args)
+    return mcmc</code></pre>
+<pre class="python"><code>inference_params = InferenceParams()
+
+rng_key, rng_subkey = random.split(key=rng_key)
+mcmc = run_inference(
+    rng_subkey, model, inference_params, y_train, n_seasons, target_accept_prob=0.80
+)</code></pre>
+<p>We can look into some diagnostics.</p>
+<pre class="python"><code>idata = az.from_numpyro(
+    posterior=mcmc,
+    coords={&quot;unique_id&quot;: train_unique_ids},
+    dims={
+        &quot;level_init&quot;: [&quot;unique_id&quot;],
+        &quot;level_smoothing&quot;: [&quot;unique_id&quot;],
+        &quot;trend_init&quot;: [&quot;unique_id&quot;],
+        &quot;trend_smoothing&quot;: [&quot;unique_id&quot;],
+        &quot;noise&quot;: [&quot;unique_id&quot;],
+    },
+)
+
+print(f&quot;&quot;&quot;Divergences: {idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()}&quot;&quot;&quot;)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>az.summary(
+    data=idata,
+    var_names=[
+        &quot;trend_smoothing_concentration1&quot;,
+        &quot;trend_smoothing_concentration0&quot;,
+        &quot;seasonality_smoothing_concentration1&quot;,
+        &quot;seasonality_smoothing_concentration0&quot;,
+        &quot;noise_scale&quot;,
+    ],
+    round_to=2,
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+trend_smoothing_concentration1
+</th>
+<td>
+0.13
+</td>
+<td>
+0.05
+</td>
+<td>
+0.06
+</td>
+<td>
+0.21
+</td>
+<td>
+0.00
+</td>
+<td>
+0.00
+</td>
+<td>
+174.05
+</td>
+<td>
+403.45
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0
+</th>
+<td>
+7.42
+</td>
+<td>
+1.90
+</td>
+<td>
+3.94
+</td>
+<td>
+10.93
+</td>
+<td>
+0.05
+</td>
+<td>
+0.04
+</td>
+<td>
+1326.70
+</td>
+<td>
+5152.88
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+seasonality_smoothing_concentration1
+</th>
+<td>
+0.40
+</td>
+<td>
+0.07
+</td>
+<td>
+0.28
+</td>
+<td>
+0.52
+</td>
+<td>
+0.00
+</td>
+<td>
+0.00
+</td>
+<td>
+1205.39
+</td>
+<td>
+2621.63
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+seasonality_smoothing_concentration0
+</th>
+<td>
+2.53
+</td>
+<td>
+0.44
+</td>
+<td>
+1.75
+</td>
+<td>
+3.36
+</td>
+<td>
+0.01
+</td>
+<td>
+0.01
+</td>
+<td>
+1688.03
+</td>
+<td>
+4042.22
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+noise_scale
+</th>
+<td>
+29.12
+</td>
+<td>
+1.06
+</td>
+<td>
+27.10
+</td>
+<td>
+31.09
+</td>
+<td>
+0.01
+</td>
+<td>
+0.00
+</td>
+<td>
+30662.50
+</td>
+<td>
+12107.40
+</td>
+<td>
+1.00
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=[
+        &quot;trend_smoothing_concentration1&quot;,
+        &quot;trend_smoothing_concentration0&quot;,
+        &quot;seasonality_smoothing_concentration1&quot;,
+        &quot;seasonality_smoothing_concentration0&quot;,
+        &quot;noise_scale&quot;,
+    ],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 10), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;NUTS Trace&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_38_0.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the model seems to have converged. Let’s generate the sample forecasts.</p>
+<pre class="python"><code>def forecast(
+    rng_key: ArrayImpl, model: Callable, samples: dict[str, ArrayImpl], *model_args
+) -&gt; dict[str, ArrayImpl]:
+    predictive = Predictive(
+        model=model,
+        posterior_samples=samples,
+        return_sites=[&quot;y_forecast&quot;],
+    )
+    return predictive(rng_key, *model_args)</code></pre>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+forecast = forecast(rng_subkey, model, mcmc.get_samples(), y_train, n_seasons, n_test)</code></pre>
+<pre class="python"><code>idata.extend(
+    az.from_numpyro(
+        posterior_predictive=forecast,
+        coords={&quot;unique_id&quot;: train_unique_ids, &quot;date&quot;: test_dates},
+        dims={&quot;y_forecast&quot;: [&quot;date&quot;, &quot;unique_id&quot;]},
+    )
+)</code></pre>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=n_series,
+    ncols=1,
+    figsize=(15, 40),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
+    ax = axes[i]
+    sns.lineplot(
+        x=pivot_data_train_df[&quot;quarter&quot;],
+        y=pivot_data_train_df[unique_id],
+        color=&quot;C0&quot;,
+        label=&quot;train&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=pivot_data_test_df[unique_id],
+        color=&quot;C1&quot;,
+        label=&quot;test&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        data=sf_forecast.filter(pl.col(&quot;unique_id&quot;) == pl.lit(unique_id)),
+        x=&quot;quarter&quot;,
+        y=&quot;HoltWinters&quot;,
+        color=&quot;C3&quot;,
+        label=&quot;HoltWinters forecast&quot;,
+        ax=ax,
+    )
+    ax.axvline(
+        train_test_split_date,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train-test split&quot;,
+    )
+
+    for j, hdi in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            x=pivot_data_test_df[&quot;quarter&quot;],
+            y=idata.posterior_predictive[&quot;y_forecast&quot;].sel(unique_id=unique_id),
+            hdi_prob=hdi,
+            smooth=False,
+            color=&quot;C2&quot;,
+            fill_kwargs={&quot;alpha&quot;: 0.3 * (j + 1), &quot;label&quot;: f&quot;{hdi: .0%} HDI&quot;},
+            ax=ax,
+        )
+
+    sns.lineplot(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=idata.posterior_predictive[&quot;y_forecast&quot;]
+        .sel(unique_id=unique_id)
+        .mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+        color=&quot;C2&quot;,
+        label=&quot;posterior predictive mean&quot;,
+        ax=ax,
+    )
+
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+    ax.set(title=unique_id, ylabel=&quot;trips&quot;)
+
+fig.suptitle(&quot;NUTS Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_43_0.png" style="width: 1000px;"/>
+</center>
+<p>The results look very reasonable! A result of the hierarchical structure is that the hierarchical model is campturing trend components on time series that are flat in the fistorical data. See for example:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 8))
+
+
+unique_id = &quot;Victoria::Central Murray::Other&quot;
+
+sns.lineplot(
+    x=pivot_data_train_df[&quot;quarter&quot;],
+    y=pivot_data_train_df[unique_id],
+    color=&quot;C0&quot;,
+    label=&quot;train&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=pivot_data_test_df[&quot;quarter&quot;],
+    y=pivot_data_test_df[unique_id],
+    color=&quot;C1&quot;,
+    label=&quot;test&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    data=sf_forecast.filter(pl.col(&quot;unique_id&quot;) == pl.lit(unique_id)),
+    x=&quot;quarter&quot;,
+    y=&quot;HoltWinters&quot;,
+    color=&quot;C3&quot;,
+    label=&quot;HoltWinters forecast&quot;,
+    ax=ax,
+)
+ax.axvline(
+    train_test_split_date,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;train-test split&quot;,
+)
+
+for j, hdi in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=idata.posterior_predictive[&quot;y_forecast&quot;].sel(unique_id=unique_id),
+        hdi_prob=hdi,
+        smooth=False,
+        color=&quot;C2&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.3 * (j + 1), &quot;label&quot;: f&quot;{hdi: .0%} HDI&quot;},
+        ax=ax,
+    )
+
+sns.lineplot(
+    x=pivot_data_test_df[&quot;quarter&quot;],
+    y=idata.posterior_predictive[&quot;y_forecast&quot;]
+    .sel(unique_id=unique_id)
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C2&quot;,
+    label=&quot;posterior predictive mean&quot;,
+    ax=ax,
+)
+
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(title=unique_id, ylabel=&quot;trips&quot;)
+
+fig.suptitle(&quot;NUTS Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_45_0.png" style="width: 1000px;"/>
+</center>
+<p>We will do a more formal evaluation of the model using the CRPS metric at the end of this blog post.</p>
+</div>
+<div id="stochastic-variational-inference-svi" class="section level2">
+<h2>Stochastic Variational Inference (SVI)</h2>
+<p>Next, we use SVI to fit the model. We use an <a href="https://docs.pyro.ai/en/stable/infer.autoguide.html#autodiagonalnormal"><code>AutoDiagonalNormal</code></a> guide to keep the inference simple. The fitting time is much faster than NUTS (around <span class="math inline">\(15\)</span> seconds in my local machine). For an introduction to SVI for time series model see the blog posts <a href="https://juanitorduz.github.io/intro_sts_tfp/">“Exploring TensorFlow Probability STS Forecasting”</a> and <a href="https://florianwilhelm.info/2020/10/bayesian_hierarchical_modelling_at_scale/">“Finally! Bayesian Hierarchical Modelling at Scale”</a>.</p>
+<pre class="python"><code>guide = AutoDiagonalNormal(model=model, init_loc_fn=init_to_sample)
+optimizer = numpyro.optim.Adam(step_size=0.03)
+svi = SVI(model, guide, optimizer, loss=Trace_ELBO())
+num_steps = 15_000
+rng_key, rng_subkey = random.split(key=rng_key)
+svi_result = svi.run(
+    rng_subkey,
+    num_steps,
+    y_train,
+    n_seasons,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set(yscale=&quot;log&quot;)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 15000/15000 [00:12&lt;00:00, 1218.70it/s, init loss: 65847288.0000, avg. loss [14251-15000]: 80034.1612]</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_48_1.png" style="width: 800px;"/>
+</center>
+<p>The ELBO seems to have converged. Let’s generate the sample forecasts.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+svi_posterior_predictive = Predictive(
+    model=model,
+    guide=guide,
+    params=svi_result.params,
+    num_samples=inference_params.num_samples * inference_params.num_chains,
+)(rng_subkey, y_train, n_seasons, n_test)</code></pre>
+<pre class="python"><code>svi_idata = az.from_dict(
+    posterior_predictive={
+        k: jnp.expand_dims(a=jnp.asarray(v), axis=0)
+        for k, v in svi_posterior_predictive.items()
+    },
+    coords={
+        &quot;unique_id&quot;: train_unique_ids,
+        &quot;date_test&quot;: test_dates,
+        &quot;date&quot;: [*train_dates, *test_dates],
+    },
+    dims={&quot;y_forecast&quot;: [&quot;date_test&quot;, &quot;unique_id&quot;], &quot;pred&quot;: [&quot;date&quot;, &quot;unique_id&quot;]},
+)</code></pre>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=n_series,
+    ncols=1,
+    figsize=(15, 40),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
+    ax = axes[i]
+    sns.lineplot(
+        x=pivot_data_train_df[&quot;quarter&quot;],
+        y=pivot_data_train_df[unique_id],
+        color=&quot;C0&quot;,
+        label=&quot;train&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=pivot_data_test_df[unique_id],
+        color=&quot;C1&quot;,
+        label=&quot;test&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        data=sf_forecast.filter(pl.col(&quot;unique_id&quot;) == pl.lit(unique_id)),
+        x=&quot;quarter&quot;,
+        y=&quot;HoltWinters&quot;,
+        color=&quot;C3&quot;,
+        label=&quot;HoltWinters forecast&quot;,
+        ax=ax,
+    )
+    ax.axvline(
+        train_test_split_date,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train-test split&quot;,
+    )
+
+    for j, hdi in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            x=pivot_data_test_df[&quot;quarter&quot;],
+            y=svi_idata.posterior_predictive[&quot;y_forecast&quot;].sel(unique_id=unique_id),
+            hdi_prob=hdi,
+            smooth=False,
+            color=&quot;C2&quot;,
+            fill_kwargs={&quot;alpha&quot;: 0.3 * (j + 1), &quot;label&quot;: f&quot;{hdi: .0%} HDI&quot;},
+            ax=ax,
+        )
+
+    sns.lineplot(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=svi_idata.posterior_predictive[&quot;y_forecast&quot;]
+        .sel(unique_id=unique_id)
+        .mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+        color=&quot;C2&quot;,
+        label=&quot;posterior predictive mean&quot;,
+        ax=ax,
+    )
+
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+    ax.set(title=unique_id, ylabel=&quot;trips&quot;)
+
+fig.suptitle(&quot;SVI Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_52_0.png" style="width: 1000px;"/>
+</center>
+<p>The results also look reasonable! Nevertheless, eventhough the model is the same, we do get some differences. We can clearly see this in the example above:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 8))
+
+
+unique_id = &quot;Victoria::Central Murray::Other&quot;
+
+sns.lineplot(
+    x=pivot_data_train_df[&quot;quarter&quot;],
+    y=pivot_data_train_df[unique_id],
+    color=&quot;C0&quot;,
+    label=&quot;train&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    x=pivot_data_test_df[&quot;quarter&quot;],
+    y=pivot_data_test_df[unique_id],
+    color=&quot;C1&quot;,
+    label=&quot;test&quot;,
+    ax=ax,
+)
+sns.lineplot(
+    data=sf_forecast.filter(pl.col(&quot;unique_id&quot;) == pl.lit(unique_id)),
+    x=&quot;quarter&quot;,
+    y=&quot;HoltWinters&quot;,
+    color=&quot;C3&quot;,
+    label=&quot;HoltWinters forecast&quot;,
+    ax=ax,
+)
+ax.axvline(
+    train_test_split_date,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;train-test split&quot;,
+)
+
+for j, hdi in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        x=pivot_data_test_df[&quot;quarter&quot;],
+        y=svi_idata.posterior_predictive[&quot;y_forecast&quot;].sel(unique_id=unique_id),
+        hdi_prob=hdi,
+        smooth=False,
+        color=&quot;C2&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.3 * (j + 1), &quot;label&quot;: f&quot;{hdi: .0%} HDI&quot;},
+        ax=ax,
+    )
+
+sns.lineplot(
+    x=pivot_data_test_df[&quot;quarter&quot;],
+    y=svi_idata.posterior_predictive[&quot;y_forecast&quot;]
+    .sel(unique_id=unique_id)
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C2&quot;,
+    label=&quot;posterior predictive mean&quot;,
+    ax=ax,
+)
+
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(title=unique_id, ylabel=&quot;trips&quot;)
+
+fig.suptitle(&quot;SVI Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_54_0.png" style="width: 1000px;"/>
+</center>
+<p>The inferend trend component is milder in the SVI case for this specific time series.</p>
+</div>
+<div id="evaluation" class="section level2">
+<h2>Evaluation</h2>
+<p>In this final section we do a model comparison based on this simple train-test split. We use the <a href="https://towardsdatascience.com/crps-a-scoring-function-for-bayesian-machine-learning-models-dd55a7a337a8">CRPS metric</a> to compare the models.</p>
+<blockquote>
+<p>“The CRPS — Continuous Ranked Probability Score — is a score function that compares a single ground truth value to a Cumulative Distribution Function. It t can be used as a metric to evaluate a model’s performance when the target variable is continuous and the model predicts the target’s distribution; Examples include Bayesian Regression or Bayesian Time Series models.”</p>
+</blockquote>
+<p>We borrow an implementation of the CRPS metric from <a href="https://docs.pyro.ai/en/dev/_modules/pyro/ops/stats.html"><code>pyro.ops.stats.crps_empirical</code></a> and simply translate it to JAX.</p>
+<pre class="python"><code>def crps(truth, pred, sample_weight=None):
+    if pred.shape[1:] != (1,) * (pred.ndim - truth.ndim - 1) + truth.shape:
+        raise ValueError(
+            f&quot;&quot;&quot;Expected pred to have one extra sample dim on left.
+            Actual shapes: {pred.shape} versus {truth.shape}&quot;&quot;&quot;
+        )
+    num_samples = pred.shape[0]
+    if num_samples == 1:
+        return jnp.abs(pred[0] - truth)
+
+    pred = jnp.sort(pred, axis=0)
+    diff = pred[1:] - pred[:-1]
+    weight = jnp.arange(1, num_samples) * jnp.arange(num_samples - 1, 0, -1)
+    weight = weight.reshape(weight.shape + (1,) * (diff.ndim - 1))
+
+    absolute_error = jnp.mean(jnp.abs(pred - truth), axis=0)
+
+    per_obs_crps = absolute_error - jnp.sum(diff * weight, axis=0) / num_samples**2
+    return jnp.average(per_obs_crps, weights=sample_weight)</code></pre>
+<p>Let’s compute the CRPS for the NUTS and SVI models.</p>
+<pre class="python"><code>y_pred_nuts = jnp.array(
+    az.extract(
+        data=idata, group=&quot;posterior_predictive&quot;, var_names=[&quot;y_forecast&quot;]
+    ).transpose(&quot;sample&quot;, ...)
+)
+
+y_pred_svi = jnp.array(
+    az.extract(
+        data=svi_idata, group=&quot;posterior_predictive&quot;, var_names=[&quot;y_forecast&quot;]
+    ).transpose(&quot;sample&quot;, ...)
+)</code></pre>
+<pre class="python"><code>crps(truth=y_test, pred=y_pred_nuts)</code></pre>
+<pre><code>Array(11.743771, dtype=float32)</code></pre>
+<pre class="python"><code>crps(truth=y_test, pred=y_pred_svi)</code></pre>
+<pre><code>Array(11.760125, dtype=float32)</code></pre>
+<p>The results are very similar!</p>
+<p>One important aspect of the CRPS metric is that it reduces to the Mean Absolute Error (MAE) for point forecasts. Let’s to this for all of the models.</p>
+<pre class="python"><code>y_pred_autoets = (
+    sf_forecast.pivot(index=&quot;quarter&quot;, columns=&quot;unique_id&quot;, values=&quot;AutoETS&quot;)  # noqa: PD010
+    .select(train_unique_ids)
+    .to_jax()[None, ...]
+)
+
+y_pred_hw = (
+    sf_forecast.pivot(index=&quot;quarter&quot;, columns=&quot;unique_id&quot;, values=&quot;HoltWinters&quot;)  # noqa: PD010
+    .select(train_unique_ids)
+    .to_jax()[None, ...]
+)
+
+y_pred_seasonal = (
+    sf_forecast.pivot(index=&quot;quarter&quot;, columns=&quot;unique_id&quot;, values=&quot;SeasonalNaive&quot;)  # noqa: PD010
+    .select(train_unique_ids)
+    .to_jax()[None, ...]
+)
+
+y_pred_nuts_mean = jnp.array(
+    idata.posterior_predictive[&quot;y_forecast&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+)[None, ...]
+
+y_pred_svi_mean = jnp.array(
+    svi_idata.posterior_predictive[&quot;y_forecast&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+)[None, ...]</code></pre>
+<pre class="python"><code>crps_df = pl.DataFrame(
+    {
+        &quot;AutoETS&quot;: crps(truth=y_test, pred=y_pred_autoets).mean(),
+        &quot;HoltWinters&quot;: crps(truth=y_test, pred=y_pred_hw).mean(),
+        &quot;SeasonalNaive&quot;: crps(truth=y_test, pred=y_pred_seasonal).mean(),
+        &quot;NUTS-Mean&quot;: crps(truth=y_test, pred=y_pred_nuts_mean).mean(),
+        &quot;SVI-Mean&quot;: crps(truth=y_test, pred=y_pred_svi_mean).mean(),
+        &quot;NUTS&quot;: crps(truth=y_test, pred=y_pred_nuts).mean(),
+        &quot;SVI&quot;: crps(truth=y_test, pred=y_pred_svi).mean(),
+    }
+)
+
+melt_crps_df = (
+    crps_df.melt(value_vars=crps_df.columns, variable_name=&quot;model&quot;, value_name=&quot;crps&quot;)
+    .with_columns(
+        point_estimate=pl.when(pl.col(&quot;model&quot;) == pl.lit(&quot;NUTS&quot;))
+        .then(0)
+        .when(pl.col(&quot;model&quot;) == pl.lit(&quot;SVI&quot;))
+        .then(0)
+        .otherwise(1)
+    )
+    .sort(&quot;model&quot;)
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+sns.barplot(
+    data=melt_crps_df,
+    x=&quot;crps&quot;,
+    y=&quot;model&quot;,
+    hue=&quot;point_estimate&quot;,
+    ax=ax,
+)
+
+
+for container in ax.containers:
+    ax.bar_label(
+        container,
+        fmt=&quot;%.2f&quot;,
+        label_type=&quot;edge&quot;,
+        padding=2,
+        fontsize=10,
+        fontweight=&quot;bold&quot;,
+    )
+
+ax.legend(title=&quot;Point Estimate&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(&quot;CRPS&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_67_0.png" style="width: 1000px;"/>
+</center>
+<p>Here are some takeaways from this plot:</p>
+<ul>
+<li>For the point forecasts, the NUTS model is the best by a little small margin. To have a better performance comparison, we should use a time series cross-validation strategy (homework for the reader 🤓).</li>
+<li>The NUTS and SVI models performance is very similar. In real large scale applications SVI is a great alternative to NUTS (one still has to fo the prior sensitivity analysis, there is no free lunch!).</li>
+<li>Statistical univariate models are hard to beat! AutoETS is the best model in this case.</li>
+</ul>
+<p>Finally, lets look at this results in the context of the absolute error distribution:</p>
+<pre class="python"><code>ae_df = pl.DataFrame(
+    {
+        &quot;AutoETS&quot;: np.array(crps(truth=y_test, pred=y_pred_nuts_mean).flatten()),
+        &quot;HoltWinters&quot;: np.array(crps(truth=y_test, pred=y_pred_hw).flatten()),
+        &quot;SeasonalNaive&quot;: np.array(crps(truth=y_test, pred=y_pred_seasonal).flatten()),
+        &quot;NUTS&quot;: np.array(crps(truth=y_test, pred=y_pred_nuts_mean).flatten()),
+        &quot;SVI&quot;: np.array(crps(truth=y_test, pred=y_pred_svi_mean).flatten()),
+    }
+)
+melt_ae_df = ae_df.melt(
+    value_vars=ae_df.columns, variable_name=&quot;model&quot;, value_name=&quot;ae&quot;
+)
+
+fig, ax = plt.subplots()
+sns.boxplot(
+    data=melt_ae_df,
+    x=&quot;ae&quot;,
+    y=&quot;model&quot;,
+    hue=&quot;model&quot;,
+    ax=ax,
+)
+ax.set_title(&quot;Absolute Error Density&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_70_0.png" style="width: 1000px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
