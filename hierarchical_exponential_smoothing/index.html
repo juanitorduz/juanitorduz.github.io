@@ -103,6 +103,7 @@
 <li><p>We can use this hierarchical model as a baseline to develop more complex and custom models.</p></li>
 <li><p>Statistical models like <a href="https://nixtlaverse.nixtla.io/statsforecast/docs/models/autoets.html">AutoETS</a> are challenging to beat. Our hierarchical model is marginally better than this model. It might not always pay off the NumPyrro maintenance if there is no real benefit from a custom component (for example, a custom likelihood as described in the blog post <a href="https://juanitorduz.github.io/censoring/">“Bayesian Censoring Data Modeling”</a>)</p></li>
 </ul>
+<p>Here is an interesting reference on vector exponentisl smoothing models : <a href="https://www.sciencedirect.com/science/article/pii/S037722172200354X">“A new taxonomy for vector exponential smoothing and its application to seasonal time series”</a>. There are R implementations of these models, see <a href="https://cran.r-project.org/web/packages/legion/vignettes/ves.html">“ves() - Vector Exponential Smoothing”</a>.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>from collections.abc import Callable
