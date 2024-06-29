@@ -78,7 +78,7 @@
 
   <article class="article">
     
-    <span class="article-duration">15 min read</span>
+    <span class="article-duration">17 min read</span>
     
 
     <h1 class="article-title">Hierarchical Exponential Smoothing Model</h1>
@@ -124,6 +124,7 @@ from numpyro.infer import MCMC, NUTS, SVI, Predictive, Trace_ELBO
 from numpyro.infer.autoguide import AutoDiagonalNormal
 from numpyro.infer.initialization import init_to_sample
 from pydantic import BaseModel, Field
+from sklearn.preprocessing import LabelEncoder
 from statsforecast import StatsForecast
 from statsforecast.models import AutoETS, HoltWinters, SeasonalNaive
 
@@ -529,6 +530,21 @@ assert train_data_df.shape[0] + test_data_df.shape[0] == data_df.shape[0]</code>
 pivot_data_test_df = test_data_df.pivot(  # noqa: PD010
     index=&quot;quarter&quot;, columns=&quot;unique_id&quot;, values=&quot;trips&quot;
 )</code></pre>
+<p>We want to add a hierarchical structure to the model using the <code>state</code> feature. For this purpose, we need a mapping from each time series to a state.</p>
+<pre class="python"><code># We can just use the columns from the training data as the mapping input
+assert pivot_data_train_df.columns == pivot_data_test_df.columns
+
+# We extract the state from the column names
+ts_state_mapping = [col.split(&quot;::&quot;)[0] for col in pivot_data_train_df.columns[1:]]
+
+# We use a LabelEncoder to encode the states
+state_encoder = LabelEncoder()
+state_encoder.fit(ts_state_mapping)
+
+ts_state_mapping_idx = state_encoder.transform(ts_state_mapping)
+
+# We will use `ts_state_mapping_idx` to map the columns to the states in a numeric way
+assert state_encoder.classes_[ts_state_mapping_idx].tolist() == ts_state_mapping</code></pre>
 <pre class="python"><code>y_train = pivot_data_train_df.drop(&quot;quarter&quot;).to_jax()
 y_test = pivot_data_test_df.drop(&quot;quarter&quot;).to_jax()</code></pre>
 <pre class="python"><code>train_unique_ids = pivot_data_train_df.drop(&quot;quarter&quot;).columns
@@ -672,19 +688,36 @@ fig.suptitle(&quot;Holt Winters Forecast&quot;, fontsize=20, fontweight=&quot;bo
 </div>
 <div id="numpyro-model" class="section level2">
 <h2>NumPyro Model</h2>
-<p>Now we implement the hierarchical model in NumPyro. In essence, we are extending the univariate model from the blog post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">“Notes on Exponential Smoothing with NumPyro”</a>. On top of the simple extension by vectorization via <code>plates</code>. We add a hierarchical component to the noise, trend component and seasonal components. We keep the level components independent. We could build better hierarchies through <code>states</code>, but for now we keep it simple.</p>
-<pre class="python"><code>def model(y: ArrayImpl, n_seasons: int, future: int = 0) -&gt; None:
+<p>Now we implement the hierarchical model in NumPyro. In essence, we are extending the univariate model from the blog post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">“Notes on Exponential Smoothing with NumPyro”</a>. On top of the simple extension by vectorization via <code>plates</code>. We add a hierarchical component to the noise, trend component and seasonal components. For the hierarchical trend component, we use a middle layer so that each time series has its own trend component, but the trend components are pooled by state. The state trend components are then pooled by the global trend component.</p>
+<pre class="python"><code>def model(
+    y: ArrayImpl, ts_state_mapping_idx: ArrayImpl, n_seasons: int, future: int = 0
+) -&gt; None:
     t_max, n_series = y.shape
+    n_states = np.unique(ts_state_mapping_idx).size
 
-    trend_smoothing_concentration1 = numpyro.sample(
-        &quot;trend_smoothing_concentration1&quot;,
-        dist.Gamma(concentration=4, rate=2),
+    # Global trend smoothing
+
+    trend_smoothing_concentration1_global_concentration = numpyro.sample(
+        &quot;trend_smoothing_concentration1_global_concentration&quot;,
+        dist.Gamma(concentration=8, rate=4),
     )
 
-    trend_smoothing_concentration0 = numpyro.sample(
-        &quot;trend_smoothing_concentration0&quot;,
-        dist.Gamma(concentration=10, rate=2),
+    trend_smoothing_concentration1_global_rate = numpyro.sample(
+        &quot;trend_smoothing_concentration1_global_rate&quot;,
+        dist.Gamma(concentration=8, rate=4),
     )
+
+    trend_smoothing_concentration0_global_concentration = numpyro.sample(
+        &quot;trend_smoothing_concentration0_global_concentration&quot;,
+        dist.Gamma(concentration=8, rate=4),
+    )
+
+    trend_smoothing_concentration0_global_rate = numpyro.sample(
+        &quot;trend_smoothing_concentration0_global_rate&quot;,
+        dist.Gamma(concentration=8, rate=4),
+    )
+
+    # Global seasonality smoothing
 
     seasonality_smoothing_concentration1 = numpyro.sample(
         &quot;seasonality_smoothing_concentration1&quot;,
@@ -696,7 +729,27 @@ fig.suptitle(&quot;Holt Winters Forecast&quot;, fontsize=20, fontweight=&quot;bo
         dist.Gamma(concentration=4, rate=2),
     )
 
-    noise_scale = numpyro.sample(&quot;noise_scale&quot;, dist.Gamma(concentration=80.0, rate=4))
+    # Global noise scale
+
+    noise_scale = numpyro.sample(&quot;noise_scale&quot;, dist.Gamma(concentration=80, rate=3))
+
+    # States level trend smoothing
+    with numpyro.plate(&quot;states&quot;, n_states, dim=-1):
+        trend_smoothing_concentration1 = numpyro.sample(
+            &quot;trend_smoothing_concentration1&quot;,
+            dist.Gamma(
+                concentration=trend_smoothing_concentration1_global_concentration,
+                rate=trend_smoothing_concentration1_global_rate,
+            ),
+        )
+
+        trend_smoothing_concentration0 = numpyro.sample(
+            &quot;trend_smoothing_concentration0&quot;,
+            dist.Gamma(
+                concentration=trend_smoothing_concentration0_global_concentration,
+                rate=trend_smoothing_concentration0_global_rate,
+            ),
+        )
 
     with numpyro.plate(&quot;series&quot;, n_series, dim=-1):
         # Level
@@ -710,8 +763,8 @@ fig.suptitle(&quot;Holt Winters Forecast&quot;, fontsize=20, fontweight=&quot;bo
         trend_smoothing = numpyro.sample(
             &quot;trend_smoothing&quot;,
             dist.Beta(
-                concentration1=trend_smoothing_concentration1,
-                concentration0=trend_smoothing_concentration0,
+                concentration1=trend_smoothing_concentration1[ts_state_mapping_idx],
+                concentration0=trend_smoothing_concentration0[ts_state_mapping_idx],
             ),
         )
 
@@ -809,17 +862,31 @@ def run_inference(
 
 rng_key, rng_subkey = random.split(key=rng_key)
 mcmc = run_inference(
-    rng_subkey, model, inference_params, y_train, n_seasons, target_accept_prob=0.80
+    rng_subkey,
+    model,
+    inference_params,
+    y_train,
+    ts_state_mapping_idx,
+    n_seasons,
+    target_accept_prob=0.85,
 )</code></pre>
 <p>We can look into some diagnostics.</p>
 <pre class="python"><code>idata = az.from_numpyro(
     posterior=mcmc,
-    coords={&quot;unique_id&quot;: train_unique_ids},
+    coords={
+        &quot;unique_id&quot;: train_unique_ids,
+        &quot;n_states&quot;: state_encoder.classes_,
+        &quot;n_seasons&quot;: np.arange(n_seasons),
+    },
     dims={
         &quot;level_init&quot;: [&quot;unique_id&quot;],
         &quot;level_smoothing&quot;: [&quot;unique_id&quot;],
         &quot;trend_init&quot;: [&quot;unique_id&quot;],
+        &quot;trend_smoothing_concentration0&quot;: [&quot;n_states&quot;],
+        &quot;trend_smoothing_concentration1&quot;: [&quot;n_states&quot;],
         &quot;trend_smoothing&quot;: [&quot;unique_id&quot;],
+        &quot;seasonality_init&quot;: [&quot;n_seasons&quot;, &quot;unique_id&quot;],
+        &quot;seasonality_smoothing&quot;: [&quot;unique_id&quot;],
         &quot;noise&quot;: [&quot;unique_id&quot;],
     },
 )
@@ -829,6 +896,10 @@ print(f&quot;&quot;&quot;Divergences: {idata[&quot;sample_stats&quot;][&quot;div
 <pre class="python"><code>az.summary(
     data=idata,
     var_names=[
+        &quot;trend_smoothing_concentration1_global_concentration&quot;,
+        &quot;trend_smoothing_concentration1_global_rate&quot;,
+        &quot;trend_smoothing_concentration0_global_concentration&quot;,
+        &quot;trend_smoothing_concentration0_global_rate&quot;,
         &quot;trend_smoothing_concentration1&quot;,
         &quot;trend_smoothing_concentration0&quot;,
         &quot;seasonality_smoothing_concentration1&quot;,
@@ -896,31 +967,31 @@ r_hat
 <tbody>
 <tr>
 <th>
-trend_smoothing_concentration1
+trend_smoothing_concentration1_global_concentration
 </th>
 <td>
-0.13
+1.24
 </td>
 <td>
-0.05
+0.35
 </td>
 <td>
-0.06
+0.64
 </td>
 <td>
-0.21
+1.91
 </td>
 <td>
-0.00
+0.02
 </td>
 <td>
-0.00
+0.01
 </td>
 <td>
-174.05
+504.02
 </td>
 <td>
-403.45
+1592.61
 </td>
 <td>
 1.01
@@ -928,31 +999,31 @@ trend_smoothing_concentration1
 </tr>
 <tr>
 <th>
-trend_smoothing_concentration0
+trend_smoothing_concentration1_global_rate
 </th>
 <td>
-7.42
+2.75
 </td>
 <td>
-1.90
+0.80
 </td>
 <td>
-3.94
+1.37
 </td>
 <td>
-10.93
+4.28
 </td>
 <td>
-0.05
+0.01
 </td>
 <td>
-0.04
+0.01
 </td>
 <td>
-1326.70
+2899.28
 </td>
 <td>
-5152.88
+8003.77
 </td>
 <td>
 1.00
@@ -960,31 +1031,543 @@ trend_smoothing_concentration0
 </tr>
 <tr>
 <th>
-seasonality_smoothing_concentration1
+trend_smoothing_concentration0_global_concentration
 </th>
 <td>
-0.40
+3.61
+</td>
+<td>
+0.92
+</td>
+<td>
+1.94
+</td>
+<td>
+5.36
+</td>
+<td>
+0.01
+</td>
+<td>
+0.01
+</td>
+<td>
+8933.44
+</td>
+<td>
+9333.12
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0_global_rate
+</th>
+<td>
+0.43
+</td>
+<td>
+0.26
 </td>
 <td>
 0.07
 </td>
 <td>
-0.28
+0.92
+</td>
+<td>
+0.02
+</td>
+<td>
+0.01
+</td>
+<td>
+182.79
+</td>
+<td>
+943.12
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration1[ACT]
+</th>
+<td>
+0.39
+</td>
+<td>
+0.39
+</td>
+<td>
+0.01
+</td>
+<td>
+1.08
+</td>
+<td>
+0.01
+</td>
+<td>
+0.01
+</td>
+<td>
+954.31
+</td>
+<td>
+1650.63
+</td>
+<td>
+1.00
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration1[New South Wales]
+</th>
+<td>
+0.12
+</td>
+<td>
+0.08
+</td>
+<td>
+0.03
+</td>
+<td>
+0.26
+</td>
+<td>
+0.00
+</td>
+<td>
+0.00
+</td>
+<td>
+328.17
+</td>
+<td>
+475.96
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration1[Northern Territory]
+</th>
+<td>
+0.58
+</td>
+<td>
+0.39
+</td>
+<td>
+0.04
+</td>
+<td>
+1.27
+</td>
+<td>
+0.03
+</td>
+<td>
+0.02
+</td>
+<td>
+114.94
+</td>
+<td>
+95.35
+</td>
+<td>
+1.03
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration1[Queensland]
+</th>
+<td>
+0.15
+</td>
+<td>
+0.12
+</td>
+<td>
+0.03
+</td>
+<td>
+0.35
+</td>
+<td>
+0.01
+</td>
+<td>
+0.01
+</td>
+<td>
+238.53
+</td>
+<td>
+415.80
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration1[South Australia]
+</th>
+<td>
+0.49
+</td>
+<td>
+0.35
+</td>
+<td>
+0.06
+</td>
+<td>
+1.12
+</td>
+<td>
+0.02
+</td>
+<td>
+0.02
+</td>
+<td>
+214.49
+</td>
+<td>
+361.15
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration1[Victoria]
+</th>
+<td>
+0.20
+</td>
+<td>
+0.16
+</td>
+<td>
+0.04
+</td>
+<td>
+0.50
+</td>
+<td>
+0.01
+</td>
+<td>
+0.01
+</td>
+<td>
+112.07
+</td>
+<td>
+363.88
+</td>
+<td>
+1.04
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration1[Western Australia]
+</th>
+<td>
+0.25
+</td>
+<td>
+0.24
+</td>
+<td>
+0.02
+</td>
+<td>
+0.66
+</td>
+<td>
+0.02
+</td>
+<td>
+0.01
+</td>
+<td>
+292.95
+</td>
+<td>
+954.90
+</td>
+<td>
+1.03
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0[ACT]
+</th>
+<td>
+12.41
+</td>
+<td>
+12.01
+</td>
+<td>
+0.36
+</td>
+<td>
+31.24
+</td>
+<td>
+0.62
+</td>
+<td>
+0.44
+</td>
+<td>
+307.77
+</td>
+<td>
+1348.41
+</td>
+<td>
+1.01
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0[New South Wales]
+</th>
+<td>
+15.02
+</td>
+<td>
+12.98
+</td>
+<td>
+1.00
+</td>
+<td>
+37.45
+</td>
+<td>
+0.76
+</td>
+<td>
+0.54
+</td>
+<td>
+244.94
+</td>
+<td>
+1193.53
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0[Northern Territory]
+</th>
+<td>
+15.00
+</td>
+<td>
+11.77
+</td>
+<td>
+1.04
+</td>
+<td>
+35.67
+</td>
+<td>
+0.77
+</td>
+<td>
+0.55
+</td>
+<td>
+193.23
+</td>
+<td>
+952.29
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0[Queensland]
+</th>
+<td>
+14.91
+</td>
+<td>
+12.97
+</td>
+<td>
+0.79
+</td>
+<td>
+37.29
+</td>
+<td>
+0.73
 </td>
 <td>
 0.52
 </td>
 <td>
-0.00
+247.60
+</td>
+<td>
+1153.53
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0[South Australia]
+</th>
+<td>
+14.00
+</td>
+<td>
+11.59
+</td>
+<td>
+1.23
+</td>
+<td>
+33.46
+</td>
+<td>
+0.68
+</td>
+<td>
+0.48
+</td>
+<td>
+232.54
+</td>
+<td>
+1104.32
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0[Victoria]
+</th>
+<td>
+15.68
+</td>
+<td>
+12.81
+</td>
+<td>
+1.27
+</td>
+<td>
+38.08
+</td>
+<td>
+0.88
+</td>
+<td>
+0.62
+</td>
+<td>
+193.11
+</td>
+<td>
+772.02
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing_concentration0[Western Australia]
+</th>
+<td>
+13.69
+</td>
+<td>
+12.19
+</td>
+<td>
+0.68
+</td>
+<td>
+34.63
+</td>
+<td>
+0.71
+</td>
+<td>
+0.50
+</td>
+<td>
+250.25
+</td>
+<td>
+1197.77
+</td>
+<td>
+1.02
+</td>
+</tr>
+<tr>
+<th>
+seasonality_smoothing_concentration1
+</th>
+<td>
+0.39
+</td>
+<td>
+0.07
+</td>
+<td>
+0.27
+</td>
+<td>
+0.51
 </td>
 <td>
 0.00
 </td>
 <td>
-1205.39
+0.00
 </td>
 <td>
-2621.63
+895.12
+</td>
+<td>
+1533.99
 </td>
 <td>
 1.00
@@ -995,28 +1578,28 @@ seasonality_smoothing_concentration1
 seasonality_smoothing_concentration0
 </th>
 <td>
-2.53
+2.51
 </td>
 <td>
 0.44
 </td>
 <td>
-1.75
+1.68
 </td>
 <td>
-3.36
-</td>
-<td>
-0.01
+3.32
 </td>
 <td>
 0.01
 </td>
 <td>
-1688.03
+0.01
 </td>
 <td>
-4042.22
+1219.27
+</td>
+<td>
+2672.15
 </td>
 <td>
 1.00
@@ -1027,28 +1610,28 @@ seasonality_smoothing_concentration0
 noise_scale
 </th>
 <td>
-29.12
+30.36
 </td>
 <td>
-1.06
+1.19
 </td>
 <td>
-27.10
+28.14
 </td>
 <td>
-31.09
+32.61
 </td>
 <td>
 0.01
 </td>
 <td>
-0.00
+0.01
 </td>
 <td>
-30662.50
+23607.84
 </td>
 <td>
-12107.40
+10081.63
 </td>
 <td>
 1.00
@@ -1061,6 +1644,10 @@ noise_scale
 <pre class="python"><code>axes = az.plot_trace(
     data=idata,
     var_names=[
+        &quot;trend_smoothing_concentration1_global_concentration&quot;,
+        &quot;trend_smoothing_concentration1_global_rate&quot;,
+        &quot;trend_smoothing_concentration0_global_concentration&quot;,
+        &quot;trend_smoothing_concentration0_global_rate&quot;,
         &quot;trend_smoothing_concentration1&quot;,
         &quot;trend_smoothing_concentration0&quot;,
         &quot;seasonality_smoothing_concentration1&quot;,
@@ -1069,11 +1656,11 @@ noise_scale
     ],
     compact=True,
     kind=&quot;rank_bars&quot;,
-    backend_kwargs={&quot;figsize&quot;: (12, 10), &quot;layout&quot;: &quot;constrained&quot;},
+    backend_kwargs={&quot;figsize&quot;: (12, 16), &quot;layout&quot;: &quot;constrained&quot;},
 )
 plt.gcf().suptitle(&quot;NUTS Trace&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_38_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_40_0.png" style="width: 1000px;"/>
 </center>
 <p>Overall, the model seems to have converged. Let’s generate the sample forecasts.</p>
 <pre class="python"><code>def forecast(
@@ -1086,7 +1673,15 @@ plt.gcf().suptitle(&quot;NUTS Trace&quot;, fontsize=20, fontweight=&quot;bold&qu
     )
     return predictive(rng_key, *model_args)</code></pre>
 <pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
-forecast = forecast(rng_subkey, model, mcmc.get_samples(), y_train, n_seasons, n_test)</code></pre>
+forecast = forecast(
+    rng_subkey,
+    model,
+    mcmc.get_samples(),
+    y_train,
+    ts_state_mapping_idx,
+    n_seasons,
+    n_test,
+)</code></pre>
 <pre class="python"><code>idata.extend(
     az.from_numpyro(
         posterior_predictive=forecast,
@@ -1160,13 +1755,12 @@ for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
 
 fig.suptitle(&quot;NUTS Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_43_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_45_0.png" style="width: 1000px;"/>
 </center>
 <p>The results look very reasonable! A result of the hierarchical structure is that the hierarchical model is campturing trend components on time series that are flat in the fistorical data. See for example:</p>
-<pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 8))
+<pre class="python"><code>unique_id = &quot;Victoria::Central Murray::Other&quot;
 
-
-unique_id = &quot;Victoria::Central Murray::Other&quot;
+fig, ax = plt.subplots(figsize=(15, 8))
 
 sns.lineplot(
     x=pivot_data_train_df[&quot;quarter&quot;],
@@ -1223,7 +1817,7 @@ ax.set(title=unique_id, ylabel=&quot;trips&quot;)
 
 fig.suptitle(&quot;NUTS Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_45_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_47_0.png" style="width: 1000px;"/>
 </center>
 <p>We will do a more formal evaluation of the model using the CRPS metric at the end of this blog post.</p>
 </div>
@@ -1239,6 +1833,7 @@ svi_result = svi.run(
     rng_subkey,
     num_steps,
     y_train,
+    ts_state_mapping_idx,
     n_seasons,
 )
 
@@ -1246,9 +1841,9 @@ fig, ax = plt.subplots(figsize=(9, 6))
 ax.plot(svi_result.losses)
 ax.set(yscale=&quot;log&quot;)
 ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
-<pre><code>100%|██████████| 15000/15000 [00:12&lt;00:00, 1218.70it/s, init loss: 65847288.0000, avg. loss [14251-15000]: 80034.1612]</code></pre>
+<pre><code>100%|██████████| 15000/15000 [00:13&lt;00:00, 1075.58it/s, init loss: 1429542.8750, avg. loss [14251-15000]: 80021.8651]</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_48_1.png" style="width: 800px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_50_1.png" style="width: 800px;"/>
 </center>
 <p>The ELBO seems to have converged. Let’s generate the sample forecasts.</p>
 <pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
@@ -1257,7 +1852,7 @@ svi_posterior_predictive = Predictive(
     guide=guide,
     params=svi_result.params,
     num_samples=inference_params.num_samples * inference_params.num_chains,
-)(rng_subkey, y_train, n_seasons, n_test)</code></pre>
+)(rng_subkey, y_train, ts_state_mapping_idx, n_seasons, n_test)</code></pre>
 <pre class="python"><code>svi_idata = az.from_dict(
     posterior_predictive={
         k: jnp.expand_dims(a=jnp.asarray(v), axis=0)
@@ -1336,7 +1931,7 @@ for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
 
 fig.suptitle(&quot;SVI Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_52_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_54_0.png" style="width: 1000px;"/>
 </center>
 <p>The results also look reasonable! Nevertheless, eventhough the model is the same, we do get some differences. We can clearly see this in the example above:</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(15, 8))
@@ -1399,9 +1994,9 @@ ax.set(title=unique_id, ylabel=&quot;trips&quot;)
 
 fig.suptitle(&quot;SVI Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_54_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_56_0.png" style="width: 1000px;"/>
 </center>
-<p>The inferred trend component is milder in the SVI case for this specific time series.</p>
+<p>The inferred trend component is milder in the SVI case for this specific time series. Still, larger that the <code>HoltWinters</code> forecast.</p>
 </div>
 <div id="evaluation" class="section level2">
 <h2>Evaluation</h2>
@@ -1442,9 +2037,9 @@ y_pred_svi = jnp.array(
     ).transpose(&quot;sample&quot;, ...)
 )</code></pre>
 <pre class="python"><code>crps(truth=y_test, pred=y_pred_nuts)</code></pre>
-<pre><code>Array(11.743771, dtype=float32)</code></pre>
+<pre><code>Array(11.745733, dtype=float32)</code></pre>
 <pre class="python"><code>crps(truth=y_test, pred=y_pred_svi)</code></pre>
-<pre><code>Array(11.760125, dtype=float32)</code></pre>
+<pre><code>Array(11.597348, dtype=float32)</code></pre>
 <p>The results are very similar!</p>
 <p>One important aspect of the CRPS metric is that it reduces to the Mean Absolute Error (MAE) for point forecasts. Let’s to this for all of the models.</p>
 <pre class="python"><code>y_pred_autoets = (
@@ -1519,13 +2114,13 @@ for container in ax.containers:
 ax.legend(title=&quot;Point Estimate&quot;, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;CRPS&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_67_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_69_0.png" style="width: 1000px;"/>
 </center>
 <p>Here are some takeaways from this plot:</p>
 <ul>
-<li>For the point forecasts, the NUTS model is the best by a little small margin. To have a better performance comparison, we should use a time series cross-validation strategy (homework for the reader 🤓).</li>
-<li>The NUTS and SVI models performance is very similar. In real large scale applications SVI is a great alternative to NUTS (one still has to fo the prior sensitivity analysis, there is no free lunch!).</li>
-<li>Statistical univariate models are hard to beat! AutoETS is the best model in this case.</li>
+<li><p>For the point forecasts, the SVI model is the best by a little small margin. To have a better performance comparison, we should use a time series cross-validation strategy (homework for the reader 🤓).</p></li>
+<li><p>The NUTS and SVI models performance is very similar. In real large scale applications SVI is a great alternative to NUTS (one still has to do the prior sensitivity analysis, there is no free lunch!).</p></li>
+<li><p>Statistical univariate models are hard to beat! AutoETS is the best statistical model in this case.</p></li>
 </ul>
 <p>Finally, lets look at this results in the context of the absolute error distribution:</p>
 <pre class="python"><code>ae_df = pl.DataFrame(
@@ -1551,7 +2146,7 @@ sns.boxplot(
 )
 ax.set_title(&quot;Absolute Error Density&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_70_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_72_0.png" style="width: 1000px;"/>
 </center>
 </div>
 
