@@ -537,7 +537,7 @@ assert pivot_data_train_df.columns == pivot_data_test_df.columns
 # We extract the state from the column names
 ts_state_mapping = [col.split(&quot;::&quot;)[0] for col in pivot_data_train_df.columns[1:]]
 
-# We use a LabelEncoder to encode the states
+# We use a `LabelEncoder` to encode the states
 state_encoder = LabelEncoder()
 state_encoder.fit(ts_state_mapping)
 
@@ -545,9 +545,11 @@ ts_state_mapping_idx = state_encoder.transform(ts_state_mapping)
 
 # We will use `ts_state_mapping_idx` to map the columns to the states in a numeric way
 assert state_encoder.classes_[ts_state_mapping_idx].tolist() == ts_state_mapping</code></pre>
+<p>Now we split the target, unique_ids and date variables:</p>
 <pre class="python"><code>y_train = pivot_data_train_df.drop(&quot;quarter&quot;).to_jax()
-y_test = pivot_data_test_df.drop(&quot;quarter&quot;).to_jax()</code></pre>
-<pre class="python"><code>train_unique_ids = pivot_data_train_df.drop(&quot;quarter&quot;).columns
+y_test = pivot_data_test_df.drop(&quot;quarter&quot;).to_jax()
+
+train_unique_ids = pivot_data_train_df.drop(&quot;quarter&quot;).columns
 test_unique_ids = pivot_data_test_df.drop(&quot;quarter&quot;).columns
 
 train_dates = pivot_data_train_df[&quot;quarter&quot;].dt.strftime(&quot;%Y-%m-%d&quot;).to_numpy()
@@ -622,7 +624,7 @@ for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
 
 fig.suptitle(&quot;Univariate Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_26_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_28_0.png" style="width: 1000px;"/>
 </center>
 <p>The AutoETS model is very conservative when the signal does not have a clear seasonal pattern. In many cases it preficts a straight line. The Seasonal Naive model is the most aggressive one, and the Holt-Winters model is in between.</p>
 <p>We can now look into the prediction intervals of the Holt-Winters model. We are interested in this model as we will compare it with our hierarchical model version in NumPyro.</p>
@@ -683,7 +685,7 @@ for i, unique_id in enumerate(unique_ids[&quot;unique_id&quot;]):
 
 fig.suptitle(&quot;Holt Winters Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
 <center>
-<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_29_0.png" style="width: 1000px;"/>
+<img src="../images/hierarchical_exponential_smoothing_files/hierarchical_exponential_smoothing_31_0.png" style="width: 1000px;"/>
 </center>
 </div>
 <div id="numpyro-model" class="section level2">
@@ -837,8 +839,8 @@ fig.suptitle(&quot;Holt Winters Forecast&quot;, fontsize=20, fontweight=&quot;bo
 <h2>NUTS Inference</h2>
 <p>The first inference approach we use is NUTS. We fit the model to the training data and make predictions on the test set. Fitting this model in my local machine (Mac M3) takes around <span class="math inline">\(3\)</span> minutes (not bad for a medium-size data set).</p>
 <pre class="python"><code>class InferenceParams(BaseModel):
-    num_warmup: int = Field(2_500, ge=1)
-    num_samples: int = Field(4_000, ge=1)
+    num_warmup: int = Field(1_500, ge=1)
+    num_samples: int = Field(3_500, ge=1)
     num_chains: int = Field(4, ge=1)
 
 
@@ -917,17 +919,17 @@ print(f&quot;&quot;&quot;Divergences: {idata[&quot;sample_stats&quot;][&quot;div
 
     .dataframe thead th {
         text-align: left;
-        font-size: 15px;
+        font-size: 14px;
     }
 
     .dataframe tbody tr th {
         vertical-align: top;
-        font-size: 15px;
+        font-size: 14px;
     }
     
     .dataframe tbody tr td {
         vertical-align: top;
-        font-size: 15px;
+        font-size: 14px;
     }
 </style>
 <table border="1" class="dataframe">
