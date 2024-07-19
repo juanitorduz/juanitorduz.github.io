@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Multilevel Elasticities for a Single SKU - Part III. - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Multilevel Elasticities for a Single SKU - Part III. - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">7 min read</span>
+    
+
+    <h1 class="article-title">Multilevel Elasticities for a Single SKU - Part III.</h1>
+
+    
+    <span class="article-date">2024-07-19</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we continue our simulation study for elasticities, see:</p>
+<ul>
+<li><p><a href="https://juanitorduz.github.io/multilevel_elasticities_single_sku/">Multilevel Elasticities for a Single SKU - Part I</a></p></li>
+<li><p><a href="https://juanitorduz.github.io/multilevel_elasticities_single_sku_2/">Multilevel Elasticities for a Single SKU - Part II</a></p></li>
+</ul>
+<p>for an introduction to the problem and some models. In this notebook we extend the covariance model to allow two covariance components on both the intercepts and slopes (coefficient of the <code>median_ income</code> variable). Also, to abstract from a specific framework, we do the implementation in <a href="https://num.pyro.ai/">NumPyro</a>. The corresponding <a href="https://docs.pymc.io/">PyMC</a> is very similar.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import polars as pl
+import seaborn as sns
+from jax import random
+from numpyro.infer import MCMC, NUTS, Predictive
+from sklearn.preprocessing import LabelEncoder
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We read the data from cour case study. YOu can find an explicit data generating process in the first notebook <a href="https://juanitorduz.github.io/multilevel_elasticities_single_sku/">Multilevel Elasticities for a Single SKU - Part I</a>.</p>
+<pre class="python"><code>market_df = pl.read_csv(
+    &quot;https://raw.githubusercontent.com/juanitorduz/website_projects/master/data/multilevel_elasticities_single_sku_data.csv&quot;,
+    schema_overrides={&quot;region_id&quot;: pl.Categorical},
+)
+
+market_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+    
+    .dataframe thead th {
+        text-align: left;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 15px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 15px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<small>shape: (5, 10)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+item_id
+</th>
+<th>
+price
+</th>
+<th>
+quantities
+</th>
+<th>
+time_step
+</th>
+<th>
+store_id
+</th>
+<th>
+region_store_id
+</th>
+<th>
+region_id
+</th>
+<th>
+median_income
+</th>
+<th>
+log_price
+</th>
+<th>
+log_quantities
+</th>
+</tr>
+<tr>
+<td>
+i64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+str
+</td>
+<td>
+cat
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+0
+</td>
+<td>
+1.335446
+</td>
+<td>
+6.170862
+</td>
+<td>
+16
+</td>
+<td>
+0
+</td>
+<td>
+"r-0_s-0"
+</td>
+<td>
+"0"
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.289265
+</td>
+<td>
+1.819839
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1.702792
+</td>
+<td>
+3.715124
+</td>
+<td>
+15
+</td>
+<td>
+0
+</td>
+<td>
+"r-0_s-0"
+</td>
+<td>
+"0"
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.532269
+</td>
+<td>
+1.312412
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1.699778
+</td>
+<td>
+3.290962
+</td>
+<td>
+14
+</td>
+<td>
+0
+</td>
+<td>
+"r-0_s-0"
+</td>
+<td>
+"0"
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.530498
+</td>
+<td>
+1.19118
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1.335844
+</td>
+<td>
+5.702928
+</td>
+<td>
+13
+</td>
+<td>
+0
+</td>
+<td>
+"r-0_s-0"
+</td>
+<td>
+"0"
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.289563
+</td>
+<td>
+1.74098
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1.517213
+</td>
+<td>
+4.264949
+</td>
+<td>
+12
+</td>
+<td>
+0
+</td>
+<td>
+"r-0_s-0"
+</td>
+<td>
+"0"
+</td>
+<td>
+5.873343
+</td>
+<td>
+0.416875
+</td>
+<td>
+1.45043
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Recall that our objective is to estimate the elasticity of a single SKU across different regions.</p>
+<pre class="python"><code>g = sns.lmplot(
+    data=market_df,
+    x=&quot;log_price&quot;,
+    y=&quot;log_quantities&quot;,
+    hue=&quot;region_id&quot;,
+    height=8,
+    aspect=1.2,
+    scatter=False,
+)
+g.set_axis_labels(x_var=&quot;Log Prices&quot;, y_var=&quot;Log Quantities&quot;)
+legend = g.legend
+legend.set_title(title=&quot;Region ID&quot;, prop={&quot;size&quot;: 10})
+g.fig.suptitle(
+    &quot;Log Prices vs Log Quantities by Region&quot;, y=1.05, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_3_files/multilevel_elasticities_single_sku_3_6_1.png" style="width: 900px;"/>
+</center>
+<p>We expect this elasticity to be influenced by the region’s median income.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 6))
+(
+    market_df.group_by(&quot;region_id&quot;)
+    .agg(pl.col(&quot;median_income&quot;).mean())
+    .to_pandas()
+    .pipe(
+        (sns.barplot, &quot;data&quot;), x=&quot;region_id&quot;, y=&quot;median_income&quot;, hue=&quot;region_id&quot;, ax=ax
+    )
+)
+ax.set(xlabel=&quot;Region ID&quot;, ylabel=&quot;Median Income&quot;)
+ax.set_title(label=&quot;Median Income by Region&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_3_files/multilevel_elasticities_single_sku_3_8_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>As described in the previous notebooks, we can use a multilevel covariance model to estimate the elasticity by constraining how the intercept and slops vary. In the first notebook we did this just for the <code>median_income</code> variable. Here we extend it so that we have two covariance components for the intercept and two for the slope. We do thin in the non-centered parametrization (see <a href="https://fehiepsi.github.io/rethinking-numpyro/14-adventures-in-covariance.html">Statistical Rethinking in NumPyro - Chapter 14. Adventures in Covariance</a>). Here is a mathematical description of the model:</p>
+<p><span class="math display">\[\begin{align*}
+
+\log(q) &amp; \sim  \text{Normal}(\mu, \sigma ^2) \\
+\mu &amp; =  \alpha + \beta \log(p) \\
+\alpha &amp; = \alpha_{\text{intercept}, \text{region}} + \alpha_{\text{slope}, \text{region}} m \\
+\beta &amp; = \beta_{\text{intercept}, \text{region}} + \beta_{\text{slope}, \text{region}} m \\
+
+
+\alpha_{\text{intercept}, \text{region}} &amp; = z&#39;_{\text{intercept}}[0] \\
+\alpha_{\text{slope}, \text{region}} &amp; = z&#39;_{\text{slope}}[0] \\
+
+\beta_{\text{intercept}, \text{region}} &amp; = z&#39;_{\text{intercept}}[1] \\
+\beta_{\text{slope}, \text{region}} &amp; = z&#39;_{\text{slope}}[1] \\
+
+
+z&#39;_{\text{intercept}} &amp;= \text{diag}(\sigma_{\alpha_{\text{intercept}}}^2, \sigma_{\beta_{\text{intercept}}}^2) L_{\text{intercept}} \: z_{\text{intercept}} \\
+
+z&#39;_{\text{slope}} &amp;= \text{diag}(\sigma_{\alpha_{\text{slope}}}^2, \sigma_{\beta_{\text{slope}}}^2) L_{\text{slope}} \: z_{\text{slope}} \\
+
+L_{\text{slope}} &amp; \sim \text{LKJCholesky}(1) \\
+
+z_{\text{intercept}} &amp; \sim \text{Normal}(0, 1) \\
+
+z_{\text{slope}} &amp; \sim \text{Normal}(0, 1)
+
+\end{align*}\]</span></p>
+<p>We prepare the data (very similar to the previous notebooks) and then implement the model in <code>NumPyro</code>.</p>
+<pre class="python"><code>obs_idx = np.arange(market_df.shape[0])
+
+# For the region_id we use a label encoder to transform the categorical
+# variable into integers (in more applications these tags won&#39;t be always integers so
+# it is good to get used to these encoders.
+regions_encoder = LabelEncoder()
+regions_encoder.fit(market_df[&quot;region_id&quot;].to_numpy())
+regions_idx = regions_encoder.transform(market_df[&quot;region_id&quot;].to_numpy())
+regions = regions_encoder.classes_
+
+log_price = market_df[&quot;log_price&quot;].to_jax()
+log_quantities = market_df[&quot;log_quantities&quot;].to_jax()
+
+# This is just an auxiliary variable to indicate we are modeling
+# two covariance components.
+effect = [&quot;intercept&quot;, &quot;median_income&quot;]</code></pre>
+<p>Besides the usual data preparation, we need a map from the encoded category regions to the corresponding median income values:</p>
+<pre class="python"><code>region_median_income_mapping_df = market_df.select(
+    [&quot;region_id&quot;, &quot;median_income&quot;]
+).unique()
+
+region_median_income_mapping_df = region_median_income_mapping_df.with_columns(
+    region_idx=regions_encoder.transform(
+        region_median_income_mapping_df[&quot;region_id&quot;].to_numpy()
+    )
+).sort(&quot;region_idx&quot;)
+
+median_income = region_median_income_mapping_df[&quot;median_income&quot;].to_jax()</code></pre>
+<p>Now we implement the model:</p>
+<pre class="python"><code>def model(log_price, regions_idx, median_income, log_quantities=None):
+    dim = 2
+    effects = 2
+    n_obs = log_price.size
+    n_regions = np.unique(regions_idx).size
+
+    # Prior for the degrees of freedom of the Student-T distribution.
+    nu = numpyro.sample(&quot;nu&quot;, dist.Gamma(concentration=20.0, rate=3))
+    # Prior for the scale parameter of the Student-T distribution.
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.Exponential(rate=1.0 / 0.5))
+
+    # concentration prior for the LKJ prior (this value assumes uniform correlation),
+    concentration = jnp.ones(1)
+
+    with numpyro.plate(&quot;effect&quot;, effects, dim=-1):
+        # standard deviation of the effect.
+        sigma_effect = numpyro.sample(
+            &quot;sigma_effect&quot;, dist.HalfNormal(scale=0.2 * jnp.ones(dim))
+        )
+        # correlation matrix
+        chol_corr = numpyro.sample(
+            &quot;chol_corr&quot;,
+            dist.LKJCholesky(dimension=dim, concentration=concentration),
+        )
+
+        with numpyro.plate(&quot;regions&quot;, n_regions, dim=-2):
+            # z is the latent variable that we will use to compute the covariance matrix
+            # in the non-centered parameterization.
+            z = numpyro.sample(&quot;z&quot;, dist.Normal(loc=0, scale=1))
+
+    # We compute the covariance matrix using the cholesky decomposition
+    chol_cov = z @ (sigma_effect[None, ...] * chol_corr)
+    # We extract the region effects
+    alpha_region_effect = chol_cov[:, :, 0]
+    beta_region_effect = chol_cov[:, :, 1]
+    # Global intercept component (intercept and median income term)
+    alpha_region_intercept = alpha_region_effect[0, :]
+    alpha_region_median_income = alpha_region_effect[1, :]
+    # Global slope factor of `log_price` (intercept and median income term)
+    beta_region_intercept = beta_region_effect[0, :]
+    beta_region_median_income = beta_region_effect[1, :]
+
+    # Region specific intercept and slope
+    alpha_region = numpyro.deterministic(
+        &quot;alpha_region&quot;,
+        alpha_region_intercept + alpha_region_median_income * median_income,
+    )
+    beta_region = numpyro.deterministic(
+        &quot;beta_region&quot;,
+        beta_region_intercept + beta_region_median_income * median_income,
+    )
+
+    # Likelihood mean
+    mu = alpha_region[regions_idx] + beta_region[regions_idx] * log_price
+
+    with numpyro.plate(&quot;data&quot;, n_obs):
+        # We use a Student-T likelihood to model the residuals.
+        numpyro.sample(
+            &quot;log_quantities&quot;,
+            dist.StudentT(df=nu, loc=mu, scale=sigma),
+            obs=log_quantities,
+        )</code></pre>
+<p>Let’s visualize the model:</p>
+<pre class="python"><code>numpyro.render_model(
+    model=model,
+    model_kwargs={
+        &quot;log_price&quot;: log_price,
+        &quot;regions_idx&quot;: regions_idx,
+        &quot;median_income&quot;: median_income,
+        &quot;log_quantities&quot;: log_quantities,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_3_files/multilevel_elasticities_single_sku_3_18_0.svg" style="width: 900px;"/>
+</center>
+</div>
+<div id="inference" class="section level2">
+<h2>Inference</h2>
+<p>We now use NUTS to sample from the posterior distribution of the model.</p>
+<pre class="python"><code>sampler = NUTS(model)
+mcmc = MCMC(
+    sampler=sampler,
+    num_warmup=1_000,
+    num_samples=4_000,
+    num_chains=4,
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+mcmc.run(rng_subkey, log_price, regions_idx, median_income, log_quantities)</code></pre>
+<p>We collect the results in an <code>az.InferenceData</code> object:</p>
+<pre class="python"><code>idata = az.from_numpyro(
+    mcmc,
+    coords={&quot;effect&quot;: effect, &quot;regions&quot;: regions},
+    dims={
+        &quot;sigma_effect&quot;: [&quot;effect&quot;],
+        &quot;z&quot;: [&quot;regions&quot;, &quot;effect&quot;],
+        &quot;alpha_region&quot;: [&quot;regions&quot;],
+        &quot;beta_region&quot;: [&quot;regions&quot;],
+    },
+)</code></pre>
+</div>
+<div id="model-diagnostics" class="section level2">
+<h2>Model Diagnostics</h2>
+<pre class="python"><code># Count divergences
+idata.sample_stats.diverging.sum().item()</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>az.summary(idata, var_names=[&quot;~z&quot;, &quot;~chol_corr&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+alpha_region[0]
+</th>
+<td>
+2.752
+</td>
+<td>
+0.052
+</td>
+<td>
+2.654
+</td>
+<td>
+2.848
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18213.0
+</td>
+<td>
+11582.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[1]
+</th>
+<td>
+2.994
+</td>
+<td>
+0.056
+</td>
+<td>
+2.890
+</td>
+<td>
+3.100
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16905.0
+</td>
+<td>
+11383.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[2]
+</th>
+<td>
+2.440
+</td>
+<td>
+0.035
+</td>
+<td>
+2.376
+</td>
+<td>
+2.507
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+17436.0
+</td>
+<td>
+12368.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[3]
+</th>
+<td>
+3.606
+</td>
+<td>
+0.139
+</td>
+<td>
+3.344
+</td>
+<td>
+3.867
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+16645.0
+</td>
+<td>
+11384.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[4]
+</th>
+<td>
+2.989
+</td>
+<td>
+0.052
+</td>
+<td>
+2.894
+</td>
+<td>
+3.088
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18849.0
+</td>
+<td>
+11999.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[5]
+</th>
+<td>
+2.827
+</td>
+<td>
+0.057
+</td>
+<td>
+2.720
+</td>
+<td>
+2.935
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16608.0
+</td>
+<td>
+11715.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[6]
+</th>
+<td>
+3.082
+</td>
+<td>
+0.049
+</td>
+<td>
+2.994
+</td>
+<td>
+3.178
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18674.0
+</td>
+<td>
+13358.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[7]
+</th>
+<td>
+2.343
+</td>
+<td>
+0.029
+</td>
+<td>
+2.291
+</td>
+<td>
+2.398
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18050.0
+</td>
+<td>
+13305.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha_region[8]
+</th>
+<td>
+2.541
+</td>
+<td>
+0.039
+</td>
+<td>
+2.470
+</td>
+<td>
+2.615
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+16718.0
+</td>
+<td>
+12278.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[0]
+</th>
+<td>
+-3.558
+</td>
+<td>
+0.124
+</td>
+<td>
+-3.789
+</td>
+<td>
+-3.324
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+18427.0
+</td>
+<td>
+11093.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[1]
+</th>
+<td>
+-4.074
+</td>
+<td>
+0.127
+</td>
+<td>
+-4.321
+</td>
+<td>
+-3.844
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+17216.0
+</td>
+<td>
+11973.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[2]
+</th>
+<td>
+-2.983
+</td>
+<td>
+0.083
+</td>
+<td>
+-3.141
+</td>
+<td>
+-2.829
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+17442.0
+</td>
+<td>
+12151.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[3]
+</th>
+<td>
+-5.362
+</td>
+<td>
+0.344
+</td>
+<td>
+-5.990
+</td>
+<td>
+-4.692
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+16356.0
+</td>
+<td>
+10542.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[4]
+</th>
+<td>
+-4.011
+</td>
+<td>
+0.121
+</td>
+<td>
+-4.240
+</td>
+<td>
+-3.786
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+19029.0
+</td>
+<td>
+11793.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[5]
+</th>
+<td>
+-3.601
+</td>
+<td>
+0.134
+</td>
+<td>
+-3.854
+</td>
+<td>
+-3.348
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+16588.0
+</td>
+<td>
+9217.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[6]
+</th>
+<td>
+-4.203
+</td>
+<td>
+0.114
+</td>
+<td>
+-4.421
+</td>
+<td>
+-3.995
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+18968.0
+</td>
+<td>
+12457.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[7]
+</th>
+<td>
+-2.784
+</td>
+<td>
+0.067
+</td>
+<td>
+-2.909
+</td>
+<td>
+-2.659
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+18677.0
+</td>
+<td>
+11903.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_region[8]
+</th>
+<td>
+-3.220
+</td>
+<td>
+0.092
+</td>
+<td>
+-3.395
+</td>
+<td>
+-3.050
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+17982.0
+</td>
+<td>
+11875.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+12.536
+</td>
+<td>
+1.533
+</td>
+<td>
+9.740
+</td>
+<td>
+15.388
+</td>
+<td>
+0.015
+</td>
+<td>
+0.011
+</td>
+<td>
+10519.0
+</td>
+<td>
+9749.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.271
+</td>
+<td>
+0.005
+</td>
+<td>
+0.262
+</td>
+<td>
+0.280
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+11093.0
+</td>
+<td>
+10292.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_effect[intercept]
+</th>
+<td>
+0.268
+</td>
+<td>
+0.057
+</td>
+<td>
+0.174
+</td>
+<td>
+0.376
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3469.0
+</td>
+<td>
+6384.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_effect[median_income]
+</th>
+<td>
+0.498
+</td>
+<td>
+0.089
+</td>
+<td>
+0.344
+</td>
+<td>
+0.671
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+5370.0
+</td>
+<td>
+7094.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We do not have divergences and the r-hat values look good!</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=[&quot;~z&quot;, &quot;~chol_corr&quot;],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (15, 9), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Covariance Model&quot;, fontsize=20, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_3_files/multilevel_elasticities_single_sku_3_27_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="intercepts-and-elasticities" class="section level2">
+<h2>Intercepts and Elasticities</h2>
+<p>Let’s look into the estimates for the intercepts and elasticities:</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    data=idata,
+    var_names=[&quot;alpha_region&quot;],
+    combined=True,
+    figsize=(10, 6),
+)
+ax.set_title(
+    label=&quot;Posterior Distribution of the Intercepts&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_3_files/multilevel_elasticities_single_sku_3_29_0.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    data=idata,
+    var_names=[&quot;beta_region&quot;],
+    combined=True,
+    figsize=(10, 6),
+)
+ax.set_title(
+    label=&quot;Posterior Distribution of the Elasticities&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_3_files/multilevel_elasticities_single_sku_3_30_0.png" style="width: 900px;"/>
+</center>
+<p>These results are very similar to the ones we obtained in the previous notebooks!</p>
+</div>
+<div id="posterior-predictive-distribution" class="section level2">
+<h2>Posterior Predictive Distribution</h2>
+<p>Finally, we compute the posterior predictive distribution and compare it to the observed data.</p>
+<pre class="python"><code>predictive = Predictive(
+    model=model,
+    posterior_samples=mcmc.get_samples(),
+    return_sites=[&quot;log_quantities&quot;],
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+predictions = predictive(rng_subkey, log_price, regions_idx, median_income)</code></pre>
+<pre class="python"><code>idata.extend(
+    az.from_numpyro(
+        posterior_predictive=predictions,
+        coords={&quot;obs_idx&quot;: obs_idx},
+        dims={&quot;log_quantities&quot;: [&quot;obs_idx&quot;]},
+    )
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(idata, kind=&quot;kde&quot;, num_pp_samples=1_000, ax=ax)
+ax.set_title(label=&quot;Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/multilevel_elasticities_single_sku_3_files/multilevel_elasticities_single_sku_3_35_0.png" style="width: 900px;"/>
+</center>
+<p>The model seems to be capturing most of the variation in the data.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

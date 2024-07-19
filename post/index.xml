@@ -6,7 +6,19 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 07 Jun 2024 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 19 Jul 2024 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Multilevel Elasticities for a Single SKU - Part III.</title>
+      <link>/multilevel_elasticities_single_sku_3/</link>
+      <pubDate>Fri, 19 Jul 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/multilevel_elasticities_single_sku_3/</guid>
+      <description>In this notebook we continue our simulation study for elasticities, see:
+ Multilevel Elasticities for a Single SKU - Part I
+ Multilevel Elasticities for a Single SKU - Part II
+  for an introduction to the problem and some models. In this notebook we extend the covariance model to allow two covariance components on both the intercepts and slopes (coefficient of the median_ income variable). Also, to abstract from a specific framework, we do the implementation in NumPyro.</description>
+    </item>
+    
     <item>
       <title>Hierarchical Exponential Smoothing Model</title>
       <link>/hierarchical_exponential_smoothing/</link>
