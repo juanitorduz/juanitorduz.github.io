@@ -6,7 +6,16 @@
     <description>Recent content in python, numpyro, pricing, elasticities on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 19 Jul 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-pricing-elasticities/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 01 Aug 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-pricing-elasticities/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Hierarchical Pricing Elasticity Models</title>
+      <link>/elasticities/</link>
+      <pubDate>Thu, 01 Aug 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/elasticities/</guid>
+      <description>In this notebook we use a retail publicly available dataset to fit and compare various pricing elasticity models. This example can be seen as a continuation of the notebooks regarding Bayesian hierarchical models (see for example Multilevel Elasticities for a Single SKU - Part I). In this example we also see how Bayesian hierarchical models can help regularize elasticity estimates when taking advantage of the hierarchical structure of the data.</description>
+    </item>
+    
     <item>
       <title>Multilevel Elasticities for a Single SKU - Part III.</title>
       <link>/multilevel_elasticities_single_sku_3/</link>

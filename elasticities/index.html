@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Hierarchical Pricing Elasticity Models - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Hierarchical Pricing Elasticity Models - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">13 min read</span>
+    
+
+    <h1 class="article-title">Hierarchical Pricing Elasticity Models</h1>
+
+    
+    <span class="article-date">2024-08-01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we use a retail publicly available dataset to fit and compare various pricing elasticity models. This example can be seen as a continuation of the notebooks regarding Bayesian hierarchical models (see for example <a href="https://juanitorduz.github.io/multilevel_elasticities_single_sku/">Multilevel Elasticities for a Single SKU - Part I</a>). In this example we also see how Bayesian hierarchical models can help regularize elasticity estimates when taking advantage of the hierarchical structure of the data. In addition, this example shows that these models can scale well using stochastic variational inference in <a href="https://github.com/pyro-ppl/numpyro">NumPyro</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import graphviz as gr
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import polars as pl
+import seaborn as sns
+from jax import random
+from numpyro.handlers import block, reparam, seed
+from numpyro.infer import SVI
+from numpyro.infer.autoguide import (
+    AutoGuideList,
+    AutoMultivariateNormal,
+    AutoNormal,
+    Predictive,
+    Trace_ELBO,
+)
+from numpyro.infer.reparam import LocScaleReparam
+from sklearn.preprocessing import LabelEncoder
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>The dataset we use is available in the <a href="https://www.kaggle.com/">Kaggle</a> page <a href="https://www.kaggle.com/datasets/marian447/retail-store-sales-transactions">Retail Scanner Data: Gauge Price Elasticity</a>. From the dataset documentation:</p>
+<blockquote>
+<p>Detailed data on sales of consumer goods obtained by ‘scanning’ the bar codes for individual products at electronic points of sale in a retail store. The data provide detailed information about quantities, characteristics and values of goods sold as well as their prices.</p>
+<p>The anonymized dataset includes 64.682 transactions of 5.242 SKU’s sold to 22.625 customers during one year.</p>
+<ul>
+<li>Dataset Description</li>
+<li>Date of Sales Transaction</li>
+<li>Customer ID</li>
+<li>Transaction ID</li>
+<li>SKU Category ID</li>
+<li>SKU ID</li>
+<li>Quantity Sold</li>
+<li>Sales Amount (Unit price times quantity. For unit price, please divide Sales Amount by Quantity.)</li>
+</ul>
+</blockquote>
+<p>Let’s read the data into a <a href="https://docs.pola.rs/">Polars</a> DataFrame.</p>
+<pre class="python"><code>raw_data_df = pl.read_csv(
+    &quot;../data/scanner_data.csv&quot;,  # Path to the dataset (locally)
+    columns=[
+        &quot;Date&quot;,
+        &quot;Customer_ID&quot;,
+        &quot;Transaction_ID&quot;,
+        &quot;SKU_Category&quot;,
+        &quot;SKU&quot;,
+        &quot;Quantity&quot;,
+        &quot;Sales_Amount&quot;,
+    ],
+    schema_overrides={&quot;Date&quot;: pl.Date(), &quot;Quantity&quot;: pl.Float64()},
+)
+
+raw_data_df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 7)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+Date
+</th>
+<th>
+Customer_ID
+</th>
+<th>
+Transaction_ID
+</th>
+<th>
+SKU_Category
+</th>
+<th>
+SKU
+</th>
+<th>
+Quantity
+</th>
+<th>
+Sales_Amount
+</th>
+</tr>
+<tr>
+<td>
+date
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+2547
+</td>
+<td>
+1
+</td>
+<td>
+"X52"
+</td>
+<td>
+"0EM7L"
+</td>
+<td>
+1.0
+</td>
+<td>
+3.13
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+822
+</td>
+<td>
+2
+</td>
+<td>
+"2ML"
+</td>
+<td>
+"68BRQ"
+</td>
+<td>
+1.0
+</td>
+<td>
+5.46
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+3686
+</td>
+<td>
+3
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"CZUZX"
+</td>
+<td>
+1.0
+</td>
+<td>
+6.35
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+3719
+</td>
+<td>
+4
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"549KK"
+</td>
+<td>
+1.0
+</td>
+<td>
+5.59
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+9200
+</td>
+<td>
+5
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"K8EHH"
+</td>
+<td>
+1.0
+</td>
+<td>
+6.88
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="process-data" class="section level2">
+<h2>Process Data</h2>
+<p>We star with a very simple formatting step.</p>
+<pre class="python"><code>data_df = (
+    raw_data_df.select(pl.all().name.to_lowercase())
+    .with_columns(
+        # Compute price as sales_amount / quantity
+        pl.col(&quot;sales_amount&quot;).truediv(pl.col(&quot;quantity&quot;)).alias(&quot;price&quot;)
+    )
+    .drop([&quot;customer_id&quot;, &quot;transaction_id&quot;])
+)
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 6)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+date
+</th>
+<th>
+sku_category
+</th>
+<th>
+sku
+</th>
+<th>
+quantity
+</th>
+<th>
+sales_amount
+</th>
+<th>
+price
+</th>
+</tr>
+<tr>
+<td>
+date
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+"X52"
+</td>
+<td>
+"0EM7L"
+</td>
+<td>
+1.0
+</td>
+<td>
+3.13
+</td>
+<td>
+3.13
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+"2ML"
+</td>
+<td>
+"68BRQ"
+</td>
+<td>
+1.0
+</td>
+<td>
+5.46
+</td>
+<td>
+5.46
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"CZUZX"
+</td>
+<td>
+1.0
+</td>
+<td>
+6.35
+</td>
+<td>
+6.35
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"549KK"
+</td>
+<td>
+1.0
+</td>
+<td>
+5.59
+</td>
+<td>
+5.59
+</td>
+</tr>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"K8EHH"
+</td>
+<td>
+1.0
+</td>
+<td>
+6.88
+</td>
+<td>
+6.88
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="exploratory-data-analysis" class="section level2">
+<h2>Exploratory Data Analysis</h2>
+<p>This dataset has many good exploratory data analysis notebooks on the <a href="https://docs.pola.rs/">Kaggle page</a>. Here we focus on the most important aspect in order to fit a pricing elasticity model.</p>
+<p>We start by counting the number of SKUs and SKUs categories.</p>
+<pre class="python"><code>print(f&quot;Number of SKUs: {data_df[&#39;sku&#39;].n_unique()}&quot;)
+print(f&quot;Number of SKUs Categories: {data_df[&#39;sku_category&#39;].n_unique()}&quot;)</code></pre>
+<pre><code>Number of SKUs: 5242
+Number of SKUs Categories: 187</code></pre>
+<p>We are interested in the number of SKUs per category. We can count them ant plot the top 25 categories.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.barplot(
+    data=data_df.group_by(&quot;sku_category&quot;)
+    .agg(pl.col(&quot;sku&quot;).n_unique().alias(&quot;n_skus&quot;))
+    .group_by(&quot;n_skus&quot;)
+    .len()
+    .sort(&quot;n_skus&quot;)
+    .head(25),
+    x=&quot;n_skus&quot;,
+    y=&quot;len&quot;,
+    ax=ax,
+)
+ax.set(xlabel=&quot;Number of SKUs&quot;, ylabel=&quot;Count&quot;)
+ax.set_title(&quot;Number of SKUs per Category (Top 25)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_12_0.png" style="width: 900px;"/>
+</center>
+<p>Hence, we see that on average the SKU categories are rather small with of the order of <span class="math inline">\(1 - 10\)</span> SKUs.</p>
+<p>Next, we plot the aggregated sales over time.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.lineplot(
+    data=data_df.group_by(&quot;date&quot;).agg(
+        pl.col(&quot;sales_amount&quot;).sum().alias(&quot;total_sales&quot;)
+    ),
+    x=&quot;date&quot;,
+    y=&quot;total_sales&quot;,
+    ax=ax,
+)
+ax.set_title(&quot;Total Sales Over Time&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_14_0.png" style="width: 900px;"/>
+</center>
+<p>We confirm we have one year of data with a clear weekly seasonal pattern. There is no clear trend in the data.</p>
+<p>Finally, we plot the distribution of the sales amount (in the log scale).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_dist(data_df[&quot;sales_amount&quot;], rug=True, ax=ax)
+ax.set(xscale=&quot;log&quot;)
+ax.set_title(&quot;Distribution of Sales Amount&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_16_0.png" style="width: 900px;"/>
+</center>
+<p>The values per transaction are not very large and are typically in the range from <span class="math inline">\(1\)</span> to <span class="math inline">\(10\)</span>.</p>
+</div>
+<div id="data-preparation" class="section level2">
+<h2>Data Preparation</h2>
+<p>Now we prepare the data for the model. In this example we will use a constant elasticity price response model of the form</p>
+<p><span class="math display">\[
+q(p) = Ap^{b}
+\]</span></p>
+<p>where <span class="math inline">\(q\)</span> is the quantity sold and <span class="math inline">\(p\)</span> is the price. We can linearize the model by taking the log of both sides.</p>
+<p><span class="math display">\[
+\log(q) = \log(A) + b \log(p)
+\]</span></p>
+<p>and verify that the elasticity is given by</p>
+<p><span class="math display">\[
+\text{elasticity} = \frac{d \log(q)}{d \log(p)} = b
+\]</span></p>
+<p>For the first model we fit a naive model where we assume that each SKU has its own intercept and slope. For this purposes we need to filter out SKUs with wither very little data or very little price variation.</p>
+<pre class="python"><code># Filter SKUs with very little data or very little price variation
+n_dates_expr = pl.col(&quot;date&quot;).n_unique().over(&quot;sku&quot;).alias(&quot;n_dates&quot;)
+n_prices_expr = pl.col(&quot;price&quot;).n_unique().over(&quot;sku&quot;).alias(&quot;n_prices&quot;)
+
+n_dates_threshold = 10
+n_prices_threshold = 10
+
+n_dates_filter = n_dates_expr &gt; n_dates_threshold
+n_prices_filter = n_prices_expr &gt; n_prices_threshold
+
+# Compute log price and log quantity
+log_price_expr = pl.col(&quot;price&quot;).log().alias(&quot;log_price&quot;)
+log_quantity_expr = pl.col(&quot;quantity&quot;).log().alias(&quot;log_quantity&quot;)
+
+
+model_df = (
+    data_df.with_columns(log_price_expr, log_quantity_expr)
+    .filter(n_dates_filter &amp; n_prices_filter)
+    .sort(by=[&quot;sku_category&quot;, &quot;sku&quot;, &quot;date&quot;])
+)
+
+model_df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 8)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+date
+</th>
+<th>
+sku_category
+</th>
+<th>
+sku
+</th>
+<th>
+quantity
+</th>
+<th>
+sales_amount
+</th>
+<th>
+price
+</th>
+<th>
+log_price
+</th>
+<th>
+log_quantity
+</th>
+</tr>
+<tr>
+<td>
+date
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+2016-01-02
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"ABFD7"
+</td>
+<td>
+1.0
+</td>
+<td>
+4.84
+</td>
+<td>
+4.84
+</td>
+<td>
+1.576915
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<td>
+2016-01-04
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"ABFD7"
+</td>
+<td>
+1.0
+</td>
+<td>
+4.84
+</td>
+<td>
+4.84
+</td>
+<td>
+1.576915
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<td>
+2016-01-04
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"ABFD7"
+</td>
+<td>
+1.0
+</td>
+<td>
+4.84
+</td>
+<td>
+4.84
+</td>
+<td>
+1.576915
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<td>
+2016-01-04
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"ABFD7"
+</td>
+<td>
+1.0
+</td>
+<td>
+4.84
+</td>
+<td>
+4.84
+</td>
+<td>
+1.576915
+</td>
+<td>
+0.0
+</td>
+</tr>
+<tr>
+<td>
+2016-01-05
+</td>
+<td>
+"0H2"
+</td>
+<td>
+"ABFD7"
+</td>
+<td>
+1.0
+</td>
+<td>
+4.84
+</td>
+<td>
+4.84
+</td>
+<td>
+1.576915
+</td>
+<td>
+0.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Let’s count the number of SKUs and SKUs categories after filtering.</p>
+<pre class="python"><code>print(f&quot;Number of SKUs: {model_df[&#39;sku&#39;].n_unique()}&quot;)
+print(f&quot;Number of SKUs Categories: {model_df[&#39;sku_category&#39;].n_unique()}&quot;)</code></pre>
+<pre><code>Number of SKUs: 87
+Number of SKUs Categories: 33</code></pre>
+<p>Next, we encode our relevant variables. We won’t use them all in the first model but we prepare them for other models (this is very similar to the encoding from the example notebook <a href="https://juanitorduz.github.io/hierarchical_exponential_smoothing/">Hierarchical Exponential Smoothing Model</a>).</p>
+<pre class="python"><code>obs_idx = np.arange(model_df.shape[0])
+
+sku_encoder = LabelEncoder()
+sku_idx = jnp.array(sku_encoder.fit_transform(model_df[&quot;sku&quot;]))
+sku = sku_encoder.classes_
+
+sku_category_encoder = LabelEncoder()
+sku_category_idx = jnp.array(
+    sku_category_encoder.fit_transform(model_df[&quot;sku_category&quot;])
+)
+sku_category = sku_category_encoder.classes_
+
+date_encoder = LabelEncoder()
+date_idx = jnp.array(
+    date_encoder.fit_transform(
+        model_df.select(pl.col(&quot;date&quot;).dt.strftime(&quot;%Y-%m-%d&quot;))[&quot;date&quot;]
+    )
+)
+date = date_encoder.classes_
+
+log_price = model_df[&quot;log_price&quot;].to_jax()
+log_quantity = model_df[&quot;log_quantity&quot;].to_jax()
+
+sku_category_mapping_df = (
+    model_df.select([&quot;sku&quot;, &quot;sku_category&quot;]).unique().sort([&quot;sku&quot;, &quot;sku_category&quot;])
+)
+
+sku_category_mapping_df = sku_category_mapping_df.with_columns(
+    sku_idx=sku_encoder.transform(sku_category_mapping_df[&quot;sku&quot;]),
+    sku_category_idx=sku_category_encoder.transform(
+        sku_category_mapping_df[&quot;sku_category&quot;]
+    ),
+).sort(&quot;sku_idx&quot;)
+
+sku_category_mapping = sku_category_mapping_df[&quot;sku_category_idx&quot;].to_jax()</code></pre>
+</div>
+<div id="simple-elasticity-model" class="section level2">
+<h2>Simple Elasticity Model</h2>
+<p>The first model we fit is a simple model where each SKU has its own intercept and slope.</p>
+<pre class="python"><code>def simple_elasticity_model(log_price, sku_idx, log_quantity=None):
+    n_obs = log_price.size
+    n_sku = np.unique(sku_idx).size
+
+    with numpyro.plate(&quot;sku&quot;, n_sku):
+        sku_intercept = numpyro.sample(&quot;sku_intercept&quot;, dist.Normal(loc=0, scale=1))
+        beta_log_price = numpyro.sample(&quot;beta_log_price&quot;, dist.Normal(loc=0, scale=1))
+        sigma_sku = numpyro.sample(&quot;sigma&quot;, dist.HalfNormal(scale=1))
+
+    mu = beta_log_price[sku_idx] * log_price + sku_intercept[sku_idx]
+
+    sigma = sigma_sku[sku_idx]
+
+    with numpyro.plate(&quot;data&quot;, n_obs):
+        numpyro.sample(&quot;obs&quot;, dist.Normal(loc=mu, scale=sigma), obs=log_quantity)</code></pre>
+<pre class="python"><code>numpyro.render_model(
+    model=simple_elasticity_model,
+    model_kwargs={
+        &quot;log_price&quot;: log_price,
+        &quot;sku_idx&quot;: sku_idx,
+        &quot;log_quantity&quot;: log_quantity,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_27_0.svg" style="width: 800px;"/>
+</center>
+<p>We fit the model using stochastic variational inference.</p>
+<pre class="python"><code>simple_guide = AutoNormal(simple_elasticity_model)
+simple_optimizer = numpyro.optim.Adam(step_size=0.01)
+
+simple_svi = SVI(
+    simple_elasticity_model,
+    simple_guide,
+    simple_optimizer,
+    loss=Trace_ELBO(),
+)
+
+num_steps = 25_000
+
+rng_key, rng_subkey = random.split(key=rng_key)
+simple_svi_result = simple_svi.run(
+    rng_subkey,
+    num_steps,
+    log_price,
+    sku_idx,
+    log_quantity,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(simple_svi_result.losses)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 25000/25000 [00:08&lt;00:00, 2835.41it/s, init loss: 304577.6562, avg. loss [23751-25000]: -1819.7923]</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_29_1.png" style="width: 800px;"/>
+</center>
+<p>We can visualize the posterior distribution of the elasticity estimates.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+simple_svi_posterior = Predictive(
+    model=simple_elasticity_model,
+    guide=simple_guide,
+    params=simple_svi_result.params,
+    num_samples=5_000,
+    return_sites=[
+        &quot;beta_log_price&quot;,
+        &quot;sigma&quot;,
+        &quot;obs&quot;,
+    ],
+)(rng_subkey, log_price, sku_idx, log_quantity)
+
+simple_svi_idata = az.from_dict(
+    posterior={
+        k: jnp.expand_dims(a=jnp.asarray(v), axis=0)
+        for k, v in simple_svi_posterior.items()
+    },
+    coords={&quot;sku&quot;: sku, &quot;obs_idx&quot;: obs_idx},
+    dims={
+        &quot;beta_log_price&quot;: [&quot;sku&quot;],
+        &quot;sigma&quot;: [&quot;sku&quot;],
+        &quot;obs&quot;: [&quot;obs_idx&quot;],
+    },
+)
+
+fig, ax = plt.subplots(figsize=(12, 16))
+az.plot_forest(
+    data=simple_svi_idata,
+    var_names=[&quot;beta_log_price&quot;],
+    combined=True,
+    ax=ax,
+)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.axvline(x=-1, color=&quot;red&quot;, linestyle=&quot;-.&quot;)
+ax.set_title(
+    r&quot;Simple Model - Elasticity Estimates ($94\%$ HDI)&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_31_0.png" style="width: 1000px;"/>
+</center>
+<p>We would expect the elasticity to be negative from microeconomic theory.However, we see that some SKUs have a positive elasticity. This could be due to <strong>endogeneity</strong> in the data. For example, SKUs characteristics and seasonality are likely correlated with the price and quantity sold creating a backdoor path from price to quantity.</p>
+<pre class="python"><code>g = gr.Digraph()
+g.edge(&quot;price&quot;, &quot;quantity&quot;)
+g.edge(&quot;characteristics&quot;, &quot;quantity&quot;)
+g.edge(&quot;characteristics&quot;, &quot;price&quot;)
+g.edge(&quot;seasonality&quot;, &quot;quantity&quot;)
+g.edge(&quot;seasonality&quot;, &quot;price&quot;)
+g</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_33_0.svg" style="width: 400px;"/>
+</center>
+<p>This motivates the next model where we add fixed effects for SKUs and dates.</p>
+<p><strong>Remark:</strong> The red dashed line in the elasticity plot at <span class="math inline">\(-1\)</span> is the threshold between inelastic and elastic SKUs.</p>
+<p><strong>Remark:</strong> Observe that some SKUs with a positive elasticity have very large credibility intervals. Hence, this could be simply due to the small amount of data. We could have imposed a more restrictive prior to enforce negative elasticities (e.g. a half-normal). This is a similar approach as priors for media channels in a media-mix-model, see for example the notebook <a href="https://juanitorduz.github.io/mmm_roas/">Media Mix Model and Experimental Calibration: A Simulation Study</a>.</p>
+</div>
+<div id="fixed-effects-model" class="section level2">
+<h2>Fixed Effects Model</h2>
+<p>We extend the simple model above by including dummy variables for each SKU and dates.</p>
+<pre class="python"><code>def fixed_effects_elasticity_model(log_price, sku_idx, date_idx, log_quantity=None):
+    n_obs = log_price.size
+    n_sku = np.unique(sku_idx).size
+    n_date = np.unique(date_idx).size
+
+    with numpyro.plate(&quot;sku&quot;, n_sku):
+        sku_intercept = numpyro.sample(&quot;sku_intercept&quot;, dist.Normal(loc=0, scale=1))
+        beta_log_price = numpyro.sample(&quot;beta_log_price&quot;, dist.Normal(loc=0, scale=1))
+        sigma_sku = numpyro.sample(&quot;sigma&quot;, dist.HalfNormal(scale=5))
+
+    with numpyro.plate(&quot;date&quot;, n_date):
+        date_intercept = numpyro.sample(&quot;date_intercept&quot;, dist.Normal(loc=0, scale=1))
+
+    mu = (
+        beta_log_price[sku_idx] * log_price
+        + sku_intercept[sku_idx]
+        + date_intercept[date_idx]
+    )
+
+    sigma = sigma_sku[sku_idx]
+
+    with numpyro.plate(&quot;data&quot;, n_obs):
+        numpyro.sample(&quot;obs&quot;, dist.Normal(loc=mu, scale=sigma), obs=log_quantity)</code></pre>
+<pre class="python"><code>numpyro.render_model(
+    model=fixed_effects_elasticity_model,
+    model_kwargs={
+        &quot;log_price&quot;: log_price,
+        &quot;sku_idx&quot;: sku_idx,
+        &quot;date_idx&quot;: date_idx,
+        &quot;log_quantity&quot;: log_quantity,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_38_0.svg" style="width: 1000px;"/>
+</center>
+<p>The fitting process is the same as before.</p>
+<pre class="python"><code>fixed_effects_guide = AutoNormal(fixed_effects_elasticity_model)
+fixed_effects_optimizer = numpyro.optim.Adam(step_size=0.01)
+
+fixed_effects_svi = SVI(
+    fixed_effects_elasticity_model,
+    fixed_effects_guide,
+    fixed_effects_optimizer,
+    loss=Trace_ELBO(),
+)
+
+num_steps = 25_000
+
+rng_key, rng_subkey = random.split(key=rng_key)
+fixed_effects_svi_result = fixed_effects_svi.run(
+    rng_subkey,
+    num_steps,
+    log_price,
+    sku_idx,
+    date_idx,
+    log_quantity,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(fixed_effects_svi_result.losses)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 25000/25000 [00:10&lt;00:00, 2301.62it/s, init loss: 356744.6562, avg. loss [23751-25000]: -506.9645]</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_40_1.png" style="width: 800px;"/>
+</center>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+fixed_effects_svi_posterior = Predictive(
+    model=fixed_effects_elasticity_model,
+    guide=fixed_effects_guide,
+    params=fixed_effects_svi_result.params,
+    num_samples=5_000,
+    return_sites=[&quot;beta_log_price&quot;],
+)(rng_subkey, log_price, sku_idx, date_idx, log_quantity)
+
+fixed_effects_svi_idata = az.from_dict(
+    posterior={
+        k: jnp.expand_dims(a=jnp.asarray(v), axis=0)
+        for k, v in fixed_effects_svi_posterior.items()
+    },
+    coords={&quot;sku&quot;: sku, &quot;obs_idx&quot;: obs_idx},
+    dims={
+        &quot;beta_log_price&quot;: [&quot;sku&quot;],
+        &quot;sigma&quot;: [&quot;sku&quot;],
+        &quot;obs&quot;: [&quot;obs_idx&quot;],
+    },
+)
+
+fig, ax = plt.subplots(figsize=(12, 16))
+az.plot_forest(
+    data=[simple_svi_idata, fixed_effects_svi_idata],
+    model_names=[&quot;Simple&quot;, &quot;Fixed Effects&quot;],
+    var_names=[&quot;beta_log_price&quot;],
+    combined=True,
+    ax=ax,
+)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.axvline(x=-1, color=&quot;red&quot;, linestyle=&quot;-.&quot;)
+ax.set_title(
+    r&quot;Elasticity Estimates ($94\%$ HDI)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_41_0.png" style="width: 1000px;"/>
+</center>
+<p>The fixed effects model seems very similar to the first simple model. Next, we consider a more complex model with a richer structure.</p>
+</div>
+<div id="hierarchical-model" class="section level2">
+<h2>Hierarchical Model</h2>
+<p>As adding fixed effects for SKUs and dates is not enough, we consider a hierarchical model to try to improve the estimates. Concretely, in addition to the SKU and date fixed effects, we include a hierarchical structure in the SKU Category to regularize the elasticity estimates at the lowest level (SKU ID). In addition, the noise of the estimation is also included in the hierarchical structure.</p>
+<pre class="python"><code>def hierarchical_elasticity_model(
+    log_price,
+    sku_idx,
+    date_idx,
+    sku_category_idx,
+    sku_category_mapping,
+    log_quantity=None,
+    subsample_size=None,
+):
+    n_obs = log_price.size
+    n_sku = np.unique(sku_idx).size
+    n_sku_category = np.unique(sku_category_idx).size
+    n_date = np.unique(date_idx).size
+
+    beta_log_price_loc_loc = numpyro.sample(
+        &quot;beta_log_price_loc_loc&quot;, dist.Normal(loc=0, scale=1)
+    )
+    beta_log_price_loc_scale = numpyro.sample(
+        &quot;beta_log_price_loc_scale&quot;, dist.HalfNormal(scale=1)
+    )
+
+    beta_log_price_scale_scale = numpyro.sample(
+        &quot;beta_log_price_scale_scale&quot;, dist.HalfNormal(scale=1)
+    )
+
+    sigma_global = numpyro.sample(&quot;sigma_global&quot;, dist.HalfNormal(scale=1))
+
+    with numpyro.plate(&quot;sku_category&quot;, n_sku_category):
+        beta_log_price_loc = numpyro.sample(
+            &quot;beta_log_price_loc&quot;,
+            dist.Normal(loc=beta_log_price_loc_loc, scale=beta_log_price_loc_scale),
+        )
+        beta_log_price_scale = numpyro.sample(
+            &quot;beta_log_price_scale&quot;, dist.HalfNormal(scale=beta_log_price_scale_scale)
+        )
+
+        numpyro.sample(
+            &quot;beta_log_price_prior&quot;,
+            dist.Normal(loc=beta_log_price_loc, scale=beta_log_price_scale),
+        )
+
+        sigma_sku_category = numpyro.sample(
+            &quot;sigma_sku_category&quot;, dist.HalfNormal(scale=sigma_global)
+        )
+
+    with numpyro.plate(&quot;sku&quot;, n_sku):
+        sku_intercept = numpyro.sample(&quot;sku_intercept&quot;, dist.Normal(loc=0, scale=1))
+        beta_log_price = numpyro.sample(
+            &quot;beta_log_price&quot;,
+            dist.Normal(
+                loc=beta_log_price_loc[sku_category_mapping],
+                scale=beta_log_price_scale[sku_category_mapping],
+            ),
+        )
+
+    with numpyro.plate(&quot;date&quot;, n_date):
+        date_intercept = numpyro.sample(&quot;date_intercept&quot;, dist.Normal(loc=0, scale=1))
+
+    mu = (
+        beta_log_price[sku_idx] * log_price
+        + sku_intercept[sku_idx]
+        + date_intercept[date_idx]
+    )
+
+    sigma = sigma_sku_category[sku_category_idx]
+
+    with numpyro.plate(&quot;data&quot;, n_obs, subsample_size=subsample_size):
+        numpyro.sample(&quot;obs&quot;, dist.Normal(loc=mu, scale=sigma), obs=log_quantity)</code></pre>
+<pre class="python"><code>numpyro.render_model(
+    model=hierarchical_elasticity_model,
+    model_kwargs={
+        &quot;log_price&quot;: log_price,
+        &quot;sku_idx&quot;: sku_idx,
+        &quot;date_idx&quot;: date_idx,
+        &quot;sku_category_idx&quot;: sku_category_idx,
+        &quot;sku_category_mapping&quot;: sku_category_mapping,
+        &quot;log_quantity&quot;: log_quantity,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_45_0.svg" style="width: 1000px;"/>
+</center>
+<p>As we typically do, we reparameterize the model to (try to) improve the sampling process.</p>
+<pre class="python"><code>reparam_config = {
+    &quot;beta_log_price_loc&quot;: LocScaleReparam(0),
+    &quot;beta_log_price&quot;: LocScaleReparam(0),
+}
+
+reparam_hierarchical_elasticity_model = reparam(
+    fn=hierarchical_elasticity_model, config=reparam_config
+)
+
+numpyro.render_model(
+    model=reparam_hierarchical_elasticity_model,
+    model_kwargs={
+        &quot;log_price&quot;: log_price,
+        &quot;sku_idx&quot;: sku_idx,
+        &quot;date_idx&quot;: date_idx,
+        &quot;sku_category_idx&quot;: sku_category_idx,
+        &quot;sku_category_mapping&quot;: sku_category_mapping,
+        &quot;log_quantity&quot;: log_quantity,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_47_0.svg" style="width: 1000px;"/>
+</center>
+<p>Furthermore, we consider a more complex guide for the stochastic variational inference optimization. For the SKU category plate, we use a <a href="https://num.pyro.ai/en/latest/autoguide.html#numpyro.infer.autoguide.AutoMultivariateNormal"><code>AutoMultivariateNormal</code></a> guide. For the rest we keep the default <a href="https://num.pyro.ai/en/latest/autoguide.html#numpyro.infer.autoguide.AutoNormal"><code>AutoNormal</code></a> guide.</p>
+<pre class="python"><code>guide = AutoGuideList(reparam_hierarchical_elasticity_model)
+
+rng_key, rng_subkey = random.split(key=rng_key)
+
+guide.append(
+    AutoNormal(
+        block(
+            seed(reparam_hierarchical_elasticity_model, rng_subkey),
+            hide=[
+                &quot;beta_log_price_loc_decentered&quot;,
+                &quot;beta_log_price_loc&quot;,  # deterministic
+                &quot;beta_log_price_scale&quot;,
+                &quot;beta_log_price_prior&quot;,
+                &quot;beta_log_price&quot;,  # deterministic
+                &quot;sigma_sku_category&quot;,
+                &quot;sku_category&quot;,
+            ],
+        )
+    )
+)
+
+rng_key, rng_subkey = random.split(key=rng_key)
+
+guide.append(
+    AutoMultivariateNormal(
+        block(
+            seed(reparam_hierarchical_elasticity_model, rng_subkey),
+            expose=[
+                &quot;beta_log_price_loc_decentered&quot;,
+                &quot;beta_log_price_scale&quot;,
+                &quot;beta_log_price_prior&quot;,
+                &quot;sigma_sku_category&quot;,
+                &quot;sku_category&quot;,
+            ],
+        )
+    )
+)
+
+optimizer = numpyro.optim.Adam(step_size=0.01)
+svi = SVI(
+    reparam_hierarchical_elasticity_model,
+    guide,
+    optimizer,
+    loss=Trace_ELBO(),
+)
+
+num_steps = 25_000
+
+rng_key, rng_subkey = random.split(key=rng_key)
+svi_result = svi.run(
+    rng_subkey,
+    num_steps,
+    log_price,
+    sku_idx,
+    date_idx,
+    sku_category_idx,
+    sku_category_mapping,
+    log_quantity,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 25000/25000 [00:21&lt;00:00, 1146.46it/s, init loss: 7428603.0000, avg. loss [23751-25000]: 569.9154]</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_49_1.png" style="width: 800px;"/>
+</center>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+svi_posterior = Predictive(
+    model=reparam_hierarchical_elasticity_model,
+    guide=guide,
+    params=svi_result.params,
+    num_samples=5_000,
+    return_sites=[
+        &quot;beta_log_price_loc&quot;,
+        &quot;beta_log_price_scale&quot;,
+        &quot;beta_log_price_prior&quot;,
+        &quot;beta_log_price&quot;,
+        &quot;sigma&quot;,
+        &quot;sku_intercept&quot;,
+        &quot;date_intercept&quot;,
+        &quot;sigma_sku_category&quot;,
+    ],
+)(
+    rng_subkey,
+    log_price,
+    sku_idx,
+    date_idx,
+    sku_category_idx,
+    sku_category_mapping,
+    log_quantity,
+)
+
+svi_idata = az.from_dict(
+    posterior={
+        k: np.expand_dims(a=np.asarray(v), axis=0) for k, v in svi_posterior.items()
+    },
+    coords={&quot;sku&quot;: sku, &quot;sku_category&quot;: sku_category, &quot;date&quot;: date},
+    dims={
+        &quot;beta_log_price_loc&quot;: [&quot;sku_category&quot;],
+        &quot;beta_log_price_scale&quot;: [&quot;sku_category&quot;],
+        &quot;beta_log_price&quot;: [&quot;sku&quot;],
+        &quot;beta_log_price_prior&quot;: [&quot;sku_category&quot;],
+        &quot;sku_intercept&quot;: [&quot;sku&quot;],
+        &quot;date_intercept&quot;: [&quot;date&quot;],
+        &quot;sigma_sku_category&quot;: [&quot;sku_category&quot;],
+    },
+)</code></pre>
+<p>First of all, observe that this model allow us to compute elasticities at the SKU category level:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 9))
+az.plot_forest(
+    data=svi_idata,
+    var_names=[&quot;beta_log_price_loc&quot;],
+    combined=True,
+    ax=ax,
+)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.axvline(x=-1, color=&quot;red&quot;, linestyle=&quot;-.&quot;)
+ax.set_title(
+    r&quot;Elasticity Estimates ($94\%$ HDI) - SKU Category&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_52_0.png" style="width: 900px;"/>
+</center>
+<p>We see that the elasticities at the SKU category level are mostly negative as expected 😎!</p>
+<p>Next, we compare the elasticities of the three models at the SKU level.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 16))
+az.plot_forest(
+    data=[simple_svi_idata, fixed_effects_svi_idata, svi_idata],
+    model_names=[&quot;Simple&quot;, &quot;Fixed Effects&quot;, &quot;Hierarchical&quot;],
+    var_names=[&quot;beta_log_price&quot;],
+    combined=True,
+    ax=ax,
+)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.axvline(x=-1, color=&quot;red&quot;, linestyle=&quot;-.&quot;)
+ax.set_title(
+    r&quot;Elasticity Estimates ($94\%$ HDI)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_55_0.png" style="width: 1000px;"/>
+</center>
+<p>We see how the hierarchical model brings the estimates to the global mean (i.e. <strong>shrinkage</strong>) and most of the elasticities are now negative as expected. For the SKUs that had negative elasticities in the simple and fixed-effects models, the hierarchical model estimates are very similar.</p>
+<p>Moreover, we can decompose the elasticity estimate at SKU category level into the individual SKU estimates. Let us see for example the SKU category <code>29A</code>:</p>
+<pre class="python"><code>sku_category_idx_to_plot = 2
+
+fig, ax = plt.subplots(figsize=(12, 9))
+az.plot_forest(
+    data=[
+        (
+            # Filter by SKU Category and select the associated SKUs.
+            svi_idata[&quot;posterior&quot;][&quot;beta_log_price&quot;][
+                ...,
+                np.isin(
+                    sku,
+                    sku_category_mapping_df.filter(
+                        pl.col(&quot;sku_category&quot;) == sku_category[sku_category_idx_to_plot]
+                    )[&quot;sku&quot;].to_list(),
+                ),
+            ]
+        ),
+        # Filter by SKU Category.
+        svi_idata[&quot;posterior&quot;][&quot;beta_log_price_prior&quot;].sel(
+            sku_category=sku_category[sku_category_idx_to_plot]
+        ),
+    ],
+    model_names=[&quot;SKU&quot;, &quot;SKU Category&quot;],
+    var_names=[&quot;beta_log_price_prior&quot;, &quot;beta_log_price&quot;],
+    combined=True,
+    ax=ax,
+)
+ax.axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.set_title(
+    rf&quot;Elasticity Estimates ($94\%$ HDI) - SKU Category: {sku_category[sku_category_idx_to_plot]}&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_58_0.png" style="width: 900px;"/>
+</center>
+<p>Observe that the uncertainty of the SKU category includes all the elasticity estimates of the individual SKU categories.</p>
+<p>Finally, we generate posterior predictive checks to check the fit of the model.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+svi_posterior_predictive = Predictive(
+    model=reparam_hierarchical_elasticity_model,
+    params=svi_result.params,
+    guide=guide,
+    num_samples=5_000,
+    return_sites=[&quot;obs&quot;],
+)(
+    rng_subkey,
+    log_price,
+    sku_idx,
+    date_idx,
+    sku_category_idx,
+    sku_category_mapping,
+)
+
+svi_idata.extend(
+    az.from_numpyro(
+        posterior_predictive=svi_posterior_predictive,
+        coords={&quot;obs&quot;: obs_idx},
+        dims={&quot;obs&quot;: [&quot;obs_idx&quot;]},
+    )
+)</code></pre>
+<p>Let’s plot some individual SKU predictions.</p>
+<pre class="python"><code>n_skus = 16
+
+fig, axes = plt.subplots(
+    nrows=n_skus // 2,
+    ncols=2,
+    figsize=(15, 21),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+axes = axes.flatten()
+
+for _idx in range(n_skus):
+    sku_idx_obs_posterior = svi_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;][
+        :, :, (model_df[&quot;sku&quot;] == sku[_idx])
+    ]
+
+    ax = axes[_idx]
+
+    az.plot_hdi(
+        model_df.filter(pl.col(&quot;sku&quot;) == sku[_idx])[&quot;log_price&quot;],
+        sku_idx_obs_posterior,
+        hdi_prob=0.95,
+        color=&quot;C0&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.3},
+        ax=ax,
+    )
+    az.plot_hdi(
+        model_df.filter(pl.col(&quot;sku&quot;) == sku[_idx])[&quot;log_price&quot;],
+        sku_idx_obs_posterior,
+        hdi_prob=0.5,
+        color=&quot;C0&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.5},
+        ax=ax,
+    )
+
+    ax.scatter(
+        model_df.filter(pl.col(&quot;sku&quot;) == sku[_idx])[&quot;log_price&quot;],
+        sku_idx_obs_posterior.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+        color=&quot;black&quot;,
+    )
+
+    ax.set(title=f&quot;sku = {sku[_idx]}&quot;)
+
+fig.suptitle(
+    &quot;Posterior Predictive Check - Log Price vs Log Quantity&quot;,
+    fontsize=20,
+    fontweight=&quot;bold&quot;,
+    y=1.02,
+);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_63_0.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the hierarchical model seems to fit the data well.</p>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>In this notebook, we have conducted an in-depth analysis of price elasticities using a hierarchical Bayesian model for a publicly available retail dataset. We have seen how the hierarchical model allows us to regularize the elasticity estimates for noisy data. Moreover, even with a more complex guide, this type of model scales well to large datasets using stochastic variational inference. Of course, there is a big missing piece which is the inclusion of cross-elasticities terms. Even though this is not trivial, we believe we could use covariance methods like the one proposed by <a href="https://juanitorduz.github.io/multilevel_elasticities_single_sku_3/">Multilevel Elasticities for a Single SKU - Part III</a> to include them in this type of model.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
