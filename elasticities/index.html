@@ -78,7 +78,7 @@
 
   <article class="article">
     
-    <span class="article-duration">13 min read</span>
+    <span class="article-duration">14 min read</span>
     
 
     <h1 class="article-title">Hierarchical Pricing Elasticity Models</h1>
@@ -1451,6 +1451,72 @@ fig.suptitle(
 <img src="../images/elasticities_files/elasticities_63_0.png" style="width: 1000px;"/>
 </center>
 <p>Overall, the hierarchical model seems to fit the data well.</p>
+<p>Next, we can compare the posterior predictive aggregating by date.</p>
+<pre class="python"><code># Here we aggregate by date and compute the HDI for the posterior predictive.
+hdi_data = []
+
+pred_quantity = np.exp(svi_idata[&quot;posterior_predictive&quot;][&quot;obs&quot;])
+
+for _date in date:
+    # extract the index of the date
+    _date_idx = model_df[&quot;date&quot;].dt.strftime(format=&quot;%Y-%m-%d&quot;) == _date
+    # sum the quantity for the date
+    _sum = pred_quantity[:, :, _date_idx].sum(dim=&quot;obs_idx&quot;)
+    # compute the HDI
+    lower, upper = az.hdi(_sum)[&quot;obs&quot;]
+    # append the date, mean, lower and upper to the list
+    hdi_data.append(
+        {
+            &quot;date&quot;: _date,
+            &quot;mean&quot;: _sum.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+            &quot;lower&quot;: lower,
+            &quot;upper&quot;: upper,
+        }
+    )
+
+posterior_predictive_hdi = pl.DataFrame(hdi_data).with_columns(
+    pl.col(&quot;date&quot;).cast(pl.Date)
+)</code></pre>
+<p>We can plot the results:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+ax.fill_between(
+    x=posterior_predictive_hdi[&quot;date&quot;],
+    y1=posterior_predictive_hdi[&quot;lower&quot;],
+    y2=posterior_predictive_hdi[&quot;upper&quot;],
+    label=r&quot;$94\%$ HDI&quot;,
+    alpha=0.3,
+)
+
+sns.lineplot(
+    data=posterior_predictive_hdi,
+    x=&quot;date&quot;,
+    y=&quot;mean&quot;,
+    color=&quot;C0&quot;,
+    label=&quot;Posterior Predictive Mean&quot;,
+    ax=ax,
+)
+
+sns.lineplot(
+    data=model_df.group_by(&quot;date&quot;).agg(
+        pl.col(&quot;quantity&quot;).sum().alias(&quot;total_quantity&quot;)
+    ),
+    x=&quot;date&quot;,
+    y=&quot;total_quantity&quot;,
+    color=&quot;black&quot;,
+    label=&quot;Observed&quot;,
+    ax=ax,
+)
+
+ax.legend()
+ax.set(xlabel=&quot;date&quot;, ylabel=&quot;quantity&quot;)
+ax.set_title(
+    &quot;Total Quantity Over Time - Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/elasticities_files/elasticities_68_0.png" style="width: 1000px;"/>
+</center>
+<p>We see how the hierarchical model is able to capture the daily fluctuations and mos of the variance in the observed data.</p>
 </div>
 <div id="conclusion" class="section level2">
 <h2>Conclusion</h2>
