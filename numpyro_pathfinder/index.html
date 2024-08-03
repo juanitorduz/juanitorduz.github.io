@@ -406,7 +406,7 @@ plt.gcf().suptitle(
 <center>
 <img src="../images/numpyro_pathfinder_files/numpyro_pathfinder_13_1.png" style="width: 1000px;"/>
 </center>
-<p>Note that the value for <code>a</code> is close to the true value of <span class="math inline">\(1.0\)</span>. However, the values for <code>b</code> and <code>sigma</code> are do not match the true values of <span class="math inline">\(2.0\)</span> and <span class="math inline">\(0.5\)</span> respectively. The reason is that we use a <code>dist.HalfNormal</code> and <code>dist.Exponential</code> prior these parameters respectively so the samples are taken from the unconstrained space.</p>
+<p>Note that the value for <code>a</code> is close to the true value of <code>1.0</code>. However, the values for <code>b</code> and <code>sigma</code> do not match the true values of <code>2.0</code> and <code>0.5</code> respectively. The reason is that we are using prior the prior distributions <code>dist.HalfNormal</code> and <code>dist.Exponential</code> for these parameters respectively. Since these distributions are positive, the sampler transform these parameters to the unconstrained space using a bijective transformation. To compare the results in the original space, we need to apply the inverse transformation.</p>
 </div>
 <div id="transform-samples" class="section level2">
 <h2>Transform Samples</h2>
