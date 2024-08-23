@@ -2013,16 +2013,18 @@ fig.suptitle(&quot;SVI Forecast&quot;, fontsize=20, fontweight=&quot;bold&quot;,
             f&quot;&quot;&quot;Expected pred to have one extra sample dim on left.
             Actual shapes: {pred.shape} versus {truth.shape}&quot;&quot;&quot;
         )
+    
+    absolute_error = jnp.mean(jnp.abs(pred - truth), axis=0)
+    
     num_samples = pred.shape[0]
     if num_samples == 1:
-        return jnp.abs(pred[0] - truth)
+        return jnp.average(absolute_error, weights=sample_weight)
 
     pred = jnp.sort(pred, axis=0)
     diff = pred[1:] - pred[:-1]
     weight = jnp.arange(1, num_samples) * jnp.arange(num_samples - 1, 0, -1)
     weight = weight.reshape(weight.shape + (1,) * (diff.ndim - 1))
 
-    absolute_error = jnp.mean(jnp.abs(pred - truth), axis=0)
 
     per_obs_crps = absolute_error - jnp.sum(diff * weight, axis=0) / num_samples**2
     return jnp.average(per_obs_crps, weights=sample_weight)</code></pre>
