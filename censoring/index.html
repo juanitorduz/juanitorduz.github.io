@@ -178,7 +178,7 @@ pz.Gamma(
 ).plot_pdf(color=&quot;C0&quot;, ax=ax)
 ax.set_title(&quot;Censored Gamma Sample Data&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_5_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_5_0.png" style="width: 900px;"/>
 </center>
 </div>
 <div id="naive-model" class="section level2">
@@ -228,7 +228,7 @@ gamma_idata.extend(az.from_numpyro(posterior_predictive=gamma_posterior_predicti
 )
 plt.gcf().suptitle(&quot;Gamma Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_11_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_11_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_posterior(
     data=gamma_idata,
@@ -238,7 +238,7 @@ plt.gcf().suptitle(&quot;Gamma Model&quot;, fontsize=18, fontweight=&quot;bold&q
 )
 plt.gcf().suptitle(&quot;Gamma Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_12_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_12_0.png" style="width: 900px;"/>
 </center>
 <p>Despite the fact that the true parameters are in the <span class="math inline">\(94\%\)</span> HDI, we do see a bias in the estimation of the parameters. This is expected since we are not taking into account the censoring in the model.</p>
 <p>We can visualize the inferred distribution and compare it with the true distribution from the data generating process.</p>
@@ -269,7 +269,7 @@ az.plot_kde(
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Gamma Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_15_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_15_0.png" style="width: 900px;"/>
 </center>
 <p>Here see that the distributions do not match well.</p>
 </div>
@@ -364,7 +364,7 @@ censored_gamma_idata.extend(
 )
 plt.gcf().suptitle(&quot;Censored Gamma Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_25_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_25_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_posterior(
     data=censored_gamma_idata,
@@ -374,7 +374,7 @@ plt.gcf().suptitle(&quot;Censored Gamma Model&quot;, fontsize=18, fontweight=&qu
 )
 plt.gcf().suptitle(&quot;Censored Gamma Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_26_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_26_0.png" style="width: 900px;"/>
 </center>
 <p>We clearly see that the true parameters are in correspond to the mean and mode of the posterior distribution. The censoring model is able to recover the true parameters.</p>
 <p>As we did for the naive model, we visualize the inferred distribution and compare it with the true distribution from the data generating process.</p>
@@ -405,7 +405,7 @@ az.plot_kde(
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Censored Gamma Model (no clipping)&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_28_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_28_0.png" style="width: 900px;"/>
 </center>
 <p>This looks much better than the naive model. However, there something wring as we are just sampling from the <code>obs</code> variable! We should not have posterior samples outside the censoring bounds. We can easily fix this by clipping the samples to the bounds.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
@@ -438,7 +438,7 @@ az.plot_kde(
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Censored Gamma Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_30_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_30_0.png" style="width: 900px;"/>
 </center>
 </div>
 <div id="censored-gamma-model-with-pymc" class="section level2">
@@ -482,7 +482,7 @@ with pymc_censored_gamma_model:
 )
 plt.gcf().suptitle(&quot;PyMC Censored Gamma Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_35_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_35_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_posterior(
     data=pymc_censored_gamma_idata,
@@ -494,7 +494,7 @@ plt.gcf().suptitle(
     &quot;Censored Gamma PyMC Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;
 )</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_36_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_36_0.png" style="width: 900px;"/>
 </center>
 <p>We get essentially the same results as before.</p>
 <p>Note that when we sample from the posterior predictive distribution, we do not need to clip the samples to the bounds as PyMC takes care of this for us.</p>
@@ -525,7 +525,7 @@ az.plot_kde(
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Censored Gamma PyMC Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_38_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_38_0.png" style="width: 900px;"/>
 </center>
 <hr />
 </div>
@@ -578,7 +578,7 @@ ax.axvline(
 pz.Poisson(mu=censored_poisson_data_params.rate).plot_pdf(color=&quot;C0&quot;, ax=ax)
 ax.set_title(&quot;Censored Poisson Sample Data&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_40_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_40_0.png" style="width: 900px;"/>
 </center>
 </div>
 <div id="naive-model-1" class="section level2">
@@ -624,7 +624,7 @@ plt.gcf().suptitle(&quot;Poisson Model&quot;, fontsize=18, fontweight=&quot;bold
 )
 plt.gcf().suptitle(&quot;Poisson Model Parameter&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_45_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_45_0.png" style="width: 900px;"/>
 </center>
 <p>We clearly see a bias in the estimation of the parameter. The true value of the rate parameter <span class="math inline">\(\lambda\)</span> is not even in the <span class="math inline">\(94\%\)</span> HDI.</p>
 <p>We can also take a look into the posterior predictive distribution.</p>
@@ -653,12 +653,12 @@ _ = ax.hist(
     align=&quot;right&quot;,
     color=&quot;C2&quot;,
     alpha=0.5,
-    label=&quot;Censored data&quot;,
+    label=&quot;Posterior predictive&quot;,
 )
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Poisson Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_48_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_48_0.png" style="width: 900px;"/>
 </center>
 </div>
 <div id="censored-poisson-model" class="section level2">
@@ -743,7 +743,7 @@ censored_poisson_idata.extend(
 )
 plt.gcf().suptitle(&quot;Censored Poisson Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_57_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_57_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_posterior(
     data=censored_poisson_idata,
@@ -753,7 +753,7 @@ plt.gcf().suptitle(&quot;Censored Poisson Model&quot;, fontsize=18, fontweight=&
 )
 plt.gcf().suptitle(&quot;Censored Poisson Model Parameter&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_58_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_58_0.png" style="width: 900px;"/>
 </center>
 <p>We see that we have recovered the true value of the rate parameter <span class="math inline">\(\lambda = 1\)</span>.</p>
 <p>Here is the posterior predictive distribution:</p>
@@ -782,12 +782,12 @@ _ = ax.hist(
     align=&quot;right&quot;,
     color=&quot;C2&quot;,
     alpha=0.5,
-    label=&quot;Censored data&quot;,
+    label=&quot;Posterior predictive&quot;,
 )
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Censored Poisson Model (no clipping)&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_61_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_61_0.png" style="width: 900px;"/>
 </center>
 <p>As before, to have a correct posterior predictive distribution we need to clip the samples to the bounds.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
@@ -820,12 +820,12 @@ _ = ax.hist(
     align=&quot;right&quot;,
     color=&quot;C2&quot;,
     alpha=0.5,
-    label=&quot;Censored data&quot;,
+    label=&quot;Posterior predictive&quot;,
 )
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Censored Poisson Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_63_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_63_0.png" style="width: 900px;"/>
 </center>
 <p>Here we see that the observed and predicted distributions match well.</p>
 </div>
@@ -863,7 +863,7 @@ with pymc_censored_poisson_model:
 )
 plt.gcf().suptitle(&quot;PyMC Censored Poisson Model&quot;, fontsize=18, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_68_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_68_0.png" style="width: 900px;"/>
 </center>
 <pre class="python"><code>axes = az.plot_posterior(
     data=pymc_censored_poisson_idata,
@@ -875,7 +875,7 @@ plt.gcf().suptitle(
     &quot;Censored Poisson PyMC Model Parameters&quot;, fontsize=18, fontweight=&quot;bold&quot;
 )</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_69_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_69_0.png" style="width: 900px;"/>
 </center>
 <p>We indeed get the same results as the NumPyro implementation.</p>
 <p>As in the continuous case we verify that we get the expected results for the posterior predictive distribution for the censored model in PyMC.</p>
@@ -904,12 +904,12 @@ _ = ax.hist(
     align=&quot;right&quot;,
     color=&quot;C2&quot;,
     alpha=0.5,
-    label=&quot;Censored data&quot;,
+    label=&quot;Posterior predictive&quot;,
 )
 ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
 ax.set_title(&quot;Censored Poisson PyMC Model&quot;, fontsize=16, fontweight=&quot;bold&quot;)</code></pre>
 <center>
-<img src="../images/censoring_files/censoring_72_1.png" style="width: 900px;"/>
+<img src="../images/censoring_files/censoring_72_0.png" style="width: 900px;"/>
 </center>
 <hr />
 <p>Censoring is an important concept in many fields and it is important to take it into account when modeling data. We have shown how to implement a censoring model in both NumPyro and PyMC. We have also shown how to implement the model for both continuous and discrete distributions. We hope this notebook is useful for those who want to learn how to implement censoring models in these two popular probabilistic programming libraries. I will be exploring more censoring models in the context of time series and supply chain management applications (again thanks to Kyle Caron for the inspiration).</p>
