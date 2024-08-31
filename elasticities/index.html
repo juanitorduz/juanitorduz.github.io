@@ -947,7 +947,7 @@ ax.set_title(
 <center>
 <img src="../images/elasticities_files/elasticities_31_0.png" style="width: 1000px;"/>
 </center>
-<p>We would expect the elasticity to be negative from microeconomic theory.However, we see that some SKUs have a positive elasticity. This could be due to <strong>endogeneity</strong> in the data. For example, SKUs characteristics and seasonality are likely correlated with the price and quantity sold creating a backdoor path from price to quantity.</p>
+<p>We would expect the elasticity to be negative from microeconomic theory. However, we see that some SKUs have a positive elasticity. This could be due to <strong>endogeneity</strong> in the data. For example, SKUs characteristics and seasonality are likely correlated with the price and quantity sold creating a backdoor path from price to quantity.</p>
 <pre class="python"><code>g = gr.Digraph()
 g.edge(&quot;price&quot;, &quot;quantity&quot;)
 g.edge(&quot;characteristics&quot;, &quot;quantity&quot;)
@@ -1433,10 +1433,12 @@ for _idx in range(n_skus):
         ax=ax,
     )
 
-    ax.scatter(
-        model_df.filter(pl.col(&quot;sku&quot;) == sku[_idx])[&quot;log_price&quot;],
-        sku_idx_obs_posterior.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    sns.scatterplot(
+        data=model_df.filter(pl.col(&quot;sku&quot;) == sku[_idx]),
+        x=&quot;log_price&quot;,
+        y=&quot;log_quantity&quot;,
         color=&quot;black&quot;,
+        ax=ax,
     )
 
     ax.set(title=f&quot;sku = {sku[_idx]}&quot;)
@@ -1450,7 +1452,7 @@ fig.suptitle(
 <center>
 <img src="../images/elasticities_files/elasticities_63_0.png" style="width: 1000px;"/>
 </center>
-<p>Overall, the hierarchical model seems to fit the data well.</p>
+<p>Overall, the hierarchical model seems to fit the data well. Notice that the hierarchical structure regularizes the estimates so that the elasticities are not affected but small data and outliers.</p>
 <p>Next, we can compare the posterior predictive aggregating by date.</p>
 <pre class="python"><code># Here we aggregate by date and compute the HDI for the posterior predictive.
 hdi_data = []
