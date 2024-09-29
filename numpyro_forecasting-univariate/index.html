@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">10 min read</span>
+    
+
+    <h1 class="article-title">From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series</h1>
+
+    
+    <span class="article-date">2024-10-01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebooks we port the <a href="https://github.com/pyro-ppl/pyro"><code>Pyro</code></a> forecasting example <a href="https://pyro.ai/examples/forecasting_i.html">Forecasting I: univariate, heavy tailed</a> to <a href="https://github.com/pyro-ppl/numpyro"><code>NumPyro</code></a>. The forecasting module in Pyro is fantastic as it provides an easy interface to develop custom forecasting models. It has also many helpful utility functions to generate features and for model evaluation. The purpose of this translation is to dig deeper into the some forecasting components and to show that translating Pyro code to NumPyro is not that hard, even though there are come caveats.</p>
+<p>The original Pyro example provides a great introduction to some univariate forecasting models. In particular, it provides various iterations from simple models to more complex models. We do not aim to repeat the already existing examples, but to focus on the forecasting components of the final model.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from typing import Any
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+from jax import random
+from jaxtyping import Array, Float
+from numpyro.contrib.control_flow import scan
+from numpyro.infer import SVI, Predictive, Trace_ELBO
+from numpyro.infer.autoguide import AutoNormal
+from numpyro.infer.reparam import LocScaleReparam
+from pyro.contrib.examples.bart import load_bart_od
+from pyro.ops.tensor_utils import periodic_features
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We read the data in a similar fashion to the Pyro example.</p>
+<blockquote>
+<p>“Consider a simple univariate dataset, say weekly <a href="https://www.bart.gov/about/reports/ridership">BART train</a> ridership aggregated over all stations in the network.”</p>
+</blockquote>
+<pre class="python"><code>dataset = load_bart_od()
+print(dataset.keys())
+print(dataset[&quot;counts&quot;].shape)
+print(&quot; &quot;.join(dataset[&quot;stations&quot;]))</code></pre>
+<pre><code>dict_keys([&#39;stations&#39;, &#39;start_date&#39;, &#39;counts&#39;])
+torch.Size([78888, 50, 50])
+12TH 16TH 19TH 24TH ANTC ASHB BALB BAYF BERY CAST CIVC COLM COLS CONC DALY DBRK DELN DUBL EMBR FRMT FTVL GLEN HAYW LAFY LAKE MCAR MLBR MLPT MONT NBRK NCON OAKL ORIN PCTR PHIL PITT PLZA POWL RICH ROCK SANL SBRN SFIA SHAY SSAN UCTY WARM WCRK WDUB WOAK</code></pre>
+<blockquote>
+<p>“This data roughly logarithmic, so we log-transform for modeling.”</p>
+</blockquote>
+<pre class="python"><code>T, _, _ = dataset[&quot;counts&quot;].shape
+data = (
+    dataset[&quot;counts&quot;][: T // (24 * 7) * 24 * 7].reshape(T // (24 * 7), -1).sum(-1).log()
+)
+data = data.unsqueeze(-1)
+# We convert the Torch tensor to a JAX array
+data = jnp.array(data)</code></pre>
+<p>Let’s plot the data.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(data)
+ax.set(
+    title=&quot;Total weekly ridership&quot;,
+    ylabel=&quot;log(# rides)&quot;,
+    xlabel=&quot;Week after 2011-01-01&quot;,
+);</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_8_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="split-data" class="section level2">
+<h2>Split Data</h2>
+<p>We do a train/test split leaving the last year for testing.</p>
+<pre class="python"><code>T0 = 0  # beginning
+T2 = data.shape[-2]  # end
+T1 = T2 - 52  # train/test split
+
+y_train = data[T0:T1]
+y_test = data[T1:T2]
+
+print(f&quot;data_train shape: {y_train.shape}&quot;)
+print(f&quot;data_test shape: {y_test.shape}&quot;)</code></pre>
+<pre><code>data_train shape: (417, 1)
+data_test shape: (52, 1)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(jnp.arange(T1), y_train, label=&quot;train&quot;)
+ax.plot(jnp.arange(T1, T2), y_test, label=&quot;test&quot;)
+ax.axvline(T1, c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(
+    title=&quot;Total weekly ridership&quot;,
+    ylabel=&quot;log(# rides)&quot;,
+    xlabel=&quot;Week after 2011-01-01&quot;,
+);</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_11_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="seasonal-features" class="section level2">
+<h2>Seasonal Features</h2>
+<p>We will describe the model specification below. One key feature in the final Pyro model is the use of <a href="https://en.wikipedia.org/wiki/Fourier_series">Fourier features</a> to model the seasonal component.</p>
+<p>We can generate the Fourier features using the <a href="https://docs.pyro.ai/en/stable/ops.html?highlight=periodic_features#pyro.ops.tensor_utils.periodic_features"><code>periodic_features</code></a> function from Pyro.</p>
+<blockquote>
+<p>“When also <code>min_period</code> is specified this generates periodic features at large length scales, but omits high frequency features.”</p>
+</blockquote>
+<pre class="python"><code>fourier_modes_torch = periodic_features(duration=T2, max_period=365.25 / 7)
+
+fourier_modes_torch.shape</code></pre>
+<pre><code>torch.Size([469, 52])</code></pre>
+<p>The first dimension is the time component and the second dimension is the Fourier features. In this case we have <span class="math inline">\(52\)</span> terms. Let’s look into the first few Fourier features.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+for i in range(3):
+    ax.plot(fourier_modes_torch[:, i], label=f&quot;Fourier mode {i}&quot;)
+ax.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.5, -0.2), ncol=3)
+ax.set(
+    title=&quot;Fourier modes&quot;,
+    ylabel=&quot;Amplitude&quot;,
+    xlabel=&quot;Week after 2011-01-01&quot;,
+);</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_15_0.png" style="width: 900px;"/>
+</center>
+<p>Now, let’s (try to) look into all of them.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(fourier_modes_torch, color=&quot;C0&quot;, alpha=0.02)
+ax.set(
+    title=&quot;Fourier modes&quot;,
+    ylabel=&quot;Amplitude&quot;,
+    xlabel=&quot;Week after 2011-01-01&quot;,
+);</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_17_0.png" style="width: 900px;"/>
+</center>
+<p>These are enough features to model the seasonality at different frequencies.</p>
+<p>For illustration purposes, let’s implement the same function in NumPyro.</p>
+<pre class="python"><code>def periodic_features_jax(
+    duration: int,
+    max_period: float | None = None,
+    min_period: float | None = None,
+    **options: Any,
+) -&gt; Float[Array, &quot;t_max feature_dim&quot;]:
+    assert isinstance(duration, int) and duration &gt;= 0
+    if max_period is None:
+        max_period = duration
+    if min_period is None:
+        min_period = 2
+    assert min_period &gt;= 2, &quot;min_period is below Nyquist cutoff&quot;
+    assert min_period &lt;= max_period
+
+    t = jnp.arange(float(duration), **options).reshape(-1, 1, 1)
+    phase = jnp.array([0, jnp.pi / 2], **options).reshape(1, -1, 1)
+    freq = jnp.arange(1, max_period / min_period, **options).reshape(1, 1, -1) * (
+        2 * jnp.pi / max_period
+    )
+    return jnp.cos(freq * t + phase).reshape(duration, -1)
+
+
+# Generate Fourier Features in JAX
+fourier_modes_jax = periodic_features_jax(T2, 365.25 / 7)
+# Verify that the Fourier features are the same as the Pyro code
+assert jnp.allclose(jnp.array(fourier_modes_torch), fourier_modes_jax)</code></pre>
+<p>Next, we split these features into train and test.</p>
+<pre class="python"><code>time = jnp.arange(T2)
+time_train = time[:T1]
+time_test = time[T1:T2]
+
+fourier_modes_train = fourier_modes_jax[:T1]
+fourier_modes_test = fourier_modes_jax[T1:T2]
+
+print(
+    f&quot;&quot;&quot;
+    time_train shape: {time_train.shape}
+    time_test shape: {time_test.shape}
+    ---
+    fourier_modes_train shape: {fourier_modes_train.shape}
+    fourier_modes_test shape: {fourier_modes_test.shape}
+&quot;&quot;&quot;
+)</code></pre>
+<pre><code>    time_train shape: (417,)
+    time_test shape: (52,)
+    ---
+    fourier_modes_train shape: (417, 52)
+    fourier_modes_test shape: (52, 52)</code></pre>
+<p>Finally, we store these features in a single array (in other models we can keep adding features to this <code>covariates</code> array).</p>
+<pre class="python"><code>covariates = fourier_modes_jax
+
+covariates_train = covariates[:T1]
+covariates_test = covariates[T1:T2]
+
+print(f&quot;covariates_train shape: {covariates_train.shape}&quot;)
+print(f&quot;covariates_test shape: {covariates_test.shape}&quot;)</code></pre>
+<pre><code>covariates_train shape: (417, 52)
+covariates_test shape: (52, 52)</code></pre>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>To forecast the data, we will use a local level model with a seasonal component. The model is the following:</p>
+<p><span class="math display">\[
+y_t = \text{bias} + \mu_t + \text{weight} \times \text{covariates} + \varepsilon_t
+\]</span></p>
+<p>where:</p>
+<ul>
+<li><span class="math inline">\(\mu_t \sim \text{Normal}(\mu_{t-1}, \text{drift_scale})\)</span> with <span class="math inline">\(\mu_0 = 0\)</span></li>
+<li><span class="math inline">\(\varepsilon_t \sim \text{StudentT}(\nu, 0, \sigma)\)</span></li>
+</ul>
+<p>Here are some additional observations about the model:</p>
+<ul>
+<li>We use the same priors as the Pyro example.</li>
+<li>We use the <a href="https://num.pyro.ai/en/stable/primitives.html#numpyro.contrib.control_flow.scan"><code>scan</code></a> handler to efficiently compute the latent levels <span class="math inline">\(\mu_t\)</span>. for this case it is not strictly necessary as we could use a simple cumulative sum, but is a nice addition as this is a very common pattern in time series models with NumPyro. See for example <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">Notes on Exponential Smoothing with NumPyro</a></li>
+<li>We use the <a href="https://num.pyro.ai/en/stable/reparam.html#numpyro.infer.reparam.LocScaleReparam"><code>LocScaleReparam</code></a> to reparameterize the drift. In this example, this helps the inference with stochastic variational inference (SVI) quite a lot!. Moreover, we learn the parametrization level (from centered to non-centered) as part of the inference process.</li>
+</ul>
+<p>Let’s see the model specification.</p>
+<pre class="python"><code>def model(
+    covariates: Float[Array, &quot;t_max feature_dim&quot;],
+    y: Float[Array, &quot;t_max n_series&quot;] | None = None,
+) -&gt; None:
+    # Get the time and feature dimensions
+    t_max, feature_dim = covariates.shape
+    # Sample the bias (intercept)
+    bias = numpyro.sample(&quot;bias&quot;, dist.Normal(loc=0, scale=10))
+    # Sample the weight (regression coefficients for the covariates)
+    weight = numpyro.sample(
+        &quot;weight&quot;, dist.Normal(loc=0, scale=0.1).expand([feature_dim]).to_event(1)
+    )
+
+    # Global scale for the drift
+    drift_scale = numpyro.sample(&quot;drift_scale&quot;, dist.LogNormal(loc=-20, scale=5))
+
+    # Degrees of freedom for the Student-T distribution
+    nu = numpyro.sample(&quot;nu&quot;, dist.Gamma(concentration=10, rate=2))
+    # Scale for the Student-T distribution
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.LogNormal(loc=-5, scale=5))
+
+    # Sample the centered parameter for the LocScaleReparam
+    centered = numpyro.sample(&quot;centered&quot;, dist.Uniform(low=0, high=1))
+
+    with (
+        numpyro.plate(&quot;time&quot;, t_max),
+        numpyro.handlers.reparam(config={&quot;drift&quot;: LocScaleReparam(centered=centered)}),
+    ):
+        drift = numpyro.sample(&quot;drift&quot;, dist.Normal(loc=0, scale=drift_scale))
+
+    def transition_fn(carry, t):
+        &quot;Local level transition function&quot;
+        previous_level = carry
+        current_level = previous_level + drift[t]
+        return current_level, current_level
+
+    # Compute the latent levels using scan
+    _, pred_levels = scan(transition_fn, init=jnp.zeros((1,)), xs=jnp.arange(t_max))
+
+    # Compute the mean of the model
+    mu = pred_levels + bias + (weight * covariates).sum(axis=-1, keepdims=True)
+
+    # Sample the observations
+    with numpyro.handlers.condition(data={&quot;obs&quot;: y}):
+        numpyro.sample(&quot;obs&quot;, dist.StudentT(df=nu, loc=mu, scale=sigma))</code></pre>
+<p>We can visualize the model structure.</p>
+<pre class="python"><code>numpyro.render_model(
+    model=model,
+    model_kwargs={
+        &quot;covariates&quot;: covariates_train,
+        &quot;y&quot;: y_train,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_27_0.svg" style="width: 900px;"/>
+</center>
+</div>
+<div id="prior-predictive-check" class="section level2">
+<h2>Prior Predictive Check</h2>
+<p>Before we start the inference, let’s see what the model prior predictive looks like.</p>
+<pre class="python"><code>prior_predictive = Predictive(model=model, num_samples=2_000, return_sites=[&quot;obs&quot;])
+
+rng_key, rng_subkey = random.split(rng_key)
+
+prior_samples = prior_predictive(rng_subkey, covariates_train)
+
+idata_prior = az.from_dict(
+    prior_predictive={k: v.transpose(2, 0, 1) for k, v in prior_samples.items()},
+    coords={&quot;time_train&quot;: time_train},
+    dims={&quot;obs&quot;: [&quot;time_train&quot;]},
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for hdi_prob in [0.50, 0.94]:
+    az.plot_hdi(
+        jnp.arange(T1),
+        idata_prior[&quot;prior_predictive&quot;][&quot;obs&quot;],
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.3,
+            &quot;label&quot;: f&quot;{hdi_prob*100:.0f}% HDI train&quot;,
+        },
+        smooth=False,
+        ax=ax,
+    )
+
+ax.plot(jnp.arange(T1), y_train, label=&quot;train&quot;)
+ax.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.5, -0.2), ncol=3)
+ax.set(
+    title=&quot;Prior predictive&quot;,
+    ylabel=&quot;log(# rides)&quot;,
+    xlabel=&quot;Week after 2011-01-01&quot;,
+)
+fig.suptitle(&quot;Total weekly ridership&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_30_0.png" style="width: 900px;"/>
+</center>
+<p>The priors are not very informative (we can do a bit better, for example specifying a narrower range for the bias), but overall the prior samples look within a reasonable range.</p>
+</div>
+<div id="inference-with-svi" class="section level1">
+<h1>Inference with SVI</h1>
+<p>Now we proceed to run the inference using SVI.</p>
+<pre class="python"><code>%%time
+
+guide = AutoNormal(model)
+optimizer = numpyro.optim.Adam(step_size=0.005)
+svi = SVI(model, guide, optimizer, loss=Trace_ELBO())
+num_steps = 50_000
+
+rng_key, rng_subkey = random.split(key=rng_key)
+
+svi_result = svi.run(
+    rng_subkey,
+    num_steps,
+    covariates_train,
+    y_train,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 50000/50000 [00:10&lt;00:00, 4756.01it/s, init loss: 5835.2622, avg. loss [47501-50000]: -421.0681]
+
+
+CPU times: user 13.6 s, sys: 693 ms, total: 14.3 s
+Wall time: 13.8 s</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_33_2.png" style="width: 900px;"/>
+</center>
+<p>The elbo loss is decreasing as expected.</p>
+<div id="posterior-predictive-check" class="section level2">
+<h2>Posterior Predictive Check</h2>
+<p>We can use the fitted model to sample from the posterior predictive distribution and generate posterior samples for the train and test data.</p>
+<pre class="python"><code>posterior = Predictive(
+    model=model,
+    guide=guide,
+    params=svi_result.params,
+    num_samples=5_000,
+    return_sites=[&quot;obs&quot;],
+)</code></pre>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+idata_train = az.from_dict(
+    posterior_predictive={
+        k: v.transpose(2, 0, 1)
+        for k, v in posterior(rng_subkey, covariates_train).items()
+    },
+    coords={&quot;time_train&quot;: time_train},
+    dims={&quot;obs&quot;: [&quot;time_train&quot;]},
+)
+
+idata_test = az.from_dict(
+    posterior_predictive={
+        k: v.transpose(2, 0, 1) for k, v in posterior(rng_subkey, covariates).items()
+    },
+    coords={&quot;time&quot;: time},
+    dims={&quot;obs&quot;: [&quot;time&quot;]},
+)</code></pre>
+</div>
+<div id="model-evaluation" class="section level2">
+<h2>Model Evaluation</h2>
+<p>Before looking into the predictions, let’s specify the evaluation metric beforehand. We will use the <a href="https://en.wikipedia.org/wiki/Continuous_ranked_probability_score">Continuous Ranked Probability Score (CRPS)</a> to evaluate the performance of the model. This is a very common metric for probabilistic forecasting models (see for example <a href="https://juanitorduz.github.io/hierarchical_exponential_smoothing/">Hierarchical Exponential Smoothing Model</a>). It serves as a generalization of the mean absolute error to probabilistic models. A summarized description of the CRPS is the following (from <a href="https://towardsdatascience.com/crps-a-scoring-function-for-bayesian-machine-learning-models-dd55a7a337a8">CRPS — A Scoring Function for Bayesian Machine Learning Models</a>)</p>
+<blockquote>
+<p>“The CRPS — Continuous Ranked Probability Score — is a score function that compares a single ground truth value to a Cumulative Distribution Function. It t can be used as a metric to evaluate a model’s performance when the target variable is continuous and the model predicts the target’s distribution; Examples include Bayesian Regression or Bayesian Time Series models.”</p>
+</blockquote>
+<p>Pyro offers a function <a href="https://docs.pyro.ai/en/dev/_modules/pyro/ops/stats.html"><code>pyro.ops.stats.crps_empirical</code></a> to compute the CRPS, but we will write our own using JAX to better understand the underlying computation.</p>
+<pre class="python"><code>def crps(
+    truth: Float[Array, &quot;t_max n_series&quot;],
+    pred: Float[Array, &quot;n_samples t_max n_series&quot;],
+    sample_weight: Float[Array, &quot; t_max&quot;] | None = None,
+) -&gt; Float[Array, &quot;&quot;]:
+    if pred.shape[1:] != (1,) * (pred.ndim - truth.ndim - 1) + truth.shape:
+        raise ValueError(
+            f&quot;&quot;&quot;Expected pred to have one extra sample dim on left.
+            Actual shapes: {pred.shape} versus {truth.shape}&quot;&quot;&quot;
+        )
+
+    absolute_error = jnp.mean(jnp.abs(pred - truth), axis=0)
+
+    num_samples = pred.shape[0]
+    if num_samples == 1:
+        return jnp.average(absolute_error, weights=sample_weight)
+
+    pred = jnp.sort(pred, axis=0)
+    diff = pred[1:] - pred[:-1]
+    weight = jnp.arange(1, num_samples) * jnp.arange(num_samples - 1, 0, -1)
+    weight = weight.reshape(weight.shape + (1,) * (diff.ndim - 1))
+
+    per_obs_crps = absolute_error - jnp.sum(diff * weight, axis=0) / num_samples**2
+    return jnp.average(per_obs_crps, weights=sample_weight)
+
+
+crps_train = crps(
+    y_train,
+    jnp.array(
+        idata_train[&quot;posterior_predictive&quot;][&quot;obs&quot;]
+        .transpose(..., &quot;time_train&quot;, &quot;chain&quot;)
+        .to_numpy()
+    ),
+)
+
+crps_test = crps(
+    y_test,
+    jnp.array(
+        idata_test[&quot;posterior_predictive&quot;][&quot;obs&quot;][:, :, T1:T2]
+        .transpose(..., &quot;time&quot;, &quot;chain&quot;)
+        .to_numpy()
+    ),
+)</code></pre>
+<p>Let’s plot the posterior predictive samples forecast of the train and test sets.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for i, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        time_train,
+        idata_train[&quot;posterior_predictive&quot;][&quot;obs&quot;],
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.3 + 0.1 * i,
+            &quot;label&quot;: f&quot;{hdi_prob*100:.0f}% HDI train&quot;,
+        },
+        smooth=False,
+        ax=ax,
+    )
+    az.plot_hdi(
+        time_test,
+        idata_test[&quot;posterior_predictive&quot;][&quot;obs&quot;][:, :, T1:T2],
+        hdi_prob=hdi_prob,
+        color=&quot;C1&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.3 + 0.1 * i,
+            &quot;label&quot;: f&quot;{hdi_prob*100:.0f}% HDI test&quot;,
+        },
+        smooth=False,
+        ax=ax,
+    )
+
+ax.plot(jnp.arange(T1), y_train, label=&quot;train&quot;)
+ax.plot(jnp.arange(T1, T2), y_test, label=&quot;test&quot;)
+ax.axvline(T1, c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.5, -0.3), ncol=3)
+ax.set(
+    title=f&quot;Train CRPS: {crps_train:.4f} | Test CRPS: {crps_test:.4f}&quot;,
+    ylabel=&quot;log(# rides)&quot;,
+    xlabel=&quot;Week after 2011-01-01&quot;,
+)
+fig.suptitle(&quot;Total weekly ridership&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_41_0.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the in sample and out of sample prediction look good! The CRPS values are comparable to the ones reported in the Pyro example.</p>
+<p>Finally, let’s plot the posterior predictive mean for the test set.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for i, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        jnp.arange(T1, T2),
+        idata_test[&quot;posterior_predictive&quot;][&quot;obs&quot;][:, :, T1:T2],
+        hdi_prob=hdi_prob,
+        color=&quot;C1&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.3 + 0.1 * i,
+            &quot;label&quot;: f&quot;{hdi_prob*100:.0f}% HDI test&quot;,
+        },
+        smooth=False,
+        ax=ax,
+    )
+
+ax.plot(
+    time_test,
+    idata_test[&quot;posterior_predictive&quot;][&quot;obs&quot;][:, :, T1:T2].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    marker=&quot;o&quot;,
+    color=&quot;C1&quot;,
+    label=&quot;posterior predictive mean&quot;,
+)
+ax.plot(jnp.arange(T1, T2), y_test, marker=&quot;o&quot;, color=&quot;black&quot;, label=&quot;test&quot;)
+ax.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.5, -0.2), ncol=4)
+ax.set(
+    title=f&quot;Test CRPS: {crps_test:.4f}&quot;,
+    ylabel=&quot;log(# rides)&quot;,
+    xlabel=&quot;Week after 2011-01-01&quot;,
+)
+fig.suptitle(&quot;Total weekly ridership (test set)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_43_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="next-steps" class="section level2">
+<h2>Next Steps</h2>
+<p>We could modularize the whole forecasting fitting and evaluation process to be able to run a time-slice cross-validation analysis. Pyro offers great tooling to do this.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
