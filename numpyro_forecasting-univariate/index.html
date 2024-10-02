@@ -252,6 +252,9 @@ ax.set(
 fourier_modes_jax = periodic_features_jax(T2, 365.25 / 7)
 # Verify that the Fourier features are the same as the Pyro code
 assert jnp.allclose(jnp.array(fourier_modes_torch), fourier_modes_jax)</code></pre>
+</div>
+<div id="train---test-split" class="section level2">
+<h2>Train - Test Split</h2>
 <p>Next, we split these features into train and test.</p>
 <pre class="python"><code>time = jnp.arange(T2)
 time_train = time[:T1]
@@ -435,7 +438,7 @@ Wall time: 13.8 s</code></pre>
 <center>
 <img src="../images/numpyro_forecasting_univariate_files/numpyro_forecasting_univariate_33_2.png" style="width: 900px;"/>
 </center>
-<p>The elbo loss is decreasing as expected.</p>
+<p>The ELBO loss is decreasing as expected.</p>
 <div id="posterior-predictive-check" class="section level2">
 <h2>Posterior Predictive Check</h2>
 <p>We can use the fitted model to sample from the posterior predictive distribution and generate posterior samples for the train and test data.</p>

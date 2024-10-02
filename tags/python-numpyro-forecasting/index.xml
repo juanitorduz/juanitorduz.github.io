@@ -6,7 +6,17 @@
     <description>Recent content in python, numpyro, forecasting on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 01 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 03 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part I</title>
+      <link>/numpyro_hierarchical_forecasting_1/</link>
+      <pubDate>Thu, 03 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/numpyro_hierarchical_forecasting_1/</guid>
+      <description>In this notebook we provide a NumPyro implementation of the first model presented in the Pyro forecasting documentation: Forecasting III: hierarchical models. This model generalizes the local level model with seasonality presented in the univariate example Forecasting I: univariate, heavy tailed (see From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series for the corresponding NumPyro implementation).
+In this example, we continue working with the BART train ridership dataset.</description>
+    </item>
+    
     <item>
       <title>From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series</title>
       <link>/numpyro_forecasting-univariate/</link>
