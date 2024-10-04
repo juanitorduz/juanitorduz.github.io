@@ -6,7 +6,17 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 03 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sun, 06 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part II</title>
+      <link>/numpyro_hierarchical_forecasting_2/</link>
+      <pubDate>Sun, 06 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/numpyro_hierarchical_forecasting_2/</guid>
+      <description>In this second notebook, we continue working on the NumPyro implementation of the hierarchical forecasting models presented in Pyro’s forecasting documentation: Forecasting III: hierarchical models. In this second part, we extend the model described in the first part From Pyro to NumPyro: Forecasting Hierarchical Models - Part I by adding all stations to the model.
+Prepare Notebook import arviz as az import jax import jax.numpy as jnp import matplotlib.pyplot as plt import numpyro import numpyro.</description>
+    </item>
+    
     <item>
       <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part I</title>
       <link>/numpyro_hierarchical_forecasting_1/</link>
