@@ -17,6 +17,16 @@
     </item>
     
     <item>
+      <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part II</title>
+      <link>/numpyro_hierarchical_forecasting_2/</link>
+      <pubDate>Sat, 05 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/numpyro_hierarchical_forecasting_2/</guid>
+      <description>In this second notebook, we continue working on the NumPyro implementation of the hierarchical forecasting models presented in Pyro’s forecasting documentation: Forecasting III: hierarchical models. In this second part, we extend the model described in the first part From Pyro to NumPyro: Forecasting Hierarchical Models - Part I by adding all stations to the model.
+Prepare Notebook import arviz as az import jax import jax.numpy as jnp import matplotlib.pyplot as plt import numpyro import numpyro.</description>
+    </item>
+    
+    <item>
       <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part I</title>
       <link>/numpyro_hierarchical_forecasting_1/</link>
       <pubDate>Thu, 03 Oct 2024 00:00:00 +0000</pubDate>
@@ -24,16 +34,6 @@
       <guid>/numpyro_hierarchical_forecasting_1/</guid>
       <description>In this notebook we provide a NumPyro implementation of the first model presented in the Pyro forecasting documentation: Forecasting III: hierarchical models. This model generalizes the local level model with seasonality presented in the univariate example Forecasting I: univariate, heavy tailed (see From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series for the corresponding NumPyro implementation).
 In this example, we continue working with the BART train ridership dataset.</description>
-    </item>
-    
-    <item>
-      <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part II</title>
-      <link>/numpyro_hierarchical_forecasting_2/</link>
-      <pubDate>Thu, 03 Oct 2024 00:00:00 +0000</pubDate>
-      
-      <guid>/numpyro_hierarchical_forecasting_2/</guid>
-      <description>In this second notebook, we continue working on the NumPyro implementation of the hierarchical forecasting models presented in Pyro’s forecasting documentation: Forecasting III: hierarchical models. In this second part, we extend the model described in the first part From Pyro to NumPyro: Forecasting Hierarchical Models - Part I by adding all stations to the model.
-Prepare Notebook import arviz as az import jax import jax.numpy as jnp import matplotlib.pyplot as plt import numpyro import numpyro.</description>
     </item>
     
     <item>
