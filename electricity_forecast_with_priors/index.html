@@ -16,8 +16,8 @@
 <meta name="generator" content="Hugo 0.79.1" />
 
 
-<title>Electricity Demand Forecast: Dynamic Time-Series Model - Dr. Juan Camilo Orduz</title>
-<meta property="og:title" content="Electricity Demand Forecast: Dynamic Time-Series Model - Dr. Juan Camilo Orduz">
+<title>Electricity Demand Forecast: Dynamic Time-Series Model with Prior Calibration - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Electricity Demand Forecast: Dynamic Time-Series Model with Prior Calibration - Dr. Juan Camilo Orduz">
 
 
   <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
@@ -78,20 +78,21 @@
 
   <article class="article">
     
-    <span class="article-duration">10 min read</span>
+    <span class="article-duration">9 min read</span>
     
 
-    <h1 class="article-title">Electricity Demand Forecast: Dynamic Time-Series Model</h1>
+    <h1 class="article-title">Electricity Demand Forecast: Dynamic Time-Series Model with Prior Calibration</h1>
 
     
-    <span class="article-date">2024-10-06</span>
+    <span class="article-date">2024-10-07</span>
     
 
     <div class="article-content">
       
 
 
-<p>We work out a classical electricity demand forecasting model form the case study <a href="https://www.tensorflow.org/probability/examples/Structural_Time_Series_Modeling_Case_Studies_Atmospheric_CO2_and_Electricity_Demand">Structural Time Series Modeling Case Studies: Atmospheric CO2 and Electricity Demand</a> from the TensorFlow Probability documentation. The idea of this example is to use temperature as a linear covariate to model the electricity demand. In this example, we show how to use a (Hilbert Space Approximation) Gaussian process to model the non-linear relationship between temperature and electricity demand (for an introduction to the topic see <a href="https://juanitorduz.github.io/hsgp_intro/">A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods</a>). This technique improves the simple linear model in and out of sample predictions as we aro not using the Gaussian process to extrapolate over time, but rather to model the non-linear relationship between temperature and electricity demand, similarly as how it has done in the example <a href="https://juanitorduz.github.io/bikes_gp/">Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</a>.</p>
+<p>We present an example of a dynamic forecasting time-series model that incorporates a prior calibration process to estimate the temperature effect on electricity demand. The model is based on the previous example <a href="https://juanitorduz.github.io/electricity_forecast/">Electricity Demand Forecast: Dynamic Time-Series Model</a>. In this second iteration, we borrow the ideas from the Pyro great example <a href="https://pyro.ai/examples/forecasting_dlm.html">Forecasting with Dynamic Linear Model (DLM)</a> where they use a prior calibration process on a local level forecasting model. In our case, we use the same technique with a Hilbert Space Gaussian Process latent component model.</p>
+<p>We encourage the reader to check the previous example to have a better understanding of the model. Here we focus on the calibration procedure.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>import arviz as az
@@ -102,7 +103,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpyro
 import numpyro.distributions as dist
-import preliz as pz
 from jax import random
 from jaxtyping import Array, Float, Int
 from numpyro.contrib.hsgp.approximation import hsgp_matern
@@ -126,10 +126,7 @@ rng_key = random.PRNGKey(seed=42)
 </div>
 <div id="load-data" class="section level2">
 <h2>Load Data</h2>
-<p>We load the data explicitly as in the Tensorflow Probability example. We reference the original comment:</p>
-<blockquote>
-<p><em>“Victoria electricity demand dataset, as presented at <a href="https://otexts.com/fpp2/scatterplots.html" class="uri">https://otexts.com/fpp2/scatterplots.html</a> and downloaded from <a href="https://github.com/robjhyndman/fpp2-package/blob/master/data/elecdaily.rda" class="uri">https://github.com/robjhyndman/fpp2-package/blob/master/data/elecdaily.rda</a> . This series contains the first eight weeks (starting Jan 1). The original dataset was half-hourly data; here we’ve downsampled to hourly data by taking every other timestep.”</em></p>
-</blockquote>
+<p>We load the data as in the previous example.</p>
 <pre class="python"><code>demand_dates = np.arange(&quot;2014-01-01&quot;, &quot;2014-02-26&quot;, dtype=&quot;datetime64[h]&quot;)
 demand_loc = mdates.WeekdayLocator(byweekday=mdates.WE)
 demand_fmt = mdates.DateFormatter(&quot;%a %b %d&quot;)
@@ -163,58 +160,13 @@ ax[1].set(title=&quot;Temperature&quot;, ylabel=&quot;Temperature (°C)&quot;)
 ax[1].xaxis.set_major_locator(demand_loc)
 ax[1].xaxis.set_major_formatter(demand_fmt);</code></pre>
 <center>
-<img src="../images/electricity_forecast_files/electricity_forecast_6_0.png" style="width: 900px;"/>
+<img src="../images/electricity_forecast_with_priors_files/electricity_forecast_with_priors_6_0.png" style="width: 900px;"/>
 </center>
-<p>We clearly see an overall positive correlation between temperature and electricity demand. This can be particularly seen when we plot both demand and temperature in the same (twin) axis.</p>
-<pre class="python"><code>fig, ax = plt.subplots()
-ax_twinx = ax.twinx()
-ax.plot(demand_dates, demand, c=&quot;C0&quot;, label=&quot;Demand&quot;)
-ax.set(
-    title=&quot;Electricity Demand in Victoria, Australia (2014)&quot;,
-    ylabel=&quot;Hourly Demand (GW)&quot;,
-)
-ax_twinx.plot(demand_dates, temperature, c=&quot;C1&quot;, label=&quot;Temperature&quot;)
-ax_twinx.set(ylabel=&quot;Temperature (°C)&quot;)
-ax.xaxis.set_major_locator(demand_loc)
-ax.xaxis.set_major_formatter(demand_fmt)
-ax_twinx.grid(None)
-ax.legend(loc=&quot;upper left&quot;)
-ax_twinx.legend(loc=&quot;upper right&quot;)
-corr = np.corrcoef(temperature, demand)[0, 1]
-fig.suptitle(
-    f&quot;Correlation between Temperature and Demand {corr:.3f}&quot;,
-    fontsize=18,
-    fontweight=&quot;bold&quot;,
-);</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_8_0.png" style="width: 900px;"/>
-</center>
-<p>Besides forecasting, we would also like to understand the relationship between temperature and electricity demand. A good first starting point is to generate a scatter plot of temperature and demand.</p>
-<pre class="python"><code>fig, ax = plt.subplots()
-ax.scatter(temperature, demand)
-ax.set(title=&quot;Demand vs Temperature&quot;, xlabel=&quot;Temperature (°C)&quot;, ylabel=&quot;Demand (GW)&quot;);</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_10_0.png" style="width: 900px;"/>
-</center>
-<p>Even though we see a positive relationship between temperature and demand, the relationship is not linear. We can see this by plotting the ratio of demand to temperature.</p>
-<pre class="python"><code>fig, ax = plt.subplots()
-ax.scatter(temperature, demand / temperature, c=demand, cmap=&quot;viridis&quot;)
-cbar = fig.colorbar(ax.collections[0], ax=ax)
-cbar.set_label(&quot;Demand (GW)&quot;)
-
-ax.set(
-    title=&quot;Demand / Temperature vs Temperature&quot;,
-    xlabel=&quot;Temperature (°C)&quot;,
-    ylabel=&quot;Demand / Temperature&quot;,
-);</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_12_0.png" style="width: 900px;"/>
-</center>
-<p>Of course there are strong seasonal effects hidden in these plots. Therefore we want to use a model that can capture thee temperature effect while controlling for other factors.</p>
+<p>As a reminder, we are interested in a forecasting model where use temperature as a regressor. In addition, we want to understand the non-linear effect of temperature on demand.</p>
 </div>
 <div id="training-and-test-data" class="section level2">
 <h2>Training and Test Data</h2>
-<p>We split the data as in the original example. In addition, we create a <code>day_of_week</code> feature to include in the model later.</p>
+<p>To prepare the data for the model, we do a simple train-test split and create some seasonal features.</p>
 <pre class="python"><code>num_forecast_steps = 24 * 7 * 2  # Two weeks.
 demand_training_data = demand[:-num_forecast_steps]
 demand_test_data = demand[-num_forecast_steps:]
@@ -257,39 +209,19 @@ ax.legend()
 ax.xaxis.set_major_locator(demand_loc)
 ax.xaxis.set_major_formatter(demand_fmt);</code></pre>
 <center>
-<img src="../images/electricity_forecast_files/electricity_forecast_17_0.png" style="width: 900px;"/>
+<img src="../images/electricity_forecast_with_priors_files/electricity_forecast_with_priors_11_0.png" style="width: 900px;"/>
 </center>
 </div>
 <div id="model-specification" class="section level2">
 <h2>Model Specification</h2>
-<p>Here is a description of the modeling strategy:</p>
+<p>Here is a reminder of the base model components:</p>
 <ul>
 <li>We use a linear model to predict demand as a function of temperature and two seasonal effects: hour of day and day of week. We use Zero-Sum Normal distributions to model these seasonal effects.</li>
 <li>We use a Matérn 5/2 kernel to model the temperature effect on demand using the Hilbert Space Gaussian Process (HSGP) approximation from NumPyro (see <a href="https://num.pyro.ai/en/stable/contrib.html#hilbert-space-gaussian-processes-approximation">here</a>).</li>
 <li>The noise scale will vary with the temperature.</li>
 <li>We use a Student-t distribution to model the residual error.</li>
 </ul>
-<div id="gp-prior-parameters" class="section level3">
-<h3>GP Prior Parameters</h3>
-<p>One key component of specifying Gaussian processes is to set the length scale and amplitude parameters. Se use an optimization strategy to set these parameters by assuming they both come from an Inverse-Gamma distribution, while specifying the support.</p>
-<pre class="python"><code># For the amplitude, we set the values inspired on the range of the demand / temperature
-# ratio above.
-amplitude_params, ax = pz.maxent(pz.InverseGamma(), lower=0.1, upper=0.5)</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_20_0.png" style="width: 900px;"/>
-</center>
-<pre class="python"><code># As we want to use the GP to model the temperature effect, we need to set the length
-# scale parameter.
-# We are expecting these effects to be seen at the order of units or tens of units,
-# so we expect the length scale to be between 3 and 10.
-length_scale_params, ax = pz.maxent(pz.InverseGamma(), lower=3, upper=10)</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_21_0.png" style="width: 900px;"/>
-</center>
-</div>
-<div id="periodic-features" class="section level3">
-<h3>Periodic Features</h3>
-<p>For the hour of day effect, we use the repeating trick explained in the example <a href="https://juanitorduz.github.io/numpyro_hierarchical_forecasting_1/">From Pyro to NumPyro: Forecasting Hierarchical Models - Part I</a>.</p>
+<p>For one of the seasonal components we need the next handy utility function:</p>
 <pre class="python"><code>def periodic_repeat_jax(tensor: Array, size: int, dim: int) -&gt; Array:
     &quot;&quot;&quot;
     Repeat a period-sized tensor up to given size using JAX.
@@ -326,12 +258,25 @@ length_scale_params, ax = pz.maxent(pz.InverseGamma(), lower=3, upper=10)</code>
     slices[dim] = slice(None, size)
 
     return result[tuple(slices)]</code></pre>
-<p>Now we are ready to specify the NumPyro model.</p>
+<div id="domain-knowledge-priors" class="section level3">
+<h3>Domain Knowledge Priors</h3>
+<p>Let us assume that we know from domain knowledge (science or a natural experiment, for example when the electricity system broke in a similar area and we could estimate lifts) that the effect of temperature on demand over <span class="math inline">\(32\)</span>°C is somehow stable at around a value of <span class="math inline">\(0.13\)</span>. We believe this is useful information and in our previous baseline model the effect at this regime was increasing linearly from <span class="math inline">\(0.11\)</span> to <span class="math inline">\(0.15\)</span>. The baseline still oscillates around the expected value of <span class="math inline">\(0.13\)</span>, but we want to make sure our effect is very conservative at this regime.</p>
+<p>In order to do so, the idea presented in the Pyro example <a href="https://pyro.ai/examples/forecasting_dlm.html">Forecasting with Dynamic Linear Model (DLM)</a> is to add an additional an likelihood for the temperature range of interest where we set the latent effect variable as <code>observed</code>.</p>
+<p>Let’s look into the details of this approach. The baseline model is exactly the same as in our example before <a href="https://juanitorduz.github.io/electricity_forecast/">Electricity Demand Forecast: Dynamic Time-Series Model</a>.</p>
+<pre class="python"><code># Set the temperature threshold for the prior
+temperature_threshold_prior = 32.0
+
+# Get the indices of the temperature data that is over the threshold
+temperature_prior_idx = jnp.where(
+    temperature_training_data &gt; temperature_threshold_prior
+)[0]</code></pre>
+<p>Now we are ready to specify the NumPyro model with the additional likelihood for the temperature prior.</p>
 <pre class="python"><code>def model(
     temperature: Float[Array, &quot; t&quot;],
     day_of_week: Int[Array, &quot; t&quot;],
     ell: float = 55.0,
     m: int = 25,
+    temperature_prior_idx: Int[Array, &quot; n_priors&quot;] | None = None,
     demand: Float[Array, &quot; t&quot;] | None = None,
 ) -&gt; None:
     t_max = temperature.size
@@ -380,6 +325,18 @@ length_scale_params, ax = pz.maxent(pz.InverseGamma(), lower=3, upper=10)</code>
         dist.ZeroSumNormal(scale=scale_day_of_week, event_shape=(7,)),
     )
 
+    # Add additional likelihood for the temperature prior
+    # effect on demand for very hot days
+    if temperature_prior_idx is not None:
+        temperature_prior_effect_mean = 0.13
+        temperature_prior_effect_scale = 0.01  # &lt;- Uncertainty of the prior
+        numpyro.sample(
+            &quot;temperature_prior&quot;,
+            dist.Normal(
+                loc=temperature_prior_effect_mean, scale=temperature_prior_effect_scale
+            ),
+            obs=beta_temperature[temperature_prior_idx],
+        )
     # Expected Value
     mu = (
         intercept
@@ -393,69 +350,8 @@ length_scale_params, ax = pz.maxent(pz.InverseGamma(), lower=3, upper=10)</code>
     # Likelihood
     with numpyro.plate(&quot;data&quot;, t_max):
         numpyro.sample(&quot;obs&quot;, dist.StudentT(df=nu, loc=mu, scale=scale), obs=demand)</code></pre>
-<p>Let’s visualize the models structure.</p>
-<pre class="python"><code>numpyro.render_model(
-    model=model,
-    model_kwargs={
-        &quot;temperature&quot;: temperature_training_data,
-        &quot;day_of_week&quot;: day_of_week_training_data,
-        &quot;demand&quot;: demand_training_data,
-    },
-    render_distributions=True,
-    render_params=True,
-)</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_27_0.svg" style="width: 900px;"/>
-</center>
+<p>Since the model is exactly the same as in the previous example, we go directly to inference (even though we should <em>always</em> run the prior predictive checks).</p>
 </div>
-</div>
-<div id="prior-predictive-checks" class="section level2">
-<h2>Prior Predictive Checks</h2>
-<p>Before we fit the model, let’s visualize the prior predictive distribution.</p>
-<pre class="python"><code>prior_predictive = Predictive(model=model, num_samples=2_000, return_sites=[&quot;obs&quot;])
-
-rng_key, rng_subkey = random.split(rng_key)
-prior_predictive_sampels = prior_predictive(
-    rng_subkey,
-    temperature=temperature_training_data,
-    day_of_week=day_of_week_training_data,
-)
-
-idata_prior = az.from_dict(
-    prior_predictive={k: v[None, ...] for k, v in prior_predictive_sampels.items()},
-    coords={&quot;time&quot;: demand_dates_training_data},
-    dims={&quot;obs&quot;: [&quot;time&quot;]},
-)</code></pre>
-<pre class="python"><code>fig, ax = plt.subplots()
-az.plot_hdi(
-    demand_dates_training_data,
-    idata_prior[&quot;prior_predictive&quot;][&quot;obs&quot;],
-    hdi_prob=0.94,
-    smooth=False,
-    color=&quot;C0&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: &quot;94% HDI&quot;},
-    ax=ax,
-)
-az.plot_hdi(
-    demand_dates_training_data,
-    idata_prior[&quot;prior_predictive&quot;][&quot;obs&quot;],
-    smooth=False,
-    hdi_prob=0.5,
-    color=&quot;C0&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: &quot;50% HDI&quot;},
-    ax=ax,
-)
-ax.plot(
-    demand_dates_training_data, demand_training_data, c=&quot;black&quot;, label=&quot;Training Data&quot;
-)
-ax.legend()
-ax.set(title=&quot;Prior Predictive Checks&quot;, ylabel=&quot;Demand (GW)&quot;, xlabel=&quot;Time&quot;)
-ax.xaxis.set_major_locator(demand_loc)
-ax.xaxis.set_major_formatter(demand_fmt);</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_30_0.png" style="width: 1000px;"/>
-</center>
-<p>The prior predictive distribution is not too far from the training data but is not very restrictive either.</p>
 </div>
 <div id="inference-with-svi" class="section level2">
 <h2>Inference with SVI</h2>
@@ -472,6 +368,7 @@ svi_result = svi.run(
     num_steps,
     temperature=temperature_training_data,
     day_of_week=day_of_week_training_data,
+    temperature_prior_idx=temperature_prior_idx,
     demand=demand_training_data,
 )
 
@@ -479,15 +376,15 @@ fig, ax = plt.subplots(figsize=(9, 6))
 ax.plot(svi_result.losses)
 ax.set_yscale(&quot;log&quot;)
 ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
-<pre><code>100%|██████████| 50000/50000 [00:15&lt;00:00, 3246.70it/s, init loss: 6238.8652, avg. loss [47501-50000]: 825.7322]</code></pre>
+<pre><code>100%|██████████| 50000/50000 [00:14&lt;00:00, 3412.44it/s, init loss: 2701029.2500, avg. loss [47501-50000]: 446.1953]</code></pre>
 <center>
-<img src="../images/electricity_forecast_files/electricity_forecast_33_1.png" style="width: 800px;"/>
+<img src="../images/electricity_forecast_with_priors_files/electricity_forecast_with_priors_21_1.png" style="width: 800px;"/>
 </center>
 <p>The ELBO loss is decreasing as expected.</p>
 </div>
 <div id="posterior-predictive-checks" class="section level2">
 <h2>Posterior Predictive Checks</h2>
-<p>We now generate samples for the training and test data. We are interested in both the likelihood (demand) and the posterior distribution of the temperature effect.</p>
+<p>We now collect the posterior samples for the in and out of sample data.</p>
 <pre class="python"><code>posterior = Predictive(
     model=model,
     guide=guide,
@@ -501,6 +398,7 @@ train_posterior_samples = posterior(
     rng_subkey,
     temperature=temperature_training_data,
     day_of_week=day_of_week_training_data,
+    temperature_prior_idx=temperature_prior_idx,
 )
 
 rng_key, rng_subkey = random.split(rng_key)
@@ -640,42 +538,17 @@ ax.xaxis.set_major_formatter(demand_fmt)
 
 fig.suptitle(&quot;Posterior Predictive Checks&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
 <center>
-<img src="../images/electricity_forecast_files/electricity_forecast_41_0.png" style="width: 1000px;"/>
+<img src="../images/electricity_forecast_with_priors_files/electricity_forecast_with_priors_29_0.png" style="width: 1000px;"/>
 </center>
-<p>The predictions look very good! They are actually look much better that the basic linear model used in the TensorFlow Probability tutorial (which is fine as they are focusing on the core API description).</p>
+<p>The forecasting metrics are pretty much the same as in the previous uncalibrated model (a really minor difference).</p>
 </div>
 <div id="temperature-effect-on-demand" class="section level3">
 <h3>Temperature Effect on Demand</h3>
-<p>Being happy about the forecast performance, we can dig deeper into the temperature effect. First we simply plot the predictions and the raw values.</p>
-<pre class="python"><code>fig, ax = plt.subplots()
+<p>finally, let’s plot the temperature effect on demand.</p>
+<pre class="python"><code>temperature_prior_effect_mean = 0.13
+temperature_prior_effect_scale = 0.01
 
-az.plot_hdi(
-    temperature_training_data,
-    idata_train[&quot;posterior&quot;][&quot;obs&quot;],
-    hdi_prob=0.94,
-    smooth=True,
-    color=&quot;C0&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: &quot;94% HDI&quot;},
-    ax=ax,
-)
-
-az.plot_hdi(
-    temperature_training_data,
-    idata_train[&quot;posterior&quot;][&quot;obs&quot;],
-    hdi_prob=0.5,
-    smooth=True,
-    color=&quot;C0&quot;,
-    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: &quot;50% HDI&quot;},
-    ax=ax,
-)
-
-ax.scatter(temperature_training_data, demand_training_data, c=&quot;black&quot;)
-ax.set(title=&quot;Demand vs Temperature&quot;, xlabel=&quot;Temperature (°C)&quot;, ylabel=&quot;Demand (GW)&quot;);</code></pre>
-<center>
-<img src="../images/electricity_forecast_files/electricity_forecast_44_0.png" style="width: 1000px;"/>
-</center>
-<p>The non-linearity is clearly visible! Nevertheless, we are interested in the laten unseen variable between temperature and demand. In therms of the model, we are interested in the posterior distribution of the Gaussian Process component.</p>
-<pre class="python"><code>fig, ax = plt.subplots()
+fig, ax = plt.subplots()
 
 az.plot_hdi(
     temperature_training_data,
@@ -697,19 +570,39 @@ az.plot_hdi(
     ax=ax,
 )
 
+ax.axvline(
+    temperature_threshold_prior,
+    c=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Temperature Threshold Prior&quot;,
+)
+
+ax.axhspan(
+    ymin=temperature_prior_effect_mean - 1 * temperature_prior_effect_scale,
+    ymax=temperature_prior_effect_mean + 1 * temperature_prior_effect_scale,
+    xmin=0.64,
+    xmax=1,
+    color=&quot;C3&quot;,
+    alpha=0.1,
+    label=&quot;Temperature Prior Effect Band (1 std)&quot;,
+)
+ax.axhline(
+    temperature_prior_effect_mean,
+    c=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;Temperature Prior Effect Mean&quot;,
+)
+ax.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.5, -0.25), ncol=3)
 ax.set(
     title=&quot;Temperature Effect on Demand&quot;,
     xlabel=&quot;Temperature (°C)&quot;,
     ylabel=&quot;Effect on Demand&quot;,
 );</code></pre>
 <center>
-<img src="../images/electricity_forecast_files/electricity_forecast_46_0.png" style="width: 1000px;"/>
+<img src="../images/electricity_forecast_with_priors_files/electricity_forecast_with_priors_32_0.png" style="width: 1000px;"/>
 </center>
-<p>This effect plot coincided with the comment on the exploratory data analysis <a href="https://otexts.com/fpp2/scatterplots.html" class="uri">https://otexts.com/fpp2/scatterplots.html</a> by Hyndman and Athanasopoulos.</p>
-<blockquote>
-<p><em>“It is clear that high demand occurs when temperatures are high due to the effect of air-conditioning. But there is also a heating effect, where demand increases for very low temperatures.”</em></p>
-</blockquote>
-<p>Indeed, we see that at the extremes of the common temperature range, the temperature effect on demand increases! Heating and cooling usually happens outside the range <span class="math inline">\(15\)</span>°C - <span class="math inline">\(25\)</span>°C.</p>
+<p>The overall shape of the curve resembles the one in the previous baseline uncalibrated model. Still, we see that the effect of the priors is making the estimate for temperatures over <span class="math inline">\(32\)</span>°C to be more conservative around the expected value of <span class="math inline">\(0.13\)</span>.</p>
+<p>Observe that this opens great opportunities to calibrate forecasting models with domain knowledge, possible extracted from experimental or observational data.</p>
 </div>
 </div>
 

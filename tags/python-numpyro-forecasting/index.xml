@@ -6,7 +6,16 @@
     <description>Recent content in python, numpyro, forecasting on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 06 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 07 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Electricity Demand Forecast: Dynamic Time-Series Model with Prior Calibration</title>
+      <link>/electricity_forecast_with_priors/</link>
+      <pubDate>Mon, 07 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/electricity_forecast_with_priors/</guid>
+      <description>We present an example of a dynamic forecasting time-series model that incorporates a prior calibration process to estimate the temperature effect on electricity demand. The model is based on the previous example Electricity Demand Forecast: Dynamic Time-Series Model. In this second iteration, we borrow the ideas from the Pyro great example Forecasting with Dynamic Linear Model (DLM) where they use a prior calibration process on a local level forecasting model.</description>
+    </item>
+    
     <item>
       <title>Electricity Demand Forecast: Dynamic Time-Series Model</title>
       <link>/electricity_forecast/</link>
