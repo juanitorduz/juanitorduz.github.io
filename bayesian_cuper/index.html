@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Bayesian CUPED &amp; Sensitivity Analysis - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Bayesian CUPED &amp; Sensitivity Analysis - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://twitter.com/juanitorduz"><i class='fab fa-twitter fa-2x' style='color:#1DA1F2;'></i>  </a></li>
+    
+    <li><a href="https://bayes.club/@juanitorduz"><i class='fab fa-mastodon fa-2x' style='color:#6364FF;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">6 min read</span>
+    
+
+    <h1 class="article-title">Bayesian CUPED &amp; Sensitivity Analysis</h1>
+
+    
+    <span class="article-date">2024-10-29</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>Motivated by the great blog post by <a href="https://towardsdatascience.com/understanding-cuped-a822523641af">Understanding CUPED</a> by <a href="https://medium.com/@matteo.courthoud">Matteo Courthoud</a>, we explore a Bayesian approach to <a href="https://dl.acm.org/doi/abs/10.1145/2433396.2433413">CUPED</a> to understand its sensitivity with respect to the covariance parameter <span class="math inline">\(\theta\)</span> of the pre-post mean model. I will assume that the reader is already familiar with CUPED and has read Matteo’s blog post (highly recommended!). Here we focus on the sensitivity component. We do not do this in full generality but rather focus on the specific example of Matteo’s blog post.</p>
+<p><strong>Warning:</strong> Please do not take this results too seriously. This is just a sensitivity analysis I simply felt like doing.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import pandas as pd
+import seaborn as sns
+from jax import random
+from numpyro.handlers import do
+from numpyro.infer import MCMC, NUTS
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+rng = np.random.default_rng(seed=42)
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>We use a synthetic dataset from Matteo’s repository <a href="https://github.com/matteocourthoud/Blog-Posts/blob/main/notebooks/src/dgp.py"><code>src.dgp</code></a>. We simulate a pre and post experiment <code>revenue</code> variable under the presence of an intervention <code>ad_campaign</code> in a randomized controlled trial.</p>
+<pre class="python"><code>def generate_data(rng, alpha=5, beta=0, gamma=3, delta=2, n=100, seed=1):
+    np.random.seed(seed)
+
+    # Individuals
+    individual = range(1, n + 1)
+
+    # Treatment status
+    d = rng.binomial(1, 0.5, n)
+
+    # Individual outcome pre-treatment
+    y0 = alpha + beta * d + rng.normal(0, 1, n)
+    y1 = y0 + gamma + delta * d + rng.normal(0, 1, n)
+
+    # Generate the dataframe
+    return pd.DataFrame(
+        {&quot;individual&quot;: individual, &quot;ad_campaign&quot;: d, &quot;revenue0&quot;: y0, &quot;revenue1&quot;: y1}
+    )
+
+
+data_df: pd.DataFrame = generate_data(rng)
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+individual
+</th>
+<th>
+ad_campaign
+</th>
+<th>
+revenue0
+</th>
+<th>
+revenue1
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+5.399774
+</td>
+<td>
+10.394652
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+2
+</td>
+<td>
+0
+</td>
+<td>
+4.094521
+</td>
+<td>
+6.931078
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+3
+</td>
+<td>
+1
+</td>
+<td>
+4.621837
+</td>
+<td>
+9.959412
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+4
+</td>
+<td>
+1
+</td>
+<td>
+6.299228
+</td>
+<td>
+12.706710
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+5
+</td>
+<td>
+0
+</td>
+<td>
+4.643736
+</td>
+<td>
+7.734321
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(nrows=2, ncols=1, sharex=True, sharey=True, layout=&quot;constrained&quot;)
+
+sns.kdeplot(data=data_df, x=&quot;revenue0&quot;, hue=&quot;ad_campaign&quot;, fill=True, ax=ax[0])
+ax[0].set_title(&quot;Revenue Pre-Campaign&quot;)
+
+sns.kdeplot(data=data_df, x=&quot;revenue1&quot;, hue=&quot;ad_campaign&quot;, fill=True, ax=ax[1])
+ax[1].set_title(&quot;Revenue Post-Campaign&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_5_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="effect-estimation-difference-in-means" class="section level2">
+<h2>Effect Estimation: Difference in Means</h2>
+<p>We can compute the point estimate of the difference in means as follows:</p>
+<pre class="python"><code>difference_in_means = (
+    data_df.query(&quot;ad_campaign == True&quot;)[&quot;revenue1&quot;].mean()
+    - data_df.query(&quot;ad_campaign == False&quot;)[&quot;revenue1&quot;].mean()
+)
+
+print(f&quot;Difference in means: {difference_in_means:.3f}&quot;)</code></pre>
+<pre><code>Difference in means: 1.927</code></pre>
+<p>We are of course interested in quantifying the uncertainty of this estimate. We can do this using a simple linear regression model. We use a Bayesian approach with non-very informative priors, to be able to compare the results with the CUPED approach.</p>
+<pre class="python"><code>ad_campaign = data_df.ad_campaign.to_numpy()
+revenue0 = data_df.revenue0.to_numpy()
+revenue1 = data_df.revenue1.to_numpy()</code></pre>
+<pre class="python"><code>def difference_in_means_model(y_post, treatment) -&gt; None:
+    n_samples = len(treatment)
+    intercept = numpyro.sample(&quot;intercept&quot;, dist.Normal(0, 2))
+    beta = numpyro.sample(&quot;beta&quot;, dist.Normal(0, 3))
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.HalfCauchy(2))
+
+    mu = intercept + beta * treatment
+
+    with numpyro.plate(&quot;observations&quot;, n_samples):
+        numpyro.sample(&quot;y_post_pred&quot;, dist.Normal(mu, sigma), obs=y_post)
+
+
+numpyro.render_model(
+    difference_in_means_model,
+    model_args=(revenue1, ad_campaign),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_11_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>mcmc_difference_in_means = MCMC(
+    sampler=NUTS(difference_in_means_model),
+    num_warmup=1_500,
+    num_samples=4_000,
+    num_chains=4,
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+mcmc_difference_in_means.run(rng_subkey, revenue1, ad_campaign)
+
+idata_difference_in_means = az.from_numpyro(mcmc_difference_in_means)
+
+fig, ax = plt.subplots()
+az.plot_posterior(
+    idata_difference_in_means, var_names=[&quot;beta&quot;], ref_val=difference_in_means, ax=ax
+)
+ax.set_title(r&quot;Posterior distribution of $\beta$&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_12_4.png" style="width: 900px;"/>
+</center>
+<p>As expected, the posterior distribution of the difference in means is centered around the true value of <span class="math inline">\(2\)</span> (from the data generating process).</p>
+<p>Let’s compute the standard deviation of the posterior distribution:</p>
+<pre class="python"><code>print(f&quot;std: {idata_difference_in_means[&#39;posterior&#39;][&#39;beta&#39;].std().item():.3f}&quot;)</code></pre>
+<pre><code>std: 0.286</code></pre>
+</div>
+<div id="bayesian-cuped" class="section level2">
+<h2>Bayesian CUPED</h2>
+<p>We now turn to the Bayesian CUPED approach. Recall the algorithm for the CUPED estimator:</p>
+<ol style="list-style-type: decimal">
+<li>Regress <span class="math inline">\(\text{revenue}_1\)</span> on <span class="math inline">\(\text{revenue}_0\)</span> and estimate the <span class="math inline">\(\theta\)</span> coefficient.</li>
+<li>Compute <span class="math inline">\(\text{revenue}_{cuped} = \bar{\text{revenue}}_1 - \theta \times \bar{\text{revenue}}_0\)</span>.</li>
+<li>Compute the difference in means of <span class="math inline">\(\text{revenue}_{cuped}\)</span> between treatment and control group.</li>
+</ol>
+<p><strong>The motivation of this simulation is:</strong> How does the uncertainty on <span class="math inline">\(\theta\)</span> impact the uncertainty of the CUPED estimate?</p>
+<p>To answer this question, we implement these steps in a single Bayesian model (with same non-informative priors as before).</p>
+<pre class="python"><code>def cuped_model(y_post, treatment, y_pre) -&gt; None:
+    n_samples = len(ad_campaign)
+
+    intercept_target = numpyro.sample(&quot;intercept_target&quot;, dist.Normal(0, 2))
+    theta = numpyro.sample(&quot;theta&quot;, dist.Normal(0, 3))
+    sigma_theta = numpyro.sample(&quot;sigma_theta&quot;, dist.HalfCauchy(2))
+
+    intercept_cuped = numpyro.sample(&quot;intercept_cuped&quot;, dist.Normal(0, 2))
+    beta_cuped = numpyro.sample(&quot;beta_cuped&quot;, dist.Normal(0, 3))
+    sigma_cuped = numpyro.sample(&quot;sigma_cuped&quot;, dist.HalfCauchy(2))
+
+    mu_target = intercept_target + theta * y_pre
+
+    with numpyro.plate(&quot;target_conditioning&quot;, n_samples):
+        numpyro.sample(&quot;y_post_pred&quot;, dist.Normal(mu_target, sigma_theta), obs=y_post)
+
+    y_cuped = numpyro.deterministic(
+        &quot;y_cuped&quot;, y_post - theta * (y_pre - jnp.mean(y_pre))
+    )
+
+    with numpyro.plate(&quot;cuped_conditioning&quot;, n_samples):
+        numpyro.sample(
+            &quot;y_cuped_pred&quot;,
+            dist.Normal(intercept_cuped + beta_cuped * treatment, sigma_cuped),
+            obs=y_cuped,
+        )
+
+
+numpyro.render_model(
+    cuped_model,
+    model_args=(revenue1, ad_campaign, revenue0),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_16_0.svg" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>mcmc_cuped = MCMC(
+    sampler=NUTS(cuped_model),
+    num_warmup=1_500,
+    num_samples=4_000,
+    num_chains=4,
+)
+rng_key, rng_subkey = random.split(rng_key)
+mcmc_cuped.run(rng_subkey, revenue1, ad_campaign, revenue0)</code></pre>
+<p>First, let’s look into the posterior distribution of <span class="math inline">\(\theta\)</span>:</p>
+<pre class="python"><code>idata_cuped = az.from_numpyro(mcmc_cuped)
+fig, ax = plt.subplots()
+az.plot_posterior(idata_cuped, var_names=[&quot;theta&quot;], ax=ax)
+ax.set_title(r&quot;Posterior distribution of $\theta$&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_19_0.png" style="width: 900px;"/>
+</center>
+<p>The point estimate of <span class="math inline">\(\theta\)</span> is centered around the true value of <span class="math inline">\(1.1\)</span>.</p>
+<p>Next we look into the posterior distribution of the CUPED effect estimate:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(
+    idata_cuped, var_names=[&quot;beta_cuped&quot;], ref_val=difference_in_means, ax=ax
+)
+ax.set_title(&quot;Posterior distribution of Revenue CUPED Effect Estimate&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_21_0.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>print(f&quot;std: {idata_cuped[&#39;posterior&#39;][&#39;beta_cuped&#39;].std().item():.3f}&quot;)</code></pre>
+<pre><code>std: 0.207</code></pre>
+<p>As expected, the posterior distribution of the CUPED effect estimate is narrower than the one of the simple difference in means. So far so good! The result’s match Matteo’s blog post.</p>
+<p>For the sake of completeness, let’s compare the posterior distributions of the difference in means and the CUPED effect estimate:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(10, 8),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_difference_in_means, var_names=[&quot;beta&quot;], ref_val=difference_in_means, ax=ax[0]
+)
+ax[0].set_title(
+    f&quot;&quot;&quot;Difference in means
+    std: {idata_difference_in_means[&#39;posterior&#39;][&#39;beta&#39;].std().item():.4f}&quot;&quot;&quot;
+)
+
+az.plot_posterior(
+    idata_cuped, var_names=[&quot;beta_cuped&quot;], ref_val=difference_in_means, ax=ax[1]
+)
+ax[1].set_title(
+    f&quot;CUPED\n std: {idata_cuped[&#39;posterior&#39;][&#39;beta_cuped&#39;].std().item():.4f}&quot;
+)
+
+fig.suptitle(&quot;Model Comparison&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_25_0.png" style="width: 900px;"/>
+</center>
+<p>Here we have a clear visual evidence of the variance reduction of the CUPED model.</p>
+</div>
+<div id="graph-surgery" class="section level2">
+<h2>Graph Surgery</h2>
+<p>We now turn to the sensitivity analysis. We want to see how the uncertainty of the CUPED estimate evolves with respect to the uncertainty of the <span class="math inline">\(\theta\)</span> coefficient.</p>
+<p>To do this, we use the <a href="https://num.pyro.ai/en/stable/handlers.html#do"><code>do</code></a> operator to set the value of <span class="math inline">\(\theta\)</span> to the mean of its posterior distribution. This way we can mimic what we would have done in a traditional two-step approach.</p>
+<pre class="python"><code>do_cuped_model = do(
+    cuped_model, data={&quot;theta&quot;: idata_cuped[&quot;posterior&quot;][&quot;theta&quot;].mean().item()}
+)
+
+numpyro.render_model(
+    do_cuped_model,
+    model_args=(revenue1, ad_campaign, revenue0),
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_28_0.svg" style="width: 1000px;"/>
+</center>
+<p>Notice that we have removed the relationship between <span class="math inline">\(\theta\)</span> and the <code>revenue1 ~ revenue0</code> model.</p>
+<p>Next, we fit the later model of the CUPED algorithm:</p>
+<pre class="python"><code>mcmc_do_cuped = MCMC(
+    sampler=NUTS(do_cuped_model),
+    num_warmup=1_500,
+    num_samples=4_000,
+    num_chains=4,
+)
+rng_key, rng_subkey = random.split(rng_key)
+mcmc_do_cuped.run(rng_subkey, revenue1, ad_campaign, revenue0)
+
+idata_do_cuped = az.from_numpyro(mcmc_do_cuped)</code></pre>
+</div>
+<div id="comparison" class="section level2">
+<h2>Comparison</h2>
+<p>Finally, we compare all the effect estimation of the three models. In particular, we focus on the standard deviation of the posterior distributions.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3,
+    ncols=1,
+    figsize=(10, 10),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_difference_in_means, var_names=[&quot;beta&quot;], ref_val=difference_in_means, ax=ax[0]
+)
+ax[0].set_title(
+    f&quot;&quot;&quot;Difference in means
+    std: {idata_difference_in_means[&#39;posterior&#39;][&#39;beta&#39;].std().item():.4f}&quot;&quot;&quot;
+)
+
+az.plot_posterior(
+    idata_cuped, var_names=[&quot;beta_cuped&quot;], ref_val=difference_in_means, ax=ax[1]
+)
+ax[1].set_title(
+    f&quot;CUPED\n std: {idata_cuped[&#39;posterior&#39;][&#39;beta_cuped&#39;].std().item():.4f}&quot;
+)
+
+az.plot_posterior(
+    idata_do_cuped, var_names=[&quot;beta_cuped&quot;], ref_val=difference_in_means, ax=ax[2]
+)
+ax[2].set_title(
+    f&quot;&quot;&quot;CUPED (do $\\theta$)
+    std: {idata_do_cuped[&#39;posterior&#39;][&#39;beta_cuped&#39;].std().item():.4f}
+    &quot;&quot;&quot;
+)
+
+fig.suptitle(&quot;Model Comparison&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_cuped_files/bayesian_cuped_33_0.png" style="width: 900px;"/>
+</center>
+<p>We see that the estimate and uncertainty of the full Bayesian CUPED model is very similar (almost identical) to the one of the CUPED model after graph surgery. The latter standard deviation is just slightly smaller (approximately <span class="math inline">\(1\%\)</span>) than the one of the full Bayesian CUPED model.</p>
+<p>I wonder if this effect could be made more pronounced with a weaker relationship between <span class="math inline">\(\text{revenue}_1\)</span> and <span class="math inline">\(\text{revenue}_0\)</span>. If you have any input on this, please let me know!</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

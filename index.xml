@@ -6,7 +6,16 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 07 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 29 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Bayesian CUPED &amp; Sensitivity Analysis</title>
+      <link>/bayesian_cuper/</link>
+      <pubDate>Tue, 29 Oct 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/bayesian_cuper/</guid>
+      <description>Motivated by the great blog post by Understanding CUPED by Matteo Courthoud, we explore a Bayesian approach to CUPED to understand its sensitivity with respect to the covariance parameter \(\theta\) of the pre-post mean model. I will assume that the reader is already familiar with CUPED and has read Matteo’s blog post (highly recommended!). Here we focus on the sensitivity component. We do not do this in full generality but rather focus on the specific example of Matteo’s blog post.</description>
+    </item>
+    
     <item>
       <title>Electricity Demand Forecast: Dynamic Time-Series Model with Prior Calibration</title>
       <link>/electricity_forecast_with_priors/</link>
