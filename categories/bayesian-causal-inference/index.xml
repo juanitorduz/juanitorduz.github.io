@@ -6,7 +6,16 @@
     <description>Recent content in Bayesian, Causal Inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 29 Oct 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 25 Nov 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Hacking the TSB Model for Intermediate Time Series to Accommodate for Availability Constraints</title>
+      <link>/availability_tsb/</link>
+      <pubDate>Mon, 25 Nov 2024 00:00:00 +0000</pubDate>
+      
+      <guid>/availability_tsb/</guid>
+      <description>In many demand forecasting problems, we are faced with the challenge of predicting the demand for a product or service with very sparse data. This is specially true in retail where we have many products that are only sold occasionally. This sparsity can come from many sources as greatly described in the (recommended!) blog post “Why zeroes happen” by Ivan Svetunkov. One one hand, the sparsity can simply come from the lack of demand for the product.</description>
+    </item>
+    
     <item>
       <title>Bayesian CUPED &amp; Sensitivity Analysis</title>
       <link>/bayesian_cuped/</link>

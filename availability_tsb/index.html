@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Hacking the TSB Model for Intermediate Time Series to Accommodate for Availability Constraints - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Hacking the TSB Model for Intermediate Time Series to Accommodate for Availability Constraints - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">13 min read</span>
+    
+
+    <h1 class="article-title">Hacking the TSB Model for Intermediate Time Series to Accommodate for Availability Constraints</h1>
+
+    
+    <span class="article-date">2024-11-25</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In many demand forecasting problems, we are faced with the challenge of predicting the demand for a product or service with very sparse data. This is specially true in retail where we have many products that are only sold occasionally. This sparsity can come from many sources as greatly described in the (recommended!) blog post <a href="https://openforecast.org/2024/11/18/why-zeroes-happen/">“Why zeroes happen”</a> by <a href="https://openforecast.org/">Ivan Svetunkov</a>. One one hand, the sparsity can simply come from the lack of demand for the product. On the other hand, the sparsity can also come from the lack of availability of the product. For example, a product might be only available for purchase during certain times of the year, or only in certain geographical locations. There could be other reasons as well. In this notebook we experiment with an extension on a classical TSB time-series model for intermediate time series to accommodate for availability constraints.</p>
+<p>For an introduction to the TSB model from a probabilistic forecasting perspective, please see the first blog post <a href="https://juanitorduz.github.io/tsb_numpyro/">“TSB Method for Intermittent Time Series Forecasting in NumPyro”</a>. We have done previous experiments hacking this model in the past (see<a href="https://juanitorduz.github.io/zi_tsb_numpyro/">Zero-Inflated TSB Model</a>). This time we experiment more with adding additional features rather than changing the model structure. We also show this how to do this at scale (here we run a simulation with 1K series and 60 timesteps). We truly believe exploring these kind of extension are key for real applications.This experiment was motivated by the work of <a href="https://openforecast.org/">Ivan Svetunkov</a> on <a href="https://openforecast.org/adam/ADAMIntermittent.html">“Intermittent State Space Models”</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+import xarray as xr
+from jax import random
+from jaxtyping import Array, Float32, Int32, UInt32
+from numpyro.contrib.control_flow import scan
+from numpyro.handlers import condition
+from numpyro.infer import SVI, Predictive, Trace_ELBO
+from numpyro.infer.autoguide import AutoNormal
+from pydantic import BaseModel, ConfigDict
+from tqdm.notebook import tqdm
+from xarray import DataArray  # noqa: F401
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>We generate a synthetic data set where we generate sparse time series data through a Poisson process with a small rate parameter (to get some zeroes). Then we generate a binary availability mask that randomly assigns 0s and 1s to the counts through a Bernoulli process. To obtain the observed counts we simply multiply the availability mask by the counts. As in real cases, we have access to both the counts and the availability mask. We do not have access to the raw counts (without the availability mask). To store our data we create a <code>ModelData</code> container (have you checked <a href="https://docs.kidger.site/jaxtyping/"><code>jaxtyping</code></a>? If not, you should!).</p>
+<pre class="python"><code>class ModelData(BaseModel):
+    counts: Float32[Array, &quot;_ n_series&quot;]
+    available: Float32[Array, &quot;_ n_series&quot;]
+    t: Int32[Array, &quot;_&quot;]  # noqa: F821
+    model_config = ConfigDict(arbitrary_types_allowed=True)</code></pre>
+<p>We then generate the data with the following function.</p>
+<pre class="python"><code>def generate_intermittent_counts(
+    rng_key: UInt32[Array, &quot;2&quot;],
+    n_series: int,
+    t_max: int,
+    a: float = 1.0,
+    p: float = 0.5,
+) -&gt; ModelData:
+    &quot;&quot;&quot;Generate intermittent time series data with availability constraints.&quot;&quot;&quot;
+    # Generate Poisson rate parameters from a global Gamma distribution.
+    rng_key, rng_subkey = random.split(rng_key)
+    lambdas = random.gamma(rng_subkey, a=a, shape=(1, n_series))
+
+    # Generate counts from the Poisson distribution.
+    rng_key, rng_subkey = random.split(rng_key)
+    counts = random.poisson(rng_subkey, lam=lambdas, shape=(t_max, n_series))
+    counts = counts.astype(jnp.float32)
+
+    # Generate availability mask from a Bernoulli distribution.
+    rng_key, rng_subkey = random.split(rng_key)
+    available = random.bernoulli(rng_subkey, p=p, shape=counts.shape).astype(
+        jnp.float32
+    )
+
+    # Multiply counts by availability mask to get observed counts.
+    counts = available * counts
+
+    # Create time index.
+    t = jnp.arange(counts.shape[0])
+
+    return ModelData(counts=counts, available=available, t=t)</code></pre>
+<p>Next, we do a simple train-test split for model evaluation.</p>
+<pre class="python"><code>def train_dest_split(
+    model_data: ModelData, t_max_train: int
+) -&gt; tuple[ModelData, ModelData]:
+    counts_train = model_data.counts[:t_max_train, :]
+    counts_test = model_data.counts[t_max_train:, :]
+
+    available_train = model_data.available[:t_max_train, :]
+    available_test = model_data.available[t_max_train:, :]
+
+    t_train = jnp.arange(counts_train.shape[0])
+    t_test = jnp.arange(
+        counts_train.shape[0], counts_train.shape[0] + counts_test.shape[0]
+    )
+
+    model_data_train = ModelData(
+        counts=counts_train, available=available_train, t=t_train
+    )
+    model_data_test = ModelData(counts=counts_test, available=available_test, t=t_test)
+
+    return model_data_train, model_data_test</code></pre>
+<p>Let’s proceed to generate the data.</p>
+<pre class="python"><code>model_data = generate_intermittent_counts(
+    rng_key, n_series=1_000, t_max=60, a=2.5, p=0.6
+)
+
+model_data_train, model_data_test = train_dest_split(model_data, t_max_train=50)
+
+series_ids = jnp.arange(model_data.counts.shape[1])
+
+print(f&quot;model_data.counts.shape: {model_data.counts.shape}&quot;)
+print(f&quot;model_data_train.counts.shape: {model_data_train.counts.shape}&quot;)
+print(f&quot;model_data_test.counts.shape: {model_data_test.counts.shape}&quot;)</code></pre>
+<pre><code>model_data.counts.shape: (60, 1000)
+model_data_train.counts.shape: (50, 1000)
+model_data_test.counts.shape: (10, 1000)</code></pre>
+<p>We can visualize a subsample of the training and test data plus the availability mask.</p>
+<pre class="python"><code>n_series_to_plot = 15
+
+fig, ax = plt.subplots(
+    nrows=n_series_to_plot,
+    ncols=1,
+    figsize=(12, 15),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i in range(n_series_to_plot):
+    ax_i_twin = ax[i].twinx()
+    ax[i].plot(
+        model_data_train.t,
+        model_data_train.counts[:, i],
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;C0&quot;,
+        label=&quot;Training&quot;,
+    )
+    ax[i].plot(
+        model_data_test.t,
+        model_data_test.counts[:, i],
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;C1&quot;,
+        label=&quot;Test&quot;,
+    )
+    ax[i].axvline(x=model_data_train.t.shape[0], color=&quot;k&quot;, linestyle=&quot;--&quot;)
+
+    ax_i_twin.plot(
+        model_data_train.t,
+        model_data_train.available[:, i],
+        color=&quot;C2&quot;,
+        label=&quot;Available Training&quot;,
+    )
+    ax_i_twin.plot(
+        model_data_test.t,
+        model_data_test.available[:, i],
+        color=&quot;C3&quot;,
+        label=&quot;Available Test&quot;,
+    )
+    ax_i_twin.grid(None)
+
+ax[i].legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.25, -1), ncol=2)
+ax_i_twin.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.75, -1), ncol=2)
+
+fig.suptitle(
+    &quot;Training Counts and Availability (subsample)&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_12_0.png" style="width: 1000px;"/>
+</center>
+<p>Let’s plot all the training counts to get an idea of the amplitude of the data.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(model_data_train.t, model_data_train.counts, c=&quot;C0&quot;, alpha=0.3)
+fig.suptitle(&quot;Training Counts&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_14_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>On its core we keep the main logic of the TSB model (see <a href="https://juanitorduz.github.io/tsb_numpyro/">“TSB Method for Intermittent Time Series Forecasting in NumPyro”</a> for details). Denote by <span class="math inline">\(y_{t}\)</span> the input time series (let’s consider a single one for simplicity). Then the TSB method is specified by the following equations:</p>
+<p>If <span class="math inline">\(y_{t} &gt; 0\)</span>, then</p>
+<p><span class="math display">\[
+\begin{align*}
+z_{t + 1} &amp; = \alpha y_{t} + (1 - \alpha) z_{t} \\
+p_{t + 1} &amp; = \beta + (1 - \beta) p_{t}
+\end{align*}
+\]</span></p>
+<p>If <span class="math inline">\(y_{t} = 0\)</span>, then</p>
+<p><span class="math display">\[
+\begin{align*}
+z_{t + 1} &amp; = z_{t} \\
+p_{t + 1} &amp; = (1 - \beta) p_{t}
+\end{align*}
+\]</span></p>
+<p>where <span class="math inline">\(z_{t}\)</span> is the demand (level) of the time series at time <span class="math inline">\(t\)</span>, <span class="math inline">\(p_{t}\)</span> is the probability of observing a non-zero demand at time <span class="math inline">\(t\)</span>, and <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\beta\)</span> are the smoothing parameters. The forecast is then given by the product.</p>
+<p><span class="math display">\[
+\hat{y}_{t + 1} = z_{t} p_{t}.
+\]</span></p>
+<p>On this experiment we consider the following extensions:</p>
+<ul>
+<li>We vectorize the model to accommodate for multiple time series.</li>
+<li>We add a hierarchical structure on the noise level (useful, but not necessary).</li>
+<li>If we denote by <span class="math inline">\(a_{t}\)</span> the availability mask, then consider the following model:</li>
+</ul>
+<p>If <span class="math inline">\(y_{t} = 0\)</span>, then</p>
+<p><span class="math display">\[
+\begin{align*}
+z_{t + 1} &amp; = z_{t} \\
+p_{t + 1} &amp; = (1 - a_{t}\beta) p_{t}
+\end{align*}
+\]</span></p>
+<p>The idea is that if a zero comes from the lack of demand, then the probability of observing a non-zero demand should not change.</p>
+<p>Moreover, as we know that we can not sell if the product is not available, then we add a global factor <span class="math inline">\(a_{t}\)</span> to the forecast, i.e. the expected value of the forecast is given by <span class="math inline">\(\hat{y}_{t + 1} = a_{t} z_{t} p_{t}\)</span>.</p>
+<p>Let’s see how this looks in NumPyro (we keep the same priors for the smoothing parameters as in the TSB model).</p>
+<pre class="python"><code>def model(
+    counts: Float32[Array, &quot;t_max n_series&quot;],
+    available: Float32[Array, &quot;t_max_future n_series&quot;],
+    future: int = 0,
+) -&gt; None | Float32[Array, &quot;future n_series&quot;]:
+    &quot;&quot;&quot;Hierarchical TSB model with availability constraints.
+
+    Parameters
+    ----------
+    counts: Float32[Array, &quot;t_max n_series&quot;]
+        Training counts.
+    available: Float32[Array, &quot;t_max_future n_series&quot;]
+        Future availability mask.
+    future: int
+        Number of future time steps to forecast.
+
+    Returns
+    -------
+    None | Float32[Array, &quot;future n_series&quot;]
+        Forecasted counts if we are in forecasting mode (future &gt; 0), otherwise None.
+    &quot;&quot;&quot;
+    # Extract dimensions.
+    t_max, n_series = counts.shape
+    # Global noise scale.
+    noise_scale = numpyro.sample(
+        &quot;noise_scale&quot;, dist.LogNormal(loc=jnp.log(5), scale=0.3)
+    )
+
+    # Model parameters.
+    with numpyro.plate(&quot;n_series&quot;, n_series):
+        z_smoothing = numpyro.sample(
+            &quot;z_smoothing&quot;,
+            dist.Beta(concentration1=10, concentration0=40),
+        )
+
+        p_smoothing = numpyro.sample(
+            &quot;p_smoothing&quot;,
+            dist.Beta(concentration1=10, concentration0=40),
+        )
+
+        noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(scale=noise_scale))
+
+    # Transition function of the TSB model.
+    def transition_fn(carry, t):
+        z_prev, p_prev = carry
+
+        z_next = jnp.where(
+            t &lt; t_max,
+            jnp.where(
+                counts[t] &gt; 0,
+                z_smoothing * counts[t] + (1 - z_smoothing) * z_prev,
+                z_prev,
+            ),
+            z_prev,
+        )
+
+        p_next = jnp.where(
+            t &lt; t_max,
+            jnp.where(
+                counts[t] &gt; 0,
+                p_smoothing + (1 - p_smoothing) * p_prev,
+                (1 - available[t] * p_smoothing) * p_prev,  # &lt;- Availability constraint
+            ),
+            p_prev,
+        )
+
+        mu = z_next * p_next
+
+        pred_raw = numpyro.sample(&quot;pred_raw&quot;, dist.Normal(loc=mu, scale=noise))
+
+        pred = numpyro.deterministic(
+            &quot;pred&quot;, available[t] * pred_raw
+        )  # &lt;- Availability constraint
+
+        return (z_next, p_next), pred
+
+    # --- Run Scan ---
+    _, preds = scan(
+        transition_fn,
+        (counts[0], 0.5 * jnp.ones_like(counts[0])),
+        jnp.arange(t_max + future),
+    )
+
+    # --- Forecast ---
+    if future &gt; 0:
+        return numpyro.deterministic(&quot;forecast&quot;, preds[-future:, :])
+    return None</code></pre>
+<p>We can visualize the model structure.</p>
+<pre class="python"><code>numpyro.render_model(
+    model=model,
+    model_kwargs={
+        &quot;counts&quot;: model_data_train.counts,
+        &quot;available&quot;: model_data_train.available,
+        &quot;future&quot;: 1,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_18_0.svg" style="width: 600px;"/>
+</center>
+</div>
+<div id="prior-predictive-checks" class="section level2">
+<h2>Prior Predictive Checks</h2>
+<p>Before conditioning on the data, we can visualize the prior predictive distribution.</p>
+<pre class="python"><code>prior_predictive = Predictive(
+    model=model,
+    num_samples=1_000,
+    return_sites=[&quot;pred&quot;],
+)
+
+rng_key, rng_subkey = random.split(key=rng_key)
+prior_predictive_samples = prior_predictive(
+    rng_subkey,
+    counts=model_data_train.counts,
+    available=model_data_train.available,
+)
+
+
+prior_predictive_idata = az.from_dict(
+    prior_predictive={k: v[None, ...] for k, v in prior_predictive_samples.items()},
+    coords={&quot;t_max&quot;: model_data_train.t, &quot;n_series&quot;: series_ids},
+    dims={&quot;pred&quot;: [&quot;t_max&quot;, &quot;n_series&quot;]},
+)</code></pre>
+<pre class="python"><code>n_series_to_plot = 15
+
+fig, ax = plt.subplots(
+    nrows=n_series_to_plot,
+    ncols=1,
+    figsize=(12, 15),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i in range(n_series_to_plot):
+    ax_i_twin = ax[i].twinx()
+    az.plot_hdi(
+        model_data_train.t,
+        prior_predictive_idata[&quot;prior_predictive&quot;].sel(n_series=i)[&quot;pred&quot;],
+        hdi_prob=0.94,
+        color=&quot;C0&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.3},
+        smooth=False,
+        ax=ax[i],
+    )
+    az.plot_hdi(
+        model_data_train.t,
+        prior_predictive_idata[&quot;prior_predictive&quot;].sel(n_series=i)[&quot;pred&quot;],
+        hdi_prob=0.5,
+        color=&quot;C0&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.5},
+        smooth=False,
+        ax=ax[i],
+    )
+    ax[i].plot(
+        model_data_train.t,
+        model_data_train.counts[:, i],
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;C0&quot;,
+        label=&quot;Training&quot;,
+    )
+    ax_i_twin.plot(
+        model_data_train.t,
+        model_data_train.available[:, i],
+        color=&quot;C2&quot;,
+        label=&quot;Available Training&quot;,
+    )
+    ax_i_twin.grid(None)
+
+ax[i].legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.25, -1), ncol=2)
+ax_i_twin.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.75, -1), ncol=2)
+
+fig.suptitle(&quot;Prior Predictive Checks&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_21_0.png" style="width: 1000px;"/>
+</center>
+<p>The prior predictive distribution looks good! Not very restrictive but within the range of the data. Moreover, note that we are enforcing the availability constraint in the model. When the availability is zero, the model is not able to predict any non-zero demand.</p>
+</div>
+<div id="svi-inference" class="section level2">
+<h2>SVI Inference</h2>
+<p>We now condition on the training data and perform inference with SVI.</p>
+<pre class="python"><code>%%time
+# We condition on the raw counts!
+conditioned_model = condition(model, data={&quot;pred_raw&quot;: model_data_train.counts})
+guide = AutoNormal(conditioned_model)
+optimizer = numpyro.optim.Adam(step_size=0.001)
+svi = SVI(conditioned_model, guide, optimizer, loss=Trace_ELBO())
+num_steps = 10_000
+
+rng_key, rng_subkey = random.split(key=rng_key)
+
+svi_result = svi.run(
+    rng_subkey,
+    num_steps,
+    counts=model_data_train.counts,
+    available=model_data_train.available,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set_title(&quot;ELBO loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 10000/10000 [00:08&lt;00:00, 1148.79it/s, init loss: 779965.5625, avg. loss [9501-10000]: 95750.0461]
+
+
+CPU times: user 11 s, sys: 2.96 s, total: 13.9 s
+Wall time: 10.9 s</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_24_2.png" style="width: 800px;"/>
+</center>
+<p>SVI runs very fast! The ELBO loss is decreasing as expected. We also see stability in the loss 🚀.</p>
+</div>
+<div id="posterior-predictive-checks" class="section level2">
+<h2>Posterior Predictive Checks</h2>
+<p>After successful inference, we can now visualize the posterior predictive distribution. One important observation is that, in general, we do not have access to the future availability. Hence, here we can use the model for scenario planning. We could, for instance, set the availability to one to simulate the expected demand. We could also use past availability averages to have an estimates on the expected sales given that the availability is out of our control and we want to plan for it. In this experiment we opt for the first approach as is typically one of the most common use cases.</p>
+<pre class="python"><code>posterior_predictive = Predictive(
+    model=conditioned_model,
+    guide=guide,
+    params=svi_result.params,
+    num_samples=2_000,
+    return_sites=[&quot;pred&quot;, &quot;forecast&quot;],
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+# We set the availability to one to simulate the expected demand.
+future_availability = jnp.ones_like(model_data_test.available)
+posterior_predictive_samples = posterior_predictive(
+    rng_subkey,
+    counts=model_data_train.counts,
+    available=jnp.concatenate(
+        [model_data_train.available, future_availability], axis=0
+    ),  # &lt;- Future availability
+    future=model_data_test.t.shape[0],
+)
+
+posterior_predictive_idata = az.from_dict(
+    posterior_predictive={
+        k: v[None, ...] for k, v in posterior_predictive_samples.items()
+    },
+    coords={
+        &quot;t_max&quot;: model_data.t,
+        &quot;t_max_test&quot;: model_data_test.t,
+        &quot;n_series&quot;: series_ids,
+    },
+    dims={&quot;pred&quot;: [&quot;t_max&quot;, &quot;n_series&quot;], &quot;forecast&quot;: [&quot;t_max_test&quot;, &quot;n_series&quot;]},
+)</code></pre>
+<pre class="python"><code>n_series_to_plot = 15
+
+fig, ax = plt.subplots(
+    nrows=n_series_to_plot,
+    ncols=1,
+    figsize=(12, 25),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i in series_ids[:n_series_to_plot]:
+    ax_i_twin = ax[i].twinx()
+    az.plot_hdi(
+        model_data_test.t,
+        posterior_predictive_idata[&quot;posterior_predictive&quot;].sel(n_series=i)[&quot;forecast&quot;],
+        hdi_prob=0.94,
+        color=&quot;C1&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+        smooth=True,
+        ax=ax[i],
+    )
+    az.plot_hdi(
+        model_data_test.t,
+        posterior_predictive_idata[&quot;posterior_predictive&quot;].sel(n_series=i)[&quot;forecast&quot;],
+        hdi_prob=0.5,
+        color=&quot;C1&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+        smooth=True,
+        ax=ax[i],
+    )
+    ax[i].plot(
+        model_data_train.t,
+        model_data_train.counts[:, i],
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;C0&quot;,
+    )
+    ax[i].plot(
+        model_data_test.t,
+        model_data_test.counts[:, i],
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;black&quot;,
+        label=&quot;Test (observed)&quot;,
+    )
+    ax_i_twin.plot(
+        model_data_train.t,
+        model_data_train.available[:, i],
+        color=&quot;C2&quot;,
+        label=&quot;Available Training&quot;,
+    )
+    ax_i_twin.grid(None)
+    ax[i].axvline(x=model_data_train.t.shape[0], color=&quot;k&quot;, linestyle=&quot;--&quot;)
+
+ax[i].legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.25, -0.5), ncol=3)
+ax_i_twin.legend(loc=&quot;lower center&quot;, bbox_to_anchor=(0.75, -0.5), ncol=1)
+
+fig.suptitle(&quot;Posterior Predictive Checks&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_28_0.png" style="width: 1000px;"/>
+</center>
+<p>All the forecasts look very reasonable and they mostly cover the observed counts (which have an unknown availability at prediction time).</p>
+<p>To understand the impact of the availability constraint, let’s plot the forecast of a single series.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+i = 0
+ax_twin = ax.twinx()
+az.plot_hdi(
+    model_data_test.t,
+    posterior_predictive_idata[&quot;posterior_predictive&quot;].sel(n_series=i)[&quot;forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    smooth=True,
+    ax=ax,
+)
+az.plot_hdi(
+    model_data_test.t,
+    posterior_predictive_idata[&quot;posterior_predictive&quot;].sel(n_series=i)[&quot;forecast&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    smooth=True,
+    ax=ax,
+)
+ax.plot(
+    model_data_test.t,
+    posterior_predictive_idata[&quot;posterior_predictive&quot;]
+    .sel(n_series=i)[&quot;forecast&quot;]
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    marker=&quot;o&quot;,
+    markersize=8,
+    color=&quot;C1&quot;,
+    label=&quot;Posterior Predictive Mean&quot;,
+)
+ax.plot(
+    model_data_train.t,
+    model_data_train.counts[:, i],
+    marker=&quot;o&quot;,
+    markersize=8,
+    color=&quot;C0&quot;,
+)
+ax.plot(
+    model_data_test.t,
+    model_data_test.counts[:, i],
+    marker=&quot;o&quot;,
+    markersize=8,
+    color=&quot;black&quot;,
+    label=&quot;Test (observed)&quot;,
+)
+ax_twin.plot(
+    model_data_train.t,
+    model_data_train.available[:, i],
+    color=&quot;C2&quot;,
+    label=&quot;Available Training&quot;,
+)
+ax_twin.grid(None)
+ax.axvline(x=model_data_train.t.shape[0], color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.legend(bbox_to_anchor=(0.25, -0.1), loc=&quot;upper center&quot;, ncol=2)
+ax_twin.legend(bbox_to_anchor=(0.75, -0.1), loc=&quot;upper center&quot;, ncol=1)
+fig.suptitle(&quot;Posterior Predictive Checks&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_30_0.png" style="width: 1000px;"/>
+</center>
+<p>Despite the fact the last two data points of tht training data are zeros, the model does not simply predict zeros for the next time steps, which is usual for intermittent time series models. The reason is that the model is aware of the fact that these last two zeros are due to the lack of availability and not actual demand. Hence, when we set the availability to one for the future, the forecast is not zero. This is exactly what we want!</p>
+</div>
+<div id="time-slice-cross-validation" class="section level2">
+<h2>Time Slice Cross-Validation</h2>
+<p>Finally, to understand how the forecast changes as we collect more data, we perform a one-time-ahead time slice cross-validation. We simply wrap the whole fit and forecast logic into a function.</p>
+<pre class="python"><code>def time_slice_cross_validation(
+    rng_key: UInt32[Array, &quot;2&quot;],
+    counts: Float32[Array, &quot;t_max n_series&quot;],
+    available: Float32[Array, &quot;t_max n_series&quot;],
+    n_splits: int = 5,
+) -&gt; xr.Dataset:
+    forecast_list = []
+    for i in tqdm(range(n_splits)):
+        # Prepare data
+        counts_train = counts[: -(n_splits - i), :]
+        available_train = available[: -(n_splits - i), :]
+
+        # Inference
+        conditioned_model = condition(model, data={&quot;pred_raw&quot;: counts_train})
+        guide = AutoNormal(conditioned_model)
+        optimizer = numpyro.optim.Adam(step_size=0.001)
+        svi = SVI(conditioned_model, guide, optimizer, loss=Trace_ELBO())
+        num_steps = 10_000
+
+        rng_key, rng_subkey = random.split(key=rng_key)
+        svi_result = svi.run(
+            rng_subkey,
+            num_steps,
+            counts=counts_train,
+            available=available_train,
+        )
+
+        # Forecast
+        rng_key, rng_subkey = random.split(rng_key)
+        posterior_predictive = Predictive(
+            model=conditioned_model,
+            guide=guide,
+            params=svi_result.params,
+            num_samples=2_000,
+            return_sites=[&quot;forecast&quot;],
+        )
+
+        rng_key, rng_subkey = random.split(rng_key)
+        future_availability = jnp.ones_like(model_data_train.available[:1, :])
+        posterior_predictive_samples = posterior_predictive(
+            rng_subkey,
+            counts=counts_train,
+            available=jnp.concatenate([available_train, future_availability], axis=0),
+            future=1,
+        )
+
+        posterior_predictive_idata = az.from_dict(
+            posterior_predictive={
+                k: v[None, ...] for k, v in posterior_predictive_samples.items()
+            },
+            coords={&quot;t_max&quot;: [counts_train.shape[0]], &quot;n_series&quot;: series_ids},
+            dims={&quot;forecast&quot;: [&quot;t_max&quot;, &quot;n_series&quot;]},
+        )
+
+        forecast_list.append(posterior_predictive_idata)
+
+    # Concatenate forecasts
+    return xr.concat(
+        [x[&quot;posterior_predictive&quot;] for x in forecast_list],
+        dim=(&quot;t_max&quot;),
+    )</code></pre>
+<pre class="python"><code>%%time
+
+rng_key, rng_subkey = random.split(rng_key)
+forecast_cv = time_slice_cross_validation(
+    rng_subkey,
+    counts=model_data.counts,
+    available=model_data.available,
+    n_splits=model_data_test.t.shape[0],
+)</code></pre>
+<pre><code>  0%|          | 0/10 [00:00&lt;?, ?it/s]
+
+
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1160.85it/s, init loss: 798650.5000, avg. loss [9501-10000]: 95802.0725]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1175.88it/s, init loss: 819448.3125, avg. loss [9501-10000]: 97712.4193]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1112.57it/s, init loss: 779561.1250, avg. loss [9501-10000]: 99624.9674]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1158.84it/s, init loss: 879361.6250, avg. loss [9501-10000]: 101552.4200]
+100%|██████████| 10000/10000 [00:09&lt;00:00, 1099.89it/s, init loss: 931186.7500, avg. loss [9501-10000]: 103457.6641]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1125.36it/s, init loss: 780855.1875, avg. loss [9501-10000]: 105346.4030]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1169.45it/s, init loss: 912513.5000, avg. loss [9501-10000]: 107281.2294]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1163.29it/s, init loss: 972508.5625, avg. loss [9501-10000]: 109202.1500]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1176.71it/s, init loss: 859298.5625, avg. loss [9501-10000]: 111135.8448]
+100%|██████████| 10000/10000 [00:08&lt;00:00, 1121.93it/s, init loss: 951178.1250, avg. loss [9501-10000]: 113046.8944]
+
+
+CPU times: user 1min 45s, sys: 28.7 s, total: 2min 13s
+Wall time: 1min 41s</code></pre>
+<p>We can inspect the results.</p>
+<pre class="python"><code>n_series_to_plot = 15
+
+fig, ax = plt.subplots(
+    nrows=n_series_to_plot,
+    ncols=1,
+    figsize=(12, 25),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i in series_ids[:n_series_to_plot]:
+    az.plot_hdi(
+        model_data_test.t,
+        forecast_cv.sel(n_series=i)[&quot;forecast&quot;],
+        hdi_prob=0.94,
+        color=&quot;C1&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+        smooth=True,
+        ax=ax[i],
+    )
+    az.plot_hdi(
+        model_data_test.t,
+        forecast_cv.sel(n_series=i)[&quot;forecast&quot;],
+        hdi_prob=0.5,
+        color=&quot;C1&quot;,
+        fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+        smooth=True,
+        ax=ax[i],
+    )
+    ax[i].plot(
+        model_data_test.t,
+        forecast_cv.sel(n_series=i)[&quot;forecast&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;C1&quot;,
+        label=&quot;Posterior Predictive Mean&quot;,
+    )
+    ax[i].plot(
+        model_data_train.t,
+        model_data_train.counts[:, i],
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;C0&quot;,
+    )
+    ax[i].plot(
+        model_data_test.t,
+        model_data_test.counts[:, i],
+        marker=&quot;o&quot;,
+        markersize=4,
+        color=&quot;black&quot;,
+        label=&quot;Test (observed)&quot;,
+    )
+    ax[i].axvline(x=model_data_train.t.shape[0], color=&quot;k&quot;, linestyle=&quot;--&quot;)
+
+ax[i].legend(bbox_to_anchor=(0.5, -0.1), loc=&quot;upper center&quot;, ncol=4)
+
+fig.suptitle(
+    &quot;Posterior Predictive\n1 Step Ahead Cross-Validation&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_36_0.png" style="width: 1000px;"/>
+</center>
+<p>We see that the the TSB model is able to adapt the non-zero probabilities parameter for each new data point. The drop in this probability due to a zero observation not as strong as if we would only used the original TSB model. We can see this clearly in the following example:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+i = 5
+az.plot_hdi(
+    model_data_test.t,
+    forecast_cv.sel(n_series=i)[&quot;forecast&quot;],
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.3, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    smooth=True,
+    ax=ax,
+)
+az.plot_hdi(
+    model_data_test.t,
+    forecast_cv.sel(n_series=i)[&quot;forecast&quot;],
+    hdi_prob=0.5,
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    smooth=True,
+    ax=ax,
+)
+ax.plot(
+    model_data_test.t,
+    forecast_cv.sel(n_series=i)[&quot;forecast&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    marker=&quot;o&quot;,
+    markersize=8,
+    color=&quot;C1&quot;,
+    label=&quot;Posterior Predictive Mean&quot;,
+)
+ax.plot(
+    model_data_train.t,
+    model_data_train.counts[:, i],
+    marker=&quot;o&quot;,
+    markersize=8,
+    color=&quot;C0&quot;,
+)
+ax.plot(
+    model_data_test.t,
+    model_data_test.counts[:, i],
+    marker=&quot;o&quot;,
+    markersize=8,
+    color=&quot;black&quot;,
+    label=&quot;Test (observed)&quot;,
+)
+ax.axvline(x=model_data_train.t.shape[0], color=&quot;k&quot;, linestyle=&quot;--&quot;)
+ax.legend(bbox_to_anchor=(0.5, -0.1), loc=&quot;upper center&quot;, ncol=4)
+fig.suptitle(
+    &quot;Posterior Predictive\n1 Step Ahead Cross-Validation&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/availability_tsb_files/availability_tsb_38_0.png" style="width: 1000px;"/>
+</center>
+<p>We expect this concrete example has provided you with a good starting point to build your own custom models for intermittent time series forecasting. We see a big opportunity for these type of probabilistic models to be used in practice for scenario planning and business operations.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
