@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Notes on Hierarchical Hilbert Space Gaussian Processes - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Notes on Hierarchical Hilbert Space Gaussian Processes - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">19 min read</span>
+    
+
+    <h1 class="article-title">Notes on Hierarchical Hilbert Space Gaussian Processes</h1>
+
+    
+    <span class="article-date">2025-01-01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we want to explore some ideas on hierarchical Hilbert Space Gaussian Processes following the fantastic exposition of the PyMC example notebook: <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/HSGP-Advanced.html">“Gaussian Processes: HSGP Advanced Usage”</a> by <a href="https://github.com/bwengals">Bill Engels</a>, <a href="https://github.com/AlexAndorra">Alexandre Andorra</a> and <a href="https://github.com/ferrine">Maxim Kochurov</a>. I can only recommend to read the notebook and the references therein!
+For an introduction to Hilbert Space Gaussian Processes, please see my introductory blog post: <a href="https://juanitorduz.github.io/hsgp_intro/">“A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods”</a>.</p>
+<p><strong>Motivation</strong>: In many applications, one is interested in understanding the dynamic effect of one variable on another. For example, in marketing, one is interested in efficiency across many channels on sales (or conversions) as a function of time. For such a purpose, one typically uses a time-varying regression model with time-varying coefficients (for a simple example, see <a href="https://juanitorduz.github.io/bikes_gp/">“Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation”</a>). The main challenge is that, if not done carefully, the model will easily overfit the data. One can use a hierarchical model with a global component and a group-specific component to overcome this. The global component will capture the overall trend, while the group-specific component will capture the idiosyncratic behavior of each group. As a side effect, we will gain some regularization effect that will help to avoid overfitting. For the marketing example above, <a href="https://www.pymc-labs.com/blog-posts/">PyMC Labs</a> has successfully applied this approach in the context of media mix modeling: <a href="https://www.pymc-labs.com/blog-posts/modelling-changes-marketing-effectiveness-over-time/">“Bayesian Media Mix Models: Modelling changes in marketing effectiveness over time”</a>. This hierarchical approach was motivated by the work <a href="https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-14-252">“Hierarchical Bayesian modeling of gene expression time series across irregularly sampled replicates and clusters”</a>.</p>
+<p>To my knowledge (please correct me if I am wrong), the PyMC example notebook <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/HSGP-Advanced.html">“Gaussian Processes: HSGP Advanced Usage”</a> is the first reference with complete code to fit a hierarchical Hilbert Space Gaussian Process (well, maybe the <a href="https://gist.github.com/bwengals/90e79d64fe9e2d496a048f0b2c6d33da">initial gist</a>). Here, we use very similar techniques with NumPyro using the (relatively) new <a href="https://num.pyro.ai/en/latest/contrib.html#hilbert-space-gaussian-processes-approximation">Hilbert Space Gaussian Process module</a>. For both the PyMC and NumPyro implementations, one of the key ingredients is vectorizing the spectral density expressions (as we need to fit many groups). While in the PyMC notebook, the vectorization is done by hand, in the NumPyro implementation, the vectorization is done using the <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.vmap.html">vmap</a> function. Nevertheless, both approaches are equivalent. Hence, we can focus on the concepts and worry less about the implementation details.</p>
+<p>With these new explicit code references, we expect to demystify the implementation of the hierarchical Hilbert Space Gaussian Process so that the community can benefit from this approach for real applications. That being said, as we will see below, this approach has its challenges. As in many applications with Gaussian processes, specifying sensitive priors and ensuring parameter identifiability is not a trivial task. Here is where the application should drive the model specification (where the thinking happens!).</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+from jax import random, vmap
+from jax.nn import softplus
+from jaxtyping import Array, Float32, UInt32
+from numpyro.contrib.hsgp.approximation import hsgp_squared_exponential
+from numpyro.contrib.hsgp.laplacian import eigenfunctions
+from numpyro.contrib.hsgp.spectral_densities import (
+    diag_spectral_density_squared_exponential,
+)
+from numpyro.handlers import condition, scope
+from numpyro.infer import MCMC, NUTS, Predictive
+from xarray import DataArray  # noqa: F401
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>We start by generating some synthetic data. We do not do a full parameter recovery as in the PyMC notebook. Instead, we simple generate synthetic data, fit and asses the quality of the model. We will use a single group-specific latent function for each group. The mean function is a sum of two sine waves.</p>
+<pre class="python"><code>def generate_single_group_data(
+    rng_key: UInt32[Array, &quot;2&quot;], x: Float32[Array, &quot; n&quot;]
+) -&gt; Float32[Array, &quot; n&quot;]:
+    &quot;&quot;&quot;Generate one dimensional data for a single group.
+
+    Parameters
+    ----------
+    rng_key : UInt32[Array, &quot;2&quot;]
+        JAX random key.
+    x : Float32[Array, &quot; n&quot;]
+        Input domain data.
+
+    Returns
+    -------
+    Float32[Array, &quot; n&quot;]
+        Output data.
+    &quot;&quot;&quot;
+    a1, a2, a3, a4 = random.uniform(rng_key, minval=4, maxval=7, shape=(4,))
+    return (
+        jnp.sin((a1 * jnp.pi) * x)
+        + jnp.cos((a2 * jnp.pi) * x)
+        - jnp.sin((a3 * 2 * jnp.pi) * x)
+        + jnp.cos((a4 * 1.5 * jnp.pi) * x)
+    )
+
+
+def dgg(
+    rng_key: UInt32[Array, &quot;2&quot;], x: Float32[Array, &quot; n&quot;]
+) -&gt; tuple[Float32[Array, &quot; n&quot;], Float32[Array, &quot; n&quot;], Float32[Array, &quot; n&quot;]]:
+    &quot;&quot;&quot;Data generation function.
+
+    We generate data for a single group by adding noise to the mean latent function.
+
+    y = f + f_g + noise
+
+    where:
+    - f is the mean function (GP)
+    - f_g is the group-specific latent function (GP)
+    - noise is i.i.d. Gaussian noise
+
+    Parameters
+    ----------
+    rng_key : UInt32[Array, &quot;2&quot;]
+        JAX random key.
+    x : Float32[Array, &quot; n&quot;]
+        Input domain data.
+
+    Returns
+    -------
+    tuple[Float32[Array, &quot; n&quot;], Float32[Array, &quot; n&quot;], Float32[Array, &quot; n&quot;]]
+        Group-specific latent function, mean function and observed data.
+    &quot;&quot;&quot;
+    n = x.shape[0]
+    f_g = generate_single_group_data(rng_key, x)
+    f = jnp.sin((4 * jnp.pi) * x) + jnp.sin((1 * jnp.pi) * x)
+    noise = random.normal(rng_key, shape=(n,)) * 0.5
+    y = f + f_g + noise
+    return f_g, f, y
+
+
+# Number of observations and groups
+n = 200
+n_groups = 5
+
+# Input domain data
+x = jnp.linspace(0.1, 1, n)
+
+# Generate data
+rng_key, rng_subkey = random.split(rng_key)
+
+# Generate data for each group
+f_g, f, y = vmap(dgg)(
+    random.split(rng_subkey, n_groups), jnp.tile(x, reps=(n_groups, 1))
+)
+
+# Check shapes
+assert f_g.shape == (n_groups, n)
+assert f.shape == (n_groups, n)
+assert y.shape == (n_groups, n)</code></pre>
+<p>Let’s visualize the raw data.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for g in range(n_groups):
+    ax.plot(x, y[g], c=f&quot;C{g}&quot;, label=f&quot;group {g}&quot;)
+
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.05), ncol=n_groups)
+ax.set_title(&quot;Observed data&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_6_0.png" style="width: 900px;"/>
+</center>
+<p>We see that each group has different dynamics, but they some how follow a global pattern. This hidden pattern is the latent mean function that we would like to recover using the hierarchical structure.</p>
+<p>Next, let’s visualize the group-specific latent functions.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for g in range(n_groups):
+    ax.plot(x, f_g[g], lw=3, c=f&quot;C{g}&quot;, label=f&quot;group {g}&quot;)
+
+ax.plot(x, f[0], c=&quot;black&quot;, lw=4, label=&quot;Mean function&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.05), ncol=n_groups + 1)
+ax.set_title(
+    &quot;Group-specific latent functions VS mean function&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_8_0.png" style="width: 900px;"/>
+</center>
+<p>Finally, let’s look at everything together.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for g in range(n_groups):
+    ax.plot(x, y[g], c=f&quot;C{g}&quot;, label=f&quot;observed group {g}&quot;)
+
+for g in range(n_groups):
+    ax.plot(x, f_g[g], lw=3, c=f&quot;C{g}&quot;, alpha=0.5, label=f&quot;group {g}&quot;)
+
+ax.plot(x, f[0], c=&quot;black&quot;, lw=4, label=&quot;Mean function&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.05), ncol=n_groups - 1)
+ax.set_title(
+    &quot;Observed data and (unobserved) latent components&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_10_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="train-test-split" class="section level2">
+<h2>Train Test Split</h2>
+<p>Next, we do a simple train/test split.</p>
+<pre class="python"><code># Share of data to use for training
+share_train = 0.9
+
+# Number of training observations
+n_train = int(n * share_train)
+
+x_train = x[:n_train]
+x_test = x[n_train:]
+
+f_train = f[:, :n_train]
+f_test = f[:, n_train:]
+
+f_g_train = f_g[:, :n_train]
+f_g_test = f_g[:, n_train:]
+
+y_train = y[:, :n_train]
+y_test = y[:, n_train:]
+
+# Check shapes
+assert x_train.shape == (n_train,)
+assert x_test.shape == (n - n_train,)
+assert f_train.shape == (n_groups, n_train)
+assert f_test.shape == (n_groups, n - n_train)
+assert f_g_train.shape == (n_groups, n_train)
+assert f_g_test.shape == (n_groups, n - n_train)
+assert y_train.shape == (n_groups, n_train)
+assert y_test.shape == (n_groups, n - n_train)</code></pre>
+<p>We can visualize the train/test split result.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for g in range(n_groups):
+    ax.plot(x_train, y_train[g], c=f&quot;C{g}&quot;, label=f&quot;group {g} (train)&quot;)
+    ax.plot(
+        x_test, y_test[g], c=f&quot;C{g}&quot;, ls=&quot;dotted&quot;, alpha=0.5, label=f&quot;group {g} (test)&quot;
+    )
+
+ax.axvline(x=x_train[-1], c=&quot;gray&quot;, lw=2)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.05), ncol=n_groups)
+ax.set_title(&quot;Observed data (train/test split)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_14_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="vectorized-spectral-density" class="section level2">
+<h2>Vectorized Spectral Density</h2>
+<p>As a reminder, the Hilbert Space Gaussian Process approximation is given by (see <a href="https://juanitorduz.github.io/hsgp_intro/">“A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods”</a> for a very complete explanation of the algorithm):</p>
+<p><span class="math display">\[
+f(x) \approx \sum_{j = 1}^{m}
+\overbrace{\color{red}{\left(S(\sqrt{\lambda_j})\right)^{1/2}}}^{\text{Spectral Density: all hyperparameters are here!}}
+\times
+\underbrace{\color{blue}{\phi_{j}(x)}}_{\text{Eigenfunctions: easy to compute!}}
+\times
+\overbrace{\color{green}{\beta_{j}}}^{\sim \: \text{Normal}(0,1)}
+\]</span></p>
+<p>where</p>
+<ul>
+<li><span class="math inline">\(S\)</span> is the spectral density of the GP kernel. This in the only term that contains the hyperparameters of the GP kernel (amplitude and length scale).</li>
+<li><span class="math inline">\((\phi_{j}(x), \lambda_{j})\)</span> are the eigenfunctions and eigenvalues of the Dirichlet Laplacian operator on a unit hypercube.</li>
+<li><span class="math inline">\(\beta_{j}\)</span> are the coefficients of the eigenfunction.</li>
+</ul>
+<p>The spectral density expressions for the most used kernels are known and easy to implement. In many cases, and for most of the applications, the implementations are not fully vectorized to allow for many outputs. For our concrete application, we need to vectorize the spectral density expressions to allow for many groups. With JAX, this is straightforward using the <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.vmap.html">vmap</a> function.</p>
+<pre class="python"><code>def diag_spectral_density_squared_exponential_vectorized(
+    alpha: Float32[Array, &quot; n_groups&quot;],
+    length: Float32[Array, &quot; n_groups&quot;],
+    ell: float,
+    m: int,
+    dim: int,
+) -&gt; Float32[Array, &quot; n_groups m&quot;]:
+    &quot;&quot;&quot;Vectorized spectral density for the squared exponential kernel.
+
+    Parameters
+    ----------
+    alpha : Float32[Array, &quot; n_groups&quot;]
+        Amplitude parameter.
+    length : Float32[Array, &quot; n_groups&quot;]
+        Length parameter.
+    ell : float
+        Length scale.
+    m : int
+        Number of eigenfunctions.
+    dim : int
+        Dimension of the input space.
+    &quot;&quot;&quot;
+    # Define the an array of parameters we want to vectorize over.
+    theta = jnp.stack([alpha, length], axis=0)
+    return vmap(
+        lambda theta: diag_spectral_density_squared_exponential(
+            alpha=theta[0],  # alpha,
+            length=theta[1],  # length,
+            ell=ell,
+            m=m,
+            dim=dim,
+        ),
+        in_axes=-1,
+    )(theta)</code></pre>
+<p>Let’s verify the implementation by computing the spectral density for different values of the hyperparameters:</p>
+<ul>
+<li>Constant of ones.</li>
+<li>Linear increasing.</li>
+</ul>
+<pre class="python"><code># Set fixed parameters
+ell = 1.2
+m = 10
+dim = 1
+
+# Set different values for the hyperparameters
+## Constant of ones
+ones_array = jnp.ones(n_groups)
+## Linear increasing
+arange_array = 0.5 * jnp.arange(start=1, stop=n_groups + 1, step=1)
+
+
+fig, axes = plt.subplots(
+    nrows=2, ncols=2, figsize=(12, 8), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+# Compute the spectral density for the different combinations of hyperparameters
+for i, alpha in enumerate([ones_array, arange_array]):
+    for j, length in enumerate([ones_array, arange_array]):
+        spd = jnp.sqrt(
+            diag_spectral_density_squared_exponential_vectorized(
+                alpha=alpha,
+                length=length,
+                ell=ell,
+                m=m,
+                dim=dim,
+            )
+        )
+
+        assert spd.shape == (n_groups, m)
+
+        ax = axes[i, j]
+
+        alpha_label = &quot;ones&quot; if i == 0 else &quot;arange&quot;
+        length_label = &quot;ones&quot; if j == 0 else &quot;arange&quot;
+
+        for g in range(n_groups):
+            ax.plot(spd[g], c=f&quot;C{g}&quot;, marker=&quot;o&quot;, markersize=5, label=f&quot;group {g}&quot;)
+
+        ax.set_title(f&quot;alpha: {alpha_label}, length: {length_label}&quot;)</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_18_0.png" style="width: 1000px;"/>
+</center>
+<p>The results are as expected:</p>
+<ul>
+<li>In the upper left corner, we have the spectral density for a constant amplitude and length scale. All values of the spectral density are the same.</li>
+<li>In the upper right corner, we have the spectral density for a constant amplitude and a linear increasing length scale. All values of the spectral density are different. The smaller the length scale, the wider its “support”.</li>
+<li>In the lower left corner, we have the spectral density for a linear increasing amplitude and length scale. All values of the spectral density are different. The smaller larger the amplitude, the larger the spectral density.</li>
+<li>In the lower right corner, we have the spectral density for a linear increasing amplitude and length scale. All values of the spectral density are different and consistent with the previous cases.</li>
+</ul>
+<p>In addition, we can test this last case explicitly by testing the vectorization results against the scalar version.</p>
+<pre class="python"><code># Compute the spectral density for the linear increasing amplitude and length scale.
+spd = jnp.sqrt(
+    diag_spectral_density_squared_exponential_vectorized(
+        alpha=arange_array,
+        length=arange_array,
+        ell=ell,
+        m=m,
+        dim=dim,
+    )
+)
+
+# Compare the vectorized results against the scalar version
+for i, (single_alpha, single_length) in enumerate(
+    zip(arange_array, arange_array, strict=True)
+):
+    assert jnp.array_equal(
+        spd[i],
+        jnp.sqrt(
+            diag_spectral_density_squared_exponential(
+                alpha=single_alpha, length=single_length, ell=ell, m=m, dim=dim
+            )
+        ),
+    )</code></pre>
+<p>Everything works as expected!</p>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>We are ready to work out the model specification.</p>
+<div id="priors" class="section level3">
+<h3>Priors</h3>
+<p>First let’s think about the priors. Looking into the data we see that the range of the training data in between 0.1 and 1.0. Hence, in order to capture the global structure of the data, a length scale of around <span class="math inline">\(0.1\)</span> is a good starting point. On the other hand, the amplitude of the data is around <span class="math inline">\(5.0\)</span>. Hence, we can use a prior that is centered around <span class="math inline">\(5.0\)</span>.</p>
+<p>Before setting the priors concretely, let’s also think about the model structure. As we want to ensure the global GP captures most of the variance, we will assume that the group-specific length scales are deviations from the global length scale. We achieve this by using a <a href="https://num.pyro.ai/en/latest/distributions.html#zerosumnormal"><code>ZeroSumNormal</code></a> distribution. To ensure positive length scales, we will use a <a href="https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.softplus.html"><code>softplus</code></a> link function.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 7))
+
+x_range = jnp.linspace(-3, 5, 100)
+ax.plot(x_range, softplus(x_range), label=&quot;Softplus&quot;)
+ax.plot(x_range, x_range, c=&quot;black&quot;, ls=&quot;dashed&quot;, label=&quot;Identity&quot;)
+ax.axhline(y=0, c=&quot;gray&quot;, ls=&quot;dotted&quot;, label=&quot;Zero&quot;)
+ax.legend()
+ax.set_title(&quot;Softplus Link Function&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_24_0.png" style="width: 700px;"/>
+</center>
+<p>We use normal likelihoods on the transformed spaces around the heuristic values.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+softplus_log_amplitude = softplus(
+    jnp.log(100) + 1 * random.normal(rng_subkey, shape=(10_000,))
+)
+
+softplus_log_length = softplus(
+    jnp.log(0.03) + 0.3 * random.normal(rng_subkey, shape=(10_000,))
+)
+
+fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(12, 9), sharex=False, sharey=False, layout=&quot;constrained&quot;
+)
+
+az.plot_dist(
+    np.array(softplus_log_amplitude), color=&quot;C0&quot;, fill_kwargs={&quot;alpha&quot;: 0.4}, ax=ax[0]
+)
+ax[0].set_title(&quot;Softplus Prior for the log-amplitude&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+
+az.plot_dist(
+    np.array(softplus_log_length), color=&quot;C1&quot;, fill_kwargs={&quot;alpha&quot;: 0.4}, ax=ax[1]
+)
+ax[1].set_title(&quot;Softplus Prior for the log-length&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_26_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="parametrization" class="section level3">
+<h3>Parametrization</h3>
+<p>Having set priors on the key GP parameters, we can now work out the model parametrization. We do this by defining the global and group-specific latent mean GP components.</p>
+<p>We start by defining the global latent mean GP component.</p>
+<pre class="python"><code>def priors_global_latent_mean_gp(
+    log_alpha_global: Float32[Array, &quot;&quot;], log_length_global: Float32[Array, &quot;&quot;]
+) -&gt; tuple[Float32[Array, &quot;&quot;], Float32[Array, &quot;&quot;]]:
+    &quot;&quot;&quot;Global latent mean GP priors.
+
+    Given the log-amplitude and log-length, we compute the amplitude and length
+    through a softplus link function.
+
+    Parameters
+    ----------
+    log_alpha_global : Float32[Array, &quot;&quot;]
+        Log-amplitude prior.
+    log_length_global : Float32[Array, &quot;&quot;]
+        Log-length prior.
+
+    Returns
+    -------
+    tuple[Float32[Array, &quot;&quot;], Float32[Array, &quot;&quot;]]
+        Global amplitude and length.
+    &quot;&quot;&quot;
+    alpha_global = numpyro.deterministic(&quot;alpha_global&quot;, softplus(log_alpha_global))
+    length_global = numpyro.deterministic(&quot;length_global&quot;, softplus(log_length_global))
+    return alpha_global, length_global
+
+
+def global_latent_mean_gp(
+    x: Float32[Array, &quot; n&quot;],
+    alpha_global: Float32[Array, &quot;&quot;],
+    length_global: Float32[Array, &quot;&quot;],
+    ell: float,
+    m_global: int,
+) -&gt; Float32[Array, &quot; n&quot;]:
+    &quot;&quot;&quot;Global latent mean GP.
+
+    Given the global amplitude and length, we compute the global latent mean GP
+    component using the HSGP approximation.
+
+    Parameters
+    ----------
+    x : Float32[Array, &quot; n&quot;]
+        Input domain data.
+    alpha_global : Float32[Array, &quot;&quot;]
+        Global amplitude.
+    length_global : Float32[Array, &quot;&quot;]
+        Global length.
+    ell : float
+        Interval length.
+    m_global : int
+        Number of eigenfunctions in the approximation.
+
+    Returns
+    -------
+    Float32[Array, &quot; n&quot;]
+        Global latent mean GP component.
+    &quot;&quot;&quot;
+    return numpyro.deterministic(
+        &quot;f_global&quot;,
+        hsgp_squared_exponential(
+            x=x,
+            alpha=alpha_global,
+            length=length_global,
+            ell=ell,
+            m=m_global,
+        ),
+    )</code></pre>
+<p>We continue by defining the group-specific offset component.</p>
+<pre class="python"><code>def priors_group_delta_gp(
+    n_groups: int,
+    log_alpha_global: Float32[Array, &quot;&quot;],
+    log_length_global: Float32[Array, &quot;&quot;],
+) -&gt; tuple[Float32[Array, &quot; n_groups&quot;], Float32[Array, &quot; n_groups&quot;]]:
+    &quot;&quot;&quot;Group-specific latent offset GP priors.
+
+    These components are used to capture the group-specific deviations from
+    the global latent mean GP component.
+
+    Given the log-amplitude and log-length of the global latent mean GP component,
+    we compute the amplitude and length of the group-specific latent offset GP
+    component using a zero-sum normal distribution.
+
+    Parameters
+    ----------
+    n_groups : int
+        Number of groups.
+    log_alpha_global : Float32[Array, &quot;&quot;]
+        Log-amplitude prior.
+    log_length_global : Float32[Array, &quot;&quot;]
+        Log-length prior.
+
+    Returns
+    -------
+    tuple[Float32[Array, &quot; n_groups&quot;], Float32[Array, &quot; n_groups&quot;]]
+        Group-specific amplitude and length.
+    &quot;&quot;&quot;
+    log_alpha_groups = log_alpha_global + numpyro.sample(
+        &quot;log_alpha_groups&quot;, dist.ZeroSumNormal(scale=3.0, event_shape=(n_groups,))
+    )
+    log_length_groups = log_length_global + numpyro.sample(
+        &quot;log_length_groups&quot;, dist.ZeroSumNormal(scale=2.0, event_shape=(n_groups,))
+    )
+
+    alpha_groups = numpyro.deterministic(&quot;alpha_groups&quot;, softplus(log_alpha_groups))
+    length_groups = numpyro.deterministic(&quot;length_groups&quot;, softplus(log_length_groups))
+
+    return alpha_groups, length_groups
+
+
+def group_delta_gp(
+    x: Float32[Array, &quot; n&quot;],
+    alpha_groups: Float32[Array, &quot; n_groups&quot;],
+    length_groups: Float32[Array, &quot; n_groups&quot;],
+    ell: float,
+    m_groups: int,
+) -&gt; Float32[Array, &quot; n_groups m_groups&quot;]:
+    &quot;&quot;&quot;Group-specific latent offset GP.
+
+    Here we use the vectorized spectral density to compute the HSGP
+    approximation of the group-specific latent offset GP component.
+
+    Parameters
+    ----------
+    x : Float32[Array, &quot; n&quot;]
+        Input domain data.
+    alpha_groups : Float32[Array, &quot; n_groups&quot;]
+        Group-specific amplitude.
+    length_groups : Float32[Array, &quot; n_groups&quot;]
+        Group-specific length.
+    ell : float
+        Interval length.
+    m_groups : int
+        Number of eigenfunctions in the approximation.
+
+    Returns
+    -------
+    Float32[Array, &quot; n_groups m_groups&quot;]
+        Group-specific latent mean GP component.
+    &quot;&quot;&quot;
+    # Compute the eigenfunctions of the Dirichlet Laplacian.
+    phi = eigenfunctions(x=x, ell=ell, m=m_groups)
+
+    # Compute the spectral density of the squared exponential kernel.
+    spd = jnp.sqrt(
+        diag_spectral_density_squared_exponential_vectorized(
+            alpha=alpha_groups, length=length_groups, ell=ell, m=m_groups, dim=1
+        )
+    )
+
+    # We use the non-centered parameterization of the approximate linear model.
+    with (
+        numpyro.plate(&quot;groups&quot;, n_groups, dim=-1),
+        numpyro.plate(&quot;group_basis&quot;, m_groups, dim=-2),
+    ):
+        # Standard normal distributions to model the coefficients of the eigenfunctions.
+        beta_delta = numpyro.sample(&quot;beta_delta&quot;, dist.Normal(loc=0.0, scale=1.0))
+
+    # This is the final formula in the approximation.
+    return numpyro.deterministic(&quot;f_delta&quot;, (phi @ (spd.T * beta_delta)).T)</code></pre>
+<p>We can bring these components together to define the model.</p>
+<pre class="python"><code>def model(
+    x: Float32[Array, &quot; n&quot;], n_groups: int, ell: float, m_global: int, m_groups: int
+) -&gt; None:
+    &quot;&quot;&quot;Hierarchical HSGP model.
+
+    This model is a hierarchical model that captures the global structure of the
+    data and the group-specific deviations from the global structure.
+
+    y = f_global + f_delta + noise
+
+    The global structure is captured by the global latent mean GP component, while
+    the group-specific deviations are captured by the group-specific latent
+    offset GP component.
+
+    We also include a hierarchical Student-T likelihood to model the likelihood
+    of the data.
+    Parameters
+    ----------
+    x : Float32[Array, &quot; n&quot;]
+        Input domain data.
+    n_groups : int
+        Number of groups.
+    ell : float
+        Interval length.
+    m_global : int
+        Number of eigenfunctions in the global latent mean GP.
+    m_groups : int
+        Number of eigenfunctions in the group-specific latent mean GP.
+    &quot;&quot;&quot;
+    log_alpha_global = numpyro.sample(
+        &quot;log_alpha_global&quot;, dist.Normal(loc=jnp.log(10), scale=1)
+    )
+    log_length_global = numpyro.sample(
+        &quot;log_length_global&quot;, dist.Normal(loc=jnp.log(0.03), scale=0.3)
+    )
+
+    alpha_global, length_global = priors_global_latent_mean_gp(
+        log_alpha_global=log_alpha_global,
+        log_length_global=log_length_global,
+    )
+
+    alpha_groups, length_groups = priors_group_delta_gp(
+        n_groups=n_groups,
+        log_alpha_global=log_alpha_global,
+        log_length_global=log_length_global,
+    )
+
+    nu = numpyro.sample(&quot;nu&quot;, dist.Gamma(concentration=10, rate=2.5))
+    scale_prior = numpyro.sample(&quot;scale_prior&quot;, dist.HalfNormal(scale=2.5))
+
+    with numpyro.plate(&quot;groups&quot;, n_groups, dim=-1):
+        scale = numpyro.sample(&quot;scale&quot;, dist.HalfNormal(scale=scale_prior))
+
+    f_global = scope(global_latent_mean_gp, prefix=&quot;global&quot;, divider=&quot;_&quot;)(
+        x=x,
+        alpha_global=alpha_global,
+        length_global=length_global,
+        ell=ell,
+        m_global=m_global,
+    )
+
+    f_delta = group_delta_gp(
+        x=x,
+        alpha_groups=alpha_groups,
+        length_groups=length_groups,
+        ell=ell,
+        m_groups=m_groups,
+    )
+
+    f_group = numpyro.deterministic(&quot;f_group&quot;, f_global + f_delta)
+
+    numpyro.sample(&quot;obs&quot;, dist.StudentT(df=nu, loc=f_group, scale=scale[..., None]))</code></pre>
+<p>There are only three parameters we need to set:</p>
+<ul>
+<li>The interval length: We set it to <span class="math inline">\(1.5\)</span> based on the range of the data.</li>
+<li>The number of eigenfunctions in the global latent mean GP.</li>
+<li>The number of eigenfunctions in the group-specific latent mean GP.</li>
+</ul>
+<p>For this specific example, we want to have a regularized global latent mean GP
+component and we expect more variation (wiggliness) in the group-specific
+latent mean GP component. Therefore, we set the number of eigenfunctions in the
+global latent mean GP to <span class="math inline">\(20\)</span> and <span class="math inline">\(30\)</span> in the group-specific latent mean GP.</p>
+<pre class="python"><code># Set fixed parameters.
+ell = 1.1
+m_global = 12
+m_groups = 28</code></pre>
+<p>Let’s visualize the model structure.</p>
+<pre class="python"><code>numpyro.render_model(model, model_args=(x_train, n_groups, ell, m_global, m_groups))</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_36_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+</div>
+<div id="prior-predictive-check" class="section level2">
+<h2>Prior Predictive Check</h2>
+<p>Before fitting the model, we perform a prior predictive check to see if the
+model is working as expected.</p>
+<pre class="python"><code>prior_predictive = Predictive(model, num_samples=1_000, return_sites=[&quot;obs&quot;])
+
+rng_key, rng_subkey = random.split(rng_key)
+prior_predictive_samples = prior_predictive(
+    rng_subkey, x_train, n_groups, ell, m_global, m_groups
+)
+
+prior_predictive_idata = az.from_numpyro(
+    prior=prior_predictive_samples,
+    coords={&quot;x&quot;: x_train, &quot;group&quot;: jnp.arange(n_groups)},
+    dims={&quot;f&quot;: [&quot;group&quot;, &quot;x&quot;], &quot;obs&quot;: [&quot;group&quot;, &quot;x&quot;]},
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for draw in range(1):
+    ax.plot(
+        x_train,
+        prior_predictive_idata[&quot;prior&quot;][&quot;obs&quot;].sel(chain=0, draw=draw).T,
+        c=&quot;gray&quot;,
+        alpha=0.5,
+    )
+
+for i, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        x_train,
+        prior_predictive_idata[&quot;prior&quot;][&quot;obs&quot;].sel(group=0),
+        fill_kwargs={
+            &quot;color&quot;: &quot;gray&quot;,
+            &quot;alpha&quot;: 0.4 + 0.2 * i,
+            &quot;label&quot;: f&quot;HDI {hdi_prob}&quot;,
+        },
+        hdi_prob=hdi_prob,
+        smooth=True,
+        ax=ax,
+    )
+
+for g in range(n_groups):
+    ax.plot(x_train, y_train[g], c=f&quot;C{g}&quot;, label=f&quot;group {g}&quot;)
+
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.05), ncol=n_groups + 2)
+ax.set_title(&quot;Prior predictive check&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_39_0.png" style="width: 900px;"/>
+</center>
+<p>The range of prior predictive distributions loos very reasonable.</p>
+</div>
+<div id="condition-and-fit-the-model" class="section level2">
+<h2>Condition and Fit the Model</h2>
+<p>We now proceed to condition the model on the data and fit using NUTS.</p>
+<pre class="python"><code># Condition the model on the training data.
+conditioned_model = condition(model, data={&quot;obs&quot;: y_train})
+# Define the sampler.
+sampler = NUTS(conditioned_model, target_accept_prob=0.9)
+mcmc = MCMC(sampler, num_warmup=1_500, num_samples=4_000, num_chains=4)
+
+# Run the sampler.
+rng_key, rng_subkey = random.split(rng_key)
+mcmc.run(rng_subkey, x_train, n_groups, ell, m_global, m_groups)</code></pre>
+<p>We store the results in an <a href="https://python.arviz.org/en/latest/api/generated/arviz.InferenceData.html"><code>arviz.InferenceData</code></a> object.</p>
+<pre class="python"><code>idata = az.from_numpyro(
+    posterior=mcmc,
+    coords={
+        &quot;x&quot;: x_train,
+        &quot;group&quot;: jnp.arange(n_groups),
+        &quot;m_global&quot;: jnp.arange(m_global),
+        &quot;m_groups&quot;: jnp.arange(m_groups),
+    },
+    dims={
+        &quot;log_alpha_groups&quot;: [&quot;group&quot;],
+        &quot;log_length_groups&quot;: [&quot;group&quot;],
+        &quot;alpha_groups&quot;: [&quot;group&quot;],
+        &quot;length_groups&quot;: [&quot;group&quot;],
+        &quot;global_beta&quot;: [&quot;m_global&quot;],
+        &quot;beta_delta&quot;: [&quot;m_groups&quot;, &quot;group&quot;],
+        &quot;f_delta&quot;: [&quot;group&quot;, &quot;x&quot;],
+        &quot;global_f_global&quot;: [&quot;x&quot;],
+        &quot;f_group&quot;: [&quot;group&quot;, &quot;x&quot;],
+        &quot;scale&quot;: [&quot;group&quot;],
+        &quot;obs&quot;: [&quot;group&quot;, &quot;x&quot;],
+    },
+)</code></pre>
+</div>
+<div id="model-diagnostics" class="section level2">
+<h2>Model Diagnostics</h2>
+<p>Let’s look into some diagnostics.</p>
+<pre class="python"><code># Check for divergences.
+idata[&quot;sample_stats&quot;].diverging.sum().item()</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>az.summary(
+    idata,
+    var_names=[
+        &quot;log_alpha_global&quot;,
+        &quot;log_length_global&quot;,
+        &quot;log_alpha_groups&quot;,
+        &quot;log_length_groups&quot;,
+        &quot;scale_prior&quot;,
+        &quot;scale&quot;,
+        &quot;nu&quot;,
+    ],
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+log_alpha_global
+</th>
+<td>
+3.427
+</td>
+<td>
+0.610
+</td>
+<td>
+2.323
+</td>
+<td>
+4.581
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+15504.0
+</td>
+<td>
+12028.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_length_global
+</th>
+<td>
+-3.657
+</td>
+<td>
+0.206
+</td>
+<td>
+-4.035
+</td>
+<td>
+-3.262
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+15504.0
+</td>
+<td>
+12921.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_alpha_groups[0]
+</th>
+<td>
+-1.193
+</td>
+<td>
+1.385
+</td>
+<td>
+-3.609
+</td>
+<td>
+1.480
+</td>
+<td>
+0.012
+</td>
+<td>
+0.009
+</td>
+<td>
+13680.0
+</td>
+<td>
+12792.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_alpha_groups[1]
+</th>
+<td>
+-0.343
+</td>
+<td>
+1.396
+</td>
+<td>
+-2.738
+</td>
+<td>
+2.416
+</td>
+<td>
+0.011
+</td>
+<td>
+0.010
+</td>
+<td>
+15607.0
+</td>
+<td>
+12898.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_alpha_groups[2]
+</th>
+<td>
+1.008
+</td>
+<td>
+1.470
+</td>
+<td>
+-1.574
+</td>
+<td>
+3.859
+</td>
+<td>
+0.011
+</td>
+<td>
+0.010
+</td>
+<td>
+19282.0
+</td>
+<td>
+12357.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_alpha_groups[3]
+</th>
+<td>
+-0.685
+</td>
+<td>
+1.421
+</td>
+<td>
+-3.204
+</td>
+<td>
+2.012
+</td>
+<td>
+0.012
+</td>
+<td>
+0.010
+</td>
+<td>
+15865.0
+</td>
+<td>
+12375.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_alpha_groups[4]
+</th>
+<td>
+1.213
+</td>
+<td>
+1.380
+</td>
+<td>
+-1.343
+</td>
+<td>
+3.767
+</td>
+<td>
+0.010
+</td>
+<td>
+0.009
+</td>
+<td>
+18143.0
+</td>
+<td>
+11975.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_length_groups[0]
+</th>
+<td>
+0.240
+</td>
+<td>
+0.688
+</td>
+<td>
+-1.097
+</td>
+<td>
+1.277
+</td>
+<td>
+0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+9835.0
+</td>
+<td>
+11771.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_length_groups[1]
+</th>
+<td>
+-0.112
+</td>
+<td>
+0.581
+</td>
+<td>
+-1.165
+</td>
+<td>
+0.926
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+16531.0
+</td>
+<td>
+12678.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_length_groups[2]
+</th>
+<td>
+-0.367
+</td>
+<td>
+0.474
+</td>
+<td>
+-1.198
+</td>
+<td>
+0.545
+</td>
+<td>
+0.003
+</td>
+<td>
+0.003
+</td>
+<td>
+19403.0
+</td>
+<td>
+11485.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_length_groups[3]
+</th>
+<td>
+-0.185
+</td>
+<td>
+0.627
+</td>
+<td>
+-1.370
+</td>
+<td>
+0.898
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+13773.0
+</td>
+<td>
+11610.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+log_length_groups[4]
+</th>
+<td>
+0.424
+</td>
+<td>
+0.465
+</td>
+<td>
+-0.461
+</td>
+<td>
+1.242
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+12852.0
+</td>
+<td>
+12695.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+scale_prior
+</th>
+<td>
+0.598
+</td>
+<td>
+0.282
+</td>
+<td>
+0.242
+</td>
+<td>
+1.078
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+30457.0
+</td>
+<td>
+10647.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+scale[0]
+</th>
+<td>
+0.449
+</td>
+<td>
+0.031
+</td>
+<td>
+0.392
+</td>
+<td>
+0.509
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+30508.0
+</td>
+<td>
+13253.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+scale[1]
+</th>
+<td>
+0.449
+</td>
+<td>
+0.030
+</td>
+<td>
+0.395
+</td>
+<td>
+0.506
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+32087.0
+</td>
+<td>
+12929.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+scale[2]
+</th>
+<td>
+0.428
+</td>
+<td>
+0.029
+</td>
+<td>
+0.376
+</td>
+<td>
+0.484
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+31833.0
+</td>
+<td>
+11601.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+scale[3]
+</th>
+<td>
+0.458
+</td>
+<td>
+0.030
+</td>
+<td>
+0.403
+</td>
+<td>
+0.515
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+29545.0
+</td>
+<td>
+12516.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+scale[4]
+</th>
+<td>
+0.402
+</td>
+<td>
+0.028
+</td>
+<td>
+0.351
+</td>
+<td>
+0.454
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+29722.0
+</td>
+<td>
+13103.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+nu
+</th>
+<td>
+7.415
+</td>
+<td>
+1.247
+</td>
+<td>
+5.191
+</td>
+<td>
+9.774
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+26861.0
+</td>
+<td>
+13376.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>There are no divergences and all the <code>rhat</code> values are essentially <span class="math inline">\(1.0\)</span>.</p>
+<p>We can also look into the posterior distributions.</p>
+<pre class="python"><code>_ = az.plot_trace(
+    data=idata,
+    var_names=[
+        &quot;log_alpha_global&quot;,
+        &quot;log_length_global&quot;,
+        &quot;log_alpha_groups&quot;,
+        &quot;log_length_groups&quot;,
+        &quot;alpha_global&quot;,
+        &quot;length_global&quot;,
+        &quot;alpha_groups&quot;,
+        &quot;length_groups&quot;,
+        &quot;scale_prior&quot;,
+        &quot;scale&quot;,
+        &quot;nu&quot;,
+    ],
+    kind=&quot;rank_bars&quot;,
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (12, 18), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Model Posteriors&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_49_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="posterior-predictive-check" class="section level2">
+<h2>Posterior Predictive Check</h2>
+<p>We can now study the posterior predictive distribution and compare it against the true data. First, we sample and store the posterior predictive samples.</p>
+<pre class="python"><code>posterior_predictive = Predictive(
+    model, posterior_samples=mcmc.get_samples(), return_sites=[&quot;obs&quot;]
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+posterior_predictive_samples = posterior_predictive(
+    rng_subkey, x_train, n_groups, ell, m_global, m_groups
+)
+
+idata.extend(
+    az.from_numpyro(
+        posterior_predictive=posterior_predictive_samples,
+        coords={&quot;x&quot;: x_train, &quot;group&quot;: jnp.arange(n_groups)},
+        dims={&quot;f_group&quot;: [&quot;group&quot;, &quot;x&quot;], &quot;obs&quot;: [&quot;group&quot;, &quot;x&quot;]},
+    )
+)</code></pre>
+<p>Next, we can start by visualizing the posterior predictive distribution of the global latent mean GP component.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+for i, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        x_train,
+        idata[&quot;posterior&quot;][&quot;global_f_global&quot;],
+        fill_kwargs={
+            &quot;color&quot;: &quot;gray&quot;,
+            &quot;alpha&quot;: 0.4 + 0.2 * i,
+            &quot;label&quot;: f&quot;HDI {hdi_prob:.0%}&quot;,
+        },
+        ax=ax,
+        hdi_prob=hdi_prob,
+        smooth=True,
+    )
+ax.plot(x_train, f_train[0], c=&quot;black&quot;, lw=4, label=&quot;Mean function&quot;)
+ax.legend(loc=&quot;lower left&quot;, ncol=3)
+ax.set_title(
+    &quot;Posterior predictive check - Latent Global Mean GP&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_53_0.png" style="width: 1000px;"/>
+</center>
+<p>The fit is not perfect but it is a very good approximation of the true mean function.</p>
+<p>We now compare it against the posterior predictive distribution of the group-specific observations.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=n_groups + 1,
+    ncols=1,
+    figsize=(12, 3 * (n_groups + 1)),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        x_train,
+        idata[&quot;posterior&quot;][&quot;global_f_global&quot;],
+        fill_kwargs={
+            &quot;color&quot;: &quot;gray&quot;,
+            &quot;alpha&quot;: 0.4 + 0.2 * i,
+            &quot;label&quot;: f&quot;HDI {hdi_prob:.0%}&quot;,
+        },
+        ax=axes[0],
+        hdi_prob=hdi_prob,
+        smooth=True,
+    )
+
+axes[0].plot(x_train, f_train[0], c=&quot;black&quot;, lw=4, label=&quot;Mean function&quot;)
+axes[0].legend(loc=&quot;lower left&quot;, ncol=3)
+
+for group in range(n_groups):
+    for i, hdi_prob in enumerate([0.94, 0.5]):
+        ax = axes[group + 1]
+        az.plot_hdi(
+            x_train,
+            idata[&quot;posterior_predictive&quot;][&quot;obs&quot;].sel(group=group),
+            fill_kwargs={
+                &quot;color&quot;: f&quot;C{group}&quot;,
+                &quot;alpha&quot;: 0.2 + 0.2 * i,
+                &quot;label&quot;: f&quot;HDI {hdi_prob:.0%}&quot;,
+            },
+            hdi_prob=hdi_prob,
+            smooth=True,
+            ax=ax,
+        )
+
+    ax.plot(x_train, y_train[group], c=f&quot;C{group}&quot;, label=f&quot;group {group}&quot;)
+    ax.legend(loc=&quot;lower left&quot;, ncol=3)
+
+fig.suptitle(&quot;Posterior predictive check&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_55_0.png" style="width: 900px;"/>
+</center>
+<p>We see that the model is able to capture the global structure of the data and the group-specific deviations.</p>
+<p>As a result, the inferred offsets (deltas) are also good approximations of the true offsets.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=n_groups,
+    ncols=1,
+    figsize=(12, 3 * n_groups),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for group in range(n_groups):
+    for i, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            x_train,
+            idata[&quot;posterior&quot;][&quot;f_delta&quot;].sel(group=group),
+            fill_kwargs={
+                &quot;color&quot;: f&quot;C{group}&quot;,
+                &quot;alpha&quot;: 0.2 + 0.2 * i,
+                &quot;label&quot;: f&quot;HDI {hdi_prob:.0%}&quot;,
+            },
+            hdi_prob=hdi_prob,
+            smooth=True,
+            ax=axes[group],
+        )
+
+    axes[group].plot(x_train, f_g_train[group], c=f&quot;C{group}&quot;, label=f&quot;group {group}&quot;)
+    axes[group].legend(loc=&quot;lower left&quot;, ncol=3)
+
+fig.suptitle(&quot;Posterior predictive check&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_57_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="out-of-sample-prediction" class="section level2">
+<h2>Out-of-Sample Prediction</h2>
+<p>Finally, we can generate predictions for the test data.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+test_posterior_predictive_samples = posterior_predictive(
+    rng_subkey, x, n_groups, ell, m_global, m_groups
+)
+
+idata.extend(
+    az.from_numpyro(
+        predictions=test_posterior_predictive_samples,
+        coords={&quot;x&quot;: x, &quot;group&quot;: jnp.arange(n_groups)},
+        pred_dims={&quot;f_group&quot;: [&quot;group&quot;, &quot;x&quot;], &quot;obs&quot;: [&quot;group&quot;, &quot;x&quot;]},
+        num_chains=4,
+    )
+)</code></pre>
+<p>Let’s see the results:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=n_groups,
+    ncols=1,
+    figsize=(12, 3 * n_groups),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for group in range(n_groups):
+    for i, hdi_prob in enumerate([0.94, 0.5]):
+        ax = axes[group]
+        az.plot_hdi(
+            x,
+            idata[&quot;predictions&quot;][&quot;obs&quot;].sel(group=group),
+            fill_kwargs={
+                &quot;color&quot;: f&quot;C{group}&quot;,
+                &quot;alpha&quot;: 0.2 + 0.2 * i,
+                &quot;label&quot;: f&quot;HDI {hdi_prob:.0%}&quot;,
+            },
+            hdi_prob=hdi_prob,
+            smooth=True,
+            ax=ax,
+        )
+
+    ax.plot(x, y[group], c=f&quot;C{group}&quot;, label=f&quot;group {group}&quot;)
+    ax.axvline(x=x_test[0], c=&quot;gray&quot;, ls=&quot;dashed&quot;, label=&quot;train/test split&quot;)
+    ax.legend(loc=&quot;lower left&quot;, ncol=4)
+
+fig.suptitle(&quot;Posterior predictive check&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_hsgp_files/hierarchical_hsgp_61_0.png" style="width: 1000px;"/>
+</center>
+<p>For short-term out-of-sample predictions the models does an ok job. However, these models are not the best for long-term predictions.</p>
+<p>We hope this simulated example helps you to understand how to implement a hierarchical HSGP model in NumPyro. Once we have this component in place, we can easily integrate it into a more complex model like a time-varying coefficient model.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
