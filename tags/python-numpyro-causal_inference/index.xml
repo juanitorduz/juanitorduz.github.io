@@ -6,7 +6,17 @@
     <description>Recent content in python, numpyro, causal_inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 25 Nov 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 11 Mar 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Prior Predictive Modeling in Bayesian AB Testing</title>
+      <link>/prior_predictive_ab_testing/</link>
+      <pubDate>Tue, 11 Mar 2025 00:00:00 +0000</pubDate>
+      
+      <guid>/prior_predictive_ab_testing/</guid>
+      <description>In this notebook we generate a simulation to reproduce the results of the great blog post “The Bet Test: Spotting Problems in Bayesian A/B Test Analysis”, where Tyler Buffington discussed about some caveats of using Bayesian AB testing when not thinking about the prior predictive distribution on the key metrics of interested. If you haven’t read it yet, please do it before continuing ;)
+In a nutshell, the blog post showcases the risk of using informative priors to speed-up A/B tests in a naive way.</description>
+    </item>
+    
     <item>
       <title>Hacking the TSB Model for Intermediate Time Series to Accommodate for Availability Constraints</title>
       <link>/availability_tsb/</link>

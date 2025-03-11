@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Prior Predictive Modeling in Bayesian AB Testing - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Prior Predictive Modeling in Bayesian AB Testing - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">11 min read</span>
+    
+
+    <h1 class="article-title">Prior Predictive Modeling in Bayesian AB Testing</h1>
+
+    
+    <span class="article-date">2025-03-11</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we generate a simulation to reproduce the results of the great blog post <a href="https://www.geteppo.com/blog/the-bet-test-problems-in-bayesian-ab-test-analysis">“The Bet Test: Spotting Problems in Bayesian A/B Test Analysis”</a>, where <a href="https://www.geteppo.com/author/tyler-buffington">Tyler Buffington</a> discussed about some caveats of using Bayesian AB testing when not thinking about the prior predictive distribution on the key metrics of interested. If you haven’t read it yet, please do it before continuing ;)</p>
+<p>In a nutshell, the blog post showcases the risk of using informative priors to speed-up A/B tests in a naive way. To be fair, it is easy to fall into this trap (I have been there 🙈), so I think it is great to have these discussions to make us think twice about what we are doing.</p>
+<div id="business-context" class="section level2">
+<h2>Business Context</h2>
+<p>The setting is “simple” we want to set up a Bayesian model on conversion rates using informative priors about what we know about the context. How hard can it be? 🤭 As good Bayesians, we want to set up meaningful priors to bound the range of the estimates. From the blog post:</p>
+<blockquote>
+<p><em>Renowned Bayesian statistician Andrew Gelman has also <a href="https://statmodeling.stat.columbia.edu/2013/11/21/hidden-dangers-noninformative-priors/">warned against the dangers of noninformative priors</a> in “any setting where the prior information really is strong, so that if you assume a flat prior, you can get silly estimates simply from noise variation.” This is the exact setting of A/B testing. The range of true lifts is well known, but business metrics are noisy, which leads to silly estimates that make the <a href="https://en.wikipedia.org/wiki/Twyman%27s_law">Twyman’s law scenario</a> so common.</em></p>
+</blockquote>
+<p><a href="https://en.wikipedia.org/wiki/Twyman%27s_law"><strong>Twyman’s law</strong></a> states that “Any figure that looks interesting or different is usually wrong” 🙃</p>
+<p>Hence, we want a model that bounds realistic set of experiment outcomes <strong>before seeing the data</strong>, i.e. on prior predictive modeling (which we should always do!).</p>
+<p>For example, if our typical conversion rates are around <span class="math inline">\(2\%\)</span>, we would need a lot (really a lot!) of evidence to convince us that the treatment variant conversion rate can boost up to <span class="math inline">\(20\%\)</span> (a 10x lift).</p>
+<p>What is the solution? Well, simply set informative in the conversion rates…right? right? Well, as we will see, it is not that simple (but also not that hard!, it just requires us to think a little bit more about the fact we are modeling a joint posterior and not just the marginals).</p>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import pymc as pm
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;bayesian_ab_testing&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="non-informative-model" class="section level2">
+<h2>Non-Informative Model</h2>
+<p>To run the prior predictive modeling we do not need data 😎, we just need to think about the business problem. To start with a baseline, let’s consider the non-informative model where we set flat priors on the conversion rates (please do not do this in practice 🙏).
+We also save in the trace object the <strong>relative lift</strong> defined as</p>
+<p><span class="math display">\[
+\text{relative lift} = \frac{\text{treatment conversion rate}}{\text{control conversion rate}} - 1
+\]</span></p>
+<p>This is the quantity we are interested in.</p>
+<pre class="python"><code>with pm.Model() as non_informative_model:
+    conversion_rate_control = pm.Uniform(&quot;conversion_rate_control&quot;, lower=0, upper=1)
+    conversion_rate_treatment = pm.Uniform(
+        &quot;conversion_rate_treatment&quot;, lower=0, upper=1
+    )
+    relative_lift = pm.Deterministic(
+        &quot;relative_lift&quot;,
+        conversion_rate_treatment / conversion_rate_control - 1,
+    )
+
+pm.model_to_graphviz(non_informative_model)</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_5_0.svg" style="width: 800px;"/>
+</center>
+<p>Next we sample from the prior predictive distribution.</p>
+<pre class="python"><code>with non_informative_model:
+    non_informative_prior_samples = pm.sample_prior_predictive(
+        samples=1_000, random_seed=rng
+    )</code></pre>
+<pre><code>Sampling: [conversion_rate_control, conversion_rate_treatment]</code></pre>
+<p>Let’s visualize the prior predictive distribution of the conversion rates.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 9), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+az.plot_dist(
+    non_informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_control&quot;],
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[0],
+)
+ax[0].set_title(&quot;Control&quot;)
+
+az.plot_dist(
+    non_informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_treatment&quot;],
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[1],
+)
+ax[1].set(title=&quot;Treatment&quot;, xlabel=&quot;Conversion rate&quot;)
+ax[1].xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+fig.suptitle(
+    &quot;Prior predictive Distribution - Non-Informative Model&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_9_0.png" style="width: 800px;"/>
+</center>
+<p>As expected, they are flat. We can further look into the joint distribution of the conversion rates.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 8))
+az.plot_dist(
+    values=non_informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_control&quot;],
+    values2=non_informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_treatment&quot;],
+    contour_kwargs={&quot;colors&quot;: None, &quot;cmap&quot;: plt.cm.viridis},
+    contourf_kwargs={&quot;alpha&quot;: 0.8},
+    ax=ax,
+)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.set(
+    title=&quot;Prior predictive Distribution Conversion Rate - Non-Informative Model&quot;,
+    xlabel=&quot;conversion rate&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_11_0.png" style="width: 800px;"/>
+</center>
+<p>Unsurprisingly, the joint distribution is also flat.</p>
+<p>Finally, let’s consider the prior predictive distribution of the relative lift:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_dist(
+    non_informative_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C2&quot;,
+    quantiles=[0.06, 0.5, 0.94],
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax,
+)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.set(
+    title=&quot;Prior Predictive Distribution Relative Lift - Non-Informative Model&quot;,
+    xlabel=&quot;relative lift&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_14_0.png" style="width: 800px;"/>
+</center>
+<p>Well, this is all over the place, in essence, we are saying that the treatment variant can be 100x better than the control variant (actually, even more!). This is very unrealistic in practice, so we need to do better.</p>
+<p>How bad can this be? I have found useful to compute the share of samples outside of a given range in absolute value:</p>
+<pre class="python"><code>thresholds = np.linspace(start=0, stop=1, num=11)
+
+shares = [
+    (
+        np.abs(non_informative_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;]) &gt;= threshold
+    ).mean()
+    for threshold in thresholds
+]
+
+fig, ax = plt.subplots()
+ax.plot(thresholds, shares, marker=&quot;o&quot;, linestyle=&quot;--&quot;, color=&quot;C0&quot;)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+ax.set(
+    title=&quot;Non-Informative Model - Relative Lift Absolutes Share&quot;,
+    xlabel=&quot;absolute relative lift&quot;,
+    ylabel=&quot;samples share&quot;,
+    ylim=(-0.1, 1.1),
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_16_0.png" style="width: 800px;"/>
+</center>
+<p>This shows that we have approximately a <span class="math inline">\(50\%\)</span> chance of having a relative lift of more than <span class="math inline">\(60\%\)</span> (in absolute value). This sounds too good to be true (Think again about Twyman’s law 🤔).</p>
+</div>
+<div id="informative-model" class="section level2">
+<h2>Informative Model</h2>
+<p>Now let’s add some informative priors on the conversion rates. We will use a Beta distribution with parameters <span class="math inline">\(\alpha = 15\)</span> and <span class="math inline">\(\beta = 600\)</span> (as suggested in the blog post). Below, we will see the reasoning behind this choice (if you can wait, the mean of a <span class="math inline">\(\text{Beta}(\alpha, \beta)\)</span> is <span class="math inline">\(\alpha / (\alpha + \beta)\)</span>, which in this case is <span class="math inline">\(0.15 / (0.15 + 600) = 0.024\)</span>, so around <span class="math inline">\(2.4\%\)</span> conversion rate).</p>
+<pre class="python"><code>with pm.Model() as informative_model:
+    conversion_rate_control = pm.Beta(&quot;conversion_rate_control&quot;, alpha=15, beta=600)
+    conversion_rate_treatment = pm.Beta(&quot;conversion_rate_treatment&quot;, alpha=15, beta=600)
+    relative_lift = pm.Deterministic(
+        &quot;relative_lift&quot;,
+        conversion_rate_treatment / conversion_rate_control - 1,
+    )
+
+pm.model_to_graphviz(informative_model)</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_19_0.svg" style="width: 800px;"/>
+</center>
+<p>As before, we sample from the prior predictive distribution.</p>
+<pre class="python"><code>with informative_model:
+    informative_prior_samples = pm.sample_prior_predictive(
+        samples=1_000, random_seed=rng
+    )</code></pre>
+<pre><code>Sampling: [conversion_rate_control, conversion_rate_treatment]</code></pre>
+<p>Let’s visualize the prior predictive distribution of the conversion rates:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 9), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+az.plot_dist(
+    informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_control&quot;],
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[0],
+)
+ax[0].set_title(&quot;Control&quot;)
+
+az.plot_dist(
+    informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_treatment&quot;],
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[1],
+)
+ax[1].set(title=&quot;Treatment&quot;, xlabel=&quot;Conversion rate&quot;)
+ax[1].xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+fig.suptitle(
+    &quot;Prior predictive Distribution - Informative Model&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_23_0.png" style="width: 800px;"/>
+</center>
+<p>This looks much better! For both variants, the conversion rates are concentrated around <span class="math inline">\(2.4\%\)</span> with a few samples with conversion rates close to <span class="math inline">\(0\%\)</span> and <span class="math inline">\(5\%\)</span>.</p>
+<p>So far so good! What about the joint distribution?</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 8))
+az.plot_dist(
+    values=informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_control&quot;],
+    values2=informative_prior_samples[&quot;prior&quot;][&quot;conversion_rate_treatment&quot;],
+    contour_kwargs={&quot;colors&quot;: None, &quot;cmap&quot;: plt.cm.viridis},
+    contourf_kwargs={&quot;alpha&quot;: 0.8},
+    ax=ax,
+)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.set(
+    title=&quot;Prior predictive Distribution Conversion Rate - Informative Model&quot;,
+    xlabel=&quot;conversion rate&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_25_0.png" style="width: 800px;"/>
+</center>
+<p>Well, this looks weird 🫠. It seems like a control and treatment combinations of <span class="math inline">\(2.5\%\)</span> and <span class="math inline">\(1.5\%\)</span> conversion rates is as likely as a control and treatment combinations being the same. I am sure we know this should not be the case. This unwanted expected effect is clearly seen in the prior predictive distribution of the relative lift:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_dist(
+    informative_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C2&quot;,
+    quantiles=[0.06, 0.5, 0.94],
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax,
+)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.set(
+    title=&quot;Prior Predictive Distribution Relative Lift - Informative Model&quot;,
+    xlabel=&quot;relative lift&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_27_0.png" style="width: 800px;"/>
+</center>
+<p>This looks much better than the non-informative model. However, we still allow uplifts of <span class="math inline">\(50\%\)</span>, which again seems very unlikely to happen in practice. As before, the share plot illustrates this point as well.</p>
+<pre class="python"><code>thresholds = np.linspace(start=0, stop=1, num=11)
+
+shares = [
+    (np.abs(informative_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;]) &gt;= threshold).mean()
+    for threshold in thresholds
+]
+
+fig, ax = plt.subplots()
+ax.plot(thresholds, shares, marker=&quot;o&quot;, linestyle=&quot;--&quot;, color=&quot;C0&quot;)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+ax.set(
+    title=&quot;Informative Model - Relative Lift Absolutes Share&quot;,
+    xlabel=&quot;absolute relative lift&quot;,
+    ylabel=&quot;samples share&quot;,
+    ylim=(-0.1, 1.1),
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_29_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="correlated-model" class="section level2">
+<h2>Correlated Model</h2>
+<p>Can we do better? Yes, we can! From the blog post:</p>
+<blockquote>
+<p><em>If we know the true conversion rate for the control group, we have a fairly confident sense of the conversion rate for the treatment group as well because we know that most true lifts are less than <span class="math inline">\(10\%\)</span>.</em></p>
+</blockquote>
+<p>This suggest the key implementation trick: <strong>we should set priors on the relative lift itself!</strong>.</p>
+<p><strong>Remark:</strong> This actually reminds me of the ROAS parametrization in the context of media mix modeling: <a href="https://research.google/pubs/media-mix-model-calibration-with-bayesian-priors/">“Media Mix Model Calibration With Bayesian Priors”</a> and <a href="https://juanitorduz.github.io/mmm_roas/">“Media Mix Model and Experimental Calibration: A Simulation Study”</a>.</p>
+<p>We just need to tweak the model a little bit:</p>
+<pre class="python"><code>with pm.Model() as correlated_model:
+    # Set a prior on the control conversion rate
+    conversion_rate_control = pm.Beta(&quot;conversion_rate_control&quot;, alpha=15, beta=600)
+    # Set a prior on the relative lift
+    relative_lift = pm.Normal(&quot;relative_lift&quot;, mu=0, sigma=0.1)
+    # Convert the relative lift to a conversion rate for the treatment
+    # group deterministically
+    conversion_rate_treatment = pm.Deterministic(
+        &quot;conversion_rate_treatment&quot;, conversion_rate_control * (1 + relative_lift)
+    )
+
+pm.model_to_graphviz(correlated_model)</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_31_0.svg" style="width: 800px;"/>
+</center>
+<p>With this approach we expect the conversion rates prior distributions are very similar to the informative model as the prior on the relative lift is centered around <span class="math inline">\(0\)</span>.</p>
+<pre class="python"><code>with correlated_model:
+    correlated_prior_samples = pm.sample_prior_predictive(
+        samples=1_000, random_seed=rng
+    )</code></pre>
+<pre><code>Sampling: [conversion_rate_control, relative_lift]</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 9), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+az.plot_dist(
+    correlated_prior_samples[&quot;prior&quot;][&quot;conversion_rate_control&quot;],
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[0],
+)
+ax[0].set_title(&quot;Control&quot;)
+
+az.plot_dist(
+    correlated_prior_samples[&quot;prior&quot;][&quot;conversion_rate_treatment&quot;],
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[1],
+)
+ax[1].set(title=&quot;Treatment&quot;, xlabel=&quot;Conversion rate&quot;)
+ax[1].xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+fig.suptitle(
+    &quot;Prior predictive Distribution - Correlated Model&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_34_0.png" style="width: 800px;"/>
+</center>
+<p>We do see the range of conversion rates as expected 🙌.</p>
+<p>Now, we look at the joint distribution of the conversion rates:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 8))
+az.plot_dist(
+    values=correlated_prior_samples[&quot;prior&quot;][&quot;conversion_rate_control&quot;],
+    values2=correlated_prior_samples[&quot;prior&quot;][&quot;conversion_rate_treatment&quot;],
+    contour_kwargs={&quot;colors&quot;: None, &quot;cmap&quot;: plt.cm.viridis},
+    contourf_kwargs={&quot;alpha&quot;: 0.8},
+    ax=ax,
+)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.set(
+    title=&quot;Prior predictive Distribution Conversion Rate - Correlated Model&quot;,
+    xlabel=&quot;conversion rate&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_37_0.png" style="width: 800px;"/>
+</center>
+<p>This looks much better! The joint distribution is concentrated around the diagonal, which is what we want (this is exactly the key point of the blog post) 🎉.</p>
+<p>Finally, let’s look at the prior predictive distribution of the relative lift (which we set explicitly)</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_dist(
+    correlated_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C2&quot;,
+    quantiles=[0.06, 0.5, 0.94],
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax,
+)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.set(
+    title=&quot;Prior Predictive Distribution Relative Lift - Correlated Model&quot;,
+    xlabel=&quot;relative lift&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_39_0.png" style="width: 800px;"/>
+</center>
+<p>This is nothing as the prior <span class="math inline">\(\text{Normal}(0, 0.1)\)</span>.</p>
+<p>The share plot also shows how constrained our relative lifts are now.</p>
+<pre class="python"><code>thresholds = np.linspace(start=0, stop=1, num=11)
+
+shares = [
+    (np.abs(correlated_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;]) &gt;= threshold).mean()
+    for threshold in thresholds
+]
+
+fig, ax = plt.subplots()
+ax.plot(thresholds, shares, marker=&quot;o&quot;, linestyle=&quot;--&quot;, color=&quot;C0&quot;)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+ax.set(
+    title=&quot;Correlated Model - Relative Lift Absolutes Share&quot;,
+    xlabel=&quot;absolute relative lift&quot;,
+    ylabel=&quot;samples share&quot;,
+    ylim=(-0.1, 1.1),
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_42_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="model-comparison" class="section level2">
+<h2>Model Comparison</h2>
+<p>To summarize and compare the models, we can plot the prior predictive distribution of the relative lift for all models.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3, ncols=1, figsize=(10, 9), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+az.plot_dist(
+    non_informative_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[0],
+)
+ax[0].set(title=&quot;Non-Informative Model&quot;)
+
+az.plot_dist(
+    informative_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C1&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[1],
+)
+ax[1].set(title=&quot;Informative Model&quot;)
+
+az.plot_dist(
+    correlated_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C2&quot;,
+    quantiles=[0.06, 0.5, 0.94],
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[2],
+)
+ax[2].set(title=&quot;Correlated Model&quot;, xlim=(-1, 1))
+ax[2].xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+
+fig.suptitle(
+    &quot;Prior predictive Distribution Relative Lift&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_44_0.png" style="width: 800px;"/>
+</center>
+<p>The key point to take is that informative priors on the conversion rates lead to locally “flat” prior predictive distributions of the relative lift, which is not what we want.</p>
+</div>
+<div id="inference" class="section level2">
+<h2>Inference</h2>
+<p>Lastly, to close the loop, we can run inference assuming we have observed data.</p>
+<pre class="python"><code># Observed Data
+n = 10_000
+n_control = 200
+n_treatment = 350</code></pre>
+<pre class="python"><code>empirical_uplift = (n_treatment / n_control) - 1
+empirical_uplift</code></pre>
+<pre><code>0.75</code></pre>
+<p>We need to condition the model on the observed data using a Binomial likelihood.</p>
+<pre class="python"><code>with correlated_model:
+    pm.Binomial(&quot;n_control&quot;, n=n, p=conversion_rate_control, observed=n_control)
+    pm.Binomial(&quot;n_treatment&quot;, n=n, p=conversion_rate_treatment, observed=n_treatment)
+
+pm.model_to_graphviz(correlated_model)</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_50_0.svg" style="width: 600px;"/>
+</center>
+<p>Now we sample from the posterior distribution.</p>
+<pre class="python"><code>with correlated_model:
+    correlated_posterior_samples = pm.sample(draws=1_000, chains=4, random_seed=rng)</code></pre>
+<pre><code>Initializing NUTS using jitter+adapt_diag...
+Multiprocess sampling (4 chains in 4 jobs)
+NUTS: [conversion_rate_control, relative_lift]
+
+. . .
+
+Output()</code></pre>
+<pre style="white-space:pre;overflow-x:auto;line-height:normal;font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"></pre>
+<pre><code>Sampling 4 chains for 1_000 tune and 1_000 draw iterations (4_000 + 4_000 draws total) took 0 seconds.</code></pre>
+<p>Let’s look at the results:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 9), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+az.plot_posterior(
+    correlated_posterior_samples,
+    var_names=[
+        &quot;conversion_rate_control&quot;,
+        &quot;conversion_rate_treatment&quot;,
+    ],
+    ax=axes,
+)
+
+for i, ax in enumerate(axes):
+    obs = n_control / n if i == 0 else n_treatment / n
+    ax.axvline(x=obs, color=&quot;C1&quot;, linestyle=&quot;--&quot;, label=&quot;observed&quot;)
+    ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+    ax.legend()</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_54_0.png" style="width: 800px;"/>
+</center>
+<p>We see that the posterior distributions are shrinked around the prior, which is acting as a type of regularization.</p>
+<p>The joint posterior distribution of looks slightly correlated but do not let you fool by the plot, note that the support is very concentrated.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 8))
+az.plot_dist(
+    values=correlated_posterior_samples[&quot;posterior&quot;][&quot;conversion_rate_control&quot;],
+    values2=correlated_posterior_samples[&quot;posterior&quot;][&quot;conversion_rate_treatment&quot;],
+    contour_kwargs={&quot;colors&quot;: None, &quot;cmap&quot;: plt.cm.viridis},
+    contourf_kwargs={&quot;alpha&quot;: 0.8},
+    ax=ax,
+)
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax.set(
+    title=&quot;Posterior Distribution Conversion Rate - Correlated Model&quot;,
+    xlabel=&quot;conversion rate&quot;,
+);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_57_0.png" style="width: 800px;"/>
+</center>
+<p>Next, we look at the posterior distribution of the relative lift:</p>
+<pre class="python"><code>ax = az.plot_posterior(
+    correlated_posterior_samples,
+    var_names=[&quot;relative_lift&quot;],
+)
+
+ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1));</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_59_0.png" style="width: 800px;"/>
+</center>
+<p>We see it is a much more conservative estimate than then observed uplift of <span class="math inline">\(75\%\)</span>.</p>
+<p>We can also compare the prior and posterior predictive distributions:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 9), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+az.plot_dist(
+    correlated_prior_samples[&quot;prior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C2&quot;,
+    quantiles=[0.06, 0.5, 0.94],
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[0],
+)
+ax[0].axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5, label=&quot;zero lift&quot;)
+ax[0].axvline(
+    x=empirical_uplift,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;observed uplift&quot;,
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(title=&quot;Prior Distribution&quot;)
+
+az.plot_dist(
+    correlated_posterior_samples[&quot;posterior&quot;][&quot;relative_lift&quot;],
+    color=&quot;C2&quot;,
+    quantiles=[0.06, 0.5, 0.94],
+    fill_kwargs={&quot;alpha&quot;: 0.4},
+    ax=ax[1],
+)
+ax[1].axvline(x=0, color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5, label=&quot;zero lift&quot;)
+ax[1].axvline(
+    x=empirical_uplift,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;observed uplift&quot;,
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=1))
+ax[1].set(title=&quot;Posterior Distribution&quot;, xlabel=&quot;relative lift&quot;)
+
+fig.suptitle(&quot;Relative Lift - Correlated Model&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_61_0.png" style="width: 800px;"/>
+</center>
+<p>This plot shows the effect of conditioning on the observed data, the posterior distribution as shifted to the right and it has a smaller variance.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
