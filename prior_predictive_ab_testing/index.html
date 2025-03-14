@@ -108,6 +108,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
+import preliz as pz
 import pymc as pm
 
 az.style.use(&quot;arviz-darkgrid&quot;)
@@ -289,6 +290,19 @@ fig.suptitle(
 <img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_23_0.png" style="width: 800px;"/>
 </center>
 <p>This looks much better! For both variants, the conversion rates are concentrated around <span class="math inline">\(2.4\%\)</span> with a few samples with conversion rates close to <span class="math inline">\(0\%\)</span> and <span class="math inline">\(5\%\)</span>.</p>
+<p><strong>Remark:</strong> Finding the “appropriate values” of <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\beta\)</span> is not always straightforward. There is a better way than simply “guessing”. We can use <a href="https://preliz.readthedocs.io/en/latest/index.html">Preliz</a> to find this through an optimization step based on our requirements regarding the support of the distribution. For instance, we can ask for the <span class="math inline">\(\alpha\)</span> and <span class="math inline">\(\beta\)</span> values that cover <span class="math inline">\(94\%\)</span> of the mass of the distribution and are between <span class="math inline">\(1\%\)</span> and <span class="math inline">\(4\%\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.maxent(pz.Beta(), lower=0.01, upper=0.04, mass=0.94, ax=ax);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_26_0.png" style="width: 800px;"/>
+</center>
+<p>These values are, up to a constant factor of <span class="math inline">\(2\)</span>, almost the same as the ones we used in the informative model. The prior distributions are actually very similar.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.maxent(pz.Beta(), lower=0.01, upper=0.04, mass=0.94, ax=ax)
+pz.Beta(alpha=15, beta=600).plot_pdf(ax=ax);</code></pre>
+<center>
+<img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_28_0.png" style="width: 800px;"/>
+</center>
 <p>So far so good! What about the joint distribution?</p>
 <pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 8))
 az.plot_dist(
