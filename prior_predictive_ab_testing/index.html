@@ -296,7 +296,7 @@ pz.maxent(pz.Beta(), lower=0.01, upper=0.04, mass=0.94, ax=ax);</code></pre>
 <center>
 <img src="../images/prior_predictive_ab_testing_files/prior_predictive_ab_testing_26_0.png" style="width: 800px;"/>
 </center>
-<p>These values are, up to a constant factor of <span class="math inline">\(2\)</span>, almost the same as the ones we used in the informative model. The prior distributions are actually very similar.</p>
+<p>These values are, up to a constant factor of <span class="math inline">\(2\)</span>, almost the same as the ones we used in the informative model (and note this global factor cancels out in the mean formula of the Beta distribution). The prior distributions are actually very similar.</p>
 <pre class="python"><code>fig, ax = plt.subplots()
 pz.maxent(pz.Beta(), lower=0.01, upper=0.04, mass=0.94, ax=ax)
 pz.Beta(alpha=15, beta=600).plot_pdf(ax=ax);</code></pre>
