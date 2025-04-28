@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Introduction to Bayesian Power Analysis: Exclude a Null Value - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Introduction to Bayesian Power Analysis: Exclude a Null Value - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">13 min read</span>
+    
+
+    <h1 class="article-title">Introduction to Bayesian Power Analysis: Exclude a Null Value</h1>
+
+    
+    <span class="article-date">2025-04-29</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>Recently, I have been thinking a lot about data-driven decision-making, particularly in the context of experimentation. Why? I am uncomfortable with the common practice of using p-values and frequentist null hypothesis significance testing to make decisions. I don’t feel confident about the approach. I think it is because I do not get it. For instance, when I am forced to explain the definition of a confidence interval precisely, it does not come naturally. I always need to check with a trustworthy source (it is common to find wrong explanations online). If I do not understand it, I cannot use it, especially for decision-making. I always play this exercise when thinking about business recommendations in real applications: “Would I bet my salary on this?” Whenever I work with p-values, the answer to this question is no.</p>
+<p>There must be a better way! Of course, I am a Bayesian, but I did not want this to be a bias to try to find an answer. Frequentist hypothesis testing is so popular that there should be a reason for it. Hence, I started learning more about the topic. I started with the classic <a href="https://link.springer.com/book/10.1007/978-1-4757-4286-2">“Statistical Decision Theory and Bayesian Analysis”</a> by James O. Berger. What a fantastic book! It is expensive, but it is worth every penny. The book presents solid foundations on decision theory for both frequentist and Bayesian viewpoints and aims to be agnostic about these two paradigms. Nevertheless, based on clear explanations and examples, the author cannot prevent suggesting that the Bayesian approach is better for decision-making processes. I am not here to repeat the arguments, but I felt very much identified with the narrative and arguments, so I was (re-) convinced of following the Bayesian path as the framework for decision theory in practice. Of course, this was not surprising, given my Bayesian background. But I want to emphasize my intention to step back and avoid getting trapped in fanatism.</p>
+<p>Warning: I am not saying Bayesian methods solve everything and that frequentist methods are wrong! No, this is a much more personal statement that represents the way I think about decision-making and uncertainty. If one is not careful, Bayesian methods can fail badly. See, for example, <a href="http://varianceexplained.org/r/bayesian-ab-testing/">Is Bayesian A/B Testing Immune to Peeking? Not Exactly</a> by David Robinson. With big power comes big responsibility.</p>
+<p>Having accepted this, I immediately thought about a significant challenge. How to use Bayesian methods in organizations where frequentist approaches, p-values, and confidence intervals are the bread and butter? Trying to teach Bayesian methods in the industry is hard because of the steep learning curve and the fact that most folks out there do not see the point (“let me and my p-value do our thing”). This is not an easy problem. Ultimately, I want to use my skills to provide business value through honest decision-making; I want to bet my salary on all recommendations I give. Hence, I decided I am trying to write, for me and the community, more accessible examples about Bayesian decision theory (it is mainly for me). I am not saying there is no great material available (there is! I will mention some references below). I simply want to have something written by myself when discussing this subject with others. I had already started (unconsciously) with the simulation example <a href="https://juanitorduz.github.io/prior_predictive_ab_testing/">“Prior Predictive Modeling in Bayesian AB Testing”</a> replicating the great blog <a href="https://www.geteppo.com/blog/the-bet-test-problems-in-bayesian-ab-test-analysis">“The Bet Test: Spotting Problems in Bayesian A/B Test Analysis”</a> by <a href="https://www.geteppo.com/author/tyler-buffington">Tyler Buffington</a> from <a href="https://www.geteppo.com/">Eppo</a>. They have excellent content; see, for example, <a href="https://www.geteppo.com/blog/bayes-vs-frequentism-can-be-a-big-deal">“Bayes Vs. Frequentism Can Be a Big Deal”</a> by <a href="https://dpananos.github.io/">Demetri Pananos</a>.</p>
+<p>I feel pretty confident about prior-predictive modeling (see, for example, <a href="https://www.pymc-marketing.io/en/stable/notebooks/general/prior_predictive.html">“Prior Predictive Modeling”</a> from the <a href="https://www.pymc-marketing.io/en/stable/index.html">PyMC-Marketing</a> example gallery). On the other hand, when it comes to experimentation, I have two clear gaps: Bayesian power analysis and early stopping. These are the topics I want to learn more about. In this post, we will start with the core ideas behind Bayesian power analysis. There are many great resources on this topic, such as Chapter 16 of <a href="https://avehtari.github.io/ROS-Examples/">“Regression and Other Stories”</a>. One reference that particular caught my mind is the paper <a href="https://link.springer.com/content/pdf/10.3758/s13423-016-1221-4.pdf">“The Bayesian New Statistics: Hypothesis testing, estimation, meta-analysis, and power analysis from a Bayesian perspective”</a> by John K. Kruschke and Torrin M. Liddell. Please read this paper (really, do it!). It is a fantastic paper describing the details and nuances of frequentist and Bayesian hypothesis testing. You can find lecture videos <a href="https://doingbayesiandataanalysis.blogspot.com/2013/11/optional-stopping-in-data-collection-p.html">here</a>. Similarly as before, the authors cannot stop themselves from recommending Bayesian inference for decision-making. Again, I do not want to go into the arguments since these cannot be better explained than in the paper.
+Nevertheless, I want to highlight a remarkable fact from the manuscript: one of the recent principles by the American Statistical Association states that “Scientific conclusions and business or policy decisions should not be based only on whether a p-value passes a specific threshold. … The widespread use of ‘statistical significance’ (generally interpreted as ‘p &lt; 0.05’) as a license for making a claim of a scientific finding (or implied truth) leads to considerable distortion of the scientific process.” Hence, I am (we!) are not alone.</p>
+<p>Let’s come back to Bayesian power analysis testing. The paper above presents a very transparent way of performing power analysis in a way I can relate and link to my previous read on decision theory. An extended and detailed description of the approach is presented in Chapter 13 of the book <a href="https://nyu-cdsc.github.io/learningr/assets/kruschke_bayesian_in_R.pdf">“Doing Bayesian Data Analysis”</a> by John K. Kruschke. In this blog post, we focus on the first and simplest example presented in the book: do a power analysis for a coin-flip example when our goal is to exclude a null value. Note how the power analysis is tight to a “goal”. Thus, we can have many goals like “affirm a predicted value of a parameter” or “achieve precision in the estimate of a parameter”. We aim to provide complementary material to the chapter’s content and reproduce the results from Table 13.1. in PyMC. We will do this following the schematic logic of Figure 13.1</p>
+<p><strong>Steps:</strong></p>
+<ol style="list-style-type: decimal">
+<li>From the hypothetical distribution of parameter values, randomly generate representative values.</li>
+<li>From the representative parameter values, generate a random sample of data, using the planned sampling method.</li>
+<li>From the simulated sample of data, compute the posterior estimate, using Bayesian analysis with audience-appropriate priors.</li>
+<li>From the posterior estimate, tally whether or not the goals were attained.</li>
+<li>Repeat the above steps many times, to approximate the power.</li>
+</ol>
+<p>We will describe each step in detail in the context of the coin-flip example.</p>
+<p>The hope is to provide foundations to work out more complex examples in the future.</p>
+<p>Remark: There are many ways to do Bayesian power analysis. See, for example, the approach in Max Kochurov’s video <a href="https://www.youtube.com/watch?v=QllfKQH-yQ4">5: Bayesian AB Testing (State of Bayes Lecture Series)</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
+import preliz as pz
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;power_sample_size&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="description-of-the-strategy" class="section level2">
+<h2>Description of the Strategy</h2>
+<p>We strongly recommend reading the original part of the example from the book before continuing (Section 13.2.1). Still, we provide the main ideas below.</p>
+<p>Let us assume we have a coin. The <strong>goal</strong> is to show that the coin is unfair. In other words, we want to show that the <span class="math inline">\(95\%\)</span> HDI (Highest Density Interval) excludes a ROPE (Region of Practical Equivalence) around <span class="math inline">\(\theta = 0.50\)</span>. To do so, we follow the steps below:</p>
+<p><strong>Step 1.</strong> Establish the hypothetical distribution of parameter values from which we will generate simulated data. In the example from the book, the hypothetical distribution is a beta distribution with shape parameters of <span class="math inline">\(0.65 \cdot (2000 - 2) + 1\)</span> and <span class="math inline">\((1 - 0.65) \cdot (2000 - 2) + 1\)</span>. The value of <span class="math inline">\(2000\)</span> is arbitrary; it’s as if the generating mean of <span class="math inline">\(0.65\)</span> was based on fictitious previous data containing <span class="math inline">\(2000\)</span> flips.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+omega = 0.65
+pz.Beta(alpha=omega * (2_000 - 2) + 1, beta=(1 - omega) * (2_000 - 2) + 1).plot_pdf(
+    ax=ax
+)
+ax.set(title=f&quot;omega={omega}&quot;);</code></pre>
+<center>
+<img src="../images/power_sample_size_exclude_null_files/power_sample_size_exclude_null_5_0.png" style="width: 900px;"/>
+</center>
+<p>In practice, we can use many different distributions. For that purpose we store various distribution means in the variable <code>omegas</code>.</p>
+<pre class="python"><code>omegas = np.linspace(0.5, 0.85, 8)
+print(f&quot;omegas: {omegas}&quot;)</code></pre>
+<pre><code>omegas: [0.5  0.55 0.6  0.65 0.7  0.75 0.8  0.85]</code></pre>
+<p><strong>Step 2:</strong> We generate random samples of data from the hypothetical distribution and use it to generate synthetic data, i.e. flip coin results. For example, from the hypothetical distribution that is centered on <span class="math inline">\(\theta = 0.65\)</span>, suppose that the selected value is <span class="math inline">\(0.638\)</span>. We can use this value to simulate flipping a coin with that bias <span class="math inline">\(N\)</span> times. This value of <span class="math inline">\(N\)</span> is the sample size we want to study.</p>
+<p>Let’s generate some sample sizes to consider.</p>
+<pre class="python"><code>sample_sizes = np.linspace(10, 450, 23, dtype=int)
+print(f&quot;sample_sizes: {sample_sizes}&quot;)</code></pre>
+<pre><code>sample_sizes: [ 10  30  50  70  90 110 130 150 170 190 210 230 250 270 290 310 330 350 370 390 410 430 450]</code></pre>
+<p><strong>Step 3:</strong> We fit the model we plan to use in practice (with the audience-appropriate priors) to the simulated data above. This will provide us with the posterior distribution of the parameter <span class="math inline">\(p\in[0,1]\)</span> we are interested in.</p>
+<p><strong>Step 4:</strong> Tally (assess) whether or not the <span class="math inline">\(95\%\)</span> HDI excludes a ROPE around the null value of <span class="math inline">\(\theta = 0.50\)</span>. We choose the ROPE to be <span class="math inline">\([0.48, 0.52]\)</span>.</p>
+<p><strong>Step 5:</strong> Repeat the above steps many times, to approximate the power of the experiment.</p>
+<p>We specify the number of simulations to run in the variable <code>n_simulations</code>.</p>
+<pre class="python"><code>n_simulations = 500
+</code></pre>
+<p>Now that we have clarified the steps, let’s implement the logic in PyMC.</p>
+</div>
+<div id="generate-random-samples-of-data" class="section level2">
+<h2>Generate Random Samples of Data</h2>
+<p>The first step is to generate random samples of data from the hypothetical distribution. We do this by sampling from the beta distribution with the shape parameters we defined earlier.</p>
+<p><strong>Remark:</strong> Observe that we can <em>vectorize</em> the whole simulation process. Hence, we do not need to loop over any of the parameters.</p>
+<pre class="python"><code>with pm.Model(
+    coords={
+        &quot;sample_size&quot;: sample_sizes,
+        &quot;omega&quot;: omegas,
+        &quot;simulation&quot;: range(n_simulations),
+    }
+) as data_generating_model:
+    # Data container for the sample sizes we want to consider.
+    sample_sizes_ = pm.Data(
+        &quot;sample_sizes&quot;,
+        sample_sizes,
+        dims=(&quot;sample_size&quot;,),
+    )
+    # Expand the sample sizes to the shape of the model.
+    sample_sizes_expanded = pt.expand_dims(
+        pt.as_tensor_variable(sample_sizes_), axis=[1, 2]
+    )
+    # Data container for the omegas we want to consider.
+    omegas_ = pm.Data(&quot;omegas&quot;, omegas, dims=(&quot;omega&quot;,))
+    # Expand the omegas to the shape of the model.
+    omegas_expanded = pt.expand_dims(pt.as_tensor_variable(omegas_), axis=[0, 2])
+    # Sample from the hypothetical distribution.
+    p = pm.Beta(
+        &quot;p&quot;,
+        alpha=omegas_expanded * (2_000 - 2) + 1,
+        beta=(1 - omegas_expanded) * (2_000 - 2) + 1,
+        dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+    )
+    # Generate the data from the binomial distribution.
+    pm.Binomial(
+        &quot;data&quot;,
+        n=sample_sizes_expanded,
+        p=p,
+        dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+    )
+
+pm.model_to_graphviz(data_generating_model)
+</code></pre>
+<center>
+<img src="../images/power_sample_size_exclude_null_files/power_sample_size_exclude_null_16_0.svg" style="width: 600px;"/>
+</center>
+<p>Now we can simply do a forward pass to generate the data.</p>
+<pre class="python"><code>with data_generating_model:
+    generating_model_idata = pm.sample_prior_predictive(samples=1, random_seed=rng)
+
+generated_data = generating_model_idata[&quot;prior&quot;][&quot;data&quot;].sel(chain=0, draw=0).to_numpy()
+
+# Verify the shape of the generated data.
+assert generated_data.shape == (len(sample_sizes), len(omegas), n_simulations)</code></pre>
+<pre><code>Sampling: [data, p]</code></pre>
+</div>
+<div id="compute-posterior-estimates" class="section level2">
+<h2>Compute Posterior Estimates</h2>
+<p>Now we fit the model to the generated data. We specify a mild-informative prior distribution for the parameter <span class="math inline">\(p\)</span> centered on <span class="math inline">\(0.5\)</span> with a standard deviation of <span class="math inline">\(0.2\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.Beta(mu=0.5, sigma=0.2).plot_pdf(ax=ax)
+ax.set(title=&quot;Prior distribution of p&quot;);</code></pre>
+<center>
+<img src="../images/power_sample_size_exclude_null_files/power_sample_size_exclude_null_20_0.png" style="width: 900px;"/>
+</center>
+<p>Let’s write the vectorized model.</p>
+<pre class="python"><code>with pm.Model(
+    coords={
+        &quot;sample_size&quot;: sample_sizes,
+        &quot;omega&quot;: omegas,
+        &quot;simulation&quot;: range(n_simulations),
+    }
+) as model:
+    # Data container for the generated data from the previous step.
+    generated_data_ = pm.Data(
+        &quot;generated_data&quot;,
+        generated_data,
+        dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+    )
+    # Data container for the sample sizes we want to consider.
+    # We keep them as as above as we want to vectorize the process.
+    sample_sizes_ = pm.Data(
+        &quot;sample_sizes&quot;,
+        sample_sizes,
+        dims=(&quot;sample_size&quot;,),
+    )
+    # Expand the sample sizes to the shape of the model.
+    sample_sizes_expanded = pt.expand_dims(
+        pt.as_tensor_variable(sample_sizes_), axis=[1, 2]
+    )
+    # Specify the prior distribution for the parameter $p$.
+    p = pm.Beta(
+        &quot;p&quot;,
+        mu=0.5,
+        sigma=0.2,
+        dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+    )
+    # Condition the likelihood on the generated data.
+    pm.Binomial(
+        &quot;data&quot;,
+        n=sample_sizes_expanded,
+        p=p,
+        observed=generated_data_,
+        dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+    )
+
+pm.model_to_graphviz(model)</code></pre>
+<center>
+<img src="../images/power_sample_size_exclude_null_files/power_sample_size_exclude_null_22_0.svg" style="width: 600px;"/>
+</center>
+<p>Next, we run our NUTS sampler.</p>
+<pre class="python"><code>%%time
+
+with model:
+    idata = pm.sample(
+        draws=1_000,
+        chains=4,
+        nuts_sampler=&quot;numpyro&quot;,
+        random_seed=rng,
+    )</code></pre>
+<pre><code>CPU times: user 1h 29s, sys: 13min 19s, total: 1h 13min 49s
+Wall time: 11min 32s</code></pre>
+<p>We verify we have no divergences.</p>
+<pre class="python"><code>print(f&quot;Diverging: {idata[&#39;sample_stats&#39;][&#39;diverging&#39;].sum().item()}&quot;)</code></pre>
+<pre><code>Diverging: 0</code></pre>
+<p>Let’s consider the posterior distribution summary for the specific values of the simulation <code>omega=0.65</code> and <code>sample_size=150</code> (which is the particular case from the book).</p>
+<pre class="python"><code>az.summary(
+    idata[&quot;posterior&quot;].sel(sample_size=150, omega=0.65, simulation=slice(None, 10)),
+    var_names=[&quot;p&quot;],
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+p[0]
+</th>
+<td>
+0.571
+</td>
+<td>
+0.039
+</td>
+<td>
+0.491
+</td>
+<td>
+0.639
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+11395.0
+</td>
+<td>
+2951.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[1]
+</th>
+<td>
+0.661
+</td>
+<td>
+0.039
+</td>
+<td>
+0.594
+</td>
+<td>
+0.735
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+11793.0
+</td>
+<td>
+2435.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[2]
+</th>
+<td>
+0.558
+</td>
+<td>
+0.039
+</td>
+<td>
+0.485
+</td>
+<td>
+0.635
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+9568.0
+</td>
+<td>
+2745.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[3]
+</th>
+<td>
+0.609
+</td>
+<td>
+0.039
+</td>
+<td>
+0.535
+</td>
+<td>
+0.683
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+12532.0
+</td>
+<td>
+2524.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[4]
+</th>
+<td>
+0.686
+</td>
+<td>
+0.036
+</td>
+<td>
+0.621
+</td>
+<td>
+0.757
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+11244.0
+</td>
+<td>
+2849.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[5]
+</th>
+<td>
+0.648
+</td>
+<td>
+0.039
+</td>
+<td>
+0.575
+</td>
+<td>
+0.722
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+11080.0
+</td>
+<td>
+2539.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[6]
+</th>
+<td>
+0.654
+</td>
+<td>
+0.038
+</td>
+<td>
+0.582
+</td>
+<td>
+0.723
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+9705.0
+</td>
+<td>
+2785.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[7]
+</th>
+<td>
+0.636
+</td>
+<td>
+0.038
+</td>
+<td>
+0.565
+</td>
+<td>
+0.709
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+10920.0
+</td>
+<td>
+2914.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[8]
+</th>
+<td>
+0.661
+</td>
+<td>
+0.038
+</td>
+<td>
+0.587
+</td>
+<td>
+0.729
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+11976.0
+</td>
+<td>
+2764.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[9]
+</th>
+<td>
+0.725
+</td>
+<td>
+0.035
+</td>
+<td>
+0.657
+</td>
+<td>
+0.787
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+11017.0
+</td>
+<td>
+2602.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+p[10]
+</th>
+<td>
+0.590
+</td>
+<td>
+0.040
+</td>
+<td>
+0.513
+</td>
+<td>
+0.664
+</td>
+<td>
+0.0
+</td>
+<td>
+0.001
+</td>
+<td>
+11633.0
+</td>
+<td>
+2967.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The r-hat values are close to <span class="math inline">\(1.0\)</span>, indicating good convergence.</p>
+</div>
+<div id="compute-how-many-times-the-goal-is-attained" class="section level2">
+<h2>Compute How Many Times the Goal is Attained</h2>
+<p>Now that we have all the posterior samples at hand, we can easily compute our condition of interest. Namely, we want to know how many times the <span class="math inline">\(95\%\)</span> HDI excludes the ROPE. Before doing so, let’s visualize the posterior distribution of <span class="math inline">\(p\)</span> for the particular case of <code>omega=0.65</code> and <code>sample_size=150</code> for the first <span class="math inline">\(100\)</span> simulations.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    idata[&quot;posterior&quot;].sel(sample_size=150, omega=0.65, simulation=slice(None, 100)),
+    var_names=[&quot;p&quot;],
+    combined=True,
+    rope=[0.48, 0.52],
+    figsize=(7, 20),
+)
+
+ax.set(title=&quot;100 simulated posterior distribution of p (and rope)&quot;);</code></pre>
+<center>
+<img src="../images/power_sample_size_exclude_null_files/power_sample_size_exclude_null_31_0.png" style="width: 600px;"/>
+</center>
+<p>Computing the <span class="math inline">\(95\%\)</span> HDI for the parameter <span class="math inline">\(p\)</span> and evaluating whether it excludes the ROPE is straightforward.</p>
+<pre class="python"><code>hdi = az.hdi(idata[&quot;posterior&quot;], hdi_prob=0.95)[&quot;p&quot;]
+
+rope = (0.48, 0.52)
+
+results = ((hdi.sel(hdi=&quot;lower&quot;) &gt; rope[1]) | (hdi.sel(hdi=&quot;higher&quot;) &lt; rope[0])).mean(
+    dim=&quot;simulation&quot;
+)</code></pre>
+<p>Again, let’s compare the power estimation for the particular case of <code>omega=0.65</code> and <code>sample_size=150</code>.</p>
+<pre class="python"><code>results.sel(sample_size=150, omega=0.65).item()</code></pre>
+<pre><code>0.884</code></pre>
+<p>This is the same result as in the book (well, it is <span class="math inline">\(.9\)</span>, but it is close).</p>
+</div>
+<div id="visualize-results" class="section level2">
+<h2>Visualize Results</h2>
+<p>We can now generate the whole Table 13.1 from the book.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+
+sns.heatmap(
+    data=(
+        results.to_dataframe()
+        .reset_index()
+        .pivot_table(index=&quot;sample_size&quot;, columns=&quot;omega&quot;, values=&quot;p&quot;)
+    ),
+    annot=True,
+    cmap=&quot;viridis_r&quot;,
+    linewidths=0.2,
+    linecolor=&quot;black&quot;,
+    fmt=&quot;.1%&quot;,
+    cbar_kws={&quot;format&quot;: mtick.PercentFormatter(xmax=1)},
+    ax=ax,
+)
+ax.tick_params(&quot;y&quot;, rotation=0)
+ax.set(
+    title=&quot;Power analysis for different sample sizes&quot;,
+    xlabel=&quot;power&quot;,
+    ylabel=&quot;sample size&quot;,
+);</code></pre>
+<center>
+<img src="../images/power_sample_size_exclude_null_files/power_sample_size_exclude_null_38_0.png" style="width: 900px;"/>
+</center>
+<p>The results are very similar to the expected ones.</p>
+<p><strong>Remark:</strong> In the book, all of these results are computed analytically as the math is not too complex. However, in real applications, we need to use simulation methods.</p>
+<p>Finally, let’s visualize the power curve for different sample sizes.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
+
+sns.lineplot(
+    data=(
+        results.to_dataframe()
+        .reset_index()
+        .assign(omega=lambda x: x[&quot;omega&quot;].astype(&quot;str&quot;))
+    ),
+    x=&quot;sample_size&quot;,
+    y=&quot;p&quot;,
+    hue=&quot;omega&quot;,
+    marker=&quot;o&quot;,
+)
+
+ax.axhline(0.8, c=&quot;black&quot;, ls=&quot;--&quot;)
+ax.legend(loc=&quot;center left&quot;, title=&quot;omega&quot;, title_fontsize=14, bbox_to_anchor=(1, 0.5))
+ax.set(
+    title=&quot;Power analysis for different sample sizes&quot;,
+    xlabel=&quot;sample size&quot;,
+    ylabel=&quot;power&quot;,
+);</code></pre>
+<center>
+<img src="../images/power_sample_size_exclude_null_files/power_sample_size_exclude_null_41_0.png" style="width: 900px;"/>
+</center>
+<p>Here are some clear remarks about the results from the book:</p>
+<blockquote>
+<ul>
+<li><p><em>As generating mode increases (the omegas), the required sample size decreases. This makes sense intuitively: When the generating mode is large, the sample proportion of heads will tend to be large, and so the HDI will tend to fall toward the high end of the parameter domain. In other words, when the generating mode is large, it doesn’t take a lot of data for the HDI to fall consistently above <span class="math inline">\(\theta = 0.5\)</span>.</em></p></li>
+<li><p><em>On the other hand, when the generating mode is only slightly above <span class="math inline">\(\theta = 0.5\)</span>, then it takes a large sample for the sample proportion of heads to be consistently above <span class="math inline">\(0.5\)</span>, and for the HDI to be consistently entirely above <span class="math inline">\(0.5\)</span> (and the ROPE).</em></p></li>
+</ul>
+</blockquote>
+<p>Reproducing and coding this vectorized version of the power analysis example was very interesting. This example provides a solid illustration of the power analysis flow, which I plan to extend for more complex applications.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
