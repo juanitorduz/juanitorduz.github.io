@@ -170,7 +170,7 @@ g</code></pre>
 <img src="../images/mmm_roas_files/mmm_roas_5_0.svg" style="width: 700px;"/>
 </center>
 <p>Here <span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span> represent two media channels and <span class="math inline">\(y\)</span> our target variable (e.g. sales). The confounder <span class="math inline">\(z\)</span> has a causal effect on <span class="math inline">\(x_1\)</span> and <span class="math inline">\(y\)</span>.</p>
-<p><strong>Remark:</strong> If you are a color geek like me, you can get the color palette color codes of the <code>arviz</code> theme <a href="#id_%20https://github.com/arviz-devs/arviz/blob/main/arviz/plots/styles/arviz-darkgrid.mplstyle">here</a>. Note that you can add them with transparency as described <a href="https://graphviz.org/Gallery/neato/transparency.html">here</a>. Note that the transparency is specified by the las two characters of the hex code.</p>
+<p><strong>Remark:</strong> If you are a color geek like me, you can get the color palette color codes of the <code>arviz</code> theme <a href="https://github.com/arviz-devs/arviz/blob/main/arviz/plots/styles/arviz-darkgrid.mplstyle">here</a>. Note that you can add them with transparency as described <a href="https://graphviz.org/Gallery/neato/transparency.html">here</a>. Note that the transparency is specified by the las two characters of the hex code.</p>
 <p>We not proceed to generate weekly data for <span class="math inline">\(2.5\)</span> years. In the following snippet of code we generate the date range, seasonality and trend components and, the covariate <span class="math inline">\(z\)</span>, which is always positive.</p>
 <pre class="python"><code># date range
 min_date = pd.to_datetime(&quot;2021-10-02&quot;)
