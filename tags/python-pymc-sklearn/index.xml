@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>python, pymc, sklearn on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-pymc-sklearn/</link>
+    <description>Recent content in python, pymc, sklearn on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 30 Jun 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-sklearn/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Vectorize ROC Curve for Bayesian Models</title>
+      <link>/vectorize_roc_curve/</link>
+      <pubDate>Mon, 30 Jun 2025 00:00:00 +0000</pubDate>
+      
+      <guid>/vectorize_roc_curve/</guid>
+      <description>In this notebook, we present a simple example to illustrate how to vectorize the ROC curve computation over a Bayesian model. This is helpful when we want to compute the ROC curve using the implementations from scikit-learn. We use the classical moons dataset to generate the data and fit a Gaussian process models similarly as the previous post Scikit-Learn Example in PyMC: Gaussian Process Classifier.
+Prepare Notebook import arviz as az import matplotlib.</description>
+    </item>
+    
+  </channel>
+</rss>

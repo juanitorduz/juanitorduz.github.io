@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Vectorize ROC Curve for Bayesian Models - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Vectorize ROC Curve for Bayesian Models - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">6 min read</span>
+    
+
+    <h1 class="article-title">Vectorize ROC Curve for Bayesian Models</h1>
+
+    
+    <span class="article-date">2025-06-30</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we present a simple example to illustrate how to vectorize the ROC curve computation over a Bayesian model. This is helpful when we want to compute the ROC curve using the implementations from <a href="https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html"><code>scikit-learn</code></a>. We use the classical <a href="https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html">moons dataset</a> to generate the data and fit a Gaussian process models similarly as the previous post <a href="https://juanitorduz.github.io/sklearn_pymc_classifier/">Scikit-Learn Example in PyMC: Gaussian Process Classifier</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import preliz as pz
+import pymc as pm
+import pytensor
+import seaborn as sns
+import xarray as xr
+from sklearn.datasets import make_moons
+from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.model_selection import train_test_split
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;vectorize_roc_curve&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<pre class="python"><code># Generate data
+x, y = make_moons(n_samples=150, noise=0.25, random_state=seed)
+# Split data into training and test sets
+x_train, x_test, y_train, y_test = train_test_split(
+    x, y, test_size=0.3, random_state=seed
+)
+# Get number of samples in training and test sets
+n_train = x_train.shape[0]
+n_test = x_test.shape[0]
+n = n_train + n_test
+# Create indices for training and test sets
+idx_train = range(n_train)
+idx_test = range(n_train, n_train + n_test)
+# Get dimension of the domain
+domain_dim = x.shape[1]</code></pre>
+<p>Let’s start by visualizing the data.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 5),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+sns.scatterplot(x=x_train[:, 0], y=x_train[:, 1], s=50, hue=y_train, ax=ax[0])
+ax[0].set(title=&quot;Raw Data - Training Set&quot;)
+sns.scatterplot(x=x_test[:, 0], y=x_test[:, 1], s=50, hue=y_test, ax=ax[1])
+ax[1].set(title=&quot;Raw Data - Test Set&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_7_0.png" height=400 />
+</center>
+<p>The idea is to develop a classifier to separate the two classes in the moons dataset.</p>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>We use a <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/HSGP-Basic.html">Hilbert Space Gaussian Process</a> model with a <a href="https://www.pymc.io/projects/docs/en/stable/api/gp/generated/pymc.gp.cov.Matern52.html">Matern 5/2 kernel</a>. If you want to learn more about Hilbert Space Gaussian Processes, you can check the example notebook <a href="https://www.pymc.io/projects/examples/en/latest/gaussian_processes/HSGP-Basic.html">Gaussian Processes: HSGP Reference &amp; First Steps</a> from the PyMC documentation. For a more detailed explanation, see the previous blog post <a href="https://juanitorduz.github.io/hsgp_intro/">A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods</a>.</p>
+<p>One of the most important parameters we need to consider is the length scale of the kernel. We can use the <a href="https://preliz.readthedocs.io/en/stable/examples/gallery/direct_elicitation_1D.html"><code>pz.maxent</code></a> function to find the maximum entropy distribution for the length scale parameter given constraints on the support of the distribution.</p>
+<pre class="python"><code># We want to model distances within a range of 0.01 and 1.
+fig, ax = plt.subplots()
+ls_params, ax = pz.maxent(pz.InverseGamma(), lower=0.01, upper=1, mass=0.94, ax=ax)
+ax.set_title(r&quot;Inverse Gamma Pior for $\ell_{s}$&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_11_0.png" height=400 />
+</center>
+<p>Now, we can specify the model.</p>
+<pre class="python"><code>coords = {&quot;domain_dim&quot;: range(domain_dim), &quot;idx&quot;: idx_train}
+
+with pm.Model(coords=coords) as model:
+    # --- Data Containers ---
+    x_data = pm.Data(&quot;x_data&quot;, x_train, dims=(&quot;idx&quot;, &quot;domain_dim&quot;))
+    y_data = pm.Data(&quot;y_data&quot;, y_train, dims=&quot;idx&quot;)
+
+    # --- Priors ---
+    amplitude = pm.HalfNormal(name=&quot;amplitude&quot;, sigma=1)
+    ls = pm.Gamma(
+        name=&quot;ls&quot;, alpha=ls_params.alpha, beta=ls_params.beta, dims=&quot;domain_dim&quot;
+    )
+    cov_func = amplitude**2 * pm.gp.cov.Matern52(input_dim=domain_dim, ls=ls)
+
+    # --- Parametrization ---
+    gp = pm.gp.HSGP(m=[8, 8], c=1.2, cov_func=cov_func)
+    f = gp.prior(&quot;f&quot;, X=x_data, dims=&quot;idx&quot;)
+    p = pm.Deterministic(name=&quot;p&quot;, var=pm.math.invlogit(f), dims=&quot;idx&quot;)
+
+    # --- Likelihood ---
+    pm.Bernoulli(name=&quot;likelihood&quot;, p=p, observed=y_data, dims=&quot;idx&quot;)
+
+pm.model_to_graphviz(model)</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_13_0.svg" height=700 />
+</center>
+</div>
+<div id="inferece" class="section level2">
+<h2>Inferece</h2>
+<p>We now fit the model on the training data using NUTS.</p>
+<pre class="python"><code>with model:
+    idata = pm.sample(
+        draws=2_000,
+        chains=4,
+        nuts_sampler=&quot;nutpie&quot;,
+        random_seed=rng,
+    )
+    idata.extend(pm.sample_posterior_predictive(idata, random_seed=rng))</code></pre>
+<p>There are no divergences and the sampling is fast. Let’s look at the trace:</p>
+<pre class="python"><code>_ = az.plot_trace(
+    data=idata,
+    var_names=[
+        &quot;amplitude&quot;,
+        &quot;ls&quot;,
+    ],
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (9, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Model Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_17_0.png" height=600 />
+</center>
+</div>
+<div id="generate-predictions-on-the-test-set" class="section level2">
+<h2>Generate Predictions on the Test Set</h2>
+<p>We are interested in comparing the model’s performance between the training and test sets. Hence, we need to generate predictions on the test set and store them in a new <code>idata_test</code> object.</p>
+<pre class="python"><code>with model:
+    pm.set_data(
+        new_data={&quot;x_data&quot;: x_test, &quot;y_data&quot;: y_test},
+        coords={&quot;idx&quot;: idx_test},
+    )
+
+    idata_test = pm.sample_posterior_predictive(
+        trace=idata,
+        var_names=[&quot;p&quot;, &quot;likelihood&quot;],
+        random_seed=rng,
+        idata_kwargs={&quot;coords&quot;: {&quot;idx&quot;: idx_test}},
+    )</code></pre>
+</div>
+<div id="predictions-comparison" class="section level2">
+<h2>Predictions Comparison</h2>
+<p>A useful way to evaluate a classification model is to look into the saparation plot:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 4))
+az.plot_separation(idata=idata, y=&quot;likelihood&quot;, ax=ax)
+ax.set_title(&quot;Separation Plot (Training Set)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_21_0.png" height=350 />
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 4))
+az.plot_separation(idata=idata_test, y=&quot;likelihood&quot;, ax=ax)
+ax.set_title(&quot;Separation Plot (Test Set)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_22_0.png" height=350 />
+</center>
+<p>Both the training and test sets are well separated (qualitatively). Let’s look into some quantitative metrics like the ROC curve and the AUC score.</p>
+<div id="auc-score" class="section level3">
+<h3>AUC Score</h3>
+<p>Here we show how to vectorize the AUC score computation over all the posterior samples. The key function is <a href="https://docs.xarray.dev/en/stable/generated/xarray.apply_ufunc.html"><code>xr.apply_ufunc</code></a> from <a href="https://docs.xarray.dev/en/stable/index.html"><code>xarray</code></a>.</p>
+<pre class="python"><code>auc_train = xr.apply_ufunc(
+    roc_auc_score,
+    y_train,
+    idata[&quot;posterior&quot;][&quot;p&quot;],
+    input_core_dims=[[&quot;idx&quot;], [&quot;idx&quot;]],
+    output_core_dims=[[]],
+    vectorize=True,
+)
+
+auc_test = xr.apply_ufunc(
+    roc_auc_score,
+    y_test,
+    idata_test[&quot;posterior_predictive&quot;][&quot;p&quot;],
+    input_core_dims=[[&quot;idx&quot;], [&quot;idx&quot;]],
+    output_core_dims=[[]],
+    vectorize=True,
+)</code></pre>
+<p>Let’s look into the results and compare them with the AUC score on the posterior predictive mean.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(9, 8),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+az.plot_posterior(data=auc_train, ax=ax[0])
+ax[0].axvline(
+    roc_auc_score(y_train, idata[&quot;posterior&quot;][&quot;p&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))),
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;AUC Score on the posterior predictive mean&quot;,
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set_title(&quot;AUC Posterior Distribution (Train)&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+
+az.plot_posterior(data=auc_test, ax=ax[1])
+ax[1].axvline(
+    roc_auc_score(
+        y_test, idata_test[&quot;posterior_predictive&quot;][&quot;p&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    ),
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;AUC Score on the posterior predictive mean&quot;,
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].set_title(&quot;AUC Posterior Distribution (Test)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_27_0.png" height=800 />
+</center>
+<p>The model performance is good. Note that instead of having a single AUC score, we have a distribution of AUC scores. This is very usefull as we are encoding the uncertainty of the model itself. For instance, we see that the <span class="math inline">\(94\%\)</span> of the AUC score in the test set is wider than the one in the training set.</p>
+</div>
+<div id="roc-curve" class="section level3">
+<h3>ROC Curve</h3>
+<p>We can also vectorize the ROC curve computation.</p>
+<pre class="python"><code>fpr_train, tpr_train, thresholds_train = xr.apply_ufunc(
+    lambda x, y: roc_curve(y_true=x, y_score=y, drop_intermediate=False),
+    y_train,
+    idata[&quot;posterior&quot;][&quot;p&quot;],
+    input_core_dims=[[&quot;idx&quot;], [&quot;idx&quot;]],
+    output_core_dims=[[&quot;threshld&quot;], [&quot;threshld&quot;], [&quot;threshld&quot;]],
+    vectorize=True,
+)
+
+fpr_test, tpr_test, thresholds_test = xr.apply_ufunc(
+    lambda x, y: roc_curve(y_true=x, y_score=y, drop_intermediate=False),
+    y_test,
+    idata_test[&quot;posterior_predictive&quot;][&quot;p&quot;],
+    input_core_dims=[[&quot;idx&quot;], [&quot;idx&quot;]],
+    output_core_dims=[[&quot;threshld&quot;], [&quot;threshld&quot;], [&quot;threshld&quot;]],
+    vectorize=True,
+)</code></pre>
+<p>Now we can generate the roc curves for the training and test sets.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(8, 12),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i in range(4):
+    for j in range(2_000):
+        ax[0].plot(
+            fpr_train.sel(chain=i, draw=j),
+            tpr_train.sel(chain=i, draw=j),
+            c=&quot;C0&quot;,
+            alpha=0.2,
+        )
+        ax[1].plot(
+            fpr_test.sel(chain=i, draw=j),
+            tpr_test.sel(chain=i, draw=j),
+            c=&quot;C1&quot;,
+            alpha=0.2,
+        )
+
+
+ax[0].axline(
+    (0, 0),
+    (1, 1),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+)
+
+ax[0].set(xlabel=&quot;False Positive Rate&quot;, ylabel=&quot;True Positive Rate&quot;)
+ax[0].set_title(&quot;Training Set&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+
+ax[1].axline(
+    (0, 0),
+    (1, 1),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+)
+
+ax[1].set(xlabel=&quot;False Positive Rate&quot;, ylabel=&quot;True Positive Rate&quot;)
+ax[1].set_title(&quot;Test Set&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_32_0.png" height=1100 />
+</center>
+</div>
+</div>
+<div id="posterior-predictive-mean" class="section level2">
+<h2>Posterior Predictive Mean</h2>
+<p>Finally, we can compute the posterior predictive mean and plot the predictions on the training and test sets.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 6),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+(
+    idata[&quot;posterior&quot;][&quot;p&quot;]
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    .to_pandas()
+    .to_frame()
+    .assign(x1=x_train[:, 0], x2=x_train[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;p&quot;,
+        hue_norm=(0, 1),
+        palette=&quot;coolwarm&quot;,
+        s=50,
+        ax=ax[0],
+    )
+)
+
+ax[0].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=3)
+ax[0].set_title(&quot;Training Set&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+
+(
+    idata_test[&quot;posterior_predictive&quot;][&quot;p&quot;]
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    .to_pandas()
+    .to_frame()
+    .assign(x1=x_test[:, 0], x2=x_test[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;p&quot;,
+        hue_norm=(0, 1),
+        palette=&quot;coolwarm&quot;,
+        s=50,
+        ax=ax[1],
+    )
+)
+
+ax[1].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=4)
+ax[1].set_title(&quot;Test Set&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/vectorize_roc_curve_files/vectorize_roc_curve_34_0.png" height=500 />
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
