@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Hierarchical Revenue &amp; Retention Modeling - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Hierarchical Revenue &amp; Retention Modeling - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">22 min read</span>
+    
+
+    <h1 class="article-title">Hierarchical Revenue &amp; Retention Modeling</h1>
+
+    
+    <span class="article-date">2025-08-04</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we extend the revenue-retention model introduced in the sequence of blog posts <a href="https://juanitorduz.github.io/revenue_retention/">“Cohort Revenue &amp; Retention Analysis: A Bayesian Approach”</a> and <a href="https://juanitorduz.github.io/revenue_retention_numpyro/">“Cohort Revenue Retention Analysis with Flax and NumPyro”</a> (plus the associated pre-print <a href="https://arxiv.org/abs/2504.16216">“Cohort Revenue &amp; Retention Analysis: A Bayesian Approach”</a>) to include analysis across different <em>markets</em> (or any type of grouping variable). The motivation for this extension is that in many real applications one is interested in understanding the revenue and retention patterns across different <em>markets</em> where typically we have different data sizes. Instead of modeling all separately, we take advantage of the hierarchical structure of the data to share information across markets. This will help have better forecasts for younger markets where limited data is available. We show through a simulation the power of this approach (and how relatively simple it is to implement once we have the basic model in place).</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from datetime import UTC, datetime
+from itertools import pairwise
+
+import arviz as az
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import optax
+import polars as pl
+import seaborn as sns
+from flax import nnx
+from jax import random
+from jaxtyping import Array, Float, Int
+from numpyro.contrib.module import random_nnx_module
+from numpyro.handlers import condition
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer.autoguide import AutoMultivariateNormal
+from numpyro.infer.reparam import LocScaleReparam
+from numpyro.infer.util import Predictive
+from pydantic import BaseModel
+
+# https://github.com/juanitorduz/website_projects/blob/master/Python/retention_data.py
+from retention_data import CohortDataGenerator
+from scipy.special import logit
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import (
+    LabelEncoder,
+    OneHotEncoder,
+    RobustScaler,
+)
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;retention&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>We extend the data generating process from the previous post so that we can generate data for multiple markets. The code to generate data for one market is available in the <a href="https://github.com/juanitorduz/website_projects/blob/master/Python/retention_data.py">retention_data.py</a> file.</p>
+<pre class="python"><code>class Market(BaseModel):
+    &quot;&quot;&quot;Class to represent a market.&quot;&quot;&quot;
+
+    name: str
+    start_date: datetime
+    n_cohorts: int
+    user_base: int = 10_000
+
+
+class MarketDataGenerator:
+    &quot;&quot;&quot;Class to generate market data from the cohort data generator.&quot;&quot;&quot;
+
+    def __init__(self, markets: list[Market], rng: np.random.Generator) -&gt; None:
+        self.markets = markets
+        self.rng = rng
+
+    def run(self) -&gt; pl.DataFrame:
+        data_dfs: list[pl.DataFrame] = []
+
+        for market in self.markets:
+            cohort_generator = CohortDataGenerator(
+                rng=self.rng, start_cohort=market.start_date, n_cohorts=market.n_cohorts
+            )
+            data_df = cohort_generator.run()
+
+            # Add some features
+            data_df = data_df.with_columns(
+                (pl.col(&quot;n_active_users&quot;) / pl.col(&quot;n_users&quot;)).alias(&quot;retention&quot;),
+                pl.lit(market.name).alias(&quot;market&quot;),
+                (pl.col(&quot;cohort&quot;).dt.month()).alias(&quot;cohort_month&quot;),
+                (pl.col(&quot;period&quot;).dt.month()).alias(&quot;period_month&quot;),
+            )
+            data_dfs.append(data_df)
+        return pl.concat(data_dfs)
+
+
+# Set up the markets.
+markets: list[Market] = [
+    Market(
+        name=&quot;A&quot;,
+        start_date=datetime(2020, 1, 1, tzinfo=UTC),
+        n_cohorts=48,
+        user_base=10_000,
+    ),
+    Market(
+        name=&quot;B&quot;,
+        start_date=datetime(2021, 2, 1, tzinfo=UTC),
+        n_cohorts=35,
+        user_base=12_000,
+    ),
+    Market(
+        name=&quot;C&quot;,
+        start_date=datetime(2022, 1, 1, tzinfo=UTC),
+        n_cohorts=24,
+        user_base=1_000,
+    ),
+    Market(
+        name=&quot;D&quot;,
+        start_date=datetime(2022, 7, 1, tzinfo=UTC),
+        n_cohorts=18,
+        user_base=500,
+    ),
+]
+
+# Generate the data for each market.
+n_markets = len(markets)
+market_data_generator = MarketDataGenerator(markets=markets, rng=rng)
+data_df = market_data_generator.run()
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 12px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 12px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 12px;
+    }
+</style>
+<small>shape: (5, 13)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+cohort
+</th>
+<th>
+n_users
+</th>
+<th>
+period
+</th>
+<th>
+age
+</th>
+<th>
+cohort_age
+</th>
+<th>
+retention_true_mu
+</th>
+<th>
+retention_true
+</th>
+<th>
+n_active_users
+</th>
+<th>
+revenue
+</th>
+<th>
+retention
+</th>
+<th>
+market
+</th>
+<th>
+cohort_month
+</th>
+<th>
+period_month
+</th>
+</tr>
+<tr>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-01-01
+</td>
+<td>
+1430
+</td>
+<td>
+0
+</td>
+<td>
+-1.807373
+</td>
+<td>
+0.140956
+</td>
+<td>
+150
+</td>
+<td>
+14019.256906
+</td>
+<td>
+1.0
+</td>
+<td>
+"A"
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-02-01
+</td>
+<td>
+1430
+</td>
+<td>
+31
+</td>
+<td>
+-1.474736
+</td>
+<td>
+0.186224
+</td>
+<td>
+25
+</td>
+<td>
+1886.501237
+</td>
+<td>
+0.166667
+</td>
+<td>
+"A"
+</td>
+<td>
+1
+</td>
+<td>
+2
+</td>
+</tr>
+<tr>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-03-01
+</td>
+<td>
+1430
+</td>
+<td>
+60
+</td>
+<td>
+-2.281286
+</td>
+<td>
+0.092685
+</td>
+<td>
+13
+</td>
+<td>
+1098.136314
+</td>
+<td>
+0.086667
+</td>
+<td>
+"A"
+</td>
+<td>
+1
+</td>
+<td>
+3
+</td>
+</tr>
+<tr>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-04-01
+</td>
+<td>
+1430
+</td>
+<td>
+91
+</td>
+<td>
+-3.20661
+</td>
+<td>
+0.038918
+</td>
+<td>
+6
+</td>
+<td>
+477.852458
+</td>
+<td>
+0.04
+</td>
+<td>
+"A"
+</td>
+<td>
+1
+</td>
+<td>
+4
+</td>
+</tr>
+<tr>
+<td>
+2020-01-01
+</td>
+<td>
+150
+</td>
+<td>
+2020-05-01
+</td>
+<td>
+1430
+</td>
+<td>
+121
+</td>
+<td>
+-3.112983
+</td>
+<td>
+0.042575
+</td>
+<td>
+2
+</td>
+<td>
+214.667937
+</td>
+<td>
+0.013333
+</td>
+<td>
+"A"
+</td>
+<td>
+1
+</td>
+<td>
+5
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We verify that the data generation process is working as expected. For instance, we verify that the data has the same last period for each market.</p>
+<pre class="python"><code>assert (
+    len(
+        set(
+            data_df.group_by(&quot;market&quot;)
+            .agg(pl.col(&quot;period&quot;).max().alias(&quot;max_period&quot;))[&quot;max_period&quot;]
+            .to_list()
+        )
+    )
+    == 1
+)</code></pre>
+<p><strong>Remark [Outlier]:</strong> As we want to make sure that (1) the market <span class="math inline">\(A\)</span> coincides with the data from the previous post and (2) the data generation process is reproducible and deterministic, we keep the same seed for the random number generator. In this case there are some <em>outliers</em> in the data for market <span class="math inline">\(B\)</span>, which we simply manually remove. The reason is that the cohort size is extremely small and in real applications we would probably remove it anyway (we could still keep it, but is just for illustration purposes).</p>
+<pre class="python"><code># specific outlier condition
+data_to_remove = pl.col(&quot;market&quot;).eq(pl.lit(&quot;B&quot;)) &amp; pl.col(&quot;cohort&quot;).eq(
+    pl.lit(datetime(2021, 2, 1, tzinfo=UTC))
+)
+
+data_df = data_df.filter(data_to_remove.not_())</code></pre>
+</div>
+<div id="train-test-split" class="section level2">
+<h2>Train-Test Split</h2>
+<p>Similar to the previous post, we split the data into a training and test set.</p>
+<pre class="python"><code>period_train_test_split = datetime(2022, 11, 1, tzinfo=UTC)
+
+train_data_df = data_df.filter(pl.col(&quot;period&quot;) &lt;= pl.lit(period_train_test_split))
+test_data_df = data_df.filter(pl.col(&quot;period&quot;) &gt; pl.lit(period_train_test_split))
+test_data_df = test_data_df.filter(
+    pl.col(&quot;cohort&quot;).is_in(train_data_df[&quot;cohort&quot;].unique().to_list())
+)</code></pre>
+</div>
+<div id="data-visualization" class="section level2">
+<h2>Data Visualization</h2>
+<p>Now we visualize the retention and revenue patterns for each market.</p>
+<pre class="python"><code>for market in markets:
+    fig, ax = plt.subplots(figsize=(17, 9))
+
+    (
+        train_data_df.with_columns(
+            pl.col(&quot;cohort&quot;).dt.strftime(&quot;%Y-%m&quot;).alias(&quot;cohort&quot;),
+            pl.col(&quot;period&quot;).dt.strftime(&quot;%Y-%m&quot;).alias(&quot;period&quot;),
+        )
+        .filter(pl.col(&quot;cohort_age&quot;).ne(0) &amp; pl.col(&quot;market&quot;).eq(market.name))
+        .select([&quot;cohort&quot;, &quot;period&quot;, &quot;retention&quot;])
+        .pivot(index=&quot;cohort&quot;, on=&quot;period&quot;, values=&quot;retention&quot;)
+        .to_pandas()
+        .set_index(&quot;cohort&quot;)
+        .pipe(
+            (sns.heatmap, &quot;data&quot;),
+            cmap=&quot;viridis_r&quot;,
+            linewidths=0.2,
+            linecolor=&quot;black&quot;,
+            annot=True,
+            fmt=&quot;0.0%&quot;,
+            cbar_kws={&quot;format&quot;: mtick.FuncFormatter(func=lambda y, _: f&quot;{y:0.0%}&quot;)},
+            ax=ax,
+        )
+    )
+
+    [tick.set_rotation(0) for tick in ax.get_yticklabels()]
+
+    ax.set_title(f&quot;Retention by Cohort and Period for Market {market.name}&quot;)</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_13_0.png" style="width: 1000px;"/>
+</center>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_13_1.png" style="width: 1000px;"/>
+</center>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_13_2.png" style="width: 1000px;"/>
+</center>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_13_3.png" style="width: 1000px;"/>
+</center>
+<p>Here are some observations about the retention data:</p>
+<ul>
+<li>The data for market <span class="math inline">\(A\)</span> is exactly the same as the data in the previous post.</li>
+<li>Note how market <span class="math inline">\(D\)</span> has a much smaller number of cohorts than the other markets. It would be very hard to get any type of forecast for such a small cohort matrix by itself.</li>
+<li>All markets have strong seasonal patterns both in the cohort and period dimensions.</li>
+</ul>
+<p>Now we look at the revenue data.</p>
+<pre class="python"><code>for market in markets:
+    fig, ax = plt.subplots(figsize=(17, 9))
+
+    (
+        train_data_df.with_columns(
+            pl.col(&quot;cohort&quot;).dt.strftime(&quot;%Y-%m&quot;).alias(&quot;cohort&quot;),
+            pl.col(&quot;period&quot;).dt.strftime(&quot;%Y-%m&quot;).alias(&quot;period&quot;),
+        )
+        .filter(pl.col(&quot;cohort_age&quot;).ne(0) &amp; pl.col(&quot;market&quot;).eq(market.name))
+        .select([&quot;cohort&quot;, &quot;period&quot;, &quot;revenue&quot;])
+        .pivot(index=&quot;cohort&quot;, on=&quot;period&quot;, values=&quot;revenue&quot;)
+        .to_pandas()
+        .set_index(&quot;cohort&quot;)
+        .pipe(
+            (sns.heatmap, &quot;data&quot;),
+            cmap=&quot;viridis_r&quot;,
+            linewidths=0.2,
+            linecolor=&quot;black&quot;,
+            cbar_kws={&quot;format&quot;: mtick.FuncFormatter(func=lambda y, _: f&quot;{y:0.0f}&quot;)},
+            ax=ax,
+        )
+    )
+
+    [tick.set_rotation(0) for tick in ax.get_yticklabels()]
+
+    ax.set_title(f&quot;Revenue by Cohort and Period for {market.name}&quot;)</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_16_0.png" style="width: 1000px;"/>
+</center>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_16_1.png" style="width: 1000px;"/>
+</center>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_16_2.png" style="width: 1000px;"/>
+</center>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_16_3.png" style="width: 1000px;"/>
+</center>
+<p>Overall, we see that the more recent cohorts account for a much larger fraction of the revenue than the older cohorts.</p>
+</div>
+<div id="data-pre-processing" class="section level2">
+<h2>Data Pre-Processing</h2>
+<p>We continue with the data pre-processing step. All of the transformations are very standard: scaling for continuous variables, one-hot encoding for categorical variables, and label encoding for the cohort and period variables. For more details, see the previous post.</p>
+<pre class="python"><code>eps = np.finfo(float).eps
+
+train_data_red_df = train_data_df.filter(pl.col(&quot;cohort_age&quot;).gt(pl.lit(0)))
+train_obs_idx = jnp.array(range(train_data_red_df.shape[0]))
+train_n_users = train_data_red_df[&quot;n_users&quot;].to_jax()
+train_n_active_users = train_data_red_df[&quot;n_active_users&quot;].to_jax()
+train_retention = train_data_red_df[&quot;retention&quot;].to_jax()
+train_retention_logit = logit(train_retention + eps)
+train_revenue = train_data_red_df[&quot;revenue&quot;].to_jax() + eps
+train_revenue_per_user = train_revenue / (train_n_active_users + eps)
+
+train_cohort = train_data_red_df[&quot;cohort&quot;].to_numpy()
+train_cohort_encoder = LabelEncoder()
+train_cohort_idx = train_cohort_encoder.fit_transform(train_cohort).flatten()
+train_period = train_data_red_df[&quot;period&quot;].to_numpy()
+train_period_encoder = LabelEncoder()
+train_period_idx = train_period_encoder.fit_transform(train_period).flatten()
+train_market = train_data_red_df[&quot;market&quot;].to_numpy()
+train_market_encoder = LabelEncoder()
+train_market_idx = jnp.array(train_market_encoder.fit_transform(train_market).flatten())
+
+features: list[str] = [
+    &quot;age&quot;,
+    &quot;cohort_age&quot;,
+    &quot;cohort_month&quot;,
+    &quot;period_month&quot;,
+    &quot;market&quot;,
+]
+x_train = train_data_red_df[features]
+
+train_age = train_data_red_df[&quot;age&quot;].to_jax()
+train_age_scaler = RobustScaler()
+train_age_scaled = jnp.array(
+    train_age_scaler.fit_transform(np.array(train_age).reshape(-1, 1)).flatten()
+)
+
+train_cohort_age = train_data_red_df[&quot;cohort_age&quot;].to_jax()
+train_cohort_age_scaler = RobustScaler()
+train_cohort_age_scaled = jnp.array(
+    train_cohort_age_scaler.fit_transform(
+        np.array(train_cohort_age).reshape(-1, 1)
+    ).flatten()
+)
+
+numerical_features = [&quot;age&quot;, &quot;cohort_age&quot;, &quot;cohort_month&quot;, &quot;period_month&quot;]
+categorical_features = [&quot;market&quot;]
+
+numerical_transformer = Pipeline(steps=[(&quot;scaler&quot;, RobustScaler())])
+categorical_features_transformer = Pipeline(
+    steps=[(&quot;onehot&quot;, OneHotEncoder(drop=&quot;first&quot;, sparse_output=False))]
+)
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        (&quot;num&quot;, numerical_transformer, numerical_features),
+        (&quot;cat&quot;, categorical_features_transformer, categorical_features),
+    ]
+).set_output(transform=&quot;polars&quot;)
+
+preprocessor.fit(x_train)
+x_train_preprocessed = preprocessor.transform(x_train)
+
+x_train_preprocessed_array = x_train_preprocessed.to_jax()</code></pre>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>We extend the model from the blog post <a href="https://juanitorduz.github.io/revenue_retention_numpyro/">“Cohort Revenue Retention Analysis with Flax and NumPyro”</a>. Recall that the idea is to use a neural network to model the retention component and couple it with a linear model for the revenue component. There are many ways to encode the <em>market</em> feature (and this framework allows for many different ways to do so). Here we use the following encoding:</p>
+<ul>
+<li>In the retention component, we simply add the market as a feature.</li>
+<li>In the revenue component, where we use a linear model, we add a hierarchical structure on the regressors.</li>
+</ul>
+<p>To make this model scalable to tens or hundreds of markets, we use stochastic variational inference (SVI) to fit the model. In the case of few markets, we can use MCMC to fit the model.</p>
+<p>Let’s start by defining the retention neural network.</p>
+<pre class="python"><code>class RetentionMLP(nnx.Module):
+    def __init__(
+        self, din: int, dout: int, hidden_layers: list[int], *, rngs: nnx.Rngs
+    ) -&gt; None:
+        self.layers = []
+        layer_dims = [din, *hidden_layers, dout]
+        for in_dim, out_dim in pairwise(layer_dims):
+            self.layers.append(nnx.Linear(in_dim, out_dim, rngs=rngs))
+
+    def __call__(self, x: Float[Array, &quot;obs features&quot;]) -&gt; Float[Array, &quot;obs 1&quot;]:
+        for layer in self.layers[:-1]:
+            x = jax.nn.tanh(layer(x))
+        return jax.nn.sigmoid(self.layers[-1](x))</code></pre>
+<p>We can initialize the NNX object.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+retention_nnx_module = RetentionMLP(
+    din=x_train_preprocessed_array.shape[1],
+    dout=1,
+    hidden_layers=[4, 2, 2, 1],
+    rngs=nnx.Rngs(rng_subkey),
+)</code></pre>
+<p>Now we are ready to specify the model in NumPyro.</p>
+<pre class="python"><code>def retention_component(x: Float[Array, &quot;obs features&quot;]) -&gt; Float[Array, &quot; obs&quot;]:
+    &quot;&quot;&quot;Retention component of the model via a neural network.&quot;&quot;&quot;
+
+    retention_nn = random_nnx_module(
+        &quot;retention_nn&quot;,
+        retention_nnx_module,
+        prior=dist.SoftLaplace(loc=0, scale=1),
+    )
+
+    return numpyro.deterministic(&quot;retention&quot;, retention_nn(x).squeeze(-1))
+
+
+def revenue_component(
+    age: Float[Array, &quot; obs&quot;],
+    cohort_age: Float[Array, &quot; obs&quot;],
+    market_idx: Int[Array, &quot; obs&quot;],
+) -&gt; Float[Array, &quot; obs&quot;]:
+    &quot;&quot;&quot;Revenue component of the model via a hierarchical linear model.&quot;&quot;&quot;
+    n_markets: int = np.unique(market_idx).size
+
+    # --- Priors ---
+
+    ## --- Parameters ---
+    market_intercept_loc = numpyro.sample(
+        &quot;market_intercept_loc&quot;, dist.Normal(loc=0, scale=1)
+    )
+    market_intercept_scale = numpyro.sample(
+        &quot;market_intercept_scale&quot;, dist.HalfNormal(scale=1)
+    )
+
+    market_b_age_loc = numpyro.sample(&quot;market_b_age_loc&quot;, dist.Normal(loc=0, scale=1))
+    market_b_age_scale = numpyro.sample(&quot;market_b_age_scale&quot;, dist.HalfNormal(scale=1))
+
+    market_b_cohort_age_loc = numpyro.sample(
+        &quot;market_b_cohort_age_loc&quot;, dist.Normal(loc=0, scale=1)
+    )
+    market_b_cohort_age_scale = numpyro.sample(
+        &quot;market_b_cohort_age_scale&quot;, dist.HalfNormal(scale=1)
+    )
+
+    market_b_interaction_loc = numpyro.sample(
+        &quot;market_b_interaction_loc&quot;, dist.Normal(loc=0, scale=1)
+    )
+    market_b_interaction_scale = numpyro.sample(
+        &quot;market_b_interaction_scale&quot;, dist.HalfNormal(scale=1)
+    )
+
+    ## --- Parametrization Factors ---
+    market_intercept_centered = numpyro.sample(
+        &quot;market_intercept_centered&quot;, dist.Uniform(low=0, high=1)
+    )
+    market_b_age_centered = numpyro.sample(
+        &quot;market_b_age_centered&quot;, dist.Uniform(low=0, high=1)
+    )
+    market_b_cohort_age_centered = numpyro.sample(
+        &quot;market_b_cohort_age_centered&quot;, dist.Uniform(low=0, high=1)
+    )
+    market_b_interaction_centered = numpyro.sample(
+        &quot;market_b_interaction_centered&quot;, dist.Uniform(low=0, high=1)
+    )
+
+    with (
+        numpyro.plate(&quot;markets&quot;, n_markets),
+        numpyro.handlers.reparam(
+            config={
+                &quot;market_intercept&quot;: LocScaleReparam(centered=market_intercept_centered),
+            }
+        ),
+        numpyro.handlers.reparam(
+            config={
+                &quot;market_b_age&quot;: LocScaleReparam(centered=market_b_age_centered),
+            }
+        ),
+        numpyro.handlers.reparam(
+            config={
+                &quot;market_b_cohort_age&quot;: LocScaleReparam(
+                    centered=market_b_cohort_age_centered
+                ),
+            }
+        ),
+        numpyro.handlers.reparam(
+            config={
+                &quot;market_b_interaction&quot;: LocScaleReparam(
+                    centered=market_b_interaction_centered
+                ),
+            }
+        ),
+    ):
+        market_intercept = numpyro.sample(
+            &quot;market_intercept&quot;,
+            dist.Normal(loc=market_intercept_loc, scale=market_intercept_scale),
+        )
+
+        market_b_age = numpyro.sample(
+            &quot;market_b_age&quot;,
+            dist.Normal(loc=market_b_age_loc, scale=market_b_age_scale),
+        )
+
+        market_b_cohort_age = numpyro.sample(
+            &quot;market_b_cohort_age&quot;,
+            dist.Normal(loc=market_b_cohort_age_loc, scale=market_b_cohort_age_scale),
+        )
+
+        market_b_interaction = numpyro.sample(
+            &quot;market_b_interaction&quot;,
+            dist.Normal(loc=market_b_interaction_loc, scale=market_b_interaction_scale),
+        )
+
+    ## --- Parametrization ---
+    lam_raw = numpyro.deterministic(
+        &quot;lam_log&quot;,
+        market_intercept[market_idx]
+        + market_b_age[market_idx] * age
+        + market_b_cohort_age[market_idx] * cohort_age
+        + market_b_interaction[market_idx] * age * cohort_age,
+    )
+
+    return numpyro.deterministic(&quot;lam&quot;, jax.nn.softplus(lam_raw))
+
+
+def model(
+    x: Float[Array, &quot;obs features&quot;],
+    age: Float[Array, &quot; obs&quot;],
+    cohort_age: Float[Array, &quot; obs&quot;],
+    n_users: Int[Array, &quot; obs&quot;],
+    market_idx: Int[Array, &quot; obs&quot;],
+) -&gt; None:
+    &quot;&quot;&quot;Hierarchical revenue-retention model.&quot;&quot;&quot;
+
+    n_obs: int = x.shape[0]
+
+    retention = retention_component(x=x)
+    lam = revenue_component(age=age, cohort_age=cohort_age, market_idx=market_idx)
+
+    with numpyro.plate(&quot;data&quot;, n_obs):
+        n_active_users = numpyro.sample(
+            &quot;n_active_users&quot;,
+            dist.Binomial(total_count=n_users, probs=retention),
+        )
+
+        numpyro.deterministic(&quot;retention_estimated&quot;, n_active_users / n_users)
+
+        numpyro.sample(
+            &quot;revenue&quot;,
+            dist.Gamma(concentration=n_active_users + eps, rate=lam),
+        )</code></pre>
+<p>Note that the hierarchical extension is relatively straightforward. One has to be careful with the dimensions (as always). Let’s now visualize the model structure:</p>
+<pre class="python"><code>numpyro.render_model(
+    model=model,
+    model_kwargs={
+        &quot;x&quot;: x_train_preprocessed_array,
+        &quot;age&quot;: train_age_scaled,
+        &quot;cohort_age&quot;: train_cohort_age_scaled,
+        &quot;n_users&quot;: train_n_users,
+        &quot;market_idx&quot;: train_market_idx,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_27_0.svg" style="width: 1000px;"/>
+</center>
+<p>We proceed to condition the model on the data.</p>
+<pre class="python"><code>conditioned_model = condition(
+    model,
+    {&quot;n_active_users&quot;: train_n_active_users, &quot;revenue&quot;: train_revenue},
+)</code></pre>
+</div>
+<div id="stochastic-variational-inference" class="section level2">
+<h2>Stochastic Variational Inference</h2>
+<p>Having defined the model, we now fit it using SVI. We use some custom optimizers to speed up the inference (see <a href="https://optax.readthedocs.io/en/latest/"><code>optax</code></a> documentation for more details).</p>
+<pre class="python"><code># See https://optax.readthedocs.io/en/latest/getting_started.html#custom-optimizers
+scheduler = optax.linear_onecycle_schedule(
+    transition_steps=50_000,
+    peak_value=0.01,
+    pct_start=0.01,
+    pct_final=0.75,
+    div_factor=2,
+    final_div_factor=3,
+)
+
+optimizer = optax.chain(
+    optax.clip_by_global_norm(1.0),
+    optax.scale_by_adam(),
+    optax.scale_by_schedule(scheduler),
+    optax.scale(-1.0),
+)
+
+guide = AutoMultivariateNormal(model=conditioned_model)
+
+svi = SVI(conditioned_model, guide, optimizer, loss=Trace_ELBO())
+n_samples = 50_000
+rng_key, rng_subkey = random.split(key=rng_key)
+svi_result = svi.run(
+    rng_subkey,
+    n_samples,
+    x=x_train_preprocessed_array,
+    age=train_age_scaled,
+    cohort_age=train_cohort_age_scaled,
+    n_users=train_n_users,
+    market_idx=train_market_idx,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set(yscale=&quot;log&quot;)
+ax.set_title(&quot;ELBO Loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 50000/50000 [00:11&lt;00:00, 4420.64it/s, init loss: 9282986.0000, avg. loss [47501-50000]: 9852.0283] </code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_31_1.png" style="width: 700px;"/>
+</center>
+<p>Overall, the ELBO curve looks good. We continue to sample from the posterior distribution.</p>
+<pre class="python"><code>params = svi_result.params
+
+posterior_predictive = Predictive(
+    model=model,
+    guide=guide,
+    params=params,
+    num_samples=4 * 2_000,
+    return_sites=[
+        &quot;retention&quot;,
+        &quot;n_active_users&quot;,
+        &quot;revenue&quot;,
+        &quot;retention_estimated&quot;,
+    ],
+)
+rng_key, rng_subkey = random.split(key=rng_key)
+posterior_predictive_samples = posterior_predictive(
+    rng_subkey,
+    x_train_preprocessed_array,
+    train_age_scaled,
+    train_cohort_age_scaled,
+    train_n_users,
+    train_market_idx,
+)</code></pre>
+<p>We store the samples in an <code>az.InferenceData</code> object.</p>
+<pre class="python"><code>idata = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in posterior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: train_obs_idx},
+    dims={
+        &quot;retention&quot;: [&quot;obs_idx&quot;],
+        &quot;n_active_users&quot;: [&quot;obs_idx&quot;],
+        &quot;revenue&quot;: [&quot;obs_idx&quot;],
+        &quot;retention_estimated&quot;: [&quot;obs_idx&quot;],
+    },
+)</code></pre>
+</div>
+<div id="in-sample-predictions" class="section level2">
+<h2>In-Sample Predictions</h2>
+<p>Now that we have fit the model, we can make in-sample predictions and compare them to the true values. Let’s start by plotting the posterior predictive distribution (and mean) of the retention.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+sns.scatterplot(
+    x=train_retention,
+    y=idata[&quot;posterior_predictive&quot;][&quot;retention&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;]),
+    color=&quot;C0&quot;,
+    label=&quot;Mean Predicted Retention&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_retention,
+    y=idata[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_retention,
+    y=idata[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+sns.rugplot(x=train_retention, color=&quot;C0&quot;, ax=ax)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;True Retention&quot;, ylabel=&quot;Predicted Retention&quot;)
+ax.set_title(
+    label=&quot;True vs Predicted Retention (Train)&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_37_0.png" style="width: 800px;"/>
+</center>
+<p>The model does a good job for the vast majority of the data. There are a few data points on which the model underpredicts the retention.</p>
+<p>Next, we look into the analoge of the in-sample predictions for the revenue.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(9, 7))
+sns.scatterplot(
+    x=train_revenue,
+    y=idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;]),
+    color=&quot;C0&quot;,
+    label=&quot;Mean Predicted Revenue&quot;,
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_revenue,
+    y=idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;],
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=train_revenue,
+    y=idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;],
+    hdi_prob=0.5,
+    color=&quot;C0&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.4, &quot;label&quot;: &quot;$50\\%$ HDI&quot;},
+    ax=ax,
+)
+sns.rugplot(x=train_revenue, color=&quot;C0&quot;, ax=ax)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;diagonal&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;True Revenue&quot;, ylabel=&quot;Predicted Revenue&quot;)
+ax.set_title(label=&quot;True vs Predicted Revenue (Train)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_40_0.png" style="width: 800px;"/>
+</center>
+<p>The revenue component has a very good in sample fit.</p>
+<div id="retention" class="section level3">
+<h3>Retention</h3>
+<p>We now deep-dive into the retention component of the model. We look at specific cohorts to see how well the model is able to capture the variation in the retention patterns. For this, we define some helper functions to plot the retention patterns (similar to the ones we used in the previous posts).</p>
+<pre class="python"><code>train_retention_estimated_hdi = az.hdi(
+    ary=idata[&quot;posterior_predictive&quot;], hdi_prob=0.94
+)[&quot;retention_estimated&quot;]
+
+
+def plot_train_retention_hdi_cohort(
+    market: str, cohort: datetime, ax: plt.Axes
+) -&gt; plt.Axes:
+    cohort_index = train_cohort_encoder.transform([cohort.replace(tzinfo=None)])[0]
+    market_index = train_market_encoder.transform([market])[0]
+
+    mask = (train_cohort_idx == cohort_index) &amp; (
+        np.array(train_market_idx) == market_index
+    )
+
+    ax.fill_between(
+        x=train_period[train_period_idx[mask]],
+        y1=train_retention_estimated_hdi[mask, :][:, 0],
+        y2=train_retention_estimated_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C2&quot;,
+        label=&quot;94% HDI&quot;,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=idata[&quot;posterior_predictive&quot;][&quot;retention&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;])[mask],
+        marker=&quot;o&quot;,
+        color=&quot;C2&quot;,
+        label=&quot;predicted&quot;,
+        ax=ax,
+    )
+
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=train_retention[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed&quot;,
+        ax=ax,
+    )
+    cohort_name = train_cohort_encoder.classes_[cohort_index]
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set(title=f&quot;Cohort {cohort_name}&quot;)
+    return ax</code></pre>
+<p>We now plot the in-sample estimated retentions for some selected cohorts and for all the markets.</p>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2020, 1, 1, tzinfo=UTC),
+    datetime(2020, 2, 1, tzinfo=UTC),
+    datetime(2020, 6, 1, tzinfo=UTC),
+    datetime(2020, 11, 1, tzinfo=UTC),
+    datetime(2021, 4, 1, tzinfo=UTC),
+    datetime(2021, 9, 1, tzinfo=UTC),
+    datetime(2022, 2, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;A&quot;, cohort=cohort, ax=ax)
+    ax.legend(loc=&quot;upper left&quot;)
+
+fig.suptitle(&quot;In-Sample Retention - Market A&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_45_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;B&quot;, cohort=cohort, ax=ax)
+    ax.legend(loc=&quot;upper left&quot;)
+
+fig.suptitle(&quot;In-Sample Retention - Market B&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_46_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;C&quot;, cohort=cohort, ax=ax)
+    ax.legend(loc=&quot;upper left&quot;)
+
+fig.suptitle(&quot;In-Sample Retention - Market C&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_47_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 9),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;D&quot;, cohort=cohort, ax=ax)
+    ax.legend(loc=&quot;upper left&quot;)
+
+fig.suptitle(&quot;In-Sample Retention - Market D&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_48_0.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the model is able to capture the variation and trends of the retention component. Note, as expected, that the highest-density-intervals (HDI) for the smaller cohorts are wider than for the larger cohorts. This is by design, as we are modeling this retention component as a latent variable instead of modeling the quotients directly.</p>
+</div>
+<div id="revenue" class="section level3">
+<h3>Revenue</h3>
+<p>We do the same for the revenue component.</p>
+<pre class="python"><code>train_revenue_hdi = az.hdi(ary=idata[&quot;posterior_predictive&quot;], hdi_prob=0.94)[&quot;revenue&quot;]
+
+
+def plot_train_revenue_hdi_cohort(
+    market: str, cohort: datetime, ax: plt.Axes
+) -&gt; plt.Axes:
+    cohort_index = train_cohort_encoder.transform([cohort.replace(tzinfo=None)])[0]
+    market_index = train_market_encoder.transform([market])[0]
+
+    mask = (train_cohort_idx == cohort_index) &amp; (
+        np.array(train_market_idx) == market_index
+    )
+
+    ax.fill_between(
+        x=train_period[train_period_idx[mask]],
+        y1=train_revenue_hdi[mask, :][:, 0],
+        y2=train_revenue_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C3&quot;,
+        label=&quot;94% HDI&quot;,
+    )
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;])[mask],
+        marker=&quot;o&quot;,
+        color=&quot;C3&quot;,
+        label=&quot;predicted&quot;,
+        ax=ax,
+    )
+
+    sns.lineplot(
+        x=train_period[train_period_idx[mask]],
+        y=train_revenue[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        label=&quot;observed&quot;,
+        ax=ax,
+    )
+    cohort_name = train_cohort_encoder.classes_[cohort_index]
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set(title=f&quot;Cohort {cohort_name}&quot;)
+    return ax</code></pre>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2020, 1, 1, tzinfo=UTC),
+    datetime(2020, 2, 1, tzinfo=UTC),
+    datetime(2020, 6, 1, tzinfo=UTC),
+    datetime(2020, 11, 1, tzinfo=UTC),
+    datetime(2021, 4, 1, tzinfo=UTC),
+    datetime(2021, 9, 1, tzinfo=UTC),
+    datetime(2022, 2, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;A&quot;, cohort=cohort, ax=ax)
+
+fig.suptitle(&quot;In-Sample Revenue - Market A&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_52_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;B&quot;, cohort=cohort, ax=ax)
+
+fig.suptitle(&quot;In-Sample Revenue - Market B&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_53_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 11),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;C&quot;, cohort=cohort, ax=ax)
+
+fig.suptitle(&quot;In-Sample Revenue - Market C&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_54_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=np.ceil(len(cohorts_to_plot) / 2).astype(int),
+    ncols=2,
+    figsize=(17, 9),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;D&quot;, cohort=cohort, ax=ax)
+
+fig.suptitle(&quot;In-Sample Revenue - Market D&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_55_0.png" style="width: 1000px;"/>
+</center>
+<p>Again, the results look quite reasonable (not perfect though).</p>
+</div>
+</div>
+<div id="out-of-sample-predictions" class="section level2">
+<h2>Out-of-Sample Predictions</h2>
+<p>Next, we focus on the out-of-sample performance of the model.</p>
+<div id="data-preparation" class="section level3">
+<h3>Data Preparation</h3>
+<p>It is very important to ensure the data is in the format expected by the model. We process the test set data with the transformers fitted on the training set.</p>
+<pre class="python"><code>test_data_red_df = test_data_df.filter(pl.col(&quot;cohort_age&quot;).gt(pl.lit(0)))
+test_data_red_df = test_data_red_df.filter(
+    pl.col(&quot;cohort&quot;).is_in(set(train_data_red_df[&quot;cohort&quot;]))
+)
+test_obs_idx = jnp.array(range(test_data_red_df.shape[0]))
+test_n_users = test_data_red_df[&quot;n_users&quot;].to_jax()
+test_n_active_users = test_data_red_df[&quot;n_active_users&quot;].to_jax()
+test_retention = test_data_red_df[&quot;retention&quot;].to_jax()
+test_revenue = test_data_red_df[&quot;revenue&quot;].to_jax()
+
+test_cohort = test_data_red_df[&quot;cohort&quot;].to_numpy()
+test_cohort_idx = train_cohort_encoder.transform(test_cohort).flatten()
+test_period = test_data_red_df[&quot;period&quot;].to_numpy()
+test_market = test_data_red_df[&quot;market&quot;].to_numpy()
+test_market_idx = jnp.array(train_market_encoder.transform(test_market).flatten())
+
+x_test = test_data_red_df[features]
+x_test_preprocessed = preprocessor.transform(x_test)
+x_test_preprocessed_array = jnp.array(x_test_preprocessed)
+
+test_age = test_data_red_df[&quot;age&quot;].to_numpy()
+test_age_scaled = jnp.array(
+    train_age_scaler.transform(test_age.reshape(-1, 1)).flatten()
+)
+test_cohort_age = test_data_red_df[&quot;cohort_age&quot;].to_numpy()
+test_cohort_age_scaled = jnp.array(
+    train_cohort_age_scaler.transform(test_cohort_age.reshape(-1, 1)).flatten()
+)</code></pre>
+<p>We proceed to make predictions on the test set.</p>
+<pre class="python"><code>test_predictive = Predictive(
+    model=model, guide=guide, params=params, num_samples=4 * 2_000
+)
+rng_key, rng_subkey = random.split(key=rng_key)
+test_posterior_predictive_samples = test_predictive(
+    rng_subkey,
+    x_test_preprocessed_array,
+    test_age_scaled,
+    test_cohort_age_scaled,
+    test_n_users,
+    test_market_idx,
+)</code></pre>
+<pre class="python"><code>test_idata = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in test_posterior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: test_obs_idx},
+    dims={
+        &quot;retention&quot;: [&quot;obs_idx&quot;],
+        &quot;n_active_users&quot;: [&quot;obs_idx&quot;],
+        &quot;revenue&quot;: [&quot;obs_idx&quot;],
+        &quot;retention_estimated&quot;: [&quot;obs_idx&quot;],
+    },
+)</code></pre>
+<p>Now we are ready to asses the model performance.</p>
+</div>
+<div id="retention-1" class="section level3">
+<h3>Retention</h3>
+<p>We proceed very similar as above with the retention component.</p>
+<pre class="python"><code>test_retention_estimated_hdi = az.hdi(ary=test_idata[&quot;posterior_predictive&quot;])[
+    &quot;retention_estimated&quot;
+]
+
+
+def plot_test_retention_hdi_cohort(
+    market: str, cohort: datetime, ax: plt.Axes
+) -&gt; plt.Axes:
+    market_index = train_market_encoder.transform([market])[0]
+    cohort_index = train_cohort_encoder.transform([cohort.replace(tzinfo=None)])[0]
+
+    mask = (test_cohort_idx == cohort_index) &amp; (
+        np.array(test_market_idx) == market_index
+    )
+
+    test_period_range = test_data_red_df.filter(
+        pl.col(&quot;cohort&quot;).eq(train_cohort_encoder.classes_[cohort_index])
+        &amp; pl.col(&quot;market&quot;).eq(train_market_encoder.classes_[market_index])
+    )[&quot;period&quot;].to_numpy()
+
+    ax.fill_between(
+        x=test_period_range,
+        y1=test_retention_estimated_hdi[mask, :][:, 0],
+        y2=test_retention_estimated_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C2&quot;,
+    )
+
+    sns.lineplot(
+        x=test_period_range,
+        y=test_idata[&quot;posterior_predictive&quot;][&quot;retention_estimated&quot;].mean(
+            dim=[&quot;chain&quot;, &quot;draw&quot;]
+        )[mask],
+        marker=&quot;o&quot;,
+        color=&quot;C2&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=test_period_range,
+        y=test_retention[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        ax=ax,
+    )
+    return ax</code></pre>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2020, 1, 1, tzinfo=UTC),
+    datetime(2020, 2, 1, tzinfo=UTC),
+    datetime(2020, 6, 1, tzinfo=UTC),
+    datetime(2020, 11, 1, tzinfo=UTC),
+    datetime(2021, 4, 1, tzinfo=UTC),
+    datetime(2021, 9, 1, tzinfo=UTC),
+    datetime(2022, 2, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 18),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;A&quot;, cohort=cohort, ax=ax)
+    plot_test_retention_hdi_cohort(market=&quot;A&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Retention Predictions - Market A&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_66_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 15),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;B&quot;, cohort=cohort, ax=ax)
+    plot_test_retention_hdi_cohort(market=&quot;B&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Retention Predictions - Market B&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_67_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 15),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;C&quot;, cohort=cohort, ax=ax)
+    plot_test_retention_hdi_cohort(market=&quot;C&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Retention Predictions - Market C&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_68_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 9),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_retention_hdi_cohort(market=&quot;D&quot;, cohort=cohort, ax=ax)
+    plot_test_retention_hdi_cohort(market=&quot;D&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Retention Predictions - Market D&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_69_0.png" style="width: 1000px;"/>
+</center>
+<p>All the out-of-sample predictions look quite reasonable. Here are some important observations:</p>
+<ul>
+<li><p>It seems the model is overestimating the retention for the later periods (it’s still a one-year horizon).</p></li>
+<li><p>We are able to generate very reasonable predictions for market <span class="math inline">\(D\)</span> where we have very few cohorts. Note that we even captured the yearly seasonality. This would have been impossible to do with a model trained on each market separately.</p></li>
+</ul>
+</div>
+<div id="revenue-1" class="section level3">
+<h3>Revenue</h3>
+<p>We continue with the revenue component.</p>
+<pre class="python"><code>test_revenue_hdi = az.hdi(ary=test_idata[&quot;posterior_predictive&quot;])[&quot;revenue&quot;]
+
+
+def plot_test_revenue_hdi_cohort(
+    market: str, cohort: datetime, ax: plt.Axes
+) -&gt; plt.Axes:
+    market_index = train_market_encoder.transform([market])[0]
+    cohort_index = train_cohort_encoder.transform([cohort.replace(tzinfo=None)])[0]
+
+    mask = (test_cohort_idx == cohort_index) &amp; (
+        np.array(test_market_idx) == market_index
+    )
+
+    test_period_range = test_data_red_df.filter(
+        pl.col(&quot;cohort&quot;).eq(train_cohort_encoder.classes_[cohort_index])
+        &amp; pl.col(&quot;market&quot;).eq(train_market_encoder.classes_[market_index])
+    )[&quot;period&quot;].to_numpy()
+
+    ax.fill_between(
+        x=test_period_range,
+        y1=test_revenue_hdi[mask, :][:, 0],
+        y2=test_revenue_hdi[mask, :][:, 1],
+        alpha=0.2,
+        color=&quot;C3&quot;,
+    )
+
+    sns.lineplot(
+        x=test_period_range,
+        y=test_idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;])[
+            mask
+        ],
+        marker=&quot;o&quot;,
+        color=&quot;C3&quot;,
+        ax=ax,
+    )
+    sns.lineplot(
+        x=test_period_range,
+        y=test_revenue[mask],
+        color=&quot;C0&quot;,
+        marker=&quot;o&quot;,
+        ax=ax,
+    )
+    return ax</code></pre>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2020, 1, 1, tzinfo=UTC),
+    datetime(2020, 2, 1, tzinfo=UTC),
+    datetime(2020, 6, 1, tzinfo=UTC),
+    datetime(2020, 11, 1, tzinfo=UTC),
+    datetime(2021, 4, 1, tzinfo=UTC),
+    datetime(2021, 9, 1, tzinfo=UTC),
+    datetime(2022, 2, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 18),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;A&quot;, cohort=cohort, ax=ax)
+    plot_test_revenue_hdi_cohort(market=&quot;A&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Revenue Predictions - Market A&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_73_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 15),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;B&quot;, cohort=cohort, ax=ax)
+    plot_test_revenue_hdi_cohort(market=&quot;B&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Revenue Predictions - Market B&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_74_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 3, 1, tzinfo=UTC),
+    datetime(2022, 4, 1, tzinfo=UTC),
+    datetime(2022, 5, 1, tzinfo=UTC),
+    datetime(2022, 6, 1, tzinfo=UTC),
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 15),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;C&quot;, cohort=cohort, ax=ax)
+    plot_test_revenue_hdi_cohort(market=&quot;C&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Revenue Predictions - Market C&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_75_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>cohorts_to_plot = [
+    datetime(2022, 7, 1, tzinfo=UTC),
+    datetime(2022, 8, 1, tzinfo=UTC),
+    datetime(2022, 9, 1, tzinfo=UTC),
+    datetime(2022, 10, 1, tzinfo=UTC),
+]
+
+fig, axes = plt.subplots(
+    nrows=len(cohorts_to_plot),
+    ncols=1,
+    figsize=(15, 10),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for cohort, ax in zip(cohorts_to_plot, axes.flatten(), strict=True):
+    plot_train_revenue_hdi_cohort(market=&quot;D&quot;, cohort=cohort, ax=ax)
+    plot_test_revenue_hdi_cohort(market=&quot;D&quot;, cohort=cohort, ax=ax)
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;black&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+
+fig.suptitle(&quot;Revenue Predictions - Market D&quot;, y=1.03, fontsize=20, fontweight=&quot;bold&quot;)
+fig.autofmt_xdate()</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_76_0.png" style="width: 1000px;"/>
+</center>
+<p>Again, the predictions look, in general, quite good. In particular observe from the last plot how much we can capture out of market <code>D</code>. This illustrates the power of the approach. On the other hand, we keep seeing a mild overestimation for the later periods.</p>
+</div>
+</div>
+<div id="aggregated-predictions" class="section level2">
+<h2>Aggregated Predictions</h2>
+<p>Finally, let’s show how to visualize the aggregated predictions.</p>
+<pre class="python"><code>train_total_revenue_predicted = (
+    idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;]
+    .rename({&quot;obs_idx&quot;: &quot;period_month&quot;})
+    .assign_coords(period_month=train_period)
+    .groupby(&quot;period_month&quot;)
+    .sum()
+)
+
+test_total_revenue_predicted = (
+    test_idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;]
+    .rename({&quot;obs_idx&quot;: &quot;period_month&quot;})
+    .assign_coords(period_month=test_period)
+    .groupby(&quot;period_month&quot;)
+    .sum()
+)
+
+
+fig, ax = plt.subplots()
+
+az.plot_hdi(
+    x=train_total_revenue_predicted.coords[&quot;period_month&quot;],
+    y=train_total_revenue_predicted,
+    hdi_prob=0.94,
+    color=&quot;C0&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.7, &quot;label&quot;: &quot;$94\\%$ HDI (train)&quot;},
+    ax=ax,
+)
+
+az.plot_hdi(
+    x=test_total_revenue_predicted.coords[&quot;period_month&quot;],
+    y=test_total_revenue_predicted,
+    hdi_prob=0.94,
+    color=&quot;C1&quot;,
+    smooth=False,
+    fill_kwargs={&quot;alpha&quot;: 0.7, &quot;label&quot;: &quot;$94\\%$ HDI (est)&quot;},
+    ax=ax,
+)
+
+(
+    data_df.filter(pl.col(&quot;cohort_age&quot;).gt(pl.lit(0)))
+    .filter(pl.col(&quot;cohort&quot;).is_in(set(train_data_red_df[&quot;cohort&quot;])))
+    .group_by(&quot;period&quot;)
+    .agg(pl.col(&quot;revenue&quot;).sum())
+    .pipe(
+        sns.lineplot,
+        x=&quot;period&quot;,
+        y=&quot;revenue&quot;,
+        color=&quot;black&quot;,
+        marker=&quot;o&quot;,
+        ax=ax,
+    )
+)
+
+ax.axvline(
+    x=period_train_test_split,
+    color=&quot;gray&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;train/test split&quot;,
+)
+
+ax.legend(loc=&quot;upper left&quot;)
+
+ax.set_title(&quot;Total Revenue&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_79_0.png" style="width: 1000px;"/>
+</center>
+<p>This last plot shows the aggregated predictions for the revenue (removing cohort age equal to <span class="math inline">\(0\)</span>). Overall the fit and predictions are good. Still, we can see that the model is overestimating the revenue for the later periods as expected from the previous sections.</p>
+<p>Now let’s look into the market split.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=len(markets),
+    ncols=1,
+    figsize=(15, 15),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+axes = axes.flatten()
+
+for market, ax in zip(markets, axes, strict=True):
+    train_total_revenue_predicted = (
+        idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;]
+        .rename({&quot;obs_idx&quot;: &quot;market&quot;})
+        .assign_coords(market=train_market)
+        .sel(market=market.name)
+        .rename({&quot;market&quot;: &quot;period_month&quot;})
+        .assign_coords(period_month=train_period[train_market == market.name])
+        .groupby(&quot;period_month&quot;)
+        .sum()
+    )
+
+    test_total_revenue_predicted = (
+        test_idata[&quot;posterior_predictive&quot;][&quot;revenue&quot;]
+        .rename({&quot;obs_idx&quot;: &quot;market&quot;})
+        .assign_coords(market=test_market)
+        .sel(market=market.name)
+        .rename({&quot;market&quot;: &quot;period_month&quot;})
+        .assign_coords(period_month=test_period[test_market == market.name])
+        .groupby(&quot;period_month&quot;)
+        .sum()
+    )
+
+    az.plot_hdi(
+        x=train_total_revenue_predicted.coords[&quot;period_month&quot;],
+        y=train_total_revenue_predicted,
+        hdi_prob=0.94,
+        color=&quot;C0&quot;,
+        smooth=False,
+        fill_kwargs={&quot;alpha&quot;: 0.7, &quot;label&quot;: &quot;$94\\%$ HDI (train)&quot;},
+        ax=ax,
+    )
+
+    az.plot_hdi(
+        x=test_total_revenue_predicted.coords[&quot;period_month&quot;],
+        y=test_total_revenue_predicted,
+        hdi_prob=0.94,
+        color=&quot;C1&quot;,
+        smooth=False,
+        fill_kwargs={&quot;alpha&quot;: 0.7, &quot;label&quot;: &quot;$94\\%$ HDI (est)&quot;},
+        ax=ax,
+    )
+
+    (
+        data_df.filter(
+            pl.col(&quot;cohort_age&quot;).gt(pl.lit(0))
+            &amp; pl.col(&quot;market&quot;).eq(pl.lit(market.name))
+            &amp; pl.col(&quot;cohort&quot;).is_in(set(train_data_red_df[&quot;cohort&quot;]))
+        )
+        .group_by(&quot;period&quot;)
+        .agg(pl.col(&quot;revenue&quot;).sum())
+        .pipe(
+            sns.lineplot,
+            x=&quot;period&quot;,
+            y=&quot;revenue&quot;,
+            color=&quot;black&quot;,
+            marker=&quot;o&quot;,
+            ax=ax,
+        )
+    )
+
+    ax.axvline(
+        x=period_train_test_split,
+        color=&quot;gray&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;train/test split&quot;,
+    )
+
+    ax.legend(loc=&quot;upper left&quot;)
+
+    ax.set_title(
+        f&quot;Total Revenue - Market {market.name}&quot;, fontsize=18, fontweight=&quot;bold&quot;
+    )</code></pre>
+<center>
+<img src="../images/hierarchical_revenue_retention_files/hierarchical_revenue_retention_82_0.png" style="width: 1000px;"/>
+</center>
+<p>Interestingly, it seems the over-estimation is coming from the more mature markets.</p>
+</div>
+<div id="summary" class="section level2">
+<h2>Summary</h2>
+<p>This notebook successfully demonstrates the extension of cohort revenue and retention modeling to a hierarchical framework across multiple markets. The key contributions and findings include:</p>
+<p><strong>Model Architecture:</strong></p>
+<ul>
+<li>Combined a neural network for retention modeling with a hierarchical linear model for revenue prediction.</li>
+<li>Used Stochastic Variational Inference (SVI) for scalable parameter estimation across markets.</li>
+<li>Implemented market-specific parameters with shared hierarchical priors to enable information pooling.</li>
+</ul>
+<p><strong>Key Benefits:</strong></p>
+<ul>
+<li><strong>Information Sharing</strong>: Markets with limited data (like Market <span class="math inline">\(D\)</span> with only <span class="math inline">\(4\)</span> cohorts) benefit from information borrowed from more mature markets.</li>
+<li><strong>Seasonal Pattern Capture</strong>: Successfully captured yearly seasonality patterns even in data-sparse markets.</li>
+<li><strong>Scalability</strong>: SVI approach enables scaling to tens or hundreds of markets.</li>
+</ul>
+<p><strong>Results:</strong></p>
+<ul>
+<li>Strong in-sample fit for both retention and revenue components across all markets.</li>
+<li>Reasonable out-of-sample predictions with proper uncertainty quantification.</li>
+<li>Demonstrated ability to forecast for young markets that would be impossible to model individually.</li>
+<li>Identified systematic overestimation in later periods, particularly from mature markets.</li>
+</ul>
+<p>The hierarchical approach proves particularly valuable for businesses operating across multiple markets with varying maturity levels, enabling better forecasting and decision-making through principled uncertainty quantification and information sharing.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
