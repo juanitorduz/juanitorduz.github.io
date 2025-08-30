@@ -6,7 +6,18 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 04 Aug 2025 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 01 Sep 2025 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</title>
+      <link>/intro_svi/</link>
+      <pubDate>Mon, 01 Sep 2025 00:00:00 +0000</pubDate>
+      
+      <guid>/intro_svi/</guid>
+      <description>In this notebook we provide a brief introduction to Stochastic Variational Inference (SVI) with NumPyro. We provide the key mathematical concepts, but we focus on the code implementation. This introductory notebook is meant for practitioners. We do this by working through two examples: a very simple parameter recovery model and a Bayesian Neural Network.
+This work was presented at PyData Berlin 2025, you can find the slides here.
+Overview Stochastic Variational Inference (SVI) is a scalable approximate inference method that transforms the problem of posterior inference into an optimization problem.</description>
+    </item>
+    
     <item>
       <title>Hierarchical Revenue &amp; Retention Modeling</title>
       <link>/hierarchical_revenue_retention/</link>

@@ -1,0 +1,1921 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">39 min read</span>
+    
+
+    <h1 class="article-title">PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</h1>
+
+    
+    <span class="article-date">2025-09-01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we provide a brief introduction to Stochastic Variational Inference (SVI) with <a href="https://pyro.ai/numpyro">NumPyro</a>. We provide the key mathematical concepts, but we focus on the code implementation. This introductory notebook is meant for practitioners. We do this by working through two examples: a very simple parameter recovery model and a Bayesian Neural Network.</p>
+<p>This work was presented at <a href="https://cfp.pydata.org/berlin2025/talk/BCGJQB/">PyData Berlin 2025</a>, you can find the slides <a href="../html/intro_svi.html">here</a>.</p>
+<div id="overview" class="section level2">
+<h2>Overview</h2>
+<p><strong>Stochastic Variational Inference (SVI)</strong> is a scalable approximate inference method that transforms the problem of posterior inference into an optimization problem. Instead of sampling from the posterior distribution (like MCMC), SVI finds the best approximation to the posterior within a family of simpler distributions.</p>
+<div id="why-use-svi" class="section level3">
+<h3>Why Use SVI?</h3>
+<p>Modern Bayesian modeling applications often involve large datasets and complex models with thousands or millions of parameters. SVI addresses these practical challenges by transforming posterior inference into a scalable optimization problem that can leverage modern computational infrastructure like GPUs and distributed computing. This approach is particularly valuable when working with <a href="https://juanitorduz.github.io/hierarchical_revenue_retention/">deep learning models</a>, large-scale <a href="https://juanitorduz.github.io/numpyro_hierarchical_forecasting_2/">time series forecasting models</a>, or any application where you need both accurate predictions and uncertainty quantification at scale. SVI maintains the principled uncertainty estimation of Bayesian methods while achieving the computational efficiency required for practical deployment.</p>
+</div>
+<div id="key-concepts" class="section level3">
+<h3>Key Concepts</h3>
+<p>The following are the key concepts of SVI that you should understand after reading this notebook:</p>
+<ul>
+<li><strong>Variational Family</strong>: A family of simple distributions (e.g., Normal) parameterized by variational parameters</li>
+<li><strong>ELBO (Evidence Lower BOund)</strong>: The objective function we maximize, which lower-bounds the log marginal likelihood</li>
+</ul>
+<p>Let’s explore each of these concepts in detail. But first, let’s define the notation we will use throughout the notebook.</p>
+<p><strong>Notation:</strong></p>
+<ul>
+<li><span class="math inline">\(\theta\)</span>: Model parameters (e.g., in a neural network, the weights and biases)</li>
+<li><span class="math inline">\(\phi\)</span>: Variational parameters (parameters of our approximate posterior)</li>
+<li><span class="math inline">\(x\)</span>: Observed input data</li>
+<li><span class="math inline">\(y\)</span>: Observed output data</li>
+<li><span class="math inline">\(D = \{(x_i, y_i)\}_{i=1}^N\)</span>: Our complete dataset</li>
+<li><span class="math inline">\(p(\theta|D)\)</span>: True posterior distribution (what we want but can’t compute easily)</li>
+<li><span class="math inline">\(q_\phi(\theta)\)</span>: Variational approximation to the posterior (what we’ll optimize)</li>
+</ul>
+<p>Our objective is to find the best approximation to the posterior <span class="math inline">\(p(\theta|D)\)</span> within a family of simpler distributions <span class="math inline">\(q_\phi(\theta)\)</span>.</p>
+<div id="variational-family" class="section level4">
+<h4>Variational Family</h4>
+<p>The <strong>variational family</strong> is a collection of simple, tractable probability distributions that we use to approximate our complex posterior. Think of it as choosing a “shape” for our approximation.</p>
+<p>For example, if we believe our posterior might be bell-shaped, we might choose a Normal (Gaussian) family: <span class="math inline">\(q_\phi(\theta) = \text{N}(\mu, \sigma^2)\)</span> where <span class="math inline">\(\phi = \{\mu, \sigma\}\)</span> are the parameters we’ll optimize. The key point is that while the true posterior <span class="math inline">\(p(\theta|D)\)</span> might be very complex and impossible to compute directly, we can find the best Normal distribution that approximates it by optimizing <span class="math inline">\(\mu\)</span> and <span class="math inline">\(\sigma\)</span>. We will work out an example below to make these ideas more tangible.</p>
+<p>Common variational families include:</p>
+<ul>
+<li><strong>Normal distributions</strong>: Good for unimodal, symmetric posteriors</li>
+<li><strong>Mean-field approximations</strong>: Assume independence between parameters (computational efficiency)</li>
+<li><strong>Normalizing flows</strong>: More flexible but computationally expensive</li>
+</ul>
+<p>The choice of variational family involves a trade-off: simpler families are faster to compute but may provide poor approximations, while more complex families can better capture the true posterior but are computationally expensive.</p>
+</div>
+<div id="elbo-evidence-lower-bound" class="section level4">
+<h4>ELBO (Evidence Lower BOund)</h4>
+<p>The <strong>ELBO</strong> is the objective function we maximize during SVI training. It’s called a “lower bound” because it provides a guarantee: maximizing the ELBO gets us as close as possible to the true posterior within our chosen variational family.</p>
+<p>Think of the ELBO as measuring two things simultaneously:
+1. <strong>How well our model explains the data</strong> (likelihood term)
+2. <strong>How close our approximation stays to our prior beliefs</strong> (KL divergence term)</p>
+<p>Concretely, the ELBO can be written as:</p>
+<p><span class="math display">\[\text{ELBO}(\phi) = \mathbb{E}_{q_\phi(\theta)}[\log p(y|x, \theta) + \log p(\theta) - \log q_\phi(\theta)]\]</span></p>
+<p>This decomposes into three intuitive terms:</p>
+<ul>
+<li><span class="math inline">\(\mathbb{E}_{q_\phi(\theta)}[\log p(y|x, \theta)]\)</span>: Expected log-likelihood (how well we explain the data)</li>
+<li><span class="math inline">\(\mathbb{E}_{q_\phi(\theta)}[\log p(\theta)]\)</span>: Expected log-prior (staying close to prior beliefs)</li>
+<li><span class="math inline">\(\mathbb{E}_{q_\phi(\theta)}[\log q_\phi(\theta)]\)</span>: Entropy of variational distribution (encouraging exploration)</li>
+</ul>
+<p>Why do we care about the ELBO? It turns out that maximizing the ELBO is equivalent to minimizing the KL divergence between our approximate posterior <span class="math inline">\(q_\phi(\theta)\)</span> and the true posterior <span class="math inline">\(p(\theta|D)\)</span>. In other words, we’re finding the best possible approximation within our chosen family.</p>
+<p>For this notebook, it is enough to understand the main idea without going into the mathematical nuances. We will give some additional details, but the core objective is to work out a concrete end-to-end example. For more on the mathematical foundations of SVI, please see <a href="https://arxiv.org/abs/1601.00670">Blei et al. (2017): Variational Inference Review</a>.</p>
+<p>Next, we describe the two examples we will work out in this notebook.</p>
+</div>
+</div>
+</div>
+<div id="example-1-simple-gamma-distribution-approximation" class="section level2">
+<h2>Example 1: Simple Gamma Distribution Approximation</h2>
+<p>We start with a simple example to illustrate the main ideas of SVI. We will approximate a Gamma distribution and try to do a parameter recovery exercise.
+We will go fast in this example as we simply want to illustrate the key steps of the SVI workflow. In the next example, we will delve deeper into the details.</p>
+</div>
+<div id="example-2-bayesian-neural-network-classification" class="section level2">
+<h2>Example 2: Bayesian Neural Network Classification</h2>
+<p>As the main example of this notebook, we’ll implement a Bayesian Neural Network (BNN) for binary classification using SVI. We’ll:</p>
+<ol style="list-style-type: decimal">
+<li>Generate synthetic data (two moons dataset)</li>
+<li>Define a Bayesian neural network model</li>
+<li>Create a variational guide (approximate posterior)</li>
+<li>Train using SVI optimization</li>
+<li>Evaluate the model and quantify uncertainty</li>
+</ol>
+<p><strong>Practical Resources:</strong> Here are two great resources for practitioners:</p>
+<ul>
+<li><a href="https://pyro.ai/">Pyro</a> documentation is a great resource for SVI. See for example, the <a href="https://pyro.ai/examples/intro_long.html">introductory tutorial</a>.</li>
+<li><a href="https://florianwilhelm.info/2020/10/bayesian_hierarchical_modelling_at_scale/">Finally! Bayesian Hierarchical Modelling at Scale</a>, practical examplle blog post (and GitHub repository) by <a href="https://florianwilhelm.info/">Florian Wilhelm</a>.</li>
+<li>For a fantastic general introduction to SVI and applications with PyMC, please see the amazing tutorial: <a href="https://www.youtube.com/watch?v=XECLmgnS6Ng">A Beginner’s Guide to Variational Inference | PyData Virginia 2025</a> by <a href="https://github.com/fonnesbeck">Chris Fonnesbeck</a>.</li>
+</ul>
+<center>
+<iframe width="800" height="500" src="https://www.youtube.com/embed/XECLmgnS6Ng" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen>
+</iframe>
+</center>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from itertools import pairwise
+
+import arviz as az
+import jax
+import jax.numpy as jnp
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import optax
+import seaborn as sns
+import tqdm
+import xarray as xr
+from flax import nnx
+from jax import random
+from jaxtyping import Array, ArrayLike, Float, Int
+from numpyro.contrib.module import random_nnx_module
+from numpyro.infer import SVI, Predictive, Trace_ELBO
+from numpyro.infer.autoguide import AutoNormal
+from numpyro.infer.svi import SVIRunResult, SVIState
+from sklearn.datasets import make_moons
+from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.model_selection import train_test_split
+
+seed = 42
+rng_key = random.PRNGKey(seed=seed)
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="toy-example-gamma-distribution-approximation" class="section level2">
+<h2>Toy Example: Gamma Distribution Approximation</h2>
+<p>In this initial example, we will approximate a Gamma distribution using stochastic variational inference. We will specify the model and guide (variational approximation) to approximate the posterior distribution of the Gamma distribution parameters as a Normal distribution. The main objective of this example is to quickly go through the SVI workflow.</p>
+<p>We generate synthetic data from a Gamma distribution with a concentration (<span class="math inline">\(\alpha\)</span>) of <span class="math inline">\(2.0\)</span> and a rate (<span class="math inline">\(\beta\)</span>) of <span class="math inline">\(1.0\)</span>.</p>
+<pre class="python"><code># Generate toy data samples from a Gamma distribution
+rng_key, rng_subkey = random.split(rng_key)
+concentration = 2.0
+n_obs = 1_000
+z = random.gamma(rng_subkey, a=concentration, shape=(n_obs,))
+
+fig, ax = plt.subplots()
+sns.kdeplot(z, fill=True, alpha=0.1, label=&quot;Observed&quot;, ax=ax)
+ax.axvline(concentration / 1.0, color=&quot;C3&quot;, linestyle=&quot;--&quot;, label=&quot;Mean&quot;)
+ax.legend()
+ax.set_title(&quot;Observed Data&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_5_0.png" height=500 />
+</center>
+<p>Next, we define the model we use to model the data. We are interested in learning the distribution of the concentration parameter.</p>
+<pre class="python"><code># Define the model
+def model(z: jax.Array | None = None) -&gt; None:
+    # Set the prior for the concentration parameter (it has to be positive!)
+    concentration = numpyro.sample(&quot;concentration&quot;, dist.HalfNormal(scale=1))
+    rate = 1.0
+    # Generate the data from the Gamma distribution
+    numpyro.sample(&quot;z&quot;, dist.Gamma(concentration=concentration, rate=rate), obs=z)</code></pre>
+<p>We continue by defining the variational approximation, i.e., the guide function. For this example, we will use a Normal distribution to approximate the posterior distribution of the concentration parameter. For this, we need to learn the location and scale parameters of the normal distribution. There is one caveat: the concentration parameter has to be positive. To account for this, we will use a transformed distribution through the <a href="https://num.pyro.ai/en/stable/distributions.html#numpyro.distributions.transforms.ExpTransform"><code>ExpTransform</code></a> from <a href="https://num.pyro.ai/en/stable/distributions.html#numpyro.distributions.transforms"><code>numpyro.distributions.transforms</code></a>.</p>
+<pre class="python"><code># Define the guide
+# It approximates the posterior distribution of the model parameters
+# with a normal distribution
+def guide(z: jax.Array | None = None) -&gt; None:
+    # Define the location and scale parameters of the normal distribution
+    concentration_loc = numpyro.param(&quot;concentration_loc&quot;, init_value=0.5)
+    # Define the scale parameter of the normal distribution
+    # It has to be positive!
+    concentration_scale = numpyro.param(
+        &quot;concentration_scale&quot;,
+        init_value=0.1,
+        constraint=dist.constraints.positive,
+    )
+    # Define the base distribution
+    base_distribution = dist.Normal(loc=concentration_loc, scale=concentration_scale)
+    # Define the transformed distribution
+    # Observe that we are using the `ExpTransform` to transform the base distribution
+    # as the concentration parameter has to be positive.
+    transformed_distribution = dist.TransformedDistribution(
+        base_distribution=base_distribution,
+        transforms=dist.transforms.ExpTransform(),
+    )
+    # We need to make sure the guide has the same sample statements as the model
+    # (for the distributions we want to infer)
+    numpyro.sample(&quot;concentration&quot;, transformed_distribution)</code></pre>
+<p><strong>Remark [AutoGuides]:</strong> In many applications, using auto-guides is a good idea to start with. For instance, this example can also be solved using an <a href="https://num.pyro.ai/en/latest/autoguide.html#numpyro.infer.autoguide.AutoNormal"><code>AutoNormal</code></a> guide, as shown below.</p>
+<p>We are ready to define the SVI algorithm components and run the algorithm in NumPyro. Namely, we need to define the loss function, the optimizer, and the SVI object.</p>
+<pre class="python"><code># Define the loss function (ELBO)
+loss = Trace_ELBO(num_particles=10)
+# Define the optimizer
+optimizer = optax.adam(learning_rate=0.005)
+# Define the SVI algorithm
+svi = SVI(model=model, guide=guide, optim=optimizer, loss=loss)</code></pre>
+<p>We now run the optimization routine and plot the ELBO loss as a function of the number of steps. Remember this is the loss function that we are trying to minimize.</p>
+<pre class="python"><code># Run the SVI algorithm
+rng_key, rng_subkey = random.split(rng_key)
+svi_result = svi.run(rng_subkey, num_steps=1_000, z=z, progress_bar=True)
+
+fig, ax = plt.subplots()
+ax.plot(svi_result.losses)
+ax.set(yscale=&quot;log&quot;)
+ax.set(title=&quot;ELBO Loss&quot;, xlabel=&quot;Step&quot;, ylabel=&quot;Loss&quot;);</code></pre>
+<pre><code>100%|██████████| 1000/1000 [00:00&lt;00:00, 3421.03it/s, init loss: 1647.7776, avg. loss [951-1000]: 1590.6812]</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_14_1.png" height=500 />
+</center>
+<p>As expected, the loss decreases as the number of steps increases. Also, it seems we reached a stable value for the loss.</p>
+<p>How can we now recover the concentration parameter? Let’s look at the results.</p>
+<pre class="python"><code>svi_result.params</code></pre>
+<pre><code>{&#39;concentration_loc&#39;: Array(0.68632126, dtype=float32),
+ &#39;concentration_scale&#39;: Array(0.02304399, dtype=float32)}</code></pre>
+<p>We can use these values to sample from a normal distribution to get the posterior samples of the concentration parameter (we need to account for the exponential transformation in the guide).</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+
+# Sample from a normal distribution from the learned parameters
+# in the constrained space through the exponential function.
+concentration_posterior_samples = jnp.exp(
+    svi_result.params[&quot;concentration_loc&quot;]
+    + random.normal(rng_subkey, shape=(4_000,))
+    * svi_result.params[&quot;concentration_scale&quot;]
+)</code></pre>
+<p>We can now generate posterior predictive samples by using these concentration parameters to sample from a Gamma distribution.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+posterior_samples = random.gamma(rng_subkey, a=concentration_posterior_samples)</code></pre>
+<p>Let’s visualize the results:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    sharex=False,
+    sharey=False,
+    figsize=(10, 6),
+    layout=&quot;constrained&quot;,
+)
+
+sns.kdeplot(
+    concentration_posterior_samples,
+    fill=True,
+    alpha=0.1,
+    color=&quot;C2&quot;,
+    label=&quot;Posterior&quot;,
+    ax=ax[0],
+)
+ax[0].axvline(concentration, color=&quot;C3&quot;, linestyle=&quot;--&quot;, label=&quot;True Concentration&quot;)
+ax[0].legend()
+ax[0].set(title=&quot;Posterior Distribution of the Concentration Parameter&quot;)
+
+sns.kdeplot(posterior_samples, fill=True, alpha=0.1, label=&quot;Posterior&quot;, ax=ax[1])
+sns.kdeplot(z, fill=True, alpha=0.1, label=&quot;Observed&quot;, ax=ax[1])
+ax[1].legend()
+ax[1].set(title=&quot;Posterior Distribution of the Data Samples&quot;)
+fig.suptitle(&quot;Gamma Distribution Approximation&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_23_0.png" height="600px" />
+</center>
+<p>The results are exactly as expected!</p>
+<p>One could imagine that for more complex models doing this forward pass with the posterior samples can become very cumbersome. Fortunately, NumPyro provides a convenient way to do this. Let’s see how we can do this.</p>
+<pre class="python"><code># This time we use an AutoNormal guide
+guide = AutoNormal(model)
+
+# Define the loss function (ELBO)
+loss = Trace_ELBO(num_particles=10)
+# Define the optimizer
+optimizer = optax.adam(learning_rate=0.005)
+# Define the SVI algorithm
+svi = SVI(model=model, guide=guide, optim=optimizer, loss=loss)
+
+# Run the SVI algorithm
+rng_key, rng_subkey = random.split(rng_key)
+svi_result = svi.run(rng_subkey, num_steps=1_000, z=z, progress_bar=False)
+
+# Generate posterior samples from the model (forward pass)
+posterior = Predictive(
+    model=model,
+    guide=guide,
+    params=svi_result.params,
+    num_samples=1_000,
+    return_sites=[&quot;concentration&quot;, &quot;z&quot;],
+)
+rng_key, rng_subkey = random.split(rng_key)
+posterior_samples = posterior(rng_key, z=z)
+
+# Store the posterior samples in an ArviZ InferenceData object
+idata = az.from_dict(
+    posterior={
+        k: np.expand_dims(a=np.asarray(v), axis=0) for k, v in posterior_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: range(len(z))},
+    dims={&quot;z&quot;: [&quot;obs_idx&quot;]},
+)</code></pre>
+<p>Let’s visualize the results from the convenient inference object.</p>
+<pre class="python"><code>fig, axes = plt.subplot_mosaic(
+    [[&quot;left&quot;, &quot;upper right&quot;], [&quot;left&quot;, &quot;lower right&quot;]],
+    figsize=(12, 7),
+    layout=&quot;constrained&quot;,
+)
+
+axes[&quot;left&quot;].plot(svi_result.losses)
+axes[&quot;left&quot;].set(yscale=&quot;log&quot;)
+axes[&quot;left&quot;].set(title=&quot;ELBO Loss&quot;, xlabel=&quot;Step&quot;, ylabel=&quot;Loss&quot;)
+az.plot_posterior(
+    idata, var_names=[&quot;concentration&quot;], ref_val=concentration, ax=axes[&quot;upper right&quot;]
+)
+sns.kdeplot(z, fill=True, alpha=0.1, label=&quot;Observed&quot;, ax=axes[&quot;lower right&quot;])
+sns.kdeplot(
+    idata[&quot;posterior&quot;][&quot;z&quot;].to_numpy().flatten(),
+    color=&quot;C1&quot;,
+    fill=True,
+    alpha=0.1,
+    label=&quot;Posterior&quot;,
+    ax=axes[&quot;lower right&quot;],
+)
+axes[&quot;lower right&quot;].legend()
+axes[&quot;lower right&quot;].set(title=&quot;Posterior and Observed&quot;, xlabel=&quot;z&quot;, ylabel=None)
+fig.suptitle(
+    &quot;Gamma Distribution Approximation using SVI&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_28_0.png" height=550 />
+</center>
+<ul>
+<li><p>In the left panel, we plot the ELBO loss as a function of the number of steps. As expected, the loss decreases as the number of steps increases.</p></li>
+<li><p>In the upper right panel, we plot the posterior distribution of the concentration parameter. We see that the posterior distribution is centered around the true value of the concentration parameter.</p></li>
+<li><p>In the lower right panel, we plot the posterior distribution of the data samples. It matches the observed data samples.</p></li>
+</ul>
+<p>For the sake of comparison, let’s inspect the results of the SVI algorithm using an <code>AutoNormal</code> guide.</p>
+<pre class="python"><code>svi_result.params</code></pre>
+<pre><code>{&#39;concentration_auto_loc&#39;: Array(0.6887781, dtype=float32),
+ &#39;concentration_auto_scale&#39;: Array(0.0238604, dtype=float32)}</code></pre>
+<p>We obtained essentially the same results as before! Note that if we use the auto-guides and the <a href="https://num.pyro.ai/en/stable/utilities.html#predictive"><code>Predictive</code></a> function to generate the posterior samples, you do not need to worry about the forward pass or the transformation back to the original space.</p>
+<p>Next, we move to a more interesting example.</p>
+</div>
+<div id="bnn-example-generate-synthetic-data" class="section level2">
+<h2>BNN Example: Generate Synthetic Data</h2>
+<p>In order to work with a well-known dataset, we will use the <a href="https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html">two moons dataset from scikit-learn</a>.</p>
+<pre class="python"><code># The moons dataset creates two interleaving half-moon shapes with controllable noise
+n_samples = 2_000
+x, y = make_moons(
+    n_samples=n_samples,  # Total number of samples
+    noise=0.25,  # Standard deviation of Gaussian noise added to data
+    random_state=seed,  # For reproducible results
+)
+
+# First split: separate test set (30% of total)
+x_train_all, x_test, y_train_all, y_test = train_test_split(
+    x,
+    y,
+    test_size=0.3,  # 30% for testing
+    random_state=seed,  # Reproducible split
+)
+
+# Second split: create validation set from remaining training data
+# (30% of 70% = 21% of total)
+x_train, x_val, y_train, y_val = train_test_split(
+    x_train_all,
+    y_train_all,
+    test_size=0.3,  # 30% of remaining for validation
+    random_state=seed,
+)
+
+# Calculate sample sizes for each split
+n_train = x_train.shape[0]
+n_val = x_val.shape[0]
+n_test = x_test.shape[0]
+n = n_train + n_val + n_test
+
+print(&quot;Dataset sizes:&quot;)
+print(f&quot;  Training: {n_train} samples ({n_train / n:.1%})&quot;)
+print(f&quot;  Validation: {n_val} samples ({n_val / n:.1%})&quot;)
+print(f&quot;  Test: {n_test} samples ({n_test / n:.1%})&quot;)
+
+# Convert to JAX arrays with explicit type annotations
+# JAX arrays are immutable and can be compiled/optimized by JAX
+x_train: Float[Array, &quot;n_train 2&quot;] = jnp.array(x_train)
+x_val: Float[Array, &quot;n_val 2&quot;] = jnp.array(x_val)
+x_test: Float[Array, &quot;n_test 2&quot;] = jnp.array(x_test)
+y_train: Int[Array, &quot;n_train&quot;] = jnp.array(y_train)
+y_val: Int[Array, &quot;n_val&quot;] = jnp.array(y_val)
+y_test: Int[Array, &quot;n_test&quot;] = jnp.array(y_test)
+
+# Create index ranges for each dataset split (useful for plotting and analysis)
+idx_train = range(n_train)
+idx_val = range(n_train, n_train + n_val)
+idx_test = range(n_train + n_val, n_train + n_val + n_test)</code></pre>
+<pre><code>Dataset sizes:
+  Training: 980 samples (49.0%)
+  Validation: 420 samples (21.0%)
+  Test: 600 samples (30.0%)</code></pre>
+<p>Let’s visualize our data to understand the classification challenge we’re facing.</p>
+<pre class="python"><code>cmap = mpl.colormaps[&quot;coolwarm&quot;]
+colors = list(cmap(np.linspace(0, 1, 2)))
+
+fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 5),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+sns.scatterplot(
+    x=x_train[:, 0], y=x_train[:, 1], s=50, hue=y_train, palette=colors, ax=ax[0]
+)
+ax[0].set_title(&quot;Raw Data - Training Set&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+
+sns.scatterplot(
+    x=x_test[:, 0], y=x_test[:, 1], s=50, hue=y_test, palette=colors, ax=ax[1]
+)
+ax[1].set_title(&quot;Raw Data - Test Set&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_37_0.png" height=400 />
+</center>
+<p><strong>Observations:</strong></p>
+<ul>
+<li>The data consists of two interleaving half-moon shapes</li>
+<li>A linear classifier would fail completely on this dataset</li>
+<li>We need a non-linear model to separate the classes</li>
+</ul>
+<p>The idea is to develop a <strong>Bayesian neural network classifier</strong> that can:
+1. Learn the non-linear decision boundary
+2. Quantify uncertainty in its predictions</p>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<div id="bayesian-neural-networks-bnns" class="section level3">
+<h3>Bayesian Neural Networks (BNNs)</h3>
+<p>Unlike traditional neural networks with fixed weights, <strong>Bayesian Neural Networks</strong> place probability distributions over the weights. This allows us to:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Quantify uncertainty</strong>: Different weight samples lead to different predictions</li>
+<li><strong>Avoid overfitting</strong>: The prior acts as regularization</li>
+<li><strong>Make calibrated predictions</strong>: Output probabilities reflect true confidence</li>
+</ol>
+</div>
+<div id="architecture-design" class="section level3">
+<h3>Architecture Design</h3>
+<p>Our BNN architecture consists of:</p>
+<ul>
+<li><strong>Input layer</strong>: 2 features (x, y coordinates from the two moons dataset)</li>
+<li><strong>Hidden layer 1</strong>: 4 neurons with <code>tanh</code> activation</li>
+<li><strong>Hidden layer 2</strong>: 3 neurons with <code>tanh</code> activation</li>
+<li><strong>Output layer</strong>: 1 neuron with <code>sigmoid</code> activation (for binary classification probabilities)</li>
+</ul>
+<p><strong>Prior distributions</strong> over all network parameters:</p>
+<ul>
+<li><strong>Weights</strong> <span class="math inline">\(W_\ell\)</span>: <span class="math inline">\(\text{SoftLaplace}(0, 1)\)</span> - encourages sparsity and robust learning</li>
+<li><strong>Biases</strong> <span class="math inline">\(b_\ell\)</span>: <span class="math inline">\(\text{Normal}(0, 1)\)</span> - standard regularization with moderate spread</li>
+</ul>
+</div>
+<div id="mathematical-formulation" class="section level3">
+<h3>Mathematical Formulation</h3>
+<p><strong>Forward pass through the network:</strong></p>
+<p>Let <span class="math inline">\(z_0 = x\)</span> be the input features. For hidden layers <span class="math inline">\(\ell = 1, 2\)</span>:
+<span class="math display">\[z_\ell = \tanh(W_\ell z_{\ell-1} + b_\ell)\]</span></p>
+<p>where:</p>
+<ul>
+<li><span class="math inline">\(W_\ell \in \mathbb{R}^{d_{\ell-1} \times d_\ell}\)</span> is the weight matrix for layer <span class="math inline">\(\ell\)</span></li>
+<li><span class="math inline">\(b_\ell \in \mathbb{R}^{d_\ell}\)</span> is the bias vector for layer <span class="math inline">\(\ell\)</span></li>
+<li><span class="math inline">\(d_0 = 2\)</span>, <span class="math inline">\(d_1 = 4\)</span>, <span class="math inline">\(d_2 = 3\)</span>, <span class="math inline">\(d_3 = 1\)</span> are the layer dimensions</li>
+</ul>
+<p><strong>Final output (classification probability):</strong></p>
+<p><span class="math display">\[p(y=1|x, \theta) = \sigma(W_3 z_2 + b_3)\]</span></p>
+<p>where</p>
+<p><span class="math display">\[\sigma(t) = \frac{1}{1 + e^{-t}}\]</span></p>
+<p>is the sigmoid function and <span class="math inline">\(\theta = \{W_\ell, b_\ell\}_{\ell=1}^3\)</span> represents all network parameters.</p>
+<p><strong>Prior distributions:</strong></p>
+<p><span class="math display">\[W_\ell \sim \text{SoftLaplace}(0, 1), \quad b_\ell \sim \text{Normal}(0, 1) \quad \text{for } \ell = 1, 2, 3\]</span></p>
+<p><strong>Remark:</strong> There is no real strong reason to use the SoftLaplace distribution for the weights. We could have used a Normal distribution, but we wanted to showcase the flexibility of the NumPyro library.</p>
+<p>We use the Flax NNX library to define our neural network.</p>
+<p><strong>Remark:</strong> It is great to see that JAX deep learning frameworks like <a href="https://flax.readthedocs.io/en/latest/nnx_basics.html">Flax</a> and <a href="https://docs.kidger.site/equinox/">Equinox</a> are now integrated with NumPyro.</p>
+<pre class="python"><code>class MLP(nnx.Module):
+    &quot;&quot;&quot;
+    Multi-Layer Perceptron implemented with Flax NNX.
+
+    This class defines the architecture of our neural network using Flax NNX,
+    which integrates seamlessly with NumPyro for Bayesian inference.
+
+    Parameters
+    ----------
+    din : int
+        Input dimension (number of features)
+    dout : int
+        Output dimension (1 for binary classification)
+    hidden_layers : list of int
+        List of hidden layer sizes
+    rngs : nnx.Rngs
+        Random number generator for parameter initialization
+    &quot;&quot;&quot;
+
+    def __init__(
+        self, din: int, dout: int, hidden_layers: list[int], *, rngs: nnx.Rngs
+    ) -&gt; None:
+        self.layers = []
+
+        # Create layer dimensions: [input_size, hidden1, hidden2, ..., output_size]
+        layer_dims = [din, *hidden_layers, dout]
+
+        # Build layers sequentially using pairwise iteration
+        for in_dim, out_dim in pairwise(layer_dims):
+            # Each layer is a linear transformation: y = Wx + b
+            self.layers.append(nnx.Linear(in_dim, out_dim, rngs=rngs))
+
+    def __call__(self, x: jax.Array) -&gt; jax.Array:
+        &quot;&quot;&quot;
+        Forward pass through the network.
+
+        Parameters
+        ----------
+        x : jax.numpy.ndarray
+            Input tensor of shape (batch_size, input_dim)
+
+        Returns
+        -------
+        jax.numpy.ndarray
+            Sigmoid-activated output for binary classification
+        &quot;&quot;&quot;
+        # Apply tanh activation to all hidden layers
+        for layer in self.layers[:-1]:
+            x = jax.nn.tanh(layer(x))
+
+        # Apply sigmoid to final layer for probability output
+        return jax.nn.sigmoid(self.layers[-1](x))</code></pre>
+<p>Now we can initialize the neural network.</p>
+<pre class="python"><code># Split random key for neural network initialization
+rng_key, rng_subkey = random.split(rng_key)
+
+# Define network architecture
+# This creates a network with structure: 2 -&gt; 4 -&gt; 3 -&gt; 1
+hidden_layers = [4, 3]  # Hidden layer sizes only
+dout = 1  # Output layer size
+
+# Initialize the neural network module
+nnx_module = MLP(
+    din=x_train.shape[1],  # Input dimension (2 features)
+    dout=dout,  # Output dimension (1 for binary classification)
+    hidden_layers=hidden_layers,
+    rngs=nnx.Rngs(rng_subkey),  # Flax NNX random number generator
+)
+
+print(
+    f&quot;&quot;&quot;
+    Total parameters: {
+        sum(p.size for p in jax.tree_util.tree_leaves(nnx.state(nnx_module)))
+    }
+    &quot;&quot;&quot;
+)</code></pre>
+<pre><code>    Total parameters: 31
+    </code></pre>
+<p>We can now use this neural network architecture to define our Bayesian model.</p>
+<pre class="python"><code>def model(
+    x: Float[Array, &quot;n_obs features&quot;], y: Int[Array, &quot; n_obs&quot;] | None = None
+) -&gt; None:
+    &quot;&quot;&quot;
+    NumPyro model function defining the Bayesian Neural Network.
+
+    This function specifies the generative process:
+    1. Sample neural network parameters from priors
+    2. Compute predictions via forward pass
+    3. Sample observations from Bernoulli likelihood
+
+    Parameters
+    ----------
+    x : Float[Array, &quot;n_obs features&quot;]
+        Input features of shape (n_obs, 2)
+    y : Int[Array, &quot; n_obs&quot;] or None, optional
+        Target labels of shape (n_obs,). None during prediction.
+    &quot;&quot;&quot;
+    n_obs: int = x.shape[0]  # Number of observations
+
+    # Prior distribution factory for network parameters.
+    def prior(name, shape):
+        if &quot;bias&quot; in name:
+            return dist.Normal(loc=0, scale=1)
+        return dist.SoftLaplace(loc=0, scale=1)
+
+    # Create a NumPyro-wrapped version of our neural network
+    # This automatically assigns priors to all parameters
+    nn = random_nnx_module(
+        &quot;nn&quot;,  # Name prefix for all parameters
+        nnx_module,  # Our Flax NNX module
+        prior=prior,  # Prior distribution factory
+    )
+
+    # Forward pass: compute probabilities for each observation
+    # squeeze(-1) removes the last dimension to get shape (n_obs,)
+    p = numpyro.deterministic(&quot;p&quot;, nn(x).squeeze(-1))
+
+    # Likelihood: each label is drawn from a Bernoulli distribution
+    # numpyro.plate creates conditional independence across observations
+    with numpyro.plate(&quot;data&quot;, n_obs):
+        numpyro.sample(&quot;y&quot;, dist.Bernoulli(probs=p), obs=y)</code></pre>
+<p>Let’s visualize the model structure:</p>
+<pre class="python"><code># Test the model by rendering its structure
+numpyro.render_model(
+    model=model,
+    model_kwargs={&quot;x&quot;: x_train},  # Pass training data for shape inference
+    render_distributions=True,  # Show distribution details
+    render_params=True,  # Show parameter nodes
+)</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_46_0.svg" height=250 />
+</center>
+<p>Now that we have defined our model, we can start looking into the estimation of the model parameters.</p>
+</div>
+</div>
+<div id="prior-predictive-analysis" class="section level2">
+<h2>Prior Predictive Analysis</h2>
+<p>Before we start the training, we can compute the prior predictive distribution of the model. This will give us an idea of what the model is expected to do before we start the training.</p>
+<pre class="python"><code># Create prior predictive sampler for training data
+prior_predictive = Predictive(
+    model=model,  # Our BNN model
+    num_samples=2_000,  # Number of posterior samples to draw
+    return_sites=[&quot;p&quot;, &quot;y&quot;],  # Return both probabilities and predictions
+)
+
+# Generate samples for training data
+rng_key, rng_subkey = random.split(key=rng_key)
+prior_predictive_samples = prior_predictive(rng_subkey, x_train)
+
+# Convert to ArviZ InferenceData for analysis and visualization
+prior_predictive_idata = az.from_dict(
+    posterior_predictive={
+        # Add chain dimension for ArviZ compatibility
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in prior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: idx_train},  # Coordinate labels for observations
+    dims={
+        &quot;p&quot;: [&quot;obs_idx&quot;],  # Probability predictions
+        &quot;y&quot;: [&quot;obs_idx&quot;],  # Binary predictions
+    },
+)</code></pre>
+<p>Let’s visualize the prior predictive distribution of the model through two lenses:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Prior Predictive Mean Predictions</strong>: This will give us an idea of what the model is expected to do before we start the training.</li>
+<li><strong>Prior Predictive HDI Width</strong>: This will give us an idea of the uncertainty of the model before we start the training. We use the highest density interval (HDI) to quantify the uncertainty.</li>
+</ol>
+<pre class="python"><code># HDI of the posterior predictive distribution
+prior_predictive_p_hdi = az.hdi(
+    prior_predictive_idata[&quot;posterior_predictive&quot;][&quot;p&quot;], hdi_prob=0.94
+)
+# Compute the width of the HDI
+prior_predictive_hdi_width = prior_predictive_p_hdi.sel(
+    hdi=&quot;higher&quot;
+) - prior_predictive_p_hdi.sel(hdi=&quot;lower&quot;)
+
+
+fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(15, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+(
+    prior_predictive_idata[&quot;posterior_predictive&quot;][&quot;p&quot;]
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    .to_pandas()
+    .to_frame()
+    .assign(x1=x_train[:, 0], x2=x_train[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;p&quot;,
+        hue_norm=(0, 1),
+        palette=&quot;coolwarm&quot;,
+        s=50,
+        ax=ax[0],
+    )
+)
+mappable = plt.cm.ScalarMappable(cmap=&quot;coolwarm&quot;, norm=plt.Normalize(vmin=0, vmax=1))
+cbar = plt.colorbar(mappable, ax=ax[0])
+
+ax[0].legend().remove()
+ax[0].set_title(&quot;Prior Predictive Mean of the Latent Variable $p$&quot;, fontsize=14)
+
+(
+    prior_predictive_hdi_width.rename({&quot;p&quot;: &quot;hdi_width&quot;})
+    .to_pandas()
+    .assign(x1=x_train[:, 0], x2=x_train[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;hdi_width&quot;,
+        hue_norm=(0, 1),
+        palette=&quot;viridis_r&quot;,
+        ax=ax[1],
+    )
+)
+mappable = plt.cm.ScalarMappable(cmap=&quot;viridis_r&quot;, norm=plt.Normalize(vmin=0, vmax=1))
+cbar = plt.colorbar(mappable, ax=ax[1])
+
+ax[1].legend().remove()
+ax[1].set_title(r&quot;Prior $94\%$ HDI of the Latent Variable $p$&quot;, fontsize=14)
+fig.suptitle(&quot;Prior Predictive Analysis&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_51_0.png" height=450 />
+</center>
+<p>From these plots we see that, before conditioning on the data, the model has no strong prior constraints on the latent variable <span class="math inline">\(p\)</span>.</p>
+</div>
+<div id="the-guide-function-variational-approximation" class="section level2">
+<h2>The Guide Function (Variational Approximation)</h2>
+<p>Recall that the SVI idea is to convert the sampling problem into an optimization problem. To do so, we need to parameterize our approximation.
+The <strong>guide function</strong> defines our variational approximation to the posterior. Instead of the complex true posterior <span class="math inline">\(p(\theta|D)\)</span>, we use a simpler family of distributions <span class="math inline">\(q_\phi(\theta)\)</span>.</p>
+<div id="mean-field-variational-approximation" class="section level3">
+<h3>Mean-Field Variational Approximation</h3>
+<p>We assume <strong>mean-field independence</strong>: each parameter has its own independent (Normal or SoftLaplace, in this example) distribution:</p>
+<p><span class="math display">\[q_\phi(\theta) = \prod_i q_{\phi_i}(\theta_i)\]</span></p>
+<p>Where each <span class="math inline">\(q_{\phi_i}\)</span> is parameterized by:</p>
+<ul>
+<li><strong>Location parameter</strong> <span class="math inline">\(\mu_i\)</span> (learnable)</li>
+<li><strong>Scale parameter</strong> <span class="math inline">\(\sigma_i\)</span> (learnable, constrained to be positive)</li>
+</ul>
+</div>
+<div id="the-mean-field-assumption-benefits-and-limitations" class="section level3">
+<h3>The Mean-Field Assumption: Benefits and Limitations</h3>
+<p>This factorization assumption dramatically simplifies the optimization landscape. Instead of searching over the space of all possible multivariate distributions, we restrict ourselves to products of univariate distributions.</p>
+<p><strong>Theoretical Limitations:</strong></p>
+<ul>
+<li><strong>Posterior correlations</strong>: The approximation cannot capture correlations between parameters</li>
+<li><strong>Multimodality</strong>: Mean-field approximations struggle with multimodal posteriors</li>
+<li><strong>Underestimation of uncertainty</strong>: The independence assumption typically leads to overconfident (too narrow) posterior approximations</li>
+</ul>
+<p>Despite these limitations, mean-field VI often provides excellent approximations for many practical problems, especially when the true posterior is reasonably close to unimodal and when parameter correlations are not too strong.</p>
+<p>As shown in the first example, NumPyro provides a very convenient way to generate guides automatically. For example, the following code generates a guide for the model we defined above:</p>
+<pre class="python"><code>from numpyro.infer.autoguide import AutoNormal
+
+guide = AutoNormal(model)</code></pre>
+<p>For all of the applications, this is a great starting point. There are many ways to mix guides, see for example the <a href="https://num.pyro.ai/en/latest/autoguide.html#numpyro.infer.autoguide.AutoGuideList"><code>AutoGuideList</code></a> (among <a href="https://num.pyro.ai/en/stable/autoguide.html">others</a>).</p>
+<p>For this example, just for the sake of illustration, we will write our own guide function.</p>
+<p><strong>Remark:</strong> In most applications, I would not recommend starting with a custom guide. The reason is that you need to be careful with the variable names, parameterizations, constraints, etc. Also, as the model gets more complex, it is easy to make mistakes.</p>
+<p>As we are using a BNN, we need to define the guide function for each of the layers.</p>
+<pre class="python"><code>def layer_guide(
+    loc_shape: tuple[int, ...],
+    loc_amplitude: float,
+    scale_shape: tuple[int, ...],
+    scale_amplitude: float,
+    loc_name: str,
+    scale_name: str,
+    layer_name: str,
+    event_shape: int = 1,
+    seed: int = 42,
+) -&gt; None:
+    &quot;&quot;&quot;
+    Create a variational approximation for a single layer&#39;s parameters.
+
+    This function defines the guide (variational approximation) for one layer&#39;s
+    weights or biases. It creates learnable location and scale parameters for
+    either Normal or SoftLaplace distributions.
+
+    Parameters
+    ----------
+    loc_shape : tuple of int
+        Shape of the location (mean) parameters
+    loc_amplitude : float
+        Initialization scale for location parameters
+    scale_shape : tuple of int
+        Shape of the scale (std) parameters
+    scale_amplitude : float
+        Initialization scale for scale parameters
+    loc_name : str
+        Parameter name for location
+    scale_name : str
+        Parameter name for scale
+    layer_name : str
+        Name of the layer (used to choose distribution type)
+    event_shape : int, optional
+        Dimensionality for to_event() transformation, by default 1
+    seed : int, optional
+        Random seed for reproducible initialization, by default 42
+    &quot;&quot;&quot;
+    # Create local random key for this layer
+    rng_key = random.PRNGKey(seed)
+
+    # Initialize location parameters with random values
+    rng_key, rng_subkey = random.split(rng_key)
+    # As for general neural networks, we need to initialize the parameters.
+    # It is recommended to initialize the parameters at random.
+    # Here we do it for the location parameters.
+    loc = numpyro.param(
+        loc_name, loc_amplitude * random.uniform(rng_subkey, shape=loc_shape)
+    )
+
+    # We do the same for the scale parameters.
+    rng_key, rng_subkey = random.split(rng_key)
+    scale = numpyro.param(
+        scale_name,
+        scale_amplitude * random.uniform(rng_subkey, shape=scale_shape),
+        constraint=dist.constraints.positive,  # Ensure scale &gt; 0
+    )
+
+    # Choose distribution type based on layer name
+    if &quot;bias&quot; in layer_name:
+        # Bias parameters use Normal distribution (matching model prior)
+        numpyro.sample(
+            layer_name,
+            dist.Normal(loc=loc, scale=scale).to_event(event_shape),
+        )
+    else:
+        # Weight parameters use SoftLaplace distribution (matching model prior)
+        numpyro.sample(
+            layer_name,
+            dist.SoftLaplace(loc=loc, scale=scale).to_event(event_shape),
+        )
+
+
+def guide(
+    x: Float[Array, &quot;n_obs features&quot;], y: Int[Array, &quot; n_obs&quot;] | None = None
+) -&gt; None:
+    &quot;&quot;&quot;
+    Variational guide function that approximates the posterior distribution.
+
+    This function defines the variational family q_φ(θ) that approximates
+    the true posterior p(θ|data). We use mean-field independence with
+    separate Normal/SoftLaplace distributions for each parameter.
+
+    Parameters
+    ----------
+    x : Float[Array, &quot;n_obs features&quot;]
+        Input features (same as model, but may not be used in guide)
+    y : Int[Array, &quot; n_obs&quot;] or None, optional
+        Target labels (same as model, but may not be used in guide)
+    &quot;&quot;&quot;
+    output_dim = 1  # Output dimension
+
+    # Create variational approximations for all bias parameters
+    # Biases have shape (layer_size,) so event_shape=1
+    for i, hl in enumerate([*hidden_layers, output_dim]):
+        layer_guide(
+            loc_shape=(hl,),  # Bias vector shape
+            loc_amplitude=1.0,  # Initialize around [-1, 1]
+            scale_shape=(hl,),  # One scale per bias
+            scale_amplitude=1.0,  # Initialize scales around [0, 1]
+            loc_name=f&quot;nn/layers.{i}.bias_auto_loc&quot;,  # NumPyro parameter name
+            scale_name=f&quot;nn/layers.{i}.bias_auto_scale&quot;,  # NumPyro parameter name
+            layer_name=f&quot;nn/layers.{i}.bias&quot;,  # Layer parameter name
+            event_shape=1,  # Vector parameter
+            seed=42 + i,  # Unique seed per layer
+        )
+
+    # Create variational approximations for all weight parameters
+    # Weights have shape (input_size, output_size) so event_shape=2
+    for j, (hl_in, hl_out) in enumerate(
+        pairwise([x.shape[1], *hidden_layers, output_dim])
+    ):
+        layer_guide(
+            loc_shape=(hl_in, hl_out),  # Weight matrix shape
+            loc_amplitude=1.0,  # Initialize around [-1, 1]
+            scale_shape=(hl_in, hl_out),  # One scale per weight
+            scale_amplitude=1.0,  # Initialize scales around [0, 1]
+            loc_name=f&quot;nn/layers.{j}.kernel_auto_loc&quot;,  # NumPyro parameter name
+            scale_name=f&quot;nn/layers.{j}.kernel_auto_scale&quot;,  # NumPyro parameter name
+            layer_name=f&quot;nn/layers.{j}.kernel&quot;,  # Layer parameter name
+            event_shape=2,  # Matrix parameter
+            seed=1 + j,  # Unique seed per layer
+        )</code></pre>
+<p>Here are some relevant tips and tricks to implement guides from the Pyro documentation <a href="https://pyro.ai/examples/svi_part_iv.html">SVI Part IV: Tips and Tricks</a>:</p>
+<ul>
+<li><ol start="6" style="list-style-type: decimal">
+<li><a href="https://pyro.ai/examples/svi_part_iv.html#6.-If-you-are-having-trouble-constructing-a-custom-guide,-use-an-AutoGuide">If you are having trouble constructing a custom guide, use an AutoGuide</a></li>
+</ol></li>
+<li><ol start="7" style="list-style-type: decimal">
+<li><a href="https://pyro.ai/examples/svi_part_iv.html#7.-Parameter-initialization-matters:-initialize-guide-distributions-to-have-low-variance">Parameter initialization matters: initialize guide distributions to have low variance</a>. This was important advice to make the guide above work.</li>
+</ol></li>
+</ul>
+</div>
+</div>
+<div id="svi-training-setup" class="section level2">
+<h2>SVI Training Setup</h2>
+<p>Now that we have our model and guide function, we can define the SVI training setup. Here we give a brief overview of the optimization setup.</p>
+<div id="the-elbo-our-optimization-target" class="section level3">
+<h3>The ELBO: Our Optimization Target</h3>
+<p>SVI maximizes the Evidence Lower BOund (ELBO), which provides a tractable lower bound on the log marginal likelihood. Using our established notation, the ELBO can be written in the standard form:</p>
+<p><span class="math display">\[\text{ELBO}(\phi) = \mathbb{E}_{q_\phi(\theta)}[\log p(y|x, \theta)] - \text{KL}[q_\phi(\theta) \| p(\theta)]\]</span></p>
+<p>This formulation clearly shows the two competing objectives:</p>
+<ul>
+<li><strong>Reconstruction term</strong> <span class="math inline">\(\mathbb{E}_{q_\phi(\theta)}[\log p(y|x, \theta)]\)</span>: Rewards the model for explaining the observed data well</li>
+<li><strong>KL regularization</strong> <span class="math inline">\(\text{KL}[q_\phi(\theta) \| p(\theta)]\)</span>: Penalizes the approximate posterior for deviating from the prior</li>
+</ul>
+</div>
+<div id="the-gradient-estimation-challenge" class="section level3">
+<h3>The Gradient Estimation Challenge</h3>
+<p>The key computational challenge in SVI is estimating gradients of the ELBO with respect to the variational parameters <span class="math inline">\(\phi\)</span>. The reconstruction term involves an expectation over the variational distribution, which we need to differentiate:</p>
+<p><span class="math display">\[\nabla_\phi \mathbb{E}_{q_\phi(\theta)}[\log p(y|x, \theta)]\]</span></p>
+<p>We can’t simply move the gradient inside the expectation because <span class="math inline">\(q_\phi(\theta)\)</span> depends on <span class="math inline">\(\phi\)</span>. This is where the <strong>reparameterization trick</strong> becomes crucial. For distributions like <span class="math inline">\(\text{Normal}(\mu_\phi, \sigma_\phi^2)\)</span>, we can write:</p>
+<p><span class="math display">\[\theta = \mu_\phi + \sigma_\phi \cdot \varepsilon, \quad \varepsilon \sim \text{Normal}(0, I)\]</span></p>
+<p>This transforms the stochastic gradient into a deterministic one:</p>
+<p><span class="math display">\[\nabla_\phi \mathbb{E}_{\varepsilon}[\log p(y|x, g_\phi(\varepsilon))]\]</span></p>
+<p>where <span class="math inline">\(g_\phi(\varepsilon) = \mu_\phi + \sigma_\phi \cdot \varepsilon\)</span>. Now we can use Monte Carlo estimation with low variance by sampling <span class="math inline">\(\varepsilon\)</span> and computing gradients through the deterministic function <span class="math inline">\(g_\phi\)</span>.</p>
+<p>To do this in NumPyro, we can simply use the following code flow (it should be familiar from the first example):</p>
+<pre class="python"><code>import numpyro
+from jax import random
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer.autoguide import AutoNormal
+
+# Define the model
+def model(*args, **kwargs):
+   ...
+
+# Define the guide function
+guide = AutoNormal(model)
+
+# Define the optimizer
+# We need to specify the step size (learning rate)
+optimizer = numpyro.optim.Adam(step_size=0.01)
+
+# Initialize the SVI object
+svi = SVI(model, guide, optimizer, loss=Trace_ELBO())
+
+# Define the number of samples
+n_samples = 5_000
+
+# Initialize the random key
+rng_key, rng_subkey = random.split(key=rng_key)
+
+# Run the SVI
+svi_result = svi.run(rng_subkey, n_samples, x_train_scaled, y_train_scaled)</code></pre>
+<p>This workflow is very easy to implement and should always be the first thing you try.</p>
+<p>In this notebook, we will use a more sophisticated optimization setup and we will go deeper into the details of the optimization process to understand better what is happening behind the scenes so that we can add customizations like early stopping.</p>
+</div>
+<div id="optimization-strategy" class="section level3">
+<h3>Optimization Strategy</h3>
+<p>Instead of using just the classic Adam optimizer, we’ll use a sophisticated optimization setup with:</p>
+<ol style="list-style-type: decimal">
+<li><strong>OneCycle Learning Rate Schedule</strong>:
+<ul>
+<li>Starts low, increases to peak, then decreases</li>
+<li>Helps escape local minima and achieve better convergence</li>
+</ul></li>
+<li><strong>Adam Optimizer</strong>:
+<ul>
+<li>Adaptive learning rates for each parameter</li>
+<li>Good for training neural networks</li>
+<li>Combines momentum with adaptive step sizes</li>
+</ul></li>
+<li><strong>Reduce on Plateau</strong>:
+<ul>
+<li>Automatically reduces learning rate when loss plateaus</li>
+<li>Helps with fine-tuning in later stages</li>
+</ul></li>
+<li><strong>Early Stopping</strong>:
+<ul>
+<li>Monitors validation loss to prevent overfitting</li>
+<li>Stops training when validation performance degrades</li>
+</ul></li>
+</ol>
+<p>Again, from the tips and tricks section of the Pyro documentation:</p>
+<ul>
+<li><ol style="list-style-type: decimal">
+<li><a href="https://pyro.ai/examples/svi_part_iv.html#1.-Start-with-a-small-learning-rate">Start with a small learning rate</a></li>
+</ol></li>
+<li><ol start="2" style="list-style-type: decimal">
+<li><a href="https://pyro.ai/examples/svi_part_iv.html#2.-Use-Adam-or-ClippedAdam-by-default">Use Adam or ClippedAdam by default</a></li>
+</ol></li>
+<li><ol start="3" style="list-style-type: decimal">
+<li><a href="https://pyro.ai/examples/svi_part_iv.html#3.-Consider-using-a-decaying-learning-rate">Consider using a decaying learning rate</a></li>
+</ol></li>
+</ul>
+<p>Let’s start by defining the optimizer and initializing the SVI object.</p>
+<pre class="python"><code># Configure the learning rate scheduler
+# OneCycle schedule: low -&gt; high -&gt; low with specific timing
+scheduler = optax.linear_onecycle_schedule(
+    transition_steps=8_000,  # Total number of optimization steps
+    peak_value=0.008,  # Maximum learning rate (reached at pct_start)
+    pct_start=0.2,  # Percent of training to reach peak (20%)
+    pct_final=0.8,  # Percent of training for final phase (80%)
+    div_factor=3,  # Initial LR = peak_value / div_factor
+    final_div_factor=4,  # Final LR = initial_LR / final_div_factor
+)
+
+# Chain multiple optimizers for sophisticated training
+optimizer = optax.chain(
+    # Primary optimizer: Adam with scheduled learning rate
+    optax.adam(learning_rate=scheduler),
+    # Secondary optimizer: Reduce LR when loss plateaus
+    optax.contrib.reduce_on_plateau(
+        factor=0.1,  # Multiply LR by 0.1 when plateau detected
+        patience=10,  # Wait 10 evaluations before reducing
+        accumulation_size=100,  # Window size for detecting plateaus
+    ),
+)
+
+# Create the SVI object that coordinates model, guide, optimizer, and loss
+svi = SVI(
+    model=model,  # Our BNN model
+    guide=guide,  # Our variational approximation
+    optim=optimizer,  # Optimization algorithm
+    loss=Trace_ELBO(),  # ELBO loss function
+)
+
+# Initialize SVI state with random parameters
+rng_key, rng_subkey = random.split(key=rng_key)
+svi_state = svi.init(rng_subkey, x=x_train, y=y_train)</code></pre>
+</div>
+<div id="training-loop-implementation" class="section level3">
+<h3>Training Loop Implementation</h3>
+<p>Next, we are going to implement the training loop for optimization. In essence, we are reproducing and modifying what the <a href="https://num.pyro.ai/en/stable/_modules/numpyro/infer/svi.html#SVI.run"><code>svi.run</code></a> method does internally. This should resemble classical routines like gradient descent, if you are familiar with machine learning. In this setting, our training loop includes several important components:</p>
+<ol style="list-style-type: decimal">
+<li>Define the update step of the SVI procedure. This will be handled internally by NumPyro under the method <a href="https://num.pyro.ai/en/stable/_modules/numpyro/infer/svi.html#SVI.update"><code>svi.update</code></a> (or <a href="https://num.pyro.ai/en/stable/_modules/numpyro/infer/svi.html#SVI.stable_update"><code>svi.stable_update</code></a>).</li>
+<li>Define functions to compute the loss and the validation loss.</li>
+<li>Define the training loop. This alternates between:
+<ul>
+<li><strong>Forward pass</strong>: Compute ELBO loss on training data</li>
+<li><strong>Backward pass</strong>: Update variational parameters via gradients</li>
+<li><strong>Validation</strong>: Evaluate performance on held-out validation set</li>
+</ul></li>
+<li>Define the progress tracking.</li>
+</ol>
+<p><strong>Remark:</strong> We use <strong>JAX compilation</strong> via <a href="https://docs.jax.dev/en/latest/_autosummary/jax.jit.html#jax.jit"><code>jax.jit</code></a> for fast execution.</p>
+<pre class="python"><code>%%time
+# Define functions for efficient training loop execution
+@jax.jit
+def body_fn(svi_state: SVIState, _) -&gt; tuple[SVIState, jax.Array]:
+    &quot;&quot;&quot;
+    Single training step: compute gradients and update parameters.
+
+    Parameters
+    ----------
+    svi_state : numpyro.infer.svi.SVIState
+        Current SVI state containing parameters and optimizer state
+    _ : Any
+        Unused (for scan compatibility)
+
+    Returns
+    -------
+    tuple
+        Updated SVI state and training loss
+    &quot;&quot;&quot;
+    svi_state, loss = svi.update(svi_state, x=x_train, y=y_train)
+    return svi_state, loss
+
+
+def get_val_loss(
+    svi_state: SVIState,
+    x_val: Float[Array, &quot;n_val features&quot;],
+    y_val: Int[Array, &quot; n_val&quot;],
+) -&gt; jax.Array:
+    &quot;&quot;&quot;
+    Compute validation loss without updating parameters.
+
+    Parameters
+    ----------
+    svi_state : numpyro.infer.svi.SVIState
+        Current SVI state
+    x_val : Float[Array, &quot;n_val features&quot;]
+        Validation features
+    y_val : Int[Array, &quot; n_val&quot;]
+        Validation labels
+
+    Returns
+    -------
+    jax.Array
+        Validation ELBO loss
+    &quot;&quot;&quot;
+    _, rng_subkey = random.split(svi_state.rng_key)
+    params = svi.get_params(svi_state)  # Extract current parameter values
+
+    # Compute loss without gradients or parameter updates
+    return svi.loss.loss(
+        rng_subkey,
+        params,  # Current parameter values
+        svi.model,  # Model function
+        svi.guide,  # Guide function
+        x=x_val,
+        y=y_val,
+    )
+
+
+# Training configuration
+num_steps = 8_000  # Maximum number of training steps
+patience = 200  # Early stopping patience (steps)
+
+# Storage for loss tracking
+train_losses = []  # Raw training losses
+norm_train_losses = []  # Training losses normalized by dataset size
+val_losses = []  # Raw validation losses
+norm_val_losses = []  # Validation losses normalized by dataset size
+
+print(&quot;Starting SVI training...&quot;)
+print(f&quot;Max steps: {num_steps}&quot;)
+print(f&quot;Early stopping patience: {patience}&quot;)
+print(f&quot;Training set size: {n_train}&quot;)
+print(f&quot;Validation set size: {n_val}&quot;)
+
+# Main training loop with progress bar
+with tqdm.trange(1, num_steps + 1) as t:
+    batch = max(num_steps // 20, 1)  # Batch size for progress updates
+    patience_counter = 0  # Counter for early stopping
+
+    for i in t:
+        # Perform one training step (JIT compiled for speed)
+        svi_state, train_loss = body_fn(svi_state, None)
+
+        # Normalize loss by dataset size for fair comparison
+        norm_train_loss = jax.device_get(train_loss) / y_train.shape[0]
+        train_losses.append(jax.device_get(train_loss))
+        norm_train_losses.append(norm_train_loss)
+
+        # Compute validation loss (JIT compiled for speed)
+        val_loss = jax.jit(get_val_loss)(svi_state, x_val, y_val)
+        norm_val_loss = jax.device_get(val_loss) / y_val.shape[0]
+        val_losses.append(jax.device_get(val_loss))
+        norm_val_losses.append(norm_val_loss)
+
+        # Early stopping logic: stop if validation loss &gt; training loss consistently
+        condition = norm_val_loss &gt; norm_train_loss
+        patience_counter = patience_counter + 1 if condition else 0
+
+        if patience_counter &gt;= patience:
+            print(
+                f&quot;Early stopping at step {i} (validation loss exceeding training loss)&quot;
+            )
+            break
+
+        # Update progress bar with recent average losses
+        if i % batch == 0:
+            avg_train_loss = sum(train_losses[i - batch :]) / batch
+            avg_val_loss = sum(val_losses[i - batch :]) / batch
+
+            t.set_postfix_str(
+                f&quot;train: {avg_train_loss:.4f}, val: {avg_val_loss:.4f}&quot;,
+                refresh=False,
+            )
+
+# Convert loss lists to JAX arrays for efficient computation
+train_losses = jnp.stack(train_losses)
+val_losses = jnp.stack(val_losses)
+
+# Create result object containing final parameters and training history
+svi_result = SVIRunResult(
+    params=svi.get_params(svi_state),  # Final optimized parameters
+    state=svi_state,  # Final SVI state
+    losses=train_losses,  # Training loss history
+)
+
+print(f&quot;\nTraining completed after {len(train_losses)} steps&quot;)
+print(f&quot;Final training loss: {train_losses[-1]:.4f}&quot;)
+print(f&quot;Final validation loss: {val_losses[-1]:.4f}&quot;)</code></pre>
+<pre><code>Starting SVI training...
+Max steps: 8000
+Early stopping patience: 200
+Training set size: 980
+Validation set size: 420
+
+
+ 41%|████▏     | 3308/8000 [00:02&lt;00:03, 1291.35it/s, train: 234.1985, val: 124.3964]
+
+
+Early stopping at step 3309 (validation loss exceeding training loss)
+
+Training completed after 3309 steps
+Final training loss: 238.5730
+Final validation loss: 124.7022
+CPU times: user 7.03 s, sys: 477 ms, total: 7.51 s
+Wall time: 2.88 s</code></pre>
+<p>Observe that we stopped the training earlier than expected because of the early stopping logic. Let’s visualize the training and validation losses.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2, ncols=1, figsize=(10, 8), sharex=True, sharey=False, layout=&quot;constrained&quot;
+)
+
+ax[0].plot(train_losses, c=&quot;C0&quot;, linewidth=1, alpha=0.8, label=&quot;Training&quot;)
+ax[0].plot(val_losses, c=&quot;C1&quot;, linewidth=1, alpha=0.8, label=&quot;Validation&quot;)
+ax[0].legend(loc=&quot;upper right&quot;)
+ax[0].set(yscale=&quot;log&quot;)
+ax[0].set_title(&quot;ELBO Loss (Raw)&quot;, fontsize=14)
+
+ax[1].plot(norm_train_losses, c=&quot;C0&quot;, linewidth=1, alpha=0.8, label=&quot;Training&quot;)
+ax[1].plot(norm_val_losses, c=&quot;C1&quot;, linewidth=1, alpha=0.8, label=&quot;Validation&quot;)
+ax[1].legend(loc=&quot;upper right&quot;)
+ax[1].set(yscale=&quot;log&quot;)
+ax[1].set_xlabel(&quot;Training Step&quot;)
+ax[1].set_title(&quot;Normalized ELBO Loss (Per Sample)&quot;, fontsize=14)
+
+plt.suptitle(&quot;SVI Training Progress&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_61_0.png" height=700 />
+</center>
+<p>We clearly see that the training loop stopped briefly after the training and validation losses separated.</p>
+</div>
+</div>
+<div id="posterior-predictive-analysis" class="section level2">
+<h2>Posterior Predictive Analysis</h2>
+<p>Now that we’ve trained our variational approximation, let’s use it to make predictions and analyze the results.</p>
+<div id="posterior-predictive-sampling" class="section level3">
+<h3>Posterior Predictive Sampling</h3>
+<p>The <strong>posterior predictive distribution</strong> tells us what new data points would look like according to our trained model:</p>
+<p><span class="math display">\[p(y_{\text{new}}|x_{\text{new}}, D) = \int p(y_{\text{new}}|x_{\text{new}}, \theta) p(\theta|D) \, d\theta\]</span></p>
+<p>Since we can’t compute the true posterior <span class="math inline">\(p(\theta|D)\)</span> exactly, we approximate it using our trained variational distribution <span class="math inline">\(q_\phi(\theta)\)</span>:</p>
+<p><span class="math display">\[p(y_{\text{new}}|x_{\text{new}}, D) \approx \int p(y_{\text{new}}|x_{\text{new}}, \theta) q_\phi(\theta) \, d\theta\]</span></p>
+<p>In practice, we implement this via Monte Carlo sampling:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Sample parameters</strong> <span class="math inline">\(\theta^{(s)} \sim q_\phi(\theta)\)</span> from our trained variational approximation</li>
+<li><strong>Forward pass</strong> each parameter sample through the network to get <span class="math inline">\(p(y_{\text{new}}|x_{\text{new}}, \theta^{(s)})\)</span></li>
+<li><strong>Sample predictions</strong> from the resulting Bernoulli distributions</li>
+</ol>
+<p>Let’s do this for the training data:</p>
+<pre class="python"><code># Extract the optimized variational parameters
+params = svi_result.params
+
+# Create posterior predictive sampler for training data
+train_posterior_predictive = Predictive(
+    model=model,  # Our BNN model
+    guide=guide,  # Our trained variational guide
+    params=params,  # Optimized variational parameters
+    num_samples=2_000,  # Number of posterior samples to draw
+    return_sites=[&quot;p&quot;, &quot;y&quot;],  # Return both probabilities and predictions
+)
+
+# Generate samples for training data
+rng_key, rng_subkey = random.split(key=rng_key)
+train_posterior_predictive_samples = train_posterior_predictive(rng_subkey, x_train)
+
+# Convert to ArviZ InferenceData for analysis and visualization
+train_idata = az.from_dict(
+    posterior_predictive={
+        # Add chain dimension for ArviZ compatibility
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in train_posterior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: idx_train},  # Coordinate labels for observations
+    dims={
+        &quot;p&quot;: [&quot;obs_idx&quot;],  # Probability predictions
+        &quot;y&quot;: [&quot;obs_idx&quot;],  # Binary predictions
+    },
+)</code></pre>
+<p>Similarly, we can generate samples for the test data:</p>
+<pre class="python"><code># Generate posterior predictive samples for test data
+test_posterior_predictive = Predictive(
+    model=model,
+    guide=guide,
+    params=params,
+    num_samples=2_000,
+    return_sites=[&quot;p&quot;, &quot;y&quot;],
+)
+
+# Generate samples for test data
+rng_key, rng_subkey = random.split(key=rng_key)
+test_posterior_predictive_samples = test_posterior_predictive(rng_subkey, x_test)
+
+# Convert to ArviZ InferenceData
+test_idata = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in test_posterior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: idx_test},
+    dims={
+        &quot;p&quot;: [&quot;obs_idx&quot;],
+        &quot;y&quot;: [&quot;obs_idx&quot;],
+    },
+)</code></pre>
+</div>
+<div id="model-performance-evaluation" class="section level3">
+<h3>Model Performance Evaluation</h3>
+<p>We’ll evaluate our Bayesian Neural Network using the <strong>Area Under the ROC Curve (AUC)</strong> metric. The beauty of the Bayesian approach is that we get a <strong>distribution</strong> of AUC scores rather than a single point estimate.</p>
+<div id="why-auc" class="section level4">
+<h4>Why AUC?</h4>
+<ol style="list-style-type: decimal">
+<li><strong>Threshold-independent</strong>: Evaluates performance across all classification thresholds</li>
+<li><strong>Probability-aware</strong>: Uses predicted probabilities, not just hard classifications</li>
+<li><strong>Balanced metric</strong>: Accounts for both sensitivity and specificity</li>
+<li><strong>Uncertainty-friendly</strong>: Can be computed for each posterior sample</li>
+</ol>
+</div>
+<div id="bayesian-model-evaluation" class="section level4">
+<h4>Bayesian Model Evaluation</h4>
+<p>For each posterior sample <span class="math inline">\(\theta^{(s)}\)</span>, we compute:</p>
+<p><span class="math display">\[\text{AUC}^{(s)} = \text{AUC}(y_{\text{true}}, p^{(s)})\]</span></p>
+<p>This gives us a <strong>distribution</strong> of performance metrics, allowing us to quantify uncertainty in model performance itself!</p>
+<pre class="python"><code>auc_train = xr.apply_ufunc(
+    roc_auc_score,  # Function to apply
+    y_train,  # True labels (same for all samples)
+    train_idata[&quot;posterior_predictive&quot;][
+        &quot;p&quot;
+    ],  # Predicted probabilities (varies by sample)
+    input_core_dims=[[&quot;obs_idx&quot;], [&quot;obs_idx&quot;]],  # Dimensions to apply function over
+    output_core_dims=[[]],  # Output is scalar
+    vectorize=True,  # Apply to each sample independently
+)
+
+# Compute AUC score for each posterior sample on test data
+auc_test = xr.apply_ufunc(
+    roc_auc_score,
+    y_test,
+    test_idata[&quot;posterior_predictive&quot;][&quot;p&quot;],
+    input_core_dims=[[&quot;obs_idx&quot;], [&quot;obs_idx&quot;]],
+    output_core_dims=[[]],
+    vectorize=True,
+)
+
+print(&quot;AUC distributions computed:&quot;)
+print(f&quot;  Training AUC: {auc_train.mean():.3f} ± {auc_train.std():.3f}&quot;)
+print(f&quot;  Test AUC: {auc_test.mean():.3f} ± {auc_test.std():.3f}&quot;)
+
+# Compute point estimates using posterior mean predictions
+train_mean_auc = roc_auc_score(
+    y_train, train_idata[&quot;posterior_predictive&quot;][&quot;p&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+)
+
+test_mean_auc = roc_auc_score(
+    y_test, test_idata[&quot;posterior_predictive&quot;][&quot;p&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+)
+
+print(&quot;Point estimates (using posterior mean):&quot;)
+print(f&quot;  Training AUC: {train_mean_auc:.3f}&quot;)
+print(f&quot;  Test AUC: {test_mean_auc:.3f}&quot;)</code></pre>
+<pre><code>AUC distributions computed:
+  Training AUC: 0.984 ± 0.002
+  Test AUC: 0.981 ± 0.003
+Point estimates (using posterior mean):
+  Training AUC: 0.986
+  Test AUC: 0.983</code></pre>
+<p>Let’s visualize the <strong>distribution</strong> of AUC scores. This shows us not just how well our model performs on average, but also how uncertain we are about that performance.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(10, 10),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+az.plot_posterior(data=auc_train, ax=ax[0])
+ax[0].axvline(
+    roc_auc_score(
+        y_train, train_idata[&quot;posterior_predictive&quot;][&quot;p&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    ),
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;AUC Score on the posterior predictive mean&quot;,
+)
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set_title(&quot;AUC Posterior Distribution (Train)&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+
+az.plot_posterior(data=auc_test, ax=ax[1])
+ax[1].axvline(
+    roc_auc_score(
+        y_test, test_idata[&quot;posterior_predictive&quot;][&quot;p&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    ),
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;AUC Score on the posterior predictive mean&quot;,
+)
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].set(xlabel=&quot;AUC Score&quot;)
+ax[1].set_title(&quot;AUC Posterior Distribution (Test)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_70_0.png" height=700 />
+</center>
+<p>From these metrics, we see that the model is performing well on both the training and test sets.</p>
+</div>
+</div>
+<div id="roc-curve-analysis" class="section level3">
+<h3>ROC Curve Analysis</h3>
+<p>The <strong>Receiver Operating Characteristic (ROC)</strong> curve shows the trade-off between true positive rate and false positive rate across all classification thresholds.</p>
+<div id="bayesian-roc-analysis" class="section level4">
+<h4>Bayesian ROC Analysis</h4>
+<p>Since we have multiple posterior samples, we can compute a <strong>distribution</strong> of ROC curves. This shows:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Average performance</strong>: The central tendency of ROC curves</li>
+<li><strong>Uncertainty bands</strong>: How much the performance varies across parameter samples</li>
+<li><strong>Robustness</strong>: Whether performance is consistent across the posterior</li>
+</ol>
+<p>Each curve represents the ROC for one set of sampled network parameters.</p>
+<p>In order to vectorize the computation of the ROC curve, we need a little helper function.</p>
+<pre class="python"><code>def _roc_curve(
+    y_true: Int[ArrayLike, &quot; n_obs&quot;], y_score: Float[ArrayLike, &quot; n_obs&quot;], cut: int = 0
+) -&gt; tuple[
+    Float[ArrayLike, &quot; n_obs_reg&quot;],
+    Float[ArrayLike, &quot; n_obs_reg&quot;],
+    Float[ArrayLike, &quot; n_obs_reg&quot;],
+]:
+    &quot;&quot;&quot;
+    Compute ROC curve with truncation for consistent array sizes.
+
+    This helper function ensures all ROC curves have the same length
+    for easier visualization and analysis.
+
+    Parameters
+    ----------
+    y_true : array-like
+        True binary labels
+    y_score : array-like
+        Predicted probabilities
+    cut : int
+        Number of points to cut from the end of the ROC curve
+        This is just to alleviate the fact that the ROC curve is not always the same
+        length even if we force it with the drop_intermediate=False parameter.
+
+    Returns
+    -------
+    tuple
+        Truncated false positive rates, true positive rates, and thresholds
+    &quot;&quot;&quot;
+    fpr, tpr, thresholds = roc_curve(
+        y_true=y_true,
+        y_score=y_score,
+        drop_intermediate=False,  # Keep all points for smoother curves
+    )
+
+    # Truncate to consistent length (avoids xarray size mismatch issues)
+    n = y_true.shape[0] - cut
+    return fpr[:n], tpr[:n], thresholds[:n]</code></pre>
+<p>Now, we can compute the ROC curves of the posterior predictive samples for both the training and test sets.</p>
+<pre class="python"><code>cut = 3
+
+# Compute ROC curves for training data across all posterior samples
+fpr_train, tpr_train, thresholds_train = xr.apply_ufunc(
+    lambda x, y: _roc_curve(y_true=x, y_score=y, cut=cut),
+    y_train,  # True labels
+    train_idata[&quot;posterior_predictive&quot;][&quot;p&quot;],  # Predicted probabilities
+    input_core_dims=[[&quot;obs_idx&quot;], [&quot;obs_idx&quot;]],  # Input dimensions
+    output_core_dims=[[&quot;threshld&quot;], [&quot;threshld&quot;], [&quot;threshld&quot;]],  # Output dimensions
+    vectorize=True,  # Apply to each sample
+)
+
+# Compute ROC curves for test data across all posterior samples
+fpr_test, tpr_test, thresholds_test = xr.apply_ufunc(
+    lambda x, y: _roc_curve(y_true=x, y_score=y, cut=cut),
+    y_test,
+    test_idata[&quot;posterior_predictive&quot;][&quot;p&quot;],
+    input_core_dims=[[&quot;obs_idx&quot;], [&quot;obs_idx&quot;]],
+    output_core_dims=[[&quot;threshld&quot;], [&quot;threshld&quot;], [&quot;threshld&quot;]],
+    vectorize=True,
+)</code></pre>
+<p>Now let’s visualize the <strong>ensemble</strong> of ROC curves. Each light-colored (small opacity <code>alpha=0.2</code>) line represents one posterior sample, while the overall pattern shows the model’s consistency.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 6),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i in range(2_000):
+    ax[0].plot(
+        fpr_train.sel(chain=0, draw=i),
+        tpr_train.sel(chain=0, draw=i),
+        c=&quot;C0&quot;,
+        alpha=0.2,
+    )
+    ax[1].plot(
+        fpr_test.sel(chain=0, draw=i),
+        tpr_test.sel(chain=0, draw=i),
+        c=&quot;C1&quot;,
+        alpha=0.2,
+    )
+
+
+ax[0].axline(
+    (0, 0),
+    (1, 1),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+)
+
+ax[0].set(xlabel=&quot;False Positive Rate&quot;, ylabel=&quot;True Positive Rate&quot;)
+ax[0].set_title(&quot;Training Set&quot;, fontsize=18, fontweight=&quot;bold&quot;)
+
+ax[1].axline(
+    (0, 0),
+    (1, 1),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+)
+
+ax[1].set(xlabel=&quot;False Positive Rate&quot;)
+ax[1].set_title(&quot;Test Set&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_78_0.png" height=450 />
+</center>
+</div>
+</div>
+<div id="prediction-visualization" class="section level3">
+<h3>Prediction Visualization</h3>
+<p>Finally, let’s visualize our model’s predictions in the original feature space. This will show us:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Decision boundary</strong>: How the model separates the two classes</li>
+<li><strong>Prediction confidence</strong>: Areas where the model is more/less certain</li>
+<li><strong>Uncertainty patterns</strong>: Where Bayesian uncertainty is highest</li>
+</ol>
+<p>Let’s start by plotting the <strong>posterior mean predictions</strong> - the average probability across all posterior samples. The color intensity represents the predicted probability of belonging to class 1.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(15, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+(
+    train_idata[&quot;posterior_predictive&quot;][&quot;p&quot;]
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    .to_pandas()
+    .to_frame()
+    .assign(x1=x_train[:, 0], x2=x_train[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;p&quot;,
+        hue_norm=(0, 1),
+        palette=&quot;coolwarm&quot;,
+        s=50,
+        ax=ax[0],
+    )
+)
+
+ax[0].legend().remove()
+ax[0].set_title(&quot;Training Set&quot;, fontsize=14)
+
+(
+    test_idata[&quot;posterior_predictive&quot;][&quot;p&quot;]
+    .mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+    .to_pandas()
+    .to_frame()
+    .assign(x1=x_test[:, 0], x2=x_test[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;p&quot;,
+        hue_norm=(0, 1),
+        palette=&quot;coolwarm&quot;,
+        s=50,
+        ax=ax[1],
+    )
+)
+
+mappable = plt.cm.ScalarMappable(cmap=&quot;coolwarm&quot;, norm=plt.Normalize(vmin=0, vmax=1))
+cbar = plt.colorbar(mappable, ax=ax[1])
+
+ax[1].legend().remove()
+ax[1].set_title(&quot;Test Set&quot;, fontsize=14)
+
+fig.suptitle(&quot;Posterior Predictive Mean&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_80_0.png" height=450 />
+</center>
+<p>We see that the model is able to capture the non-linear decision boundary of the data.</p>
+<p>Next, to understand the uncertainty of the model, we can plot the width of the HDI of the posterior distribution of the latent variable <span class="math inline">\(p\)</span>. We did something similar in the prior predictive analysis above. The larger the HDI, the more uncertain the model is about its predictions.</p>
+<pre class="python"><code># HDI of the posterior predictive distribution
+train_p_hdi = az.hdi(train_idata[&quot;posterior_predictive&quot;][&quot;p&quot;], hdi_prob=0.94)
+test_p_hdi = az.hdi(test_idata[&quot;posterior_predictive&quot;][&quot;p&quot;], hdi_prob=0.94)
+# Compute the width of the HDI
+train_hdi_width = train_p_hdi.sel(hdi=&quot;higher&quot;) - train_p_hdi.sel(hdi=&quot;lower&quot;)
+test_hdi_width = test_p_hdi.sel(hdi=&quot;higher&quot;) - test_p_hdi.sel(hdi=&quot;lower&quot;)
+
+fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(15, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+(
+    train_hdi_width.rename({&quot;p&quot;: &quot;hdi_width&quot;})
+    .to_pandas()
+    .assign(x1=x_train[:, 0], x2=x_train[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;hdi_width&quot;,
+        palette=&quot;viridis_r&quot;,
+        ax=ax[0],
+    )
+)
+
+ax[0].legend().remove()
+ax[0].set_title(&quot;Training Set&quot;, fontsize=14)
+
+(
+    test_hdi_width.rename({&quot;p&quot;: &quot;hdi_width&quot;})
+    .to_pandas()
+    .assign(x1=x_test[:, 0], x2=x_test[:, 1])
+    .pipe(
+        (sns.scatterplot, &quot;data&quot;),
+        x=&quot;x1&quot;,
+        y=&quot;x2&quot;,
+        hue=&quot;hdi_width&quot;,
+        palette=&quot;viridis_r&quot;,
+    )
+)
+
+mappable = plt.cm.ScalarMappable(cmap=&quot;viridis_r&quot;, norm=plt.Normalize(vmin=0, vmax=1))
+cbar = plt.colorbar(mappable, ax=ax[1])
+
+ax[1].legend().remove()
+ax[1].set_title(&quot;Test Set&quot;, fontsize=14)
+fig.suptitle(
+    r&quot;Posterior $94\%$ HDI width of the Latent Variable $p$&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_82_0.png" height=450 />
+</center>
+<p>It is interesting (expected) to see that the model is the most uncertain close to the decision boundary.</p>
+<p>Finally, we want to see how the model predicts outside the range of the training data. For this, we will create a grid of points and plot the posterior mean predictions and the HDI width.</p>
+<pre class="python"><code># Grid of points to evaluate the model
+n_grid = 100
+x_grid_0 = jnp.linspace(-5, 5, n_grid)
+# Create a grid of points to evaluate the model using the meshgrid function
+# which does a cartesian product of the x_grid_0 array with itself.
+x_grid = jnp.array(jnp.meshgrid(x_grid_0, x_grid_0)).T.reshape(-1, 2)
+idx_grid = np.arange(x_grid.shape[0])
+
+# Posterior predictive samples
+grid_posterior_predictive = Predictive(
+    model=model,
+    guide=guide,
+    params=params,
+    num_samples=2_000,
+    return_sites=[&quot;p&quot;, &quot;y&quot;],
+)
+
+rng_key, rng_subkey = random.split(key=rng_key)
+grid_posterior_predictive_samples = grid_posterior_predictive(rng_subkey, x_grid)
+
+# Convert to ArviZ InferenceData
+grid_idata = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in grid_posterior_predictive_samples.items()
+    },
+    coords={&quot;obs_idx&quot;: idx_grid},
+    dims={
+        &quot;p&quot;: [&quot;obs_idx&quot;],
+        &quot;y&quot;: [&quot;obs_idx&quot;],
+    },
+)
+# Compute the HDI of the posterior predictive distribution
+grid_p_hdi = az.hdi(grid_idata[&quot;posterior_predictive&quot;][&quot;p&quot;], hdi_prob=0.94)
+# Compute the width of the HDI
+grid_hdi_width = (grid_p_hdi.sel(hdi=&quot;higher&quot;) - grid_p_hdi.sel(hdi=&quot;lower&quot;))[
+    &quot;p&quot;
+].to_numpy()</code></pre>
+<p>Let’s visualize the posterior predictive distribution of the model and the HDI width of the latent variable <span class="math inline">\(p\)</span> on this grid of points.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(15, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+p_mean = grid_idata[&quot;posterior_predictive&quot;][&quot;p&quot;].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)).to_numpy()
+
+cs0 = ax[0].contourf(
+    x_grid_0,
+    x_grid_0,
+    p_mean.reshape(n_grid, n_grid).T,
+    vmin=0,
+    vmax=1,
+    cmap=&quot;coolwarm&quot;,
+    levels=20,
+)
+
+
+cb0 = fig.colorbar(cs0, ax=ax[0])
+
+sns.scatterplot(
+    x=x_train[:, 0],
+    y=x_train[:, 1],
+    s=18,
+    hue=y_train,
+    palette=colors,
+    alpha=0.5,
+    ax=ax[0],
+)
+
+ax[0].axvline(x=x_train[:, 0].min(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+ax[0].axvline(x=x_train[:, 0].max(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+ax[0].axhline(y=x_train[:, 1].min(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+ax[0].axhline(y=x_train[:, 1].max(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+
+ax[0].set_title(&quot;Posterior Predictive Mean&quot;, fontsize=14)
+
+
+cs1 = ax[1].contourf(
+    x_grid_0,
+    x_grid_0,
+    grid_hdi_width.reshape(n_grid, n_grid).T,
+    cmap=&quot;viridis_r&quot;,
+)
+
+cb1 = fig.colorbar(cs1, ax=ax[1])
+
+ax[1].axvline(x=x_train[:, 0].min(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+ax[1].axvline(x=x_train[:, 0].max(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+ax[1].axhline(y=x_train[:, 1].min(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+ax[1].axhline(y=x_train[:, 1].max(), color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.5)
+
+ax[1].set_title(r&quot;$94\%$ HDI width of the latent variable $p$&quot;, fontsize=14)
+
+fig.suptitle(&quot;Predictions on Extrapolated Grid&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_svi_files/intro_svi_87_0.png" height=450 />
+</center>
+<p>Observe that the model becomes less certain of the decision boundary as we move away from the training data. This is a feature we would expect from a Bayesian model.</p>
+</div>
+</div>
+<div id="summary-and-key-takeaways" class="section level2">
+<h2>Summary and Key Takeaways</h2>
+<div id="what-weve-accomplished" class="section level3">
+<h3>What We’ve Accomplished</h3>
+<div id="example-1-gamma-distribution" class="section level4">
+<h4>Example 1: Gamma Distribution</h4>
+<ol style="list-style-type: decimal">
+<li><strong>Started with a simple Gamma distribution approximation</strong> using a custom guide to understand the basic mechanics of SVI. We succeeded in approximating the posterior distribution of the concentration parameter of the Gamma distribution.</li>
+<li><strong>Progressed to automatic guides</strong> and compared the results. We saw that the automatic guide was able to approximate the posterior distribution of the concentration parameter of the Gamma distribution without needing to define a custom guide and worrying about the constraints of the parameters and required transformations.</li>
+</ol>
+</div>
+<div id="example-2-bayesian-neural-network" class="section level4">
+<h4>Example 2: Bayesian Neural Network</h4>
+<ol style="list-style-type: decimal">
+<li><strong>Implemented a Bayesian Neural Network</strong> using NumPyro’s SVI framework</li>
+<li><strong>Learned complex non-linear decision boundaries</strong> for the two moons dataset</li>
+<li><strong>Quantified uncertainty</strong> in both parameters and predictions</li>
+<li><strong>Evaluated performance</strong> using probabilistic metrics (AUC distributions)</li>
+<li><strong>Visualized results</strong> including ROC curves and prediction landscapes</li>
+</ol>
+</div>
+</div>
+<div id="key-advantages-of-svi" class="section level3">
+<h3>Key Advantages of SVI</h3>
+<ul>
+<li>✅ <strong>Scalability</strong>: Can handle large datasets through mini-batching</li>
+<li>✅ <strong>Speed</strong>: Faster than MCMC for most applications</li>
+<li>✅ <strong>Uncertainty Quantification</strong>: Provides meaningful uncertainty estimates</li>
+<li>✅ <strong>Deterministic</strong>: Reproducible results for deployment</li>
+<li>✅ <strong>Flexible</strong>: Works with complex models (neural networks, etc.)</li>
+</ul>
+</div>
+<div id="when-to-use-svi-vs-mcmc" class="section level3">
+<h3>When to Use SVI vs MCMC</h3>
+<p><strong>Use SVI when:</strong>
+- You have large datasets
+- You need fast inference for production systems
+- You can accept approximate (vs exact) posterior inference</p>
+<p><strong>Use MCMC when:</strong>
+- You have small-medium datasets
+- You need precise posterior samples
+- You have time for longer computation</p>
+</div>
+<div id="tips-and-tricks-svi-in-production" class="section level3">
+<h3>Tips and Tricks: SVI in Production</h3>
+<ul>
+<li>Using GPUs for training can significantly speed up the training process.</li>
+<li>Using mini-batches can help with memory issues and speed up the training process.</li>
+<li>Using a good learning rate scheduler can help with the training process.</li>
+<li>Computing posterior predictive samples can be batched using <a href="https://num.pyro.ai/en/stable/utilities.html#predictive"><code>Predictive</code></a> from NumPyro (you might need to do it by hand, but is quite straightforward). This batching can help memory issues.</li>
+</ul>
+</div>
+<div id="other-inference-methods-for-baysian-models" class="section level3">
+<h3>Other Inference Methods for Baysian Models</h3>
+<p>It is important to note that there are other inference methods for Bayesian models, see all the <a href="https://num.pyro.ai/en/stable/mcmc.html">Markov Chain Monte Carlo (MCMC)</a> methods available in NumPyro and also some more custom ones from <a href="https://blackjax-devs.github.io/blackjax/index.html"><code>Blackjax</code></a> or <a href="https://danielward27.github.io/flowjax/"><code>FlowJAx</code></a>. All of them can be integrated with NumPyro, see the example notebook <a href="https://num.pyro.ai/en/stable/tutorials/other_samplers.html">NumPyro Integration with Other Libraries</a>.</p>
+</div>
+<div id="resources-for-learning-more" class="section level3">
+<h3>Resources for Learning More</h3>
+<ul>
+<li><a href="https://num.pyro.ai/">NumPyro Documentation</a></li>
+<li><a href="https://pyro.ai/examples/svi_part_i.html">Pyro SVI Tutorial</a></li>
+<li><a href="https://arxiv.org/abs/1601.00670">Blei et al. (2017): Variational Inference Review</a></li>
+<li><a href="https://arxiv.org/abs/1206.7051">Hoffman et al. (2013): Stochastic Variational Inference</a></li>
+</ul>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
