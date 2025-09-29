@@ -574,7 +574,7 @@ ax[1].set_title(&quot;Raw Data - Test Set&quot;, fontsize=18, fontweight=&quot;b
     def __init__(
         self, din: int, dout: int, hidden_layers: list[int], *, rngs: nnx.Rngs
     ) -&gt; None:
-        self.layers = []
+        self.layers = nnx.List([])
 
         # Create layer dimensions: [input_size, hidden1, hidden2, ..., output_size]
         layer_dims = [din, *hidden_layers, dout]
