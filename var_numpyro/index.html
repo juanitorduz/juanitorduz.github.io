@@ -233,7 +233,7 @@ realinv     0.750722  0.131951  1.000000</code></pre>
 <h2>NumPyro Implementation</h2>
 <p>Next, we implement the model in Numpyro. The core idea is taken from the NumPyro docs: <a href="https://num.pyro.ai/en/stable/examples/var2.html">Example: VAR(2) process</a>. In our implementation, we make it in such a way that we vectorize the computation over the lags components (i.e. this works for lags larger than <span class="math inline">\(2\)</span>).</p>
 <div id="vectorization-over-lags" class="section level3">
-<h3>Vectorization over Lags</h3>
+<h3>Vectorization Over Lags</h3>
 <p>The vectorization is a bit tricky at first. So before jumping into the model, we consider a simple example. The idea is to vectorize the coefficient matrix <span class="math inline">\(\Phi\)</span> over the lags <span class="math inline">\(j=1, \ldots, p\)</span>. Let us consider the case of <span class="math inline">\(p=2\)</span> and generate a synthetic matrix <span class="math inline">\(\Phi\)</span> as we mainly care about the computation and not the values themselves for now.</p>
 <pre class="python"><code># number of variables (taken from the data)
 n_vars = data.shape[1]
@@ -696,34 +696,43 @@ fig.suptitle(
 <p>After fitting a VAR model, we often want to understand <strong>how the system responds to shocks</strong>. This is where Impulse Response Functions (IRFs) come in.</p>
 <div id="the-intuition" class="section level3">
 <h3>The Intuition</h3>
-<p>Imagine you have three economic variables: GDP, consumption, and investment. Now suppose there’s an unexpected shock to GDP (e.g., a sudden policy change). An IRF answers questions like:
-- How does GDP itself respond over time?
-- How does consumption react to this GDP shock?
-- What happens to investment in subsequent periods?</p>
+<p>Imagine you have three economic variables: GDP, consumption, and investment. Now suppose there’s an unexpected shock to GDP (e.g., a sudden policy change). An IRF answers questions like:</p>
+<ul>
+<li>How does GDP itself respond over time?</li>
+<li>How does consumption react to this GDP shock?</li>
+<li>What happens to investment in subsequent periods?</li>
+</ul>
 <p>IRFs trace out the <strong>dynamic response</strong> of each variable to a one-time shock in another variable, holding all else constant.</p>
 </div>
 <div id="from-var-to-ma-representation" class="section level3">
 <h3>From VAR to MA Representation</h3>
 <p>Recall our <span class="math inline">\(\text{VAR}(p)\)</span> model:</p>
 <p><span class="math display">\[Y_t = c + \sum_{j=1}^{p} \Phi_j Y_{t-j} + \varepsilon_t\]</span></p>
-<p>This model tells us how current values depend on past values. But to compute IRFs, we need the <strong>Moving Average (MA) representation</strong>, which expresses current values in terms of current and past shocks:</p>
+<p>This model tells us how current values depend on past values. But to compute IRFs, we need the <strong>Moving Average (<span class="math inline">\(\text{MA}(\infty)\)</span>) representation</strong>, which expresses current values in terms of current and past shocks:</p>
 <p><span class="math display">\[Y_t = \mu + \sum_{i=0}^{\infty} \Psi_i \varepsilon_{t-i}\]</span></p>
-<p>where:
-- <span class="math inline">\(\Psi_0 = I\)</span> (identity matrix - a shock has immediate unit effect on itself)
-- <span class="math inline">\(\Psi_i\)</span> are the <strong>MA coefficient matrices</strong> that tell us the response at time <span class="math inline">\(i\)</span> to a shock at time 0
-- These <span class="math inline">\(\Psi_i\)</span> matrices <strong>are</strong> the IRFs!</p>
+<p>where:</p>
+<ul>
+<li><span class="math inline">\(\Psi_0 = I\)</span> (identity matrix - a shock has immediate unit effect on itself)</li>
+<li><span class="math inline">\(\Psi_i\)</span> are the <strong>MA coefficient matrices</strong> that tell us the response at time <span class="math inline">\(i\)</span> to a shock at time 0</li>
+<li>These <span class="math inline">\(\Psi_i\)</span> matrices <strong>are</strong> the IRFs!</li>
+</ul>
 </div>
 <div id="the-recursive-algorithm" class="section level3">
 <h3>The Recursive Algorithm</h3>
 <p>A key result of the VAR model is that we can compute the <span class="math inline">\(\Psi_i\)</span> matrices recursively from the VAR coefficients <span class="math inline">\(\Phi_j\)</span>:</p>
 <p><span class="math display">\[\Psi_0 = I\]</span></p>
 <p><span class="math display">\[\Psi_i = \sum_{j=1}^{\min(i, p)} \Psi_{i-j} \Phi_j \quad \text{for } i \geq 1\]</span></p>
-<p>This means:
-- At time 0: The response is just the identity (shock = response)
-- At time 1: <span class="math inline">\(\Psi_1 = \Psi_0 \Phi_1 = \Phi_1\)</span> (first-order effects)
-- At time 2: <span class="math inline">\(\Psi_2 = \Psi_1 \Phi_1 + \Psi_0 \Phi_2\)</span> (effects compound!)
-- And so on…</p>
-<p>Each <span class="math inline">\(\Psi_i[k, j]\)</span> tells us: <strong>“What is the response of variable k at time i to a unit shock in variable j at time 0?”</strong></p>
+<p>This means:</p>
+<ul>
+<li>At time 0: The response is just the identity (shock = response)</li>
+<li>At time 1: <span class="math inline">\(\Psi_1 = \Psi_0 \Phi_1 = \Phi_1\)</span> (first-order effects)</li>
+<li>At time 2: <span class="math inline">\(\Psi_2 = \Psi_1 \Phi_1 + \Psi_0 \Phi_2\)</span> (effects compound!)</li>
+<li>And so on…</li>
+</ul>
+<p>Each <span class="math inline">\(\Psi_i[k, j]\)</span> tells us:</p>
+<blockquote>
+<p><strong>“What is the response of variable k at time i to a unit shock in variable j at time 0?”</strong></p>
+</blockquote>
 </div>
 <div id="deriving-the-recursive-formula" class="section level3">
 <h3>Deriving the Recursive Formula</h3>
@@ -994,9 +1003,9 @@ fig.suptitle(&quot;Impulse Response Functions&quot;, fontsize=21, fontweight=&qu
 <h2>Summary</h2>
 <p>In this notebook, we successfully implemented a Bayesian Vector Autoregressive (VAR) model using NumPyro and validated it against the established <code>statsmodels</code> implementation. Our key achievements include:</p>
 <ol style="list-style-type: decimal">
-<li><p><strong>Model Specification &amp; Inference</strong>: We built a flexible <span class="math inline">\(VAR(p)\)</span> model in NumPyro using <code>jax.lax.scan</code> for efficient time series dynamics, leveraging proper Bayesian priors (Normal for coefficients, LKJ for correlation structure) and MCMC sampling via NUTS. This can serve as a component to be combined with more complex models. For example, adding covariates and additional likelihoods.</p></li>
+<li><p><strong>Model Specification &amp; Inference</strong>: We built a flexible <span class="math inline">\(\text{VAR}(p)\)</span> model in NumPyro using <code>jax.lax.scan</code> for efficient time series dynamics, leveraging proper Bayesian priors (Normal for coefficients, LKJ for correlation structure) and MCMC sampling via NUTS. This can serve as a component to be combined with more complex models. For example, adding covariates and additional likelihoods.</p></li>
 <li><p><strong>Forecasting</strong>: The model generates multi-step-ahead forecasts with full posterior uncertainty quantification. Our NumPyro forecasts closely match the <code>statsmodels</code> point predictions. We also show how to generate credible intervals for the forecasts.</p></li>
-<li><p><strong>Impulse Response Functions</strong>: We implemented the recursive <span class="math inline">\(MA(\infty)\)</span> representation algorithm to compute IRFs using JAX’s functional programming tools (<code>lax.scan</code>, <code>vmap</code>, <code>jit</code>). The resulting IRFs are identical to <code>statsmodels</code> outputs, validating our implementation.</p></li>
+<li><p><strong>Impulse Response Functions</strong>: We implemented the recursive <span class="math inline">\(\text{MA}(\infty)\)</span> representation algorithm to compute IRFs using JAX’s functional programming tools (<code>lax.scan</code>, <code>vmap</code>, <code>jit</code>). The resulting IRFs are identical to <code>statsmodels</code> outputs, validating our implementation.</p></li>
 </ol>
 <p><strong>Key Advantages of the NumPyro Approach:</strong>
 - Full Bayesian inference with uncertainty quantification for all parameters and predictions
