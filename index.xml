@@ -6,7 +6,18 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 01 Sep 2025 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 03 Oct 2025 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Bayesian Vector Autoregressive Models in NumPyro</title>
+      <link>/var_numpyro/</link>
+      <pubDate>Fri, 03 Oct 2025 00:00:00 +0000</pubDate>
+      
+      <guid>/var_numpyro/</guid>
+      <description>In this notebook, we present how to implement and fit Bayesian Vector Autoregressive (VAR) models using NumPyro. We work out three components:
+Specifying and fitting the model in NumPyro Using the model to generate forecasts Computing the Impulse Response Functions (IRFs)  We compare these three components with the ones obtained using the statsmodels implementation from the Vector Autoregressions tsa.vector_ar tutorial.
+Prepare Notebook from functools import partial import arviz as az import jax.</description>
+    </item>
+    
     <item>
       <title>PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</title>
       <link>/intro_svi/</link>
@@ -1012,7 +1023,7 @@ When the number of features \(p\) is large, there tends to be a deterioration in
       
       <guid>/about/</guid>
       <description>Dr. Juan Camilo Orduz Mathematician &amp;amp; Data Scientist
-  @juanitorduz    I am a mathematician (PhD from Humboldt Universität zu Berlin) and Principal Data Scientist (Delivery Hero and PyMC Labs). I am also involved in open source projects like PyMC, PyMC-Marketing and CausalPy (among others).
+  @juanitorduz    I am a mathematician (PhD from Humboldt Universität zu Berlin) and Principal Data Scientist (Delivery Hero and PyMC Labs). I am also involved in open source projects like PyMC, PyMC-Marketing, CausalPy and NumPyro (among others).
 On this website you can find more information about me and some of my projects.
  You can find the code associated with the blog posts on this GitHub repository.</description>
     </item>
@@ -1023,9 +1034,9 @@ On this website you can find more information about me and some of my projects.
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
       <guid>/cv/</guid>
-      <description>Work Experience  01/06/2025-Present Principal Data Scientist (Statistical Modeling), Delivery Hero, Berlin, Germany.
+      <description>Work Experience  01/06/2025-Present Principal Data Scientist (AdTech and Statistical Modeling), Delivery Hero, Berlin, Germany.
  01/04/2024-Present Principal Data Scientist / Open Source Developer, PyMC Labs, Remote.
- Working on open-source software packages and helping clients use them and get the best of them to generate business value. Advising on data science projects in the area of marketing analytics and experimentation. Coaching and technical workshops on Bayesian statistics and applications. Technical writing and communication.</description>
+ Working on open-source software packages and helping clients use them and get the best of them to generate business value. Advising on data science projects in the area of marketing analytics and experimentation. Coaching and technical workshops on Bayesian statistics and applications.</description>
     </item>
     
     <item>

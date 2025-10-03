@@ -6,7 +6,18 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 01 Sep 2025 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 03 Oct 2025 00:00:00 +0000</lastBuildDate><atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Bayesian Vector Autoregressive Models in NumPyro</title>
+      <link>/var_numpyro/</link>
+      <pubDate>Fri, 03 Oct 2025 00:00:00 +0000</pubDate>
+      
+      <guid>/var_numpyro/</guid>
+      <description>In this notebook, we present how to implement and fit Bayesian Vector Autoregressive (VAR) models using NumPyro. We work out three components:
+Specifying and fitting the model in NumPyro Using the model to generate forecasts Computing the Impulse Response Functions (IRFs)  We compare these three components with the ones obtained using the statsmodels implementation from the Vector Autoregressions tsa.vector_ar tutorial.
+Prepare Notebook from functools import partial import arviz as az import jax.</description>
+    </item>
+    
     <item>
       <title>PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</title>
       <link>/intro_svi/</link>

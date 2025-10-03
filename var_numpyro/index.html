@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Bayesian Vector Autoregressive Models in NumPyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Bayesian Vector Autoregressive Models in NumPyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">17 min read</span>
+    
+
+    <h1 class="article-title">Bayesian Vector Autoregressive Models in NumPyro</h1>
+
+    
+    <span class="article-date">2025-10-03</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we present how to implement and fit Bayesian Vector Autoregressive (VAR) models using <a href="https://num.pyro.ai/en/stable/">NumPyro</a>. We work out three components:</p>
+<ol style="list-style-type: decimal">
+<li>Specifying and fitting the model in NumPyro</li>
+<li>Using the model to generate forecasts</li>
+<li>Computing the Impulse Response Functions (IRFs)</li>
+</ol>
+<p>We compare these three components with the ones obtained using the <code>statsmodels</code> implementation from the <a href="https://www.statsmodels.org/stable/vector_ar.html">Vector Autoregressions tsa.vector_ar</a> tutorial.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from functools import partial
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import pandas as pd
+import statsmodels.api as sm
+import xarray as xr
+from jax import jit, lax, random, vmap
+from jaxtyping import Array, Float
+from numpyro.contrib.control_flow import scan
+from numpyro.handlers import condition
+from numpyro.infer import MCMC, NUTS
+from statsmodels.tsa.api import VAR
+from statsmodels.tsa.base.datetools import dates_from_str
+
+numpyro.set_host_device_count(n=10)
+
+rng_key = random.PRNGKey(seed=42)
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="load-data" class="section level2">
+<h2>Load Data</h2>
+<p>We are going to use a dataset from the <a href="https://www.statsmodels.org/stable/datasets/index.html"><code>statsmodels</code> package</a>. Specifically, we will use the <code>macrodata</code> dataset from <a href="https://www.statsmodels.org/stable/vector_ar.html">Vector Autoregressions tsa.vector_ar</a> tutorial. For the sake of reproducibility, we will keep the exact same code as in the tutorial.</p>
+<pre class="python"><code>def load_data() -&gt; pd.DataFrame:
+    mdata = sm.datasets.macrodata.load_pandas().data
+    dates = mdata[[&quot;year&quot;, &quot;quarter&quot;]].astype(int).astype(str)
+    quarterly = dates[&quot;year&quot;] + &quot;Q&quot; + dates[&quot;quarter&quot;]
+    quarterly = dates_from_str(quarterly)
+    mdata = mdata[[&quot;realgdp&quot;, &quot;realcons&quot;, &quot;realinv&quot;]]
+    mdata.index = pd.DatetimeIndex(quarterly, freq=&quot;QE&quot;)
+    return np.log(mdata).diff().dropna()
+
+
+data: pd.DataFrame = load_data()</code></pre>
+<p>We start by visualizing the data.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+data.plot(ax=ax)
+ax.set(xlabel=&quot;Time&quot;, ylabel=&quot;Log Differenced Data&quot;)
+ax.set_title(&quot;Log Differenced Data&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/var_numpyro_files/var_numpyro_6_0.png" style="width: 900px;"/>
+</center>
+<p>It looks like the data is stationary.</p>
+</div>
+<div id="fit-var-model-with-statsmodels" class="section level2">
+<h2>Fit VAR Model with Statsmodels</h2>
+<p>Recall that a <span class="math inline">\(\text{VAR}(p)\)</span> model can be written as:</p>
+<p><span class="math display">\[
+Y_t = c + \sum_{j=1}^{p} \Phi_j Y_{t-j} + \varepsilon_t,
+\]</span></p>
+<p>where <span class="math inline">\(c\)</span> is a vector of constants, <span class="math inline">\(\Phi_j\)</span> is the coefficient matrix for the <span class="math inline">\(j\)</span>-th lag, and <span class="math inline">\(\varepsilon_t\)</span> is the error term which is a vector of i.i.d. normal random variables with mean <span class="math inline">\(0\)</span> and covariance matrix <span class="math inline">\(\Sigma\)</span>. Each matrix <span class="math inline">\(\Phi_j\)</span> has dimensions <span class="math inline">\((k, k)\)</span> where <span class="math inline">\(k\)</span> is the number of variables in the model. Let <span class="math inline">\(\Phi = [\Phi_1, \Phi_2, \ldots, \Phi_p]\)</span> be the tensor of coefficient matrices of shape <span class="math inline">\((p, k, k)\)</span> so that we can write the model in vectorized form as:
+<span class="math display">\[
+Y_t = c + \Phi \times \begin{bmatrix} Y_{t-1} \\ Y_{t-2} \\ \vdots \\ Y_{t-p} \end{bmatrix} + \varepsilon_t,
+\]</span></p>
+<p>Before implementing the model in Numpyro, we fit a VAR model using the <code>statsmodels</code> package to get the reference values.</p>
+<pre class="python"><code>var_model = VAR(data)
+
+var_results = var_model.fit(maxlags=2)
+
+var_results.summary()</code></pre>
+<pre><code>  Summary of Regression Results   
+==================================
+Model:                         VAR
+Method:                        OLS
+Date:           Fri, 03, Oct, 2025
+Time:                     14:59:20
+--------------------------------------------------------------------
+No. of Equations:         3.00000    BIC:                   -27.5830
+Nobs:                     200.000    HQIC:                  -27.7892
+Log likelihood:           1962.57    FPE:                7.42129e-13
+AIC:                     -27.9293    Det(Omega_mle):     6.69358e-13
+--------------------------------------------------------------------
+Results for equation realgdp
+==============================================================================
+                 coefficient       std. error           t-stat            prob
+------------------------------------------------------------------------------
+const               0.001527         0.001119            1.365           0.172
+L1.realgdp         -0.279435         0.169663           -1.647           0.100
+L1.realcons         0.675016         0.131285            5.142           0.000
+L1.realinv          0.033219         0.026194            1.268           0.205
+L2.realgdp          0.008221         0.173522            0.047           0.962
+L2.realcons         0.290458         0.145904            1.991           0.047
+L2.realinv         -0.007321         0.025786           -0.284           0.776
+==============================================================================
+
+Results for equation realcons
+==============================================================================
+                 coefficient       std. error           t-stat            prob
+------------------------------------------------------------------------------
+const               0.005460         0.000969            5.634           0.000
+L1.realgdp         -0.100468         0.146924           -0.684           0.494
+L1.realcons         0.268640         0.113690            2.363           0.018
+L1.realinv          0.025739         0.022683            1.135           0.257
+L2.realgdp         -0.123174         0.150267           -0.820           0.412
+L2.realcons         0.232499         0.126350            1.840           0.066
+L2.realinv          0.023504         0.022330            1.053           0.293
+==============================================================================
+
+Results for equation realinv
+==============================================================================
+                 coefficient       std. error           t-stat            prob
+------------------------------------------------------------------------------
+const              -0.023903         0.005863           -4.077           0.000
+L1.realgdp         -1.970974         0.888892           -2.217           0.027
+L1.realcons         4.414162         0.687825            6.418           0.000
+L1.realinv          0.225479         0.137234            1.643           0.100
+L2.realgdp          0.380786         0.909114            0.419           0.675
+L2.realcons         0.800281         0.764416            1.047           0.295
+L2.realinv         -0.124079         0.135098           -0.918           0.358
+==============================================================================
+
+Correlation matrix of residuals
+             realgdp  realcons   realinv
+realgdp     1.000000  0.603316  0.750722
+realcons    0.603316  1.000000  0.131951
+realinv     0.750722  0.131951  1.000000</code></pre>
+</div>
+<div id="numpyro-implementation" class="section level2">
+<h2>NumPyro Implementation</h2>
+<p>Next, we implement the model in Numpyro. The core idea is taken from the NumPyro docs: <a href="https://num.pyro.ai/en/stable/examples/var2.html">Example: VAR(2) process</a>. In our implementation, we make it in such a way that we vectorize the computation over the lags components (i.e. this works for lags larger than <span class="math inline">\(2\)</span>).</p>
+<div id="vectorization-over-lags" class="section level3">
+<h3>Vectorization over Lags</h3>
+<p>The vectorization is a bit tricky at first. So before jumping into the model, we consider a simple example. The idea is to vectorize the coefficient matrix <span class="math inline">\(\Phi\)</span> over the lags <span class="math inline">\(j=1, \ldots, p\)</span>. Let us consider the case of <span class="math inline">\(p=2\)</span> and generate a synthetic matrix <span class="math inline">\(\Phi\)</span> as we mainly care about the computation and not the values themselves for now.</p>
+<pre class="python"><code># number of variables (taken from the data)
+n_vars = data.shape[1]
+# number of lags
+n_lags = 2
+
+# generate a synthetic matrix
+phi = jnp.arange(n_lags * n_vars * n_vars).reshape(n_lags, n_vars, n_vars)
+
+phi</code></pre>
+<pre><code>Array([[[ 0,  1,  2],
+        [ 3,  4,  5],
+        [ 6,  7,  8]],
+
+       [[ 9, 10, 11],
+        [12, 13, 14],
+        [15, 16, 17]]], dtype=int32)</code></pre>
+<p>For the matrix <span class="math inline">\(\Phi\)</span>, the first dimension is the lags, the second dimension is the variables on the rows and the third dimension is the variables on the columns that we want to multiply and sum.</p>
+<p>Next, we consider a synthetic lags vector which would represent the lags of the dependent variable <span class="math inline">\(Y_t\)</span>.</p>
+<pre class="python"><code>y_lags = 2 * jnp.ones((n_lags, n_vars))
+
+y_lags</code></pre>
+<pre><code>Array([[2., 2., 2.],
+       [2., 2., 2.]], dtype=float32)</code></pre>
+<p>The tensor operation we want to perform is:</p>
+<pre class="python"><code># Element-wise multiplication and sum over the third dimension (columns).
+(phi * y_lags[..., jnp.newaxis]).sum(axis=(0, 2))</code></pre>
+<pre><code>Array([ 66., 102., 138.], dtype=float32)</code></pre>
+<p>This can be achieved by using the <a href="https://docs.jax.dev/en/latest/_autosummary/jax.numpy.einsum.html"><code>einsum</code></a> function with a proper specification of the indices.</p>
+<pre class="python"><code>jnp.einsum(&quot;lij,lj-&gt;i&quot;, phi, y_lags)</code></pre>
+<pre><code>Array([ 66., 102., 138.], dtype=float32)</code></pre>
+<p>We will use the einsum function to perform the operation in the NumPyro model.</p>
+</div>
+<div id="numpyro-model" class="section level3">
+<h3>NumPyro Model</h3>
+<p>We are now ready to implement the VAR model in NumPyro. The idea is to use the scan function as in the previous example <a href="https://juanitorduz.github.io/arma_numpyro/">Notes on an ARMA(1, 1) Model with NumPyro</a>, see also the <a href="https://amsterdam2024.pydata.org/cfp/talk/YBTSUV/">PyData Amsterdam</a> video <a href="https://www.youtube.com/watch?v=9Q6r2w0CDB0">Time Series forecasting with NumPyro</a> for more details.</p>
+<pre class="python"><code>def model(y: Float[Array, &quot;time vars&quot;], n_lags: int, future: int = 0) -&gt; None:
+    # Get the number of time steps and variables
+    n_time, n_vars = y.shape
+
+    # --- Priors ---
+    constant = numpyro.sample(&quot;constant&quot;, dist.Normal(loc=0, scale=1).expand([n_vars]))
+
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.HalfNormal(scale=1.0).expand([n_vars]))
+
+    l_omega = numpyro.sample(
+        &quot;l_omega&quot;, dist.LKJCholesky(dimension=n_vars, concentration=1.0)
+    )
+    l_sigma = jnp.einsum(&quot;...i,...ij-&gt;...ij&quot;, sigma, l_omega)
+
+    # Sample phi coefficients - shape (n_lags, n_vars, n_vars)
+    # The first dimension is the lags, the second dimension is the variables on the rows
+    # and the third dimension is the variables on the columns that
+    # we want to multiply and sum.
+    phi = numpyro.sample(
+        &quot;phi&quot;, dist.Normal(loc=0, scale=10).expand([n_lags, n_vars, n_vars]).to_event(3)
+    )
+
+    # --- Transition Function ---
+
+    def transition_fn(carry: Array, _, name: str) -&gt; tuple[Array, Array]:
+        # carry: (n_lags, n_vars)
+        y_lags = carry
+
+        # Compute lag contributions as a matrix product of phi and y_lags
+        # (see the example above!)
+        # Here the only trick is to reverse the phi lag coordinates. Why?
+        # The first entry in the  initial `carry` vector `init_carry = y[:n_lags]`
+        # is the oldest lag and the last entry is the newest lag.
+        lag_contributions = jnp.einsum(&quot;lij,lj-&gt;i&quot;, phi[::-1], y_lags)
+        # Compute VAR mean
+        m_t = constant + lag_contributions
+
+        # Sample observation
+        y_t = numpyro.sample(name, dist.MultivariateNormal(loc=m_t, scale_tril=l_sigma))
+
+        # Update carry: remove oldest, add newest
+        new_carry = jnp.concatenate([y_lags[1:], y_t[None, :]], axis=0)
+        return new_carry, y_t
+
+    inference_fn = partial(transition_fn, name=&quot;y_pred&quot;)
+
+    # Initialize and run scan
+    init_carry = y[:n_lags]
+    time_indices = jnp.arange(n_lags, n_time)
+
+    with condition(data={&quot;y_pred&quot;: y[n_lags:]}):
+        scan(inference_fn, init=init_carry, xs=time_indices)
+
+    if future &gt; 0:
+        prediction_fn = partial(transition_fn, name=&quot;y_future&quot;)
+        scan(prediction_fn, init=y[-n_lags:], xs=jnp.arange(future))</code></pre>
+<p>Let’s visualize the model:</p>
+<pre class="python"><code>y: Float[Array, &quot;time vars&quot;] = jnp.array(data)
+
+numpyro.render_model(
+    model,
+    model_kwargs={&quot;y&quot;: y, &quot;n_lags&quot;: 2, &quot;future&quot;: 10},
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/var_numpyro_files/var_numpyro_24_0.svg" style="width: 900px;"/>
+</center>
+<p>Here we see the model structure and the two outputs: <code>y_pred</code> (inference) and <code>y_future</code> (prediction).</p>
+</div>
+</div>
+<div id="fit-numpyro-model" class="section level2">
+<h2>Fit Numpyro Model</h2>
+<p>We now sample from the posterior distribution of the model using MCMC.</p>
+<pre class="python"><code>%%time
+
+nuts_kernel = NUTS(model)
+mcmc = MCMC(
+    nuts_kernel,
+    num_warmup=1_000,
+    num_samples=1_000,
+    num_chains=4,
+)
+
+# Run inference
+n_lags = 2
+future = 30
+rng_key, rng_subkey = random.split(rng_key)
+mcmc.run(rng_subkey, y=y, n_lags=n_lags, future=future)
+
+# Get samples
+samples = mcmc.get_samples()</code></pre>
+<pre><code>CPU times: user 2min 22s, sys: 8.15 s, total: 2min 30s
+Wall time: 39.8 s</code></pre>
+<p>Let’s parse the samples to an ArviZ InferenceData object.</p>
+<pre class="python"><code>idata = az.from_numpyro(
+    mcmc,
+    coords={
+        &quot;var_1&quot;: data.columns,
+        &quot;var_2&quot;: data.columns,
+        &quot;lag&quot;: range(1, n_lags + 1),
+        &quot;future&quot;: range(data.shape[0], data.shape[0] + future),
+    },
+    dims={
+        &quot;constant&quot;: [&quot;var_1&quot;],
+        &quot;sigma&quot;: [&quot;var_1&quot;],
+        &quot;l_omega&quot;: [&quot;var_1&quot;, &quot;var_2&quot;],
+        &quot;phi&quot;: [&quot;lag&quot;, &quot;var_1&quot;, &quot;var_2&quot;],
+        &quot;y_future&quot;: [&quot;future&quot;, &quot;var_1&quot;],
+    },
+)</code></pre>
+<p>We can now visualize the traces.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=[&quot;~y_future&quot;],
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (12, 7), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/var_numpyro_files/var_numpyro_31_1.png" style="width: 900px;"/>
+</center>
+<p>Overall, the chains seem to converge well.</p>
+</div>
+<div id="parameter-comparison" class="section level2">
+<h2>Parameter Comparison</h2>
+<p>We can manually inspect certain parameters mean values to see if they match the reference values from the <code>statsmodels</code> results.</p>
+<pre class="python"><code>(
+    idata[&quot;posterior&quot;][&quot;phi&quot;]
+    .mean(dim=[&quot;chain&quot;, &quot;draw&quot;])
+    .sel(var_1=&quot;realgdp&quot;)
+    .to_dataframe()
+    .sort_index()
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+</th>
+<th>
+var_1
+</th>
+<th>
+phi
+</th>
+</tr>
+<tr>
+<th>
+lag
+</th>
+<th>
+var_2
+</th>
+<th>
+</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th rowspan="3" valign="top">
+1
+</th>
+<th>
+realcons
+</th>
+<td>
+realgdp
+</td>
+<td>
+0.668054
+</td>
+</tr>
+<tr>
+<th>
+realgdp
+</th>
+<td>
+realgdp
+</td>
+<td>
+-0.272790
+</td>
+</tr>
+<tr>
+<th>
+realinv
+</th>
+<td>
+realgdp
+</td>
+<td>
+0.032299
+</td>
+</tr>
+<tr>
+<th rowspan="3" valign="top">
+2
+</th>
+<th>
+realcons
+</th>
+<td>
+realgdp
+</td>
+<td>
+0.297236
+</td>
+</tr>
+<tr>
+<th>
+realgdp
+</th>
+<td>
+realgdp
+</td>
+<td>
+-0.000703
+</td>
+</tr>
+<tr>
+<th>
+realinv
+</th>
+<td>
+realgdp
+</td>
+<td>
+-0.006114
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>var_results.params[&quot;realgdp&quot;].to_frame()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+realgdp
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+const
+</th>
+<td>
+0.001527
+</td>
+</tr>
+<tr>
+<th>
+L1.realgdp
+</th>
+<td>
+-0.279435
+</td>
+</tr>
+<tr>
+<th>
+L1.realcons
+</th>
+<td>
+0.675016
+</td>
+</tr>
+<tr>
+<th>
+L1.realinv
+</th>
+<td>
+0.033219
+</td>
+</tr>
+<tr>
+<th>
+L2.realgdp
+</th>
+<td>
+0.008221
+</td>
+</tr>
+<tr>
+<th>
+L2.realcons
+</th>
+<td>
+0.290458
+</td>
+</tr>
+<tr>
+<th>
+L2.realinv
+</th>
+<td>
+-0.007321
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We do see the values are very close 🚀!</p>
+<p>Similarly, we can look into the correlation matrix:</p>
+<pre class="python"><code>l_omega_mean = idata[&quot;posterior&quot;][&quot;l_omega&quot;].mean(dim=[&quot;chain&quot;, &quot;draw&quot;])
+
+corr_mean = l_omega_mean.to_numpy() @ l_omega_mean.to_numpy().T
+
+corr_mean</code></pre>
+<pre><code>array([[1.        , 0.59747654, 0.745766  ],
+       [0.59747654, 0.9966769 , 0.12399177],
+       [0.745766  , 0.12399177, 0.9963025 ]], dtype=float32)</code></pre>
+<p>Which is very close to the correlation matrix from the <code>statsmodels</code> summary results above.</p>
+<p>Finally, we can compare all the <span class="math inline">\(\Phi\)</span> parameters with the estimated posterior distributions.</p>
+<pre class="python"><code># Reference values from statsmodels VAR(2) results
+# Simplified construction using list comprehension and f-strings
+lags = range(2, 0, -1)
+variables = data.columns
+
+ref_vals_phi = {
+    &quot;phi&quot;: [
+        {
+            &quot;lag&quot;: lag,
+            &quot;var_1&quot;: var_1,
+            &quot;var_2&quot;: var_2,
+            &quot;ref_val&quot;: var_results.params[var_1][f&quot;L{lag}.{var_2}&quot;],
+        }
+        for lag in lags
+        for var_1 in variables
+        for var_2 in variables
+    ]
+}
+
+axes = az.plot_posterior(
+    idata,
+    var_names=[&quot;phi&quot;],
+    ref_val=ref_vals_phi,
+    figsize=(18, 20),
+)
+fig = axes[0][0].figure
+fig.suptitle(
+    r&quot;Posterior Distribution of $\Phi$ Parameters&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.02,
+);</code></pre>
+<center>
+<img src="../images/var_numpyro_files/var_numpyro_41_0.png" style="width: 1000px;"/>
+</center>
+<p>All of the estimated parameters are very close to the reference values!</p>
+<pre class="python"><code>fig = var_results.plot_forecast(steps=future, alpha=0.05, plot_stderr=True)
+axes = fig.get_axes()
+
+t_future = idata[&quot;posterior&quot;][&quot;y_future&quot;].coords[&quot;future&quot;]
+
+for var_idx, var in enumerate(data.columns):
+    ax = axes[var_idx]
+    for i, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            t_future,
+            idata[&quot;posterior&quot;][&quot;y_future&quot;].sel(var_1=var),
+            color=&quot;C0&quot;,
+            hdi_prob=hdi_prob,
+            fill_kwargs={&quot;alpha&quot;: 0.2 + 0.2 * i},
+            ax=ax,
+        )
+
+    ax.plot(
+        t_future,
+        idata[&quot;posterior&quot;][&quot;y_future&quot;].sel(var_1=var).mean(dim=[&quot;chain&quot;, &quot;draw&quot;]),
+        color=&quot;C0&quot;,
+    )
+
+fig.suptitle(
+    &quot;Forecast VAR(2) Model\nStatsmodels vs Numpyro&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.06,
+);</code></pre>
+<center>
+<img src="../images/var_numpyro_files/var_numpyro_43_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="impulse-response-functions-irfs" class="section level2">
+<h2>Impulse Response Functions (IRFs)?</h2>
+<p>After fitting a VAR model, we often want to understand <strong>how the system responds to shocks</strong>. This is where Impulse Response Functions (IRFs) come in.</p>
+<div id="the-intuition" class="section level3">
+<h3>The Intuition</h3>
+<p>Imagine you have three economic variables: GDP, consumption, and investment. Now suppose there’s an unexpected shock to GDP (e.g., a sudden policy change). An IRF answers questions like:
+- How does GDP itself respond over time?
+- How does consumption react to this GDP shock?
+- What happens to investment in subsequent periods?</p>
+<p>IRFs trace out the <strong>dynamic response</strong> of each variable to a one-time shock in another variable, holding all else constant.</p>
+</div>
+<div id="from-var-to-ma-representation" class="section level3">
+<h3>From VAR to MA Representation</h3>
+<p>Recall our <span class="math inline">\(\text{VAR}(p)\)</span> model:</p>
+<p><span class="math display">\[Y_t = c + \sum_{j=1}^{p} \Phi_j Y_{t-j} + \varepsilon_t\]</span></p>
+<p>This model tells us how current values depend on past values. But to compute IRFs, we need the <strong>Moving Average (MA) representation</strong>, which expresses current values in terms of current and past shocks:</p>
+<p><span class="math display">\[Y_t = \mu + \sum_{i=0}^{\infty} \Psi_i \varepsilon_{t-i}\]</span></p>
+<p>where:
+- <span class="math inline">\(\Psi_0 = I\)</span> (identity matrix - a shock has immediate unit effect on itself)
+- <span class="math inline">\(\Psi_i\)</span> are the <strong>MA coefficient matrices</strong> that tell us the response at time <span class="math inline">\(i\)</span> to a shock at time 0
+- These <span class="math inline">\(\Psi_i\)</span> matrices <strong>are</strong> the IRFs!</p>
+</div>
+<div id="the-recursive-algorithm" class="section level3">
+<h3>The Recursive Algorithm</h3>
+<p>A key result of the VAR model is that we can compute the <span class="math inline">\(\Psi_i\)</span> matrices recursively from the VAR coefficients <span class="math inline">\(\Phi_j\)</span>:</p>
+<p><span class="math display">\[\Psi_0 = I\]</span></p>
+<p><span class="math display">\[\Psi_i = \sum_{j=1}^{\min(i, p)} \Psi_{i-j} \Phi_j \quad \text{for } i \geq 1\]</span></p>
+<p>This means:
+- At time 0: The response is just the identity (shock = response)
+- At time 1: <span class="math inline">\(\Psi_1 = \Psi_0 \Phi_1 = \Phi_1\)</span> (first-order effects)
+- At time 2: <span class="math inline">\(\Psi_2 = \Psi_1 \Phi_1 + \Psi_0 \Phi_2\)</span> (effects compound!)
+- And so on…</p>
+<p>Each <span class="math inline">\(\Psi_i[k, j]\)</span> tells us: <strong>“What is the response of variable k at time i to a unit shock in variable j at time 0?”</strong></p>
+</div>
+<div id="deriving-the-recursive-formula" class="section level3">
+<h3>Deriving the Recursive Formula</h3>
+<p>The recursive formula for computing IRFs comes from substituting the VAR representation into itself. Here’s the intuition:</p>
+<p>Starting with the VAR(p) model:</p>
+<p><span class="math display">\[Y_t = c + \Phi_1 Y_{t-1} + \Phi_2 Y_{t-2} + \cdots + \Phi_p Y_{t-p} + \varepsilon_t\]</span></p>
+<p>We want to express <span class="math inline">\(Y_t\)</span> purely in terms of shocks <span class="math inline">\(\varepsilon_t, \varepsilon_{t-1}, \varepsilon_{t-2}, \ldots\)</span></p>
+<p><strong>The key insight</strong>: Keep substituting past values with their own VAR equations!</p>
+<ul>
+<li>At <span class="math inline">\(t\)</span>: <span class="math inline">\(Y_t = c + \Phi_1 Y_{t-1} + \Phi_2 Y_{t-2} + \cdots + \varepsilon_t\)</span></li>
+<li>For <span class="math inline">\(Y_{t-1}\)</span>: substitute its VAR equation, which brings in <span class="math inline">\(\varepsilon_{t-1}\)</span></li>
+<li>For <span class="math inline">\(Y_{t-2}\)</span>: substitute its VAR equation, which brings in <span class="math inline">\(\varepsilon_{t-2}\)</span></li>
+<li>Continue infinitely…</li>
+</ul>
+<p>After all substitutions and collecting terms by shock timing, we get:</p>
+<p><span class="math display">\[Y_t = \mu + \varepsilon_t + \Psi_1 \varepsilon_{t-1} + \Psi_2 \varepsilon_{t-2} + \cdots\]</span></p>
+<p>The recursion emerges because:</p>
+<ul>
+<li>The coefficient on <span class="math inline">\(\varepsilon_{t-i}\)</span> (which is <span class="math inline">\(\Psi_i\)</span>) depends on how <span class="math inline">\(Y_{t-1}, Y_{t-2}, \ldots\)</span> responded to that same shock in earlier periods</li>
+<li>Specifically: <span class="math inline">\(\Psi_i\)</span> accumulates contributions from <span class="math inline">\(\Phi_1 \Psi_{i-1}\)</span> (via <span class="math inline">\(Y_{t-1}\)</span>), <span class="math inline">\(\Phi_2 \Psi_{i-2}\)</span> (via <span class="math inline">\(Y_{t-2}\)</span>), etc.</li>
+</ul>
+<p>This gives us the recursive relationship above.</p>
+<p>The <span class="math inline">\(\min(i, p)\)</span> appears because we only have <span class="math inline">\(p\)</span> lags in the VAR - there’s no <span class="math inline">\(\Phi_j\)</span> for <span class="math inline">\(j &gt; p\)</span>.</p>
+</div>
+<div id="implementation-strategy" class="section level3">
+<h3>Implementation Strategy</h3>
+<p>We will implement the impulse response function using the <code>compute_irf</code> function below. This function implements this recursive algorithm efficiently using:</p>
+<ol style="list-style-type: decimal">
+<li><strong>JAX’s <code>lax.scan</code></strong> for fast, functional iteration</li>
+<li><strong>JIT compilation</strong> for maximum speed</li>
+<li><strong>Vectorization</strong> to compute all responses simultaneously across all posterior samples</li>
+</ol>
+<p>Let’s see how it works! 👇</p>
+</div>
+</div>
+<div id="impulse-response-functions" class="section level2">
+<h2>Impulse Response Functions</h2>
+<pre class="python"><code>def compute_irf(
+    phi: Float[Array, &quot;*sample n_lags n_vars n_vars&quot;],
+    n_steps: int,
+    shock_size: float = 1.0,
+) -&gt; Float[Array, &quot;*sample n_steps n_vars n_vars&quot;]:
+    &quot;&quot;&quot;
+    Compute MA(∞) representation of VAR(p) process (non-orthogonalized IRF).
+
+    Implements the recursive algorithm using jax.lax.scan:
+
+    Ψ_0 = I
+
+    Ψ_i = sum_{j=1}^{min(i,p)} Ψ_{i-j} @ Φ_j for i &gt;= 1
+
+    Parameters
+    ----------
+    phi : array of shape (n_lags, n_vars, n_vars)
+        VAR coefficient matrices Φ_j. phi[j-1] corresponds to Φ_j.
+    n_steps : int
+        Number of MA coefficient matrices to compute.
+    shock_size : float, default=1.0
+        Scaling factor for identity matrix at t=0.
+
+    Returns
+    -------
+    psi : array of shape (n_steps, n_vars, n_vars)
+        MA representation (IRF matrices). psis[i, :, j] is the response of all variables
+        at time i to a unit shock to variable j at time 0.
+    &quot;&quot;&quot;
+
+    n_lags, n_vars, _ = phi.shape
+
+    def scan_fn(carry: Array, i: Array) -&gt; tuple[Array, Array]:
+        &quot;&quot;&quot;
+        Compute Ψ_i from previous MA matrices.
+
+        carry: Array of shape (n_lags, n_vars, n_vars) containing the last n_lags MA
+            matrices. carry[0] is Ψ_{i-1}, carry[1] is Ψ_{i-2}, ..., carry[n_lags - 1]
+            is Ψ_{i-n_lags}
+        i: current time step
+        &quot;&quot;&quot;
+        # Compute Ψ_i = sum_{j=1}^{min(i,p)} Ψ_{i-j} @ Φ_j
+        # We need to handle the case where i &lt; n_lags (early steps)
+
+        # carry[0] is Ψ_{i-1}, carry[1] is Ψ_{i-2}, etc.
+        # phi[0] is Φ_1 (lag 1), phi[1] is Φ_2 (lag 2), etc.
+
+        # For each lag j from 1 to min(i, n_lags):
+        #   Ψ_{i-j} is carry[j - 1]
+        #   Φ_j is phi[j - 1]
+
+        # Create a mask to only sum over valid lags (up to min(i, n_lags))
+        valid_lags = jnp.arange(n_lags) &lt; jnp.minimum(i, n_lags)
+
+        # Compute contributions: Ψ_{i-j} @ Φ_j for each j
+        # carry[j] @ phi[j] for j in range(n_lags)
+        contributions = jnp.einsum(&quot;jkl,jlm-&gt;jkm&quot;, carry, phi)
+
+        # Mask invalid contributions and sum
+        psi_i = jnp.sum(contributions * valid_lags[:, None, None], axis=0)
+
+        # Update carry: shift everything by 1 and add new Ψ_i at the front
+        new_carry = jnp.concatenate([psi_i[None, :, :], carry[:-1]], axis=0)
+
+        return new_carry, psi_i
+
+    # Initialize carry with zeros and set Ψ_0 = I at the front
+    psi_0 = shock_size * jnp.eye(n_vars)
+    init_carry = jnp.concatenate(
+        [psi_0[None, :, :], jnp.zeros((n_lags - 1, n_vars, n_vars))], axis=0
+    )
+
+    # Run scan for steps 1 to n_steps - 1
+    if n_steps == 1:
+        return psi_0[None, :, :]
+
+    time_steps = jnp.arange(1, n_steps)
+    _, psis_rest = lax.scan(scan_fn, init_carry, time_steps)
+
+    # Concatenate Ψ_0 with the rest
+    return jnp.concatenate([psi_0[None, :, :], psis_rest], axis=0)
+
+
+compute_irf_jit = jit(
+    compute_irf,
+    static_argnames=[&quot;n_steps&quot;, &quot;shock_size&quot;],  # For this example is enough
+)</code></pre>
+<p>Let’s verify that this implementation matches the <code>statsmodels</code> results.</p>
+<pre class="python"><code>n_irf_steps = 10
+
+phi_sm = jnp.array(var_results.coefs)
+
+# Get statsmodels IRF (ma_rep)
+irf_sm = var_results.ma_rep(maxn=n_irf_steps - 1)
+
+# Compute IRF with scan-based function
+irf_jax_scan = compute_irf_jit(phi_sm, n_steps=n_irf_steps)
+
+# Check results match
+assert jnp.allclose(irf_jax_scan, irf_sm)</code></pre>
+<p>Great! We have a working implementation of the impulse response function! We can now compute the IRFs for all posterior samples. To do this we need to vectorize the <code>compute_irf_jit</code> function.</p>
+<pre class="python"><code># Get all posterior samples (flatten chain and draw dimensions)
+phi_samples = jnp.array(idata[&quot;posterior&quot;][&quot;phi&quot;].stack(sample=[&quot;chain&quot;, &quot;draw&quot;]))  # noqa PD013
+# Transpose to get samples as first dimension
+phi_samples = jnp.transpose(
+    phi_samples, (3, 0, 1, 2)
+)  # Shape: (n_samples, n_lags, n_vars, n_vars)
+
+
+# Create a vmapped version that computes IRF for each posterior sample
+# vmap over the first axis (samples)
+compute_irf_vmap = vmap(compute_irf_jit, in_axes=(0, None, None))
+
+# Compute IRFs for all posterior samples
+irf_samples = compute_irf_vmap(phi_samples, n_irf_steps, 1.0)
+
+# Create an xarray DataArray to store the IRFs
+irf_samples_xr = xr.DataArray(
+    data=jnp.expand_dims(irf_samples, axis=0),
+    dims=(&quot;chain&quot;, &quot;draw&quot;, &quot;step&quot;, &quot;var_1&quot;, &quot;var_2&quot;),
+    coords={
+        &quot;chain&quot;: np.arange(1),
+        &quot;draw&quot;: np.arange(irf_samples.shape[0]),
+        &quot;step&quot;: np.arange(n_irf_steps),
+        &quot;var_1&quot;: data.columns,
+        &quot;var_2&quot;: data.columns,
+    },
+)</code></pre>
+<p>We can now plot the IRFs generated from the posterior samples and compare them against the IRFs from the <code>statsmodels</code> model.</p>
+<pre class="python"><code>var_irf = var_results.irf(n_irf_steps)
+
+fig, axes = plt.subplots(
+    nrows=len(data.columns),
+    ncols=len(data.columns),
+    figsize=(15, 12),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+for i, var_1 in enumerate(data.columns):
+    for j, var_2 in enumerate(data.columns):
+        ax = axes[i, j]
+        for k, hdi_prob in enumerate([0.94, 0.5]):
+            az.plot_hdi(
+                range(n_irf_steps),
+                irf_samples_xr.sel(var_1=var_1, var_2=var_2),
+                hdi_prob=hdi_prob,
+                color=&quot;C0&quot;,
+                smooth=False,
+                fill_kwargs={
+                    &quot;alpha&quot;: 0.2 + 0.3 * k,
+                    &quot;label&quot;: f&quot;{hdi_prob: .0%} HDI&quot;,
+                },
+                ax=ax,
+            )
+        ax.plot(
+            range(n_irf_steps),
+            irf_samples_xr.sel(var_1=var_1, var_2=var_2)
+            .mean(dim=(&quot;chain&quot;, &quot;draw&quot;))
+            .to_numpy()
+            .flatten(),
+            color=&quot;C0&quot;,
+            label=&quot;Posterior Mean&quot;,
+        )
+        ax.plot(var_irf.irfs[:, i, j], c=&quot;C1&quot;, label=&quot;statsmodels&quot;)
+        ax.axhline(0, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+        ax.legend()
+
+fig.suptitle(&quot;Impulse Response Functions&quot;, fontsize=21, fontweight=&quot;bold&quot;, y=1.04);</code></pre>
+<center>
+<img src="../images/var_numpyro_files/var_numpyro_52_0.png" style="width: 1000px;"/>
+</center>
+<p>We get the same results as the <code>statsmodels</code> model! 🎉</p>
+<p>Observe that <code>statsmodels</code> generates similar plots (with similar uncertainty bounds).</p>
+<pre class="python"><code>fig = var_irf.plot(orth=False)</code></pre>
+<center>
+<img src="../images/var_numpyro_files/var_numpyro_55_1.png" style="width: 900px;"/>
+</center>
+<div id="orthogonalized-vs-non-orthogonalized-irfs" class="section level3">
+<h3>Orthogonalized vs Non-Orthogonalized IRFs</h3>
+<p>An important distinction in VAR analysis is between <strong>orthogonalized</strong> and <strong>non-orthogonalized</strong> impulse response functions. Let’s understand what this means and why it matters.</p>
+<div id="the-problem-contemporaneous-correlation" class="section level4">
+<h4>The Problem: Contemporaneous Correlation</h4>
+<p>In our VAR model, the error terms <span class="math inline">\(\varepsilon_t\)</span> are typically <strong>correlated</strong> across variables. For example:</p>
+<ul>
+<li>A shock to GDP and a shock to consumption might happen simultaneously</li>
+<li>The error covariance matrix <span class="math inline">\(\Sigma = E[\varepsilon_t \varepsilon_t^{T}]\)</span> is usually <strong>not diagonal</strong></li>
+</ul>
+<p>This creates a problem for interpretation: when we “shock” one variable, we’re implicitly shocking correlated variables too!</p>
+</div>
+<div id="non-orthogonalized-irfs-what-we-computed" class="section level4">
+<h4>Non-Orthogonalized IRFs (What We Computed)</h4>
+<p>Our <code>compute_irf</code> function computes <strong>non-orthogonalized IRFs</strong> using the formula:</p>
+<p><span class="math display">\[\Psi_i = \sum_{j=1}^{\min(i,p)} \Psi_{i-j} \Phi_j\]</span></p>
+<p><strong>Interpretation:</strong> These IRFs answer: <em>“What happens if variable j experiences a one-unit shock, given the historical correlation structure of shocks?”</em></p>
+<p><strong>Advantages:</strong></p>
+<ul>
+<li>Simple to compute (just the VAR coefficients)</li>
+<li>No additional identifying assumptions needed</li>
+<li>Useful for forecasting and variance decomposition</li>
+</ul>
+<p><strong>Disadvantages:</strong></p>
+<ul>
+<li>Hard to interpret as “pure” shocks due to contemporaneous correlation</li>
+<li>IRFs depend on variable ordering (in some contexts)</li>
+</ul>
+</div>
+<div id="orthogonalized-irfs-cholesky-decomposition" class="section level4">
+<h4>Orthogonalized IRFs (Cholesky Decomposition)</h4>
+<p>To get <strong>orthogonalized IRFs</strong>, we use the Cholesky decomposition of the error covariance matrix <span class="math inline">\(\Sigma = LL^{T}\)</span>, where <span class="math inline">\(L\)</span> is lower triangular. Then:</p>
+<p><span class="math display">\[\Psi_i^{\text{orth}} = \Psi_i \cdot L\]</span></p>
+<p>In statsmodels, this is obtained with <code>irf(orth=True)</code> (the default).</p>
+<p><strong>Interpretation:</strong> These IRFs answer: <em>“What happens if we apply a one-standard-deviation orthogonal shock to variable j, holding other orthogonal shocks constant?”</em></p>
+<p><strong>Advantages:</strong></p>
+<ul>
+<li>Shocks are uncorrelated by construction</li>
+<li>Easier to interpret as “structural” shocks</li>
+<li>Standard in macroeconomics literature</li>
+</ul>
+<p><strong>Disadvantages:</strong></p>
+<ul>
+<li>Depends on variable ordering (Cholesky decomposition is not unique)</li>
+<li>Requires identifying assumptions (ordering = causal structure)</li>
+<li>The first variable is assumed to affect all others contemporaneously, but not vice versa</li>
+</ul>
+</div>
+</div>
+</div>
+<div id="summary" class="section level2">
+<h2>Summary</h2>
+<p>In this notebook, we successfully implemented a Bayesian Vector Autoregressive (VAR) model using NumPyro and validated it against the established <code>statsmodels</code> implementation. Our key achievements include:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>Model Specification &amp; Inference</strong>: We built a flexible <span class="math inline">\(VAR(p)\)</span> model in NumPyro using <code>jax.lax.scan</code> for efficient time series dynamics, leveraging proper Bayesian priors (Normal for coefficients, LKJ for correlation structure) and MCMC sampling via NUTS. This can serve as a component to be combined with more complex models. For example, adding covariates and additional likelihoods.</p></li>
+<li><p><strong>Forecasting</strong>: The model generates multi-step-ahead forecasts with full posterior uncertainty quantification. Our NumPyro forecasts closely match the <code>statsmodels</code> point predictions. We also show how to generate credible intervals for the forecasts.</p></li>
+<li><p><strong>Impulse Response Functions</strong>: We implemented the recursive <span class="math inline">\(MA(\infty)\)</span> representation algorithm to compute IRFs using JAX’s functional programming tools (<code>lax.scan</code>, <code>vmap</code>, <code>jit</code>). The resulting IRFs are identical to <code>statsmodels</code> outputs, validating our implementation.</p></li>
+</ol>
+<p><strong>Key Advantages of the NumPyro Approach:</strong>
+- Full Bayesian inference with uncertainty quantification for all parameters and predictions
+- Scalable computation through JAX’s JIT compilation and vectorization
+- Flexible specification allowing easy extensions (e.g., hierarchical priors, time-varying coefficients)</p>
+<p>This implementation provides a solid foundation for more advanced Bayesian time series modeling in economic and financial applications among other domains.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
