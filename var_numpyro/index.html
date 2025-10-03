@@ -293,7 +293,6 @@ y_lags</code></pre>
     )
 
     # --- Transition Function ---
-
     def transition_fn(carry: Array, _, name: str) -&gt; tuple[Array, Array]:
         # carry: (n_lags, n_vars)
         y_lags = carry
@@ -322,7 +321,8 @@ y_lags</code></pre>
 
     with condition(data={&quot;y_pred&quot;: y[n_lags:]}):
         scan(inference_fn, init=init_carry, xs=time_indices)
-
+    
+    # Generate forecast
     if future &gt; 0:
         prediction_fn = partial(transition_fn, name=&quot;y_future&quot;)
         scan(prediction_fn, init=y[-n_lags:], xs=jnp.arange(future))</code></pre>
@@ -692,7 +692,7 @@ fig.suptitle(
 </center>
 </div>
 <div id="impulse-response-functions-irfs" class="section level2">
-<h2>Impulse Response Functions (IRFs)?</h2>
+<h2>Impulse Response Functions (IRFs)</h2>
 <p>After fitting a VAR model, we often want to understand <strong>how the system responds to shocks</strong>. This is where Impulse Response Functions (IRFs) come in.</p>
 <div id="the-intuition" class="section level3">
 <h3>The Intuition</h3>
