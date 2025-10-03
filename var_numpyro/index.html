@@ -1007,10 +1007,12 @@ fig.suptitle(&quot;Impulse Response Functions&quot;, fontsize=21, fontweight=&qu
 <li><p><strong>Forecasting</strong>: The model generates multi-step-ahead forecasts with full posterior uncertainty quantification. Our NumPyro forecasts closely match the <code>statsmodels</code> point predictions. We also show how to generate credible intervals for the forecasts.</p></li>
 <li><p><strong>Impulse Response Functions</strong>: We implemented the recursive <span class="math inline">\(\text{MA}(\infty)\)</span> representation algorithm to compute IRFs using JAX’s functional programming tools (<code>lax.scan</code>, <code>vmap</code>, <code>jit</code>). The resulting IRFs are identical to <code>statsmodels</code> outputs, validating our implementation.</p></li>
 </ol>
-<p><strong>Key Advantages of the NumPyro Approach:</strong>
-- Full Bayesian inference with uncertainty quantification for all parameters and predictions
-- Scalable computation through JAX’s JIT compilation and vectorization
-- Flexible specification allowing easy extensions (e.g., hierarchical priors, time-varying coefficients)</p>
+<p><strong>Key Advantages of the NumPyro Approach:</strong></p>
+<ul>
+<li>Full Bayesian inference with uncertainty quantification for all parameters and predictions</li>
+<li>Scalable computation through JAX’s JIT compilation and vectorization</li>
+<li>Flexible specification allowing easy extensions (e.g., hierarchical priors, time-varying coefficients)</li>
+</ul>
 <p>This implementation provides a solid foundation for more advanced Bayesian time series modeling in economic and financial applications among other domains.</p>
 </div>
 
