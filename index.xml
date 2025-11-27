@@ -6,7 +6,27 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 03 Oct 2025 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 28 Nov 2025 00:00:00 +0000</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Causal Inference with Multilevel Models: The Electric Company Example</title>
+      <link>/ci_multilevel/</link>
+      <pubDate>Fri, 28 Nov 2025 00:00:00 +0000</pubDate>
+      
+      <guid>/ci_multilevel/</guid>
+      <description>Estimating causal effects from clustered or grouped data requires careful attention to the hierarchical structure of observations. When units are nested within groups such as students within classrooms, or patients within hospitals—ignoring this structure can lead to incorrect standard errors, inefficient estimates, and invalid causal inferences. Multilevel models provide a principled framework for handling such data while leveraging the advantages of partial pooling across groups.
+This notebook reproduces and extends the analysis from Chapter 23 of Gelman and Hill’s “Data Analysis Using Regression and Multilevel/Hierarchical Models”.</description>
+    </item>
+    
+    <item>
+      <title>Introduction to Causal Inference with PPLs</title>
+      <link>/intro_causal_inference_ppl_pymc/</link>
+      <pubDate>Thu, 27 Nov 2025 00:00:00 +0000</pubDate>
+      
+      <guid>/intro_causal_inference_ppl_pymc/</guid>
+      <description>Causal inference asks a deceptively simple question: “What would have happened if things were different?” Whether we’re evaluating a job training program, testing a new medical treatment, or analyzing the impact of a policy change, we want to understand the causal effect of an intervention not just observe correlations in the data.
+Traditional statistical methods often struggle with causal questions because they conflate correlation with causation. When confounders variables that affect both treatment assignment and outcomes are present, naive comparisons can lead us astray.</description>
+    </item>
+    
     <item>
       <title>Bayesian Vector Autoregressive Models in NumPyro</title>
       <link>/var_numpyro/</link>
@@ -1023,7 +1043,7 @@ When the number of features \(p\) is large, there tends to be a deterioration in
       
       <guid>/about/</guid>
       <description>Dr. Juan Camilo Orduz Mathematician &amp;amp; Data Scientist
-  @juanitorduz    I am a mathematician (PhD from Humboldt Universität zu Berlin) and Principal Data Scientist (Delivery Hero and PyMC Labs). I am also involved in open source projects like:
+  @juanitorduz    I am a mathematician (PhD from Humboldt Universität zu Berlin) and Principal Data Scientist at PyMC Labs). I am also involved in open source projects like:
  PyMC PyMC-Marketing CausalPy NumPyro PyFixest  On this website you can find more information about me and some of my projects.
  You can find the code associated with the blog posts on this GitHub repository.</description>
     </item>
@@ -1034,9 +1054,8 @@ When the number of features \(p\) is large, there tends to be a deterioration in
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
       <guid>/cv/</guid>
-      <description>Work Experience  01/06/2025-Present Principal Data Scientist (AdTech and Statistical Modeling), Delivery Hero, Berlin, Germany.
- 01/04/2024-Present Principal Data Scientist / Open Source Developer, PyMC Labs, Remote.
- Working on open-source software packages and helping clients use them and get the best of them to generate business value. Advising on data science projects in the area of marketing analytics and experimentation. Coaching and technical workshops on Bayesian statistics and applications.</description>
+      <description>Work Experience  01/04/2024-Present Principal Data Scientist, PyMC Labs, Remote.
+ Project management for our AI solutions: integration with open source and product development for clients to boost business value. Working on open-source software packages and helping clients use them and get the best of them to generate business value. Advising on data science projects in the area of marketing analytics, causal inference and experimentation. Coaching and technical workshops on Bayesian statistics and applications.</description>
     </item>
     
     <item>

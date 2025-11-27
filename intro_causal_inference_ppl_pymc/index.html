@@ -1,0 +1,2131 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Introduction to Causal Inference with PPLs - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Introduction to Causal Inference with PPLs - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">20 min read</span>
+    
+
+    <h1 class="article-title">Introduction to Causal Inference with PPLs</h1>
+
+    
+    <span class="article-date">2025-11-27</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>Causal inference asks a deceptively simple question: <em>“What would have happened if things were
+different?”</em> Whether we’re evaluating a job training program, testing a new medical treatment,
+or analyzing the impact of a policy change, we want to understand the causal effect of an
+intervention not just observe correlations in the data.</p>
+<p>Traditional statistical methods often struggle with causal questions because they conflate
+correlation with causation. When confounders variables that affect both treatment assignment
+and outcomes are present, naive comparisons can lead us astray. This notebook demonstrates how
+<strong>probabilistic programming languages (PPLs)</strong> provide a powerful framework for causal inference
+that makes confounding explicit, quantifies uncertainty properly, and enables us to answer
+counterfactual questions directly.</p>
+<div id="why-probabilistic-programming-languages" class="section level2">
+<h2>Why Probabilistic Programming Languages?</h2>
+<p><strong>Probabilistic Programming Languages (PPLs)</strong> like NumPyro, PyMC, and Stan offer several
+compelling advantages for causal inference:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>Express causal models naturally</strong>: We can explicitly model both the treatment assignment
+mechanism and the outcome process, making confounding relationships transparent in our code.
+This aligns perfectly with Pearl’s structural causal models and the backdoor criterion.</p></li>
+<li><p><strong>Quantify uncertainty rigorously</strong>: Bayesian inference gives us full posterior distributions,
+not just point estimates. We get credible intervals that properly account for all sources of
+uncertainty, from parameter estimation to model specification.</p></li>
+<li><p><strong>Implement the <code>do</code> operator directly</strong>: PPLs let us implement Pearl’s do-calculus naturally,
+allowing us to compute counterfactuals (“what if everyone received treatment?”) by simply
+conditioning on interventions rather than observations.</p></li>
+<li><p><strong>Flexible modeling without sacrificing interpretability</strong>: We can use non-linear models,
+hierarchical structures, and other sophisticated approaches while maintaining clear causal
+interpretability. The same framework works for simple linear models and complex hierarchical
+designs.</p></li>
+</ol>
+</div>
+<div id="how-can-notebook-help-you" class="section level2">
+<h2>How can notebook help you?</h2>
+<p>Through hands-on examples, this notebook will guide you through the process of building causal models using PPLs. Concretely:</p>
+<ul>
+<li><strong>Build causal models</strong> that explicitly account for confounders using both linear and
+generalized linear models</li>
+<li><strong>Estimate the Average Treatment Effect (ATE)</strong> using Bayesian inference, complete with
+uncertainty quantification</li>
+<li><strong>Compare naive vs. adjusted estimates</strong> to see firsthand how confounding can bias results</li>
+<li><strong>Use the <code>do</code> operator</strong> to compute counterfactual outcomes and estimate causal effects</li>
+<li><strong>Validate models rigorously</strong> using prior predictive checks, convergence diagnostics, and
+posterior predictive checks</li>
+<li><strong>Compare model specifications</strong> to understand when more sophisticated models (like GLMs) improve
+upon simpler approaches</li>
+</ul>
+</div>
+<div id="the-lalonde-dataset" class="section level2">
+<h2>The Lalonde Dataset</h2>
+<p>We’ll work with the famous <a href="https://rugg2.github.io/Lalonde%20dataset%20-%20Causal%20Inference.html">Lalonde dataset</a>
+which studies the effect of a job training program on earnings. This dataset is a classic in causal inference because it vividly demonstrates how
+naive comparisons can be misleading when confounders are present. The treated and control groups
+differ systematically in pre-treatment characteristics (age, education, prior earnings, etc.),
+making a simple comparison of means unreliable. By properly adjusting for these confounders, we
+can uncover the true causal effect of the training program.</p>
+<p><strong>Reference</strong>: Robert Lalonde, “Evaluating the Econometric Evaluations of Training Programs”, American Economic Review, Vol. 76, pp. 604-620</p>
+</div>
+<div id="approach" class="section level2">
+<h2>Approach</h2>
+<p>This notebook reproduces and extends the approach from <a href="https://basisresearch.github.io/chirho/backdoor.html">ChiRho’s backdoor adjustment tutorial</a>,
+implementing the same causal modeling strategy using <a href="https://docs.pymc.io/en/stable/">PyMC</a> (this example can be easily implemented in NumPyro, see <a href="https://github.com/juanitorduz/website_projects/blob/master/Python/intro_causal_inference_ppl_numpyro.ipynb">here</a>).
+We’ll build models step-by-step, validate them thoroughly, and compare different estimation
+approaches to build intuition for causal inference with probabilistic programming.</p>
+<p>This approach is very similar to the one presented in the great blog post <a href="https://solomonkurz.netlify.app/blog/2023-05-14-causal-inference-with-gamma-regression-or-the-problem-is-with-the-link-function-not-the-likelihood/">Causal inference with gamma regression or: The problem is with the link function,
+not the likelihood (Part 6 of the GLM and causal inference series.)</a>. Tha main difference, is that we rely on PyMC and the <code>do</code> operator to compute counterfactuals.</p>
+<p><strong>Remark:</strong> <a href="https://solomonkurz.netlify.app/">Solomon Kurz</a>’s blog is a fantastic resource to learn about Bayesian methods and causal inference(he mainly uses Stan and <code>brms</code>).</p>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import graphviz as gr
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+from pymc.model.transform.conditioning import do, observe
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
+
+seed: int = 42
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-and-preprocess-data" class="section level2">
+<h2>Read and Preprocess Data</h2>
+<p>We load the data and preprocess it following the same approach as the original tutorial,
+preparing it for use in our causal models.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/rugg2/rugg2.github.io/master/lalonde.csv&quot;
+data = pd.read_csv(data_path)
+
+
+# Convert the data to the right format
+data[&quot;re75&quot;] = data[&quot;re75&quot;] / 1_000
+# Add a small constant to avoid log(0) in the model
+data[&quot;re78&quot;] = data[&quot;re78&quot;] / 1_000 + 1e-6
+data = data.rename(columns={&quot;educ&quot;: &quot;education&quot;, &quot;hispan&quot;: &quot;hispanic&quot;})
+
+# Define the covariates
+covariates_names = [
+    &quot;education&quot;,
+    &quot;age&quot;,
+    &quot;re75&quot;,
+    &quot;black&quot;,
+    &quot;hispanic&quot;,
+    &quot;married&quot;,
+    &quot;nodegree&quot;,
+]
+
+# Extract treatment, covariates and earnings from the dataframe
+df = data[[&quot;treat&quot;, *covariates_names, &quot;re78&quot;]]
+
+n_obs = df.shape[0]
+
+df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 18px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 18px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 18px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+treat
+</th>
+<th>
+education
+</th>
+<th>
+age
+</th>
+<th>
+re75
+</th>
+<th>
+black
+</th>
+<th>
+hispanic
+</th>
+<th>
+married
+</th>
+<th>
+nodegree
+</th>
+<th>
+re78
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+1
+</td>
+<td>
+11
+</td>
+<td>
+37
+</td>
+<td>
+0.0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+9.930047
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+1
+</td>
+<td>
+9
+</td>
+<td>
+22
+</td>
+<td>
+0.0
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+3.595895
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+1
+</td>
+<td>
+12
+</td>
+<td>
+30
+</td>
+<td>
+0.0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+24.909451
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+1
+</td>
+<td>
+11
+</td>
+<td>
+27
+</td>
+<td>
+0.0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+7.506147
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+1
+</td>
+<td>
+8
+</td>
+<td>
+33
+</td>
+<td>
+0.0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+0.289791
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<div id="understanding-the-data-structure" class="section level3">
+<h3>Understanding the Data Structure</h3>
+<p>The following are the main feature groups in the dataset:</p>
+<ul>
+<li><strong>Treatment variable</strong> (<code>treat</code>): The intervention we’re studying (job training program)</li>
+<li><strong>Outcome variable</strong> (<code>re78</code>): What we want to measure the effect on (earnings in 1978)</li>
+<li><strong>Covariates</strong>: Pre-treatment variables that might confound the relationship</li>
+</ul>
+</div>
+</div>
+<div id="causal-dag" class="section level2">
+<h2>Causal DAG</h2>
+<p>Before building our models, we need to establish a clear understanding of the causal relationships
+in the data. Following the ChiRho tutorial:</p>
+<blockquote>
+<p>Specifically, we have written our <code>causal_model</code> method below such that covariates influence <code>training</code> and <code>earnings</code>, and <code>training</code> influences <code>earnings</code>. To align this model with the specific parametric assumptions used in our case study [LaLonde, 1986], we have chosen to use a logistic function to describe the mechanism for generating training random variables, and a linear Gaussian model for generating earnings.</p>
+</blockquote>
+<p>Hence, we have the following structure:</p>
+<pre class="python"><code>dag = gr.Digraph()
+
+dag.node(&quot;treat&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+dag.node(&quot;re78&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;)
+dag.node(&quot;covariates&quot;)
+
+dag.edge(&quot;treat&quot;, &quot;re78&quot;)
+dag.edge(&quot;covariates&quot;, &quot;treat&quot;)
+dag.edge(&quot;covariates&quot;, &quot;re78&quot;)
+
+dag</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_7_0.svg" style="width: 200px;"/>
+</center>
+<p>Here’s the concrete structure with all covariates shown:</p>
+<pre class="python"><code>dag = gr.Digraph()
+
+dag.node(&quot;treat&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+dag.node(&quot;re78&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;)
+
+dag.edge(&quot;treat&quot;, &quot;re78&quot;)
+
+for covariate in covariates_names:
+    dag.edge(covariate, &quot;treat&quot;)
+    dag.edge(covariate, &quot;re78&quot;)
+
+dag</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_9_0.svg" style="width: 900px;"/>
+</center>
+</div>
+<div id="exploratory-data-analysis" class="section level2">
+<h2>Exploratory Data Analysis</h2>
+<pre class="python"><code>g = sns.pairplot(
+    df[[&quot;treat&quot;, &quot;education&quot;, &quot;age&quot;, &quot;re75&quot;, &quot;re78&quot;]], hue=&quot;treat&quot;, diag_kind=&quot;hist&quot;
+)
+g.figure.suptitle(
+    &quot;Numerical Features Pairplot&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.03
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_11_1.png" style="width: 800px;"/>
+</center>
+<pre class="python"><code># Evaluate what our answer would be if we just naively predicted the average earnings
+# of treated and untreated individuals, without accounting for the
+# potential confounders.
+treated_individuals = df[df[&quot;treat&quot;] == 1]
+untreated_individuals = df[df[&quot;treat&quot;] == 0]
+
+naive_prediction = (
+    treated_individuals[&quot;re78&quot;].mean() - untreated_individuals[&quot;re78&quot;].mean()
+)
+naive_prediction</code></pre>
+<pre><code>np.float64(-0.6350262120374222)</code></pre>
+<div id="the-confounding-problem" class="section level3">
+<h3>The Confounding Problem</h3>
+<p>The naive estimate simply compares average earnings between treated and untreated groups.
+However, if these groups differ systematically in pre-treatment characteristics (confounders),
+the naive estimate will be biased. For example, if the training program targeted individuals
+with lower prior earnings, we’d expect them to have lower earnings regardless of treatment.</p>
+<p>This is why we need to adjust for confounders—variables that affect both treatment assignment
+and the outcome. Our model will account for these by conditioning on covariates.</p>
+<pre class="python"><code>df_agg = df.groupby(&quot;treat&quot;).agg(
+    count_edu=(&quot;education&quot;, &quot;count&quot;),
+    count_age=(&quot;age&quot;, &quot;count&quot;),
+    count_black=(&quot;black&quot;, &quot;count&quot;),
+    count_hisp=(&quot;hispanic&quot;, &quot;count&quot;),
+    count_marr=(&quot;married&quot;, &quot;count&quot;),
+    count_nodeg=(&quot;nodegree&quot;, &quot;count&quot;),
+    mean_age=(&quot;age&quot;, &quot;mean&quot;),
+    mean_re75=(&quot;re75&quot;, &quot;mean&quot;),
+)
+
+df_agg.style.background_gradient(cmap=&quot;viridis&quot;, axis=0)</code></pre>
+<center>
+<style type="text/css">
+#T_321f3_row0_col0, #T_321f3_row0_col1, #T_321f3_row0_col2, #T_321f3_row0_col3, #T_321f3_row0_col4, #T_321f3_row0_col5, #T_321f3_row0_col6, #T_321f3_row0_col7 {
+  background-color: #fde725;
+  color: #000000;
+  
+}
+#T_321f3_row1_col0, #T_321f3_row1_col1, #T_321f3_row1_col2, #T_321f3_row1_col3, #T_321f3_row1_col4, #T_321f3_row1_col5, #T_321f3_row1_col6, #T_321f3_row1_col7 {
+  background-color: #440154;
+  color: #f1f1f1;
+}
+</style>
+<table id="T_321f3">
+<thead>
+<tr>
+<th class="blank level0">
+ 
+</th>
+<th id="T_321f3_level0_col0" class="col_heading level0 col0">
+count_edu
+</th>
+<th id="T_321f3_level0_col1" class="col_heading level0 col1">
+count_age
+</th>
+<th id="T_321f3_level0_col2" class="col_heading level0 col2">
+count_black
+</th>
+<th id="T_321f3_level0_col3" class="col_heading level0 col3">
+count_hisp
+</th>
+<th id="T_321f3_level0_col4" class="col_heading level0 col4">
+count_marr
+</th>
+<th id="T_321f3_level0_col5" class="col_heading level0 col5">
+count_nodeg
+</th>
+<th id="T_321f3_level0_col6" class="col_heading level0 col6">
+mean_age
+</th>
+<th id="T_321f3_level0_col7" class="col_heading level0 col7">
+mean_re75
+</th>
+</tr>
+<tr>
+<th class="index_name level0">
+treat
+</th>
+<th class="blank col0">
+ 
+</th>
+<th class="blank col1">
+ 
+</th>
+<th class="blank col2">
+ 
+</th>
+<th class="blank col3">
+ 
+</th>
+<th class="blank col4">
+ 
+</th>
+<th class="blank col5">
+ 
+</th>
+<th class="blank col6">
+ 
+</th>
+<th class="blank col7">
+ 
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th id="T_321f3_level0_row0" class="row_heading level0 row0">
+0
+</th>
+<td id="T_321f3_row0_col0" class="data row0 col0">
+429
+</td>
+<td id="T_321f3_row0_col1" class="data row0 col1">
+429
+</td>
+<td id="T_321f3_row0_col2" class="data row0 col2">
+429
+</td>
+<td id="T_321f3_row0_col3" class="data row0 col3">
+429
+</td>
+<td id="T_321f3_row0_col4" class="data row0 col4">
+429
+</td>
+<td id="T_321f3_row0_col5" class="data row0 col5">
+429
+</td>
+<td id="T_321f3_row0_col6" class="data row0 col6">
+28.030
+</td>
+<td id="T_321f3_row0_col7" class="data row0 col7">
+2.466
+</td>
+</tr>
+<tr>
+<th id="T_321f3_level0_row1" class="row_heading level0 row1">
+1
+</th>
+<td id="T_321f3_row1_col0" class="data row1 col0">
+185
+</td>
+<td id="T_321f3_row1_col1" class="data row1 col1">
+185
+</td>
+<td id="T_321f3_row1_col2" class="data row1 col2">
+185
+</td>
+<td id="T_321f3_row1_col3" class="data row1 col3">
+185
+</td>
+<td id="T_321f3_row1_col4" class="data row1 col4">
+185
+</td>
+<td id="T_321f3_row1_col5" class="data row1 col5">
+185
+</td>
+<td id="T_321f3_row1_col6" class="data row1 col6">
+25.816
+</td>
+<td id="T_321f3_row1_col7" class="data row1 col7">
+1.532
+</td>
+</tr>
+</tbody>
+</table>
+</center>
+</div>
+</div>
+<div id="scale-numerical-features" class="section level2">
+<h2>Scale Numerical Features</h2>
+<p>In general, it is recommended to scale numerical features to help MCMC sampling converge faster and to think about priors in terms of standard deviations. See <a href="https://xcelab.net/rm/">Statistical Rethinking</a> by Richard McElreath for more details.</p>
+<pre class="python"><code>num_features = [&quot;education&quot;, &quot;age&quot;, &quot;re75&quot;]
+
+preprocessor = ColumnTransformer(
+    [
+        (&quot;num&quot;, StandardScaler(with_mean=False), num_features),
+    ],
+    remainder=&quot;passthrough&quot;,
+).set_output(transform=&quot;pandas&quot;)
+
+
+df_transformed = preprocessor.fit_transform(df)
+df_transformed.columns = [col.split(&quot;__&quot;)[-1] for col in df_transformed.columns]</code></pre>
+<pre class="python"><code># Convert to arrays
+covariates_obs = df_transformed[covariates_names]
+training_obs = df_transformed[&quot;treat&quot;]
+earnings_obs = df_transformed[&quot;re78&quot;]</code></pre>
+</div>
+<div id="specify-model" class="section level2">
+<h2>Specify Model</h2>
+<p>Now we proceed to specify the model in PyMC.</p>
+<pre class="python"><code>coords = {
+    &quot;covariate&quot;: covariates_names,
+    &quot;obs_idx&quot;: df.index,
+}
+
+with pm.Model(coords=coords) as earnings_model:
+    # TREATMENT MODEL
+    # --- Data Containers ---
+    covariates_data = pm.Data(
+        &quot;covariates_data&quot;, covariates_obs, dims=(&quot;obs_idx&quot;, &quot;covariate&quot;)
+    )
+    # --- Priors ---
+    intercept_treat = pm.Normal(&quot;intercept_treat&quot;, mu=0, sigma=10)
+    beta_covariate_treat = pm.Normal(
+        &quot;beta_covariate_treat&quot;, mu=0, sigma=1, dims=(&quot;covariate&quot;,)
+    )
+    # --- Parametrization ---
+    logit_p_treat = intercept_treat + pm.math.dot(covariates_data, beta_covariate_treat)
+    p_treat = pm.math.sigmoid(logit_p_treat)
+    # --- Likelihood ---
+    treat = pm.Bernoulli(&quot;treat&quot;, p=p_treat, dims=(&quot;obs_idx&quot;,))
+
+    # EARNINGS MODEL
+    # --- Priors ---
+    intercept_earnings = pm.Normal(&quot;intercept_earnings&quot;, mu=0, sigma=10)
+    beta_treat_earnings = pm.Normal(&quot;beta_treat_earnings&quot;, mu=0, sigma=1)
+    beta_covariate_earnings = pm.Normal(
+        &quot;beta_covariate_earnings&quot;, mu=0, sigma=1, dims=(&quot;covariate&quot;,)
+    )
+    sigma_earnings = pm.HalfNormal(&quot;sigma_earnings&quot;, sigma=10.0)
+
+    mu_earnings = pm.Deterministic(
+        &quot;mu_earnings&quot;,
+        intercept_earnings
+        + beta_treat_earnings * treat
+        + pm.math.dot(covariates_data, beta_covariate_earnings),
+        dims=(&quot;obs_idx&quot;,),
+    )
+    # --- Likelihood ---
+    pm.Normal(
+        &quot;earnings&quot;,
+        mu=mu_earnings,
+        sigma=sigma_earnings,
+        dims=(&quot;obs_idx&quot;,),
+    )
+
+pm.model_to_graphviz(earnings_model)</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_19_0.svg" style="width: 900px;"/>
+</center>
+</div>
+<div id="prior-predictive-checks" class="section level2">
+<h2>Prior Predictive Checks</h2>
+<p>Before we fit the model, we can check samples from the prior distribution and compare them with the observed data.</p>
+<pre class="python"><code>with earnings_model:
+    idata = pm.sample_prior_predictive(samples=2_000, random_seed=rng)</code></pre>
+<pre><code>Sampling: [beta_covariate_earnings, beta_covariate_treat, beta_treat_earnings, earnings, intercept_earnings, intercept_treat, sigma_earnings, treat]</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_dist(idata[&quot;prior&quot;][&quot;earnings&quot;].to_numpy().flatten(), color=&quot;C0&quot;, ax=ax)
+
+for i in range(50):
+    az.plot_dist(
+        idata[&quot;prior&quot;][&quot;earnings&quot;].sel(draw=i, chain=0),
+        color=&quot;C0&quot;,
+        plot_kwargs={&quot;alpha&quot;: 0.1},
+        ax=ax,
+    )
+
+az.plot_dist(earnings_obs, color=&quot;black&quot;, ax=ax)
+ax.set(xlabel=&quot;ATE estimate&quot;, ylabel=&quot;Frequency&quot;)
+fig.suptitle(
+    &quot;Prior Predictive Checks (earnings) - OLS&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_22_0.png" style="width: 800px;"/>
+</center>
+<p>Overall, the prior predictive distribution looks reasonable. However, we notice that this simple
+linear model allows negative earnings, which is unrealistic. We’ll address this limitation later
+when we introduce a generalized linear model.</p>
+<p>Next, let’s examine the prior predictive distribution of the <code>beta_treat_earnings</code> coefficient,
+which represents the average treatment effect (ATE).</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(idata[&quot;prior&quot;], var_names=[&quot;beta_treat_earnings&quot;], ax=ax)
+ax.set(xlabel=&quot;ATE estimate&quot;, ylabel=&quot;Frequency&quot;)
+fig.suptitle(&quot;Prior Predictive Checks (ATE) - OLS&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_24_0.png" style="width: 800px;"/>
+</center>
+<p>The prior distribution of <code>beta_treat_earnings</code> is centered around <span class="math inline">\(0\)</span>, which is expected since
+we haven’t conditioned the model on the data yet. The <span class="math inline">\(94\%\)</span> high density interval (HDI) spans
+approximately <span class="math inline">\(-2\)</span> to <span class="math inline">\(2\)</span>, which is not very informative but provides reasonable regularization.</p>
+</div>
+<div id="model-fit" class="section level2">
+<h2>Model Fit</h2>
+<p>Now we condition the model on the observed data and sample from the posterior distribution using
+MCMC (we could also use stochastic variational inference or other methods to scale up).</p>
+<p>Let’s take a look at the conditioned model:</p>
+<pre class="python"><code>conditioned_earnings_model = observe(
+    earnings_model, {&quot;treat&quot;: training_obs, &quot;earnings&quot;: earnings_obs}
+)
+
+pm.model_to_graphviz(conditioned_earnings_model)</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_28_0.svg" style="width: 900px;"/>
+</center>
+<p>We run NUTS to sample from the posterior distribution.</p>
+<pre class="python"><code>sample_kwargs = {
+    &quot;draws&quot;: 2_000,
+    &quot;tune&quot;: 1_000,
+    &quot;chains&quot;: 4,
+    &quot;cores&quot;: 4,
+    &quot;idata_kwargs&quot;: {&quot;log_likelihood&quot;: True},
+    &quot;random_seed&quot;: rng,
+}
+
+with conditioned_earnings_model:
+    idata.extend(pm.sample(**sample_kwargs))</code></pre>
+</div>
+<div id="diagnostics" class="section level2">
+<h2>Diagnostics</h2>
+<p>We need to assess the quality of our posterior samples. First, let’s examine the trace plots
+to verify that the chains are mixing well.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    data=idata,
+    var_names=[&quot;~mu_earnings&quot;],
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (12, 10), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace OLS&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_32_0.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>az.summary(idata, var_names=[&quot;~mu_earnings&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe thead th {
+        text-align: left;
+        font-size: 16px;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+        font-size: 16px;
+    }
+    
+    .dataframe tbody tr td {
+        vertical-align: top;
+        font-size: 16px;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+beta_covariate_earnings[education]
+</th>
+<td>
+1.138
+</td>
+<td>
+0.338
+</td>
+<td>
+0.509
+</td>
+<td>
+1.779
+</td>
+<td>
+0.005
+</td>
+<td>
+0.003
+</td>
+<td>
+5015.0
+</td>
+<td>
+6027.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_earnings[age]
+</th>
+<td>
+0.511
+</td>
+<td>
+0.291
+</td>
+<td>
+-0.028
+</td>
+<td>
+1.062
+</td>
+<td>
+0.003
+</td>
+<td>
+0.003
+</td>
+<td>
+9449.0
+</td>
+<td>
+6066.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_earnings[re75]
+</th>
+<td>
+1.530
+</td>
+<td>
+0.292
+</td>
+<td>
+0.977
+</td>
+<td>
+2.082
+</td>
+<td>
+0.003
+</td>
+<td>
+0.004
+</td>
+<td>
+10929.0
+</td>
+<td>
+5306.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_earnings[black]
+</th>
+<td>
+-0.950
+</td>
+<td>
+0.585
+</td>
+<td>
+-2.020
+</td>
+<td>
+0.157
+</td>
+<td>
+0.006
+</td>
+<td>
+0.006
+</td>
+<td>
+9958.0
+</td>
+<td>
+6330.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_earnings[hispanic]
+</th>
+<td>
+0.241
+</td>
+<td>
+0.705
+</td>
+<td>
+-1.051
+</td>
+<td>
+1.573
+</td>
+<td>
+0.007
+</td>
+<td>
+0.008
+</td>
+<td>
+10817.0
+</td>
+<td>
+5873.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_earnings[married]
+</th>
+<td>
+0.771
+</td>
+<td>
+0.568
+</td>
+<td>
+-0.274
+</td>
+<td>
+1.851
+</td>
+<td>
+0.006
+</td>
+<td>
+0.007
+</td>
+<td>
+9867.0
+</td>
+<td>
+5652.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_earnings[nodegree]
+</th>
+<td>
+-0.149
+</td>
+<td>
+0.631
+</td>
+<td>
+-1.346
+</td>
+<td>
+1.010
+</td>
+<td>
+0.008
+</td>
+<td>
+0.006
+</td>
+<td>
+6092.0
+</td>
+<td>
+6278.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_treat[education]
+</th>
+<td>
+0.345
+</td>
+<td>
+0.162
+</td>
+<td>
+0.036
+</td>
+<td>
+0.637
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+4276.0
+</td>
+<td>
+5184.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_treat[age]
+</th>
+<td>
+0.074
+</td>
+<td>
+0.127
+</td>
+<td>
+-0.157
+</td>
+<td>
+0.319
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7512.0
+</td>
+<td>
+6169.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_treat[re75]
+</th>
+<td>
+-0.049
+</td>
+<td>
+0.122
+</td>
+<td>
+-0.284
+</td>
+<td>
+0.172
+</td>
+<td>
+0.001
+</td>
+<td>
+0.002
+</td>
+<td>
+10216.0
+</td>
+<td>
+5178.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_treat[black]
+</th>
+<td>
+2.919
+</td>
+<td>
+0.261
+</td>
+<td>
+2.440
+</td>
+<td>
+3.411
+</td>
+<td>
+0.003
+</td>
+<td>
+0.003
+</td>
+<td>
+9331.0
+</td>
+<td>
+6283.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_treat[hispanic]
+</th>
+<td>
+0.707
+</td>
+<td>
+0.393
+</td>
+<td>
+-0.039
+</td>
+<td>
+1.439
+</td>
+<td>
+0.004
+</td>
+<td>
+0.004
+</td>
+<td>
+9969.0
+</td>
+<td>
+6337.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_treat[married]
+</th>
+<td>
+-0.869
+</td>
+<td>
+0.271
+</td>
+<td>
+-1.360
+</td>
+<td>
+-0.352
+</td>
+<td>
+0.003
+</td>
+<td>
+0.003
+</td>
+<td>
+10465.0
+</td>
+<td>
+6317.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_covariate_treat[nodegree]
+</th>
+<td>
+0.696
+</td>
+<td>
+0.314
+</td>
+<td>
+0.124
+</td>
+<td>
+1.295
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+4986.0
+</td>
+<td>
+5839.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_treat_earnings
+</th>
+<td>
+0.552
+</td>
+<td>
+0.604
+</td>
+<td>
+-0.547
+</td>
+<td>
+1.723
+</td>
+<td>
+0.006
+</td>
+<td>
+0.007
+</td>
+<td>
+11845.0
+</td>
+<td>
+6154.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_earnings
+</th>
+<td>
+-0.135
+</td>
+<td>
+1.927
+</td>
+<td>
+-3.581
+</td>
+<td>
+3.682
+</td>
+<td>
+0.028
+</td>
+<td>
+0.020
+</td>
+<td>
+4608.0
+</td>
+<td>
+5419.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+intercept_treat
+</th>
+<td>
+-4.166
+</td>
+<td>
+0.952
+</td>
+<td>
+-5.932
+</td>
+<td>
+-2.355
+</td>
+<td>
+0.015
+</td>
+<td>
+0.010
+</td>
+<td>
+3836.0
+</td>
+<td>
+5116.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_earnings
+</th>
+<td>
+7.095
+</td>
+<td>
+0.205
+</td>
+<td>
+6.728
+</td>
+<td>
+7.497
+</td>
+<td>
+0.002
+</td>
+<td>
+0.003
+</td>
+<td>
+13129.0
+</td>
+<td>
+5184.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p><strong>R-hat (Gelman-Rubin statistic)</strong>: Measures agreement between chains. R-hat ≈ 1.0 means
+chains have converged to the same distribution. Values &gt; 1.1 suggest the sampler hasn’t
+converged yet.</p>
+<p><strong>ESS (Effective Sample Size)</strong>: Measures how many independent samples we effectively have.
+Low ESS means samples are highly correlated, reducing the information we can extract.
+We want ESS &gt; 400 for reliable credible intervals.</p>
+</div>
+<div id="posterior-predictive-sampling" class="section level2">
+<h2>Posterior Predictive Sampling</h2>
+<p>We now extend the InferenceData object with posterior predictive samples to assess model fit.</p>
+<pre class="python"><code>with conditioned_earnings_model:
+    pm.sample_posterior_predictive(idata, extend_inferencedata=True, random_seed=rng)
+
+fig, ax = plt.subplots()
+az.plot_ppc(idata, var_names=[&quot;earnings&quot;], num_pp_samples=200, ax=ax)
+ax.axvline(earnings_obs.mean(), color=&quot;C2&quot;, label=&quot;observed earnings mean&quot;)
+ax.axvline(
+    idata[&quot;posterior_predictive&quot;][&quot;earnings&quot;].mean().item(),
+    color=&quot;C3&quot;,
+    label=&quot;posterior predictive earnings mean&quot;,
+)
+ax.legend()
+ax.set(xlabel=&quot;earnings&quot;, ylabel=&quot;Frequency&quot;)
+ax.set_title(
+    &quot;Posterior Predictive Checks (earnings) - OLS&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_37_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="ate-estimation-from-coefficient" class="section level2">
+<h2>ATE Estimation from Coefficient</h2>
+<p>In our linear model, <code>beta_treat_earnings</code> directly represents the Average Treatment Effect.
+Since we’ve adjusted for confounders, this coefficient tells us the expected change in earnings
+from treatment while holding all covariates constant exactly the causal interpretation we want.</p>
+<p>Following the ChiRho tutorial, we compare our ATE estimate with results from other methods.</p>
+<pre class="python"><code># https://rugg2.github.io/Lalonde%20dataset%20-%20Causal%20Inference.html
+blog_prediction_ols = (
+    1_548.24 / 1_000
+)  # Scaled by 1000 to be consistent with data preprocessing above.
+blog_prediction_matching = 1_027.087 / 1_000
+blog_prediction_matching_ci95 = [-705.131 / 1_000, 2_759.305 / 1_000]</code></pre>
+<p>Let’s visualize the ATE estimates:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
+ax.axvline(naive_prediction, color=&quot;C3&quot;, label=&quot;naive estimate&quot;)
+ax.axvline(blog_prediction_ols, color=&quot;C2&quot;, label=&quot;OLS estimate&quot;)
+ax.axvline(blog_prediction_matching, color=&quot;C1&quot;, label=&quot;matching estimate&quot;)
+ax.axvline(
+    blog_prediction_matching_ci95[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;matching estimate 95% confidence&quot;,
+)
+ax.axvline(
+    blog_prediction_matching_ci95[1],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+)
+az.plot_posterior(
+    idata[&quot;posterior&quot;], var_names=[&quot;beta_treat_earnings&quot;], kind=&quot;hist&quot;, bins=100, ax=ax
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;ATE estimate&quot;, ylabel=&quot;Frequency&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_42_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="ate-estimation-using-the-do-operator" class="section level2">
+<h2>ATE Estimation using the <code>do</code> Operator</h2>
+<p>The <code>do</code> operator represents an intervention: we force treatment to a specific value,
+breaking any dependence on confounders. This is the mathematical representation of
+“what if everyone received treatment?” vs “what if no one received treatment?”</p>
+<p>The difference between these counterfactual outcomes is the ATE. This approach is more
+general than coefficient interpretation—it works even with non-linear models. In our
+linear case, it should match the coefficient-based estimate.</p>
+<p>Let’s apply the <code>do</code> operator to our model.</p>
+<pre class="python"><code>do_0_earnings_model = do(
+    conditioned_earnings_model, {&quot;treat&quot;: np.zeros(shape=(n_obs,), dtype=np.int32)}
+)
+
+do_1_earnings_model = do(
+    conditioned_earnings_model, {&quot;treat&quot;: np.ones(shape=(n_obs,), dtype=np.int32)}
+)
+
+pm.model_to_graphviz(do_0_earnings_model)</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_45_0.svg" style="width: 900px;"/>
+</center>
+<p>We now generate posterior predictive samples for both counterfactual scenarios (do(treat = 0)
+and do(treat = 1)) using the posterior samples from our MCMC fit. These represent the inferred
+counterfactual outcomes.</p>
+<pre class="python"><code>with do_0_earnings_model:
+    do_0_idata = pm.sample_posterior_predictive(
+        idata, random_seed=rng, var_names=[&quot;mu_earnings&quot;]
+    )
+
+with do_1_earnings_model:
+    do_1_idata = pm.sample_posterior_predictive(
+        idata, random_seed=rng, var_names=[&quot;mu_earnings&quot;]
+    )</code></pre>
+<p>Let’s extract the posterior predictions and visualize the individual posterior predictive distributions.</p>
+<pre class="python"><code>expected_do_1 = do_1_idata[&quot;posterior_predictive&quot;][&quot;mu_earnings&quot;]
+expected_do_0 = do_0_idata[&quot;posterior_predictive&quot;][&quot;mu_earnings&quot;]
+# Compute the HDIs
+do_0_hdi = az.hdi(expected_do_0)[&quot;mu_earnings&quot;]
+do_1_hdi = az.hdi(expected_do_1)[&quot;mu_earnings&quot;]</code></pre>
+<p>We can now visualize and compare the two posterior predictive distributions for each individual
+in the dataset.</p>
+<pre class="python"><code># For visualization purposes, we sort the HDIs by the mean of the HDI
+sorted_indices = np.argsort(do_0_hdi.mean(dim=&quot;hdi&quot;).to_numpy())
+
+fig, ax = plt.subplots(figsize=(10, 12))
+
+for i, row in enumerate(do_0_hdi[sorted_indices]):
+    do_0_label = &quot;do(treat = 0)&quot; if i == 0 else None
+    ax.hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C0&quot;,
+    )
+
+    ax.plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C0&quot;, label=do_0_label)
+
+for i, row in enumerate(do_1_hdi[sorted_indices]):
+    do_1_label = &quot;do(treat = 1)&quot; if i == 0 else None
+    ax.hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C1&quot;,
+    )
+
+    ax.plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C1&quot;, label=do_1_label)
+
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    xlabel=&quot;earnings&quot;, ylabel=&quot;index&quot;, title=&quot;Posterior Predictive Checks (earnings)&quot;
+)
+ax.set_title(
+    &quot;Posterior Predictive - OLS\nEarnings | do(treat = 0) vs Earnings | do(treat = 1)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_51_0.png" style="width: 800px;"/>
+</center>
+<p>From this visualization, it is clear that the inferred average treatment effect is positive.</p>
+<p>We can compute the ATE using the <code>do</code> operator by calculating the individual differences between
+counterfactual outcomes and then averaging over the entire dataset.</p>
+<pre class="python"><code>ate = (expected_do_1 - expected_do_0).mean(dim=&quot;obs_idx&quot;).rename(&quot;ate&quot;)</code></pre>
+<p>This gives us the posterior distribution of the ATE.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 7))
+ax.axvline(naive_prediction, color=&quot;C3&quot;, label=&quot;naive estimate&quot;)
+ax.axvline(blog_prediction_ols, color=&quot;C2&quot;, label=&quot;OLS estimate&quot;)
+ax.axvline(blog_prediction_matching, color=&quot;C1&quot;, label=&quot;matching estimate&quot;)
+ax.axvline(
+    blog_prediction_matching_ci95[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;matching estimate 95% confidence&quot;,
+)
+ax.axvline(
+    blog_prediction_matching_ci95[1],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+)
+az.plot_posterior(ate, kind=&quot;hist&quot;, bins=100, ax=ax)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.1), ncol=4)
+ax.set(xlabel=&quot;ATE estimate&quot;, ylabel=&quot;Frequency&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_56_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="ate-estimation-comparison" class="section level2">
+<h2>ATE Estimation Comparison</h2>
+<p>We compare the ATE estimation using the coefficient method and the <code>do</code> operator.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    data=[idata[&quot;posterior&quot;].rename({&quot;beta_treat_earnings&quot;: &quot;ate&quot;})[&quot;ate&quot;], ate],
+    model_names=[&quot;Coefficient&quot;, &quot;Do-Operator&quot;],
+    var_names=[&quot;ate&quot;],
+    combined=True,
+    hdi_prob=0.94,
+    figsize=(7, 5),
+)
+ax.set_title(r&quot;ATE Estimation Comparison ($94\%$ HDI)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_58_0.png" style="width: 800px;"/>
+</center>
+<p>As expected, the two methods yield consistent results, confirming that both approaches
+correctly estimate the ATE.</p>
+<div id="generalized-linear-model" class="section level3">
+<h3>Generalized Linear Model</h3>
+<p>Now let’s extend our analysis using a generalized linear model that ensures non-negative earnings.
+The overall structure remains similar, but we use a different likelihood and parametrization
+that better respects the domain constraints of our outcome variable.</p>
+<pre class="python"><code>with pm.Model(coords=coords) as glm_earnings_model:
+    # TREATMENT MODEL
+    # --- Data Containers ---
+    covariates_data = pm.Data(
+        &quot;covariates_data&quot;, covariates_obs, dims=(&quot;obs_idx&quot;, &quot;covariate&quot;)
+    )
+    # --- Priors ---
+    intercept_treat = pm.Normal(&quot;intercept_treat&quot;, mu=0, sigma=10)
+    beta_covariate_treat = pm.Normal(
+        &quot;beta_covariate_treat&quot;, mu=0, sigma=1, dims=(&quot;covariate&quot;,)
+    )
+    # --- Parametrization ---
+    logit_p_treat = intercept_treat + pm.math.dot(covariates_data, beta_covariate_treat)
+    p_treat = pm.math.sigmoid(logit_p_treat)
+    # --- Likelihood ---
+    treat = pm.Bernoulli(&quot;treat&quot;, p=p_treat, dims=(&quot;obs_idx&quot;,))
+
+    # EARNINGS MODEL
+    # --- Priors ---
+    intercept_earnings = pm.Normal(&quot;intercept_earnings&quot;, mu=0, sigma=10)
+    beta_treat_earnings = pm.Normal(&quot;beta_treat_earnings&quot;, mu=0, sigma=1)
+    beta_covariate_earnings = pm.Normal(
+        &quot;beta_covariate_earnings&quot;, mu=0, sigma=1, dims=(&quot;covariate&quot;,)
+    )
+    sigma_earnings = pm.HalfNormal(&quot;sigma_earnings&quot;, sigma=10)
+    # --- Parametrization ---
+    raw_mu_earnings = (
+        intercept_earnings
+        + beta_treat_earnings * treat
+        + pm.math.dot(covariates_data, beta_covariate_earnings)
+    )
+    mu_earnings = pm.Deterministic(
+        &quot;mu_earnings&quot;, pt.softplus(raw_mu_earnings), dims=(&quot;obs_idx&quot;,)
+    )
+    # --- Likelihood ---
+    pm.Gamma(
+        &quot;earnings&quot;,
+        mu=mu_earnings,
+        sigma=sigma_earnings,
+        dims=(&quot;obs_idx&quot;,),
+    )
+
+pm.model_to_graphviz(glm_earnings_model)</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_61_0.svg" style="width: 900px;"/>
+</center>
+<p>Let’s perform prior predictive checks for the GLM:</p>
+<pre class="python"><code>with glm_earnings_model:
+    glm_idata = pm.sample_prior_predictive(samples=2_000, random_seed=rng)
+
+fig, ax = plt.subplots()
+az.plot_dist(glm_idata[&quot;prior&quot;][&quot;earnings&quot;].to_numpy().flatten(), color=&quot;C0&quot;, ax=ax)
+az.plot_dist(earnings_obs, color=&quot;black&quot;, ax=ax)
+ax.set(xlabel=&quot;ATE estimate&quot;, ylabel=&quot;Frequency&quot;, xlim=(-10, 100))
+fig.suptitle(
+    &quot;Prior Predictive Checks (earnings) - GLM&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_63_1.png" style="width: 800px;"/>
+</center>
+<p>We condition the GLM on the observed data and sample from the posterior distribution using MCMC.</p>
+<pre class="python"><code>glm_conditioned_earnings_model = observe(
+    glm_earnings_model, {&quot;treat&quot;: training_obs, &quot;earnings&quot;: earnings_obs}
+)
+
+with glm_conditioned_earnings_model:
+    glm_idata = pm.sample(**sample_kwargs)
+    pm.sample_posterior_predictive(
+        glm_idata, extend_inferencedata=True, random_seed=rng
+    )
+
+
+axes = az.plot_trace(
+    data=glm_idata,
+    var_names=[&quot;~mu_earnings&quot;],
+    compact=True,
+    backend_kwargs={&quot;figsize&quot;: (12, 10), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace GLM&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_65_6.png" style="width: 900px;"/>
+</center>
+<p>The trace plots indicate good convergence and mixing across all chains.</p>
+<p>Let’s examine the posterior predictive distribution to assess model fit.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(glm_idata, var_names=[&quot;earnings&quot;], num_pp_samples=200, ax=ax)
+ax.axvline(earnings_obs.mean(), color=&quot;C2&quot;, label=&quot;observed earnings mean&quot;)
+ax.axvline(
+    glm_idata[&quot;posterior_predictive&quot;][&quot;earnings&quot;].mean().item(),
+    color=&quot;C3&quot;,
+    label=&quot;posterior predictive earnings mean&quot;,
+)
+ax.legend()
+ax.set(xlabel=&quot;earnings&quot;, ylabel=&quot;Frequency&quot;, xlim=(None, 50))
+ax.set_title(
+    &quot;Posterior Predictive Checks (earnings) - GLM&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_67_0.png" style="width: 800px;"/>
+</center>
+<p>The GLM provides a much better fit than the linear model, with predictions that align more
+closely with the observed data distribution.</p>
+<p>Now let’s compute the counterfactual outcomes using the <code>do</code> operator, just as we did for
+the linear model.</p>
+<pre class="python"><code>glm_do_0_earnings_model = do(
+    glm_conditioned_earnings_model, {&quot;treat&quot;: np.zeros(shape=(n_obs,), dtype=np.int32)}
+)
+glm_do_1_earnings_model = do(
+    glm_conditioned_earnings_model, {&quot;treat&quot;: np.ones(shape=(n_obs,), dtype=np.int32)}
+)
+
+with glm_do_0_earnings_model:
+    glm_do_0_idata = pm.sample_posterior_predictive(
+        glm_idata, random_seed=rng, var_names=[&quot;mu_earnings&quot;]
+    )
+
+with glm_do_1_earnings_model:
+    glm_do_1_idata = pm.sample_posterior_predictive(
+        glm_idata, random_seed=rng, var_names=[&quot;mu_earnings&quot;]
+    )
+
+
+glm_expected_do_1 = glm_do_1_idata[&quot;posterior_predictive&quot;][&quot;mu_earnings&quot;]
+
+glm_expected_do_0 = glm_do_0_idata[&quot;posterior_predictive&quot;][&quot;mu_earnings&quot;]</code></pre>
+<p>Let’s visualize the posterior predictive distributions for both counterfactual scenarios.</p>
+<pre class="python"><code>glm_do_0_hdi = az.hdi(glm_expected_do_0)[&quot;mu_earnings&quot;]
+glm_do_1_hdi = az.hdi(glm_expected_do_1)[&quot;mu_earnings&quot;]
+
+glm_sorted_indices = np.argsort(glm_do_0_hdi.mean(dim=&quot;hdi&quot;).to_numpy())
+
+fig, ax = plt.subplots(figsize=(10, 12))
+
+for i, row in enumerate(glm_do_0_hdi[glm_sorted_indices]):
+    do_0_label = &quot;do(treat = 0)&quot; if i == 0 else None
+    ax.hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C0&quot;,
+    )
+
+    ax.plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C0&quot;, label=do_0_label)
+
+for i, row in enumerate(glm_do_1_hdi[glm_sorted_indices]):
+    do_1_label = &quot;do(treat = 1)&quot; if i == 0 else None
+    ax.hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C1&quot;,
+    )
+
+    ax.plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C1&quot;, label=do_1_label)
+
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    xlabel=&quot;earnings&quot;, ylabel=&quot;index&quot;, title=&quot;Posterior Predictive Checks (earnings)&quot;
+)
+ax.set_title(
+    &quot;Posterior Predictive - GLM\nEarnings | do(treat = 0) vs Earnings | do(treat = 1)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_72_0.png" style="width: 800px;"/>
+</center>
+<p>For easier comparison, let’s plot the posterior predictive distributions from both models side by side.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 12),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for i, row in enumerate(do_0_hdi[sorted_indices]):
+    do_0_label = &quot;do(treat = 0)&quot; if i == 0 else None
+    ax[0].hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C0&quot;,
+    )
+
+    ax[0].plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C0&quot;, label=do_0_label)
+
+for i, row in enumerate(do_1_hdi[sorted_indices]):
+    do_1_label = &quot;do(treat = 1)&quot; if i == 0 else None
+    ax[0].hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C1&quot;,
+    )
+
+    ax[0].plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C1&quot;, label=do_1_label)
+
+ax[0].legend(loc=&quot;upper left&quot;)
+ax[0].set(xlabel=&quot;earnings&quot;, ylabel=&quot;index&quot;, title=&quot;OLS&quot;)
+
+for i, row in enumerate(glm_do_0_hdi[glm_sorted_indices]):
+    do_0_label = &quot;do(treat = 0)&quot; if i == 0 else None
+    ax[1].hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C0&quot;,
+    )
+
+    ax[1].plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C0&quot;, label=do_0_label)
+
+
+for i, row in enumerate(glm_do_1_hdi[glm_sorted_indices]):
+    do_1_label = &quot;do(treat = 1)&quot; if i == 0 else None
+    ax[1].hlines(
+        y=i,
+        xmin=row.sel(hdi=&quot;lower&quot;),
+        xmax=row.sel(hdi=&quot;higher&quot;),
+        linestyle=&quot;solid&quot;,
+        linewidth=0.3,
+        color=&quot;C1&quot;,
+    )
+
+    ax[1].plot(row.mean(), i, marker=&quot;o&quot;, markersize=2, color=&quot;C1&quot;, label=do_1_label)
+
+ax[1].legend(loc=&quot;upper left&quot;)
+ax[1].set(xlabel=&quot;earnings&quot;, title=&quot;GLM&quot;)
+
+fig.suptitle(
+    &quot;Posterior Predictive Checks (earnings)\nEarnings | do(treat = 0) vs Earnings | do(treat = 1)&quot;,  # noqa: E501
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.07,
+);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_74_0.png" style="width: 1000px;"/>
+</center>
+<p>By visual inspection, we can see that the GLM produces tighter credible intervals than the OLS
+model, suggesting lower variance in the ATE estimate.</p>
+<p>We now compute the ATE using the same approach as before.</p>
+<pre class="python"><code>glm_ate = (glm_expected_do_1 - glm_expected_do_0).mean(dim=&quot;obs_idx&quot;).rename(&quot;ate&quot;)</code></pre>
+<p><strong>Remark</strong>: With generalized linear models, the ATE can theoretically be computed from the
+coefficient, but the computation is more complex due to the non-linear link function. For
+details, see <a href="https://solomonkurz.netlify.app/blog/2023-05-14-causal-inference-with-gamma-regression-or-the-problem-is-with-the-link-function-not-the-likelihood/">Causal inference with gamma regression or: The problem is with the link function,
+not the likelihood (Part 6 of the GLM and causal inference series.)</a></p>
+<p>Let’s visualize the results and compare them with the previous model.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    figsize=(12, 10),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+ax[0].axvline(naive_prediction, color=&quot;C3&quot;, label=&quot;naive estimate&quot;)
+ax[0].axvline(blog_prediction_ols, color=&quot;C2&quot;, label=&quot;OLS estimate&quot;)
+ax[0].axvline(blog_prediction_matching, color=&quot;C1&quot;, label=&quot;matching estimate&quot;)
+ax[0].axvline(
+    blog_prediction_matching_ci95[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;matching estimate 95% confidence&quot;,
+)
+ax[0].axvline(
+    blog_prediction_matching_ci95[1],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+)
+az.plot_posterior(ate, kind=&quot;hist&quot;, bins=100, color=&quot;C0&quot;, ax=ax[0])
+ax[0].set(title=&quot;OLS Model&quot;, ylabel=&quot;Frequency&quot;)
+
+
+ax[1].axvline(naive_prediction, color=&quot;C3&quot;, label=&quot;naive estimate&quot;)
+ax[1].axvline(blog_prediction_ols, color=&quot;C2&quot;, label=&quot;OLS estimate&quot;)
+ax[1].axvline(blog_prediction_matching, color=&quot;C1&quot;, label=&quot;matching estimate&quot;)
+ax[1].axvline(
+    blog_prediction_matching_ci95[0],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+    label=&quot;matching estimate 95% confidence&quot;,
+)
+ax[1].axvline(
+    blog_prediction_matching_ci95[1],
+    color=&quot;C1&quot;,
+    linestyle=&quot;dashed&quot;,
+)
+az.plot_posterior(glm_ate, kind=&quot;hist&quot;, bins=100, color=&quot;C0&quot;, ax=ax[1])
+ax[1].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=4)
+ax[1].set(title=&quot;GLM Model&quot;, xlabel=&quot;ATE estimate&quot;, ylabel=&quot;Frequency&quot;)
+fig.suptitle(&quot;ATE Estimation Comparison&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_78_0.png" style="width: 900px;"/>
+</center>
+<p>We obtain a very similar posterior mean, but the GLM provides estimates with lower variance,
+reflecting the improved model fit.</p>
+<p>Let’s perform a final comparison of all the methods we’ve used to compute the ATE.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    data=[
+        idata[&quot;posterior&quot;].rename({&quot;beta_treat_earnings&quot;: &quot;ate&quot;})[&quot;ate&quot;],
+        ate,
+        glm_ate,
+    ],
+    model_names=[&quot;Coefficient&quot;, &quot;Do-Operator&quot;, &quot;GLM&quot;],
+    var_names=[&quot;ate&quot;],
+    combined=True,
+    hdi_prob=0.94,
+    figsize=(7, 5),
+)
+ax.set_title(r&quot;ATE Estimation Comparison ($94\%$ HDI)&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_81_0.png" style="width: 800px;"/>
+</center>
+<p>Finally, let’s compare the models using leave-one-out cross-validation (LOO-CV).</p>
+<pre class="python"><code>compare_df = az.compare(
+    compare_dict={
+        &quot;OLS&quot;: idata,
+        &quot;GLM&quot;: glm_idata,
+    },
+    var_name=&quot;earnings&quot;,
+    ic=&quot;loo&quot;,
+)
+
+az.plot_compare(compare_df, figsize=(7, 5));</code></pre>
+<center>
+<img src="../images/intro_causal_inference_ppl_pymc_files/intro_causal_inference_ppl_pymc_83_0.png" style="width: 700px;"/>
+</center>
+<p>As expected, the GLM model outperforms the OLS model, which makes sense given that it better
+respects the domain constraints of the earnings outcome variable.</p>
+</div>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>In this notebook, we’ve explored how probabilistic programming languages, specifically PyMC,
+provide a powerful and intuitive framework for causal inference. Through our analysis of the
+Lalonde dataset, we’ve demonstrated several key principles:</p>
+<div id="key-takeaways" class="section level3">
+<h3>Key Takeaways</h3>
+<ol style="list-style-type: decimal">
+<li><p><strong>Confounding matters</strong>: The naive comparison of treated and untreated groups gave a misleading
+estimate of the treatment effect. By explicitly modeling confounders—variables that affect both
+treatment assignment and outcomes—we obtained more reliable causal estimates.</p></li>
+<li><p><strong>Bayesian inference provides full uncertainty quantification</strong>: Rather than just point estimates
+and confidence intervals, we obtained full posterior distributions for the Average Treatment
+Effect (ATE), giving us a richer understanding of uncertainty that accounts for all sources of
+variation.</p></li>
+<li><p><strong>The <code>do</code> operator enables counterfactual reasoning</strong>: By implementing Pearl’s do-calculus
+directly in PyMC, we could answer “what if” questions—computing counterfactual outcomes under
+different treatment scenarios. This approach is more general than coefficient interpretation
+and works seamlessly with non-linear models.</p></li>
+<li><p><strong>Model validation is essential</strong>: Through prior predictive checks, convergence diagnostics,
+and posterior predictive checks, we ensured our models were well-specified and our inferences
+were reliable. The comparison between OLS and GLM models highlighted the importance of choosing
+appropriate likelihood functions that respect domain constraints.</p></li>
+</ol>
+</div>
+<div id="why-use-ppls-over-traditional-ols-methods-for-causal-inference" class="section level3">
+<h3>Why Use PPLs Over Traditional OLS methods for Causal Inference?</h3>
+<p>For most basic causal inference problems, you can use traditional OLS methods. They have nothing wrong anf you should always start with them.</p>
+<p>However, when the problem is more complex, PPLs can offer several advantages:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Flexibility for Complex Models</strong></li>
+</ol>
+<ul>
+<li>Extending to non-linear models (e.g., GLMs with non-identity link functions)
+makes ATE interpretation complex. The treatment coefficient no longer directly represents
+the ATE, and computing counterfactuals becomes mathematically challenging.</li>
+<li>We can use custom Double ML methods with PPLs: see <a href="https://kylejcaron.github.io/posts/2025-04-01-scope-double-ml.html">Double ML in Numpyro using scope</a>.</li>
+<li>The <code>do</code> operator approach works identically for linear models, GLMs, hierarchical
+models, and even complex non-parametric models. You can use the same counterfactual reasoning
+framework regardless of model complexity.
+<ul>
+<li>Example [Pyro Example Using Neural Networks and a more complex DAG]: <a href="https://github.com/altdeep/causalML/blob/master/book/chapter%2011/Chapter_11_Bayesian_Causal_Graphical_Inference.ipynb">Chapter 11, Part 2 - Bayesian Causal Graphical Inference Workflow</a> from the book <a href="https://www.manning.com/books/causal-ai">Causal AI</a>.</li>
+</ul></li>
+</ul>
+<ol start="2" style="list-style-type: decimal">
+<li><strong>Incorporating Prior Knowledge</strong></li>
+</ol>
+<ul>
+<li>Traditional OLS methods, don’t have a natural way to incorporate domain expertise or
+previous study results.</li>
+<li>Bayesian framework naturally incorporates prior knowledge through prior distributions.
+This is especially valuable when you have small samples or want to combine evidence from
+multiple sources.
+<ul>
+<li>Here is an example to use a prior experiments to reduce variance of the ATE estimate through instrumental variables: <a href="https://juanitorduz.github.io/iv_pymc/">Experimentation, Non-Compliance and Instrumental Variables with PyMC</a>.</li>
+<li>Example of Prior specification for A/B tests: <a href="https://juanitorduz.github.io/prior_predictive_ab_testing/">Prior Predictive Modeling in Bayesian AB Testing</a> (and an indication on how to do Bayesian power analysis: <a href="https://juanitorduz.github.io/power_sample_size_exclude_null/">Introduction to Bayesian Power Analysis: Exclude a Null Value</a>).</li>
+<li>We can combnine this with methods like CUPED: <a href="https://juanitorduz.github.io/bayesian_cuped/">Bayesian CUPED &amp; Sensitivity Analysis</a>.</li>
+</ul></li>
+</ul>
+<ol start="3" style="list-style-type: decimal">
+<li><strong>Model Calibration</strong>
+<ul>
+<li>Using Bayesian models, you can calibrate models with additional likelihoods. This is especially useful when you have unobserved confounders (very common in marketing).
+<ul>
+<li>Example in Marketing Mix Modeling: <a href="https://www.pymc-labs.com/blog-posts/mmm_roas_lift">Unobserved Confounders, ROAS and Lift Tests in Media Mix Models</a>.</li>
+<li>Example constraining a Gaussian Process: <a href="https://juanitorduz.github.io/electricity_forecast_with_priors/">Electricity Demand Forecast: Dynamic Time-Series Model with Prior Calibration</a>.</li>
+</ul></li>
+</ul></li>
+</ol>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+

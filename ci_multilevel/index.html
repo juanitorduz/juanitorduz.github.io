@@ -1,0 +1,2138 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.79.1" />
+
+
+<title>Causal Inference with Multilevel Models: The Electric Company Example - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Causal Inference with Multilevel Models: The Electric Company Example - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">25 min read</span>
+    
+
+    <h1 class="article-title">Causal Inference with Multilevel Models: The Electric Company Example</h1>
+
+    
+    <span class="article-date">2025-11-28</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>Estimating causal effects from clustered or grouped data requires careful attention to the hierarchical structure of observations. When units are nested within groups such as students within classrooms, or patients within hospitals—ignoring this structure can lead to incorrect standard errors, inefficient estimates, and invalid causal inferences. Multilevel models provide a principled framework for handling such data while leveraging the advantages of partial pooling across groups.</p>
+<p>This notebook reproduces and extends the analysis from <strong>Chapter 23</strong> of Gelman and Hill’s <em>“Data Analysis Using Regression and Multilevel/Hierarchical Models”</em>. We demonstrate two complementary approaches to modeling treatment effects in hierarchical data: first, a model with varying intercepts that efficiently controls for group-level confounding, and second, a more flexible covariance model that allows treatment effects themselves to vary across groups. Together, these models illustrate how multilevel structures enhance both the efficiency and interpretability of causal effect estimation. In addition to reproducing the analysis, we show how to efficiently vectorize the model (across <code>grades</code> and <code>pairs</code>) using PyMC.</p>
+<p><strong>Remark:</strong> This example is also treated in <a href="https://basisresearch.github.io/chirho/index.html">ChiRho</a>’s example notebook <a href="https://basisresearch.github.io/chirho/slc.html">structured latent confounders</a>.</p>
+<div id="context" class="section level2">
+<h2>Context</h2>
+<p>In the 1970s, an educational television show called <strong>“The Electric Company”</strong> was produced to help children learn to read. A randomized experiment was conducted to estimate the causal effect of watching the show on reading test scores. This study provides an excellent setting for demonstrating multilevel modeling techniques in causal inference, as the experimental design naturally produces clustered data.</p>
+</div>
+<div id="study-design" class="section level2">
+<h2>Study Design</h2>
+<p>The experiment employed a <strong>paired randomized design</strong> across schools and grades:</p>
+<ul>
+<li><p><strong>Pairs</strong>: Classrooms were matched into pairs within the same school and grade (e.g., two 1st grade classes in the same school).</p></li>
+<li><p><strong>Treatment</strong>: Within each pair, one classroom was randomly assigned to the <strong>treatment group</strong> (watched the show regularly) and the other to the <strong>control group</strong> (did not watch).</p></li>
+<li><p><strong>Outcome</strong>: Reading test scores at the end of the academic year (<code>post_test</code>), with adjustment for pre-test scores (<code>pre_test</code>) to increase precision.</p></li>
+</ul>
+<p>This <strong>paired randomized design</strong> is powerful because randomization within pairs ensures that treatment assignment is independent of pair-level confounders such as school quality, neighborhood characteristics, and baseline achievement levels. However, even though treatment assignment is randomized, the data structure is inherently <strong>clustered</strong>: students within the same pair (same school and grade) share common characteristics and are therefore correlated in their outcomes. This clustering means that observations within a pair are not statistically independent and they tend to be more similar to each other than to observations from other pairs. Multilevel models are essential here: they correctly account for this within-pair correlation in the outcome variable, leading to valid standard errors and efficient estimates of both average treatment effects and the heterogeneity of effects across pairs.</p>
+</div>
+<div id="outline" class="section level2">
+<h2>Outline</h2>
+<p>We proceed in two parts:</p>
+<ul>
+<li><p><strong>Part 1</strong>: We estimate a <strong>Hierarchical Intercept Model</strong> where pair-specific intercepts account for baseline differences across groups while assuming a common treatment effect. In this example, we also compare two ways to compute the average treatment effect: via direct parameter estimation and via the <a href="https://marginaleffects.com/"><code>marginaleffects</code></a> package and PyMC <a href="https://www.pymc.io/projects/examples/en/latest/causal_inference/interventional_distribution.html"><code>do</code> operator</a> to generate counterfactual predictions.</p></li>
+<li><p><strong>Part 2</strong>: We extend to a <strong>Covariance Model</strong> that allows both intercepts and treatment effects to vary across pairs, capturing treatment effect heterogeneity and estimating the correlation between baseline performance and treatment response.</p></li>
+</ul>
+</div>
+<div id="part-1-hierarchical-intercept-model" class="section level2">
+<h2>Part 1: Hierarchical Intercept Model</h2>
+<div id="prepare-notebook" class="section level3">
+<h3>Prepare Notebook</h3>
+<p>We begin by importing the necessary libraries.</p>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import polars as pl
+import preliz as pz
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+from marginaleffects import datagrid
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OrdinalEncoder, StandardScaler
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;bayes&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="read-data" class="section level3">
+<h3>Read Data</h3>
+<p>We load the Electric Company dataset (from <a href="https://users.aalto.fi/~ave/">Aki Vehtari</a>’s repository). The data contains pre-test and post-test reading scores for students in paired classrooms across four grade levels. Each pair consists of one treatment and one control classroom.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/avehtari/ROS-Examples/master/ElectricCompany/data/electric.csv&quot;
+raw_df = pl.read_csv(data_path).drop([&quot;supp&quot;, &quot;&quot;]).sort([&quot;grade&quot;, &quot;pair_id&quot;])
+
+raw_df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 5)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+post_test
+</th>
+<th>
+pre_test
+</th>
+<th>
+grade
+</th>
+<th>
+treatment
+</th>
+<th>
+pair_id
+</th>
+</tr>
+<tr>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+48.9
+</td>
+<td>
+13.8
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<td>
+52.3
+</td>
+<td>
+12.3
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<td>
+70.5
+</td>
+<td>
+16.5
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+2
+</td>
+</tr>
+<tr>
+<td>
+55.0
+</td>
+<td>
+14.4
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+2
+</td>
+</tr>
+<tr>
+<td>
+89.7
+</td>
+<td>
+18.5
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+3
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The dataset includes: <code>grade</code> (grade level), <code>pair_id</code> (identifier for matched classroom pairs), <code>treatment</code> (binary indicator), <code>pre_test</code> (baseline reading score), and <code>post_test</code> (outcome reading score).</p>
+</div>
+<div id="exploratory-data-analysis" class="section level3">
+<h3>Exploratory Data Analysis</h3>
+<p>Before modeling, it is essential to understand the structure and variability in the data. Since the design relies on paired classrooms, we should inspect the distribution of test scores across grades and pairs to identify the sources of variation that our multilevel model must capture.</p>
+<pre class="python"><code>g = sns.pairplot(
+    raw_df.to_pandas(),
+    vars=[&quot;pre_test&quot;, &quot;grade&quot;, &quot;post_test&quot;],
+    hue=&quot;treatment&quot;,
+    diag_kind=&quot;hist&quot;,
+)
+g.figure.suptitle(&quot;Pairwise Relationships&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_8_1.png" style="width: 800px;"/>
+</center>
+<p>The naive treatment effect is the difference between the mean post-test scores of the treatment and control groups:</p>
+<pre class="python"><code>(
+    raw_df.group_by([&quot;grade&quot;, &quot;treatment&quot;])
+    .agg(pl.col(&quot;post_test&quot;).mean())
+    .pivot(index=&quot;grade&quot;, on=&quot;treatment&quot;, values=&quot;post_test&quot;)
+    .with_columns(pl.col(&quot;1&quot;).sub(pl.col(&quot;0&quot;)).alias(&quot;treatment_effect&quot;))
+    .sort(by=&quot;grade&quot;)
+)</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (4, 4)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+grade
+</th>
+<th>
+1
+</th>
+<th>
+0
+</th>
+<th>
+treatment_effect
+</th>
+</tr>
+<tr>
+<td>
+i64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+1
+</td>
+<td>
+77.090476
+</td>
+<td>
+68.790476
+</td>
+<td>
+8.3
+</td>
+</tr>
+<tr>
+<td>
+2
+</td>
+<td>
+101.570588
+</td>
+<td>
+93.211765
+</td>
+<td>
+8.358824
+</td>
+</tr>
+<tr>
+<td>
+3
+</td>
+<td>
+106.51
+</td>
+<td>
+106.175
+</td>
+<td>
+0.335
+</td>
+</tr>
+<tr>
+<td>
+4
+</td>
+<td>
+114.066667
+</td>
+<td>
+110.357143
+</td>
+<td>
+3.709524
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="data-preprocessing" class="section level3">
+<h3>Data Preprocessing</h3>
+<p>We standardize the numeric variables (test scores) to facilitate prior specification and improve sampling efficiency. Grade and pair identifiers are encoded as integers for use as group indices in the hierarchical model.</p>
+<pre class="python"><code>numeric_features = [&quot;pre_test&quot;, &quot;post_test&quot;]
+ordinal_features = [&quot;grade&quot;, &quot;pair_id&quot;]
+
+preprocessor = ColumnTransformer(
+    [
+        (&quot;num&quot;, StandardScaler(), numeric_features),
+        (&quot;ord&quot;, OrdinalEncoder(dtype=int), ordinal_features),
+    ],
+    remainder=&quot;passthrough&quot;,
+    verbose_feature_names_out=False,
+).set_output(transform=&quot;polars&quot;)
+
+
+df = preprocessor.fit_transform(raw_df)
+
+df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 5)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+pre_test
+</th>
+<th>
+post_test
+</th>
+<th>
+grade
+</th>
+<th>
+pair_id
+</th>
+<th>
+treatment
+</th>
+</tr>
+<tr>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+-1.726248
+</td>
+<td>
+-2.724052
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<td>
+-1.770568
+</td>
+<td>
+-2.532096
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<td>
+-1.646472
+</td>
+<td>
+-1.504567
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+</tr>
+<tr>
+<td>
+-1.70852
+</td>
+<td>
+-2.37966
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+</tr>
+<tr>
+<td>
+-1.587379
+</td>
+<td>
+-0.42058
+</td>
+<td>
+0
+</td>
+<td>
+2
+</td>
+<td>
+1
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We extract the covariate matrix containing only the pre-test scores, which will be used to control for baseline differences when estimating the treatment effect.</p>
+<pre class="python"><code>x_columns = [&quot;pre_test&quot;]
+x_df = df[x_columns]
+
+x_df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 1)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+pre_test
+</th>
+</tr>
+<tr>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+-1.726248
+</td>
+</tr>
+<tr>
+<td>
+-1.770568
+</td>
+</tr>
+<tr>
+<td>
+-1.646472
+</td>
+</tr>
+<tr>
+<td>
+-1.70852
+</td>
+</tr>
+<tr>
+<td>
+-1.587379
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Next, we set up the coordinate system for our PyMC model. This includes dimensions for covariates, grades, pairs, and observations, which will allow us to structure the hierarchical relationships in the data.</p>
+<pre class="python"><code>n_grades = len(preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;grade&quot;)])
+n_pairs = len(preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;pair_id&quot;)])
+
+coords = {
+    # covariates
+    &quot;covariates&quot;: x_df.columns,
+    # grade
+    &quot;grade&quot;: preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;grade&quot;)],
+    # object categories (groups)
+    &quot;pair_id&quot;: preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;pair_id&quot;)],
+    # index
+    &quot;obs_idx&quot;: np.arange(len(df)),
+}</code></pre>
+</div>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<div id="motivation-why-multilevel" class="section level4">
+<h4>Motivation: Why Multilevel?</h4>
+<p>The data is <strong>clustered</strong> into pairs of classrooms. Observations within the same pair (same school/grade) are likely correlated due to shared unobserved factors like school quality, neighborhood demographics, or teacher characteristics. Ignoring this structure would violate the independence assumption of standard regression.</p>
+<p>To estimate the causal effect, we have two main strategies to handle this clustering:</p>
+<p><strong>Alternative 1: Fixed Effects (FE)</strong></p>
+<p>We could include a <strong>dummy variable (intercept) for every pair</strong>.</p>
+<ul>
+<li><p><strong>Pros</strong>: This controls for <strong>ALL</strong> time-invariant pair-level unobserved confounders. It effectively “closes back doors” related to the school or neighborhood (see <em>The Effect</em>, <a href="https://theeffectbook.net/ch-FixedEffects.html">Chapter 16</a>).</p></li>
+<li><p><strong>Cons</strong>: It consumes a massive number of degrees of freedom (<span class="math inline">\(n/2\)</span> parameters just for intercepts!). With many small groups (pairs), this can lead to noisy and inefficient estimates. Of course we could use the <a href="https://matheusfacure.github.io/python-causality-handbook/22-Debiased-Orthogonal-Machine-Learning.html#frisch-waugh-lovell">Frisch-Waugh-Lovell theorem</a> to demean the data as implemented in the <a href="https://github.com/py-econometrics/pyfixest">PyFixest</a> package.</p></li>
+</ul>
+<p><strong>Alternative 2: Random Effects (RE) / Hierarchical Intercepts</strong></p>
+<p>We model the pair intercepts as coming from a common distribution, e.g., <span class="math inline">\(\alpha_{j} \sim \text{Normal}(\mu, \sigma)\)</span>.</p>
+<ul>
+<li><p><strong>Pros</strong>: This uses <strong>partial pooling</strong>. The model learns the variance <span class="math inline">\(\sigma\)</span> and “shrinks” noisy pair estimates toward the global mean. It is far more efficient than FE.</p></li>
+<li><p><strong>Cons:</strong> For this we need to expand a bit more …</p></li>
+</ul>
+<p><strong>Addressing Random Effects: A Note of Caution</strong></p>
+<p>A fundamental concern with Random Effects models, discussed extensively in econometrics and causal inference, is the assumption that group effects are <strong>uncorrelated</strong> with the predictors (<span class="math inline">\(\text{Cov}(\alpha_j, X) = 0\)</span>). When this assumption is violated—for example, if high-performing schools both score higher at baseline and implement treatments differently—standard Random Effects estimates can be biased. Fixed Effects models avoid this problem by differencing out all time-invariant group characteristics, making no assumptions about their correlation with predictors. This is why Fixed Effects are often preferred in observational studies where such correlations are likely (Huntington-Klein, 2021, <em>The Effect</em>, <a href="https://theeffectbook.net/ch-FixedEffects.html">Chapter 16</a>).</p>
+<p><strong>Why Random Effects are Valid in this Randomized Design:</strong></p>
+<p>However, the concern about correlation between group effects and predictors does not apply uniformly to all variables. Crucially, in this experiment, <strong>treatment was randomized WITHIN pairs</strong>.
+- Because of randomization, the treatment assignment is <strong>uncorrelated</strong> with the pair’s baseline characteristics (the “random effect”) by design.
+- The randomization mechanism ensures <span class="math inline">\(\text{Cov}(\alpha_j, T_i) = 0\)</span> for the treatment variable, even if <span class="math inline">\(\text{Cov}(\alpha_j, X_i) \neq 0\)</span> for other covariates.
+- Therefore, the standard critique of Random Effects does not threaten the validity of our causal effect estimate for treatment, though we may still need to control for other confounders like pre-test scores.</p>
+<p>We can thus use a <strong>Hierarchical Intercept Model</strong> to efficiently control for pair-level heterogeneity and obtain correct standard errors without the heavy penalty of Fixed Effects.</p>
+<p><span class="math display">\[\begin{align*}
+\text{post_test}_i &amp;\sim \text{Normal}(\mu_i, \sigma_y) \\
+\mu_i &amp;= \alpha_{\text{pair}[i]} + \theta \cdot T_i + \beta_x \cdot \text{pre_test}_i\\
+\alpha_j &amp;\sim \text{Normal}(\mu_\alpha, \sigma_\alpha)
+\end{align*}\]</span></p>
+<p>Here, <span class="math inline">\(i\)</span> indexes observations, <span class="math inline">\(j\)</span> indexes pairs, <span class="math inline">\(T_i\)</span> is the treatment indicator, and <span class="math inline">\(\alpha_j\)</span> are the pair-specific intercepts. The hierarchical structure on <span class="math inline">\(\alpha_j\)</span> implements partial pooling: pairs with little data are shrunk toward the grade-level mean <span class="math inline">\(\mu_\alpha\)</span>, while pairs with more data are allowed to deviate. We implement this using a non-centered parametrization for improved sampling efficiency.</p>
+<p>Regarding the hierarchical structure: we use a non-centered parametrization for the random intercepts to improve sampling efficiency (for details, see <a href="https://www.pymc.io/projects/examples/en/latest/generalized_linear_models/multilevel_modeling.html">A Primer on Bayesian Methods for Multilevel Modeling</a>).</p>
+<pre class="python"><code>with pm.Model(coords=coords) as model:
+    # --- Data Containers ---
+    # covariates
+    x_data = pm.Data(&quot;x_data&quot;, x_df, dims=(&quot;obs_idx&quot;, &quot;covariates&quot;))
+    # grade
+    grade_idx_data = pm.Data(&quot;grade_idx_data&quot;, df[&quot;grade&quot;].to_numpy(), dims=&quot;obs_idx&quot;)
+    # object categories
+    pair_idx_data = pm.Data(&quot;pair_idx_data&quot;, df[&quot;pair_id&quot;].to_numpy(), dims=&quot;obs_idx&quot;)
+    # treatment
+    treatment_data = pm.Data(
+        &quot;treatment_data&quot;, df[&quot;treatment&quot;].to_numpy(), dims=(&quot;obs_idx&quot;)
+    )
+    # outcome
+    post_test_data = pm.Data(
+        &quot;post_test_data&quot;, df[&quot;post_test&quot;].to_numpy(), dims=&quot;obs_idx&quot;
+    )
+
+    # --- Priors ---
+    mu_alpha = pm.Normal(&quot;mu_alpha&quot;, mu=0, sigma=1, dims=(&quot;grade&quot;))
+    sigma_alpha = pm.HalfNormal(&quot;sigma_alpha&quot;, sigma=1, dims=(&quot;grade&quot;))
+    # auxiliary variable for the non-centered parametrization
+    z_alpha = pm.Normal(&quot;z_alpha&quot;, mu=0, sigma=1, dims=(&quot;pair_id&quot;, &quot;grade&quot;))
+
+    theta = pm.Normal(&quot;theta&quot;, mu=0, sigma=1, dims=(&quot;grade&quot;))
+    beta_x = pm.Normal(&quot;beta_x&quot;, mu=0, sigma=1, dims=(&quot;grade&quot;, &quot;covariates&quot;))
+
+    sigma_outcome = pm.HalfNormal(&quot;sigma_outcome&quot;, sigma=1, dims=(&quot;grade&quot;))
+
+    # --- Parametrization ---
+    # Non-centered parametrization for the random intercepts
+    alpha = pm.Deterministic(
+        &quot;alpha&quot;, mu_alpha + z_alpha * sigma_alpha, dims=(&quot;pair_id&quot;, &quot;grade&quot;)
+    )
+
+    mu_outcome = pm.Deterministic(
+        &quot;mu_outcome&quot;,
+        alpha[pair_idx_data, grade_idx_data]
+        + theta[grade_idx_data] * treatment_data
+        + (beta_x[grade_idx_data] * x_data).sum(axis=-1),
+        dims=(&quot;obs_idx&quot;),
+    )
+
+    # --- Likelihood ---
+    pm.Normal(
+        &quot;post_test_obs&quot;,
+        mu=mu_outcome,
+        sigma=sigma_outcome[grade_idx_data],
+        observed=post_test_data,
+        dims=&quot;obs_idx&quot;,
+    )
+
+
+pm.model_to_graphviz(model)</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_18_0.svg" style="width: 900px;"/>
+</center>
+<p>The graphical representation above shows the dependency structure of our model: how the observed data (<code>post_test_obs</code>) depends on the hierarchical parameters through the mean structure (<code>mu_outcome</code>).</p>
+</div>
+</div>
+<div id="prior-predictive-check" class="section level3">
+<h3>Prior Predictive Check</h3>
+<p>Before fitting the model to data, we simulate from the prior distribution to ensure our priors are reasonable and produce plausible outcomes. This step helps detect specification errors and poorly calibrated priors.</p>
+<pre class="python"><code>with model:
+    idata = pm.sample_prior_predictive(random_seed=rng)
+
+fig, ax = plt.subplots()
+az.plot_ppc(idata, group=&quot;prior&quot;, ax=ax)
+az.plot_dist(df[&quot;post_test&quot;].to_numpy(), color=&quot;black&quot;, ax=ax)
+ax.set_title(&quot;Prior Predictive Check&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_21_0.png" style="width: 800px;"/>
+</center>
+<p>The prior predictive distribution (blue) is compared against the observed data (black). The priors allow for a wide range of plausible outcomes, which is appropriate given our standardized data. The overlap indicates that the observed data are not surprising under our prior assumptions.</p>
+</div>
+<div id="posterior-inference" class="section level3">
+<h3>Posterior Inference</h3>
+<p>We now fit the model using Hamiltonian Monte Carlo (HMC) via the NumPyro backend.</p>
+<pre class="python"><code>with model:
+    idata.extend(
+        pm.sample(
+            tune=1_500,
+            draws=1_000,
+            target_accept=0.9,
+            chains=4,
+            nuts_sampler=&quot;numpyro&quot;,
+            random_seed=rng,
+        )
+    )
+
+    idata.extend(pm.sample_posterior_predictive(idata, random_seed=rng))</code></pre>
+<p>After sampling, we generate posterior predictive samples to assess model fit. These predictions will be used to evaluate how well the model captures the observed data patterns.</p>
+</div>
+<div id="model-diagnostics" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>We check for sampling pathologies that would indicate problems with the posterior geometry or sampler configuration. The primary diagnostic is the number of divergent transitions, which should ideally be zero.</p>
+<pre class="python"><code>idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
+<p>No divergent transitions indicate that the sampler successfully explored the posterior without encountering problematic curvature. We also examine the summary statistics and trace plots to assess convergence.</p>
+<pre class="python"><code>az.summary(
+    idata,
+    var_names=[
+        &quot;beta_x&quot;,
+        &quot;mu_alpha&quot;,
+        &quot;sigma_alpha&quot;,
+        &quot;sigma_outcome&quot;,
+        &quot;theta&quot;,
+    ],
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+beta_x[1, pre_test]
+</th>
+<td>
+1.497
+</td>
+<td>
+0.538
+</td>
+<td>
+0.513
+</td>
+<td>
+2.540
+</td>
+<td>
+0.010
+</td>
+<td>
+0.009
+</td>
+<td>
+3137.0
+</td>
+<td>
+2505.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_x[2, pre_test]
+</th>
+<td>
+1.547
+</td>
+<td>
+0.113
+</td>
+<td>
+1.342
+</td>
+<td>
+1.766
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+2380.0
+</td>
+<td>
+2645.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_x[3, pre_test]
+</th>
+<td>
+1.308
+</td>
+<td>
+0.080
+</td>
+<td>
+1.152
+</td>
+<td>
+1.455
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3142.0
+</td>
+<td>
+2900.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+beta_x[4, pre_test]
+</th>
+<td>
+1.275
+</td>
+<td>
+0.088
+</td>
+<td>
+1.110
+</td>
+<td>
+1.439
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+2369.0
+</td>
+<td>
+2686.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+mu_alpha[1]
+</th>
+<td>
+0.887
+</td>
+<td>
+0.897
+</td>
+<td>
+-0.699
+</td>
+<td>
+2.686
+</td>
+<td>
+0.016
+</td>
+<td>
+0.015
+</td>
+<td>
+3234.0
+</td>
+<td>
+2615.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+mu_alpha[2]
+</th>
+<td>
+-0.152
+</td>
+<td>
+0.054
+</td>
+<td>
+-0.256
+</td>
+<td>
+-0.052
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2625.0
+</td>
+<td>
+3078.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+mu_alpha[3]
+</th>
+<td>
+-0.401
+</td>
+<td>
+0.064
+</td>
+<td>
+-0.518
+</td>
+<td>
+-0.277
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3139.0
+</td>
+<td>
+2862.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+mu_alpha[4]
+</th>
+<td>
+-0.460
+</td>
+<td>
+0.088
+</td>
+<td>
+-0.621
+</td>
+<td>
+-0.297
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+2601.0
+</td>
+<td>
+2761.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_alpha[1]
+</th>
+<td>
+0.639
+</td>
+<td>
+0.140
+</td>
+<td>
+0.382
+</td>
+<td>
+0.908
+</td>
+<td>
+0.004
+</td>
+<td>
+0.003
+</td>
+<td>
+1209.0
+</td>
+<td>
+1328.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_alpha[2]
+</th>
+<td>
+0.219
+</td>
+<td>
+0.054
+</td>
+<td>
+0.122
+</td>
+<td>
+0.329
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+738.0
+</td>
+<td>
+608.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_alpha[3]
+</th>
+<td>
+0.054
+</td>
+<td>
+0.034
+</td>
+<td>
+0.000
+</td>
+<td>
+0.111
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+1082.0
+</td>
+<td>
+1789.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_alpha[4]
+</th>
+<td>
+0.063
+</td>
+<td>
+0.031
+</td>
+<td>
+0.000
+</td>
+<td>
+0.111
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+795.0
+</td>
+<td>
+1340.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_outcome[1]
+</th>
+<td>
+0.460
+</td>
+<td>
+0.084
+</td>
+<td>
+0.317
+</td>
+<td>
+0.617
+</td>
+<td>
+0.002
+</td>
+<td>
+0.002
+</td>
+<td>
+1378.0
+</td>
+<td>
+1483.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_outcome[2]
+</th>
+<td>
+0.230
+</td>
+<td>
+0.032
+</td>
+<td>
+0.171
+</td>
+<td>
+0.288
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+953.0
+</td>
+<td>
+790.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_outcome[3]
+</th>
+<td>
+0.133
+</td>
+<td>
+0.019
+</td>
+<td>
+0.099
+</td>
+<td>
+0.168
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+2446.0
+</td>
+<td>
+2962.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_outcome[4]
+</th>
+<td>
+0.111
+</td>
+<td>
+0.018
+</td>
+<td>
+0.081
+</td>
+<td>
+0.145
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+1293.0
+</td>
+<td>
+2408.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+theta[1]
+</th>
+<td>
+0.471
+</td>
+<td>
+0.142
+</td>
+<td>
+0.214
+</td>
+<td>
+0.746
+</td>
+<td>
+0.002
+</td>
+<td>
+0.003
+</td>
+<td>
+7284.0
+</td>
+<td>
+2777.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+theta[2]
+</th>
+<td>
+0.235
+</td>
+<td>
+0.058
+</td>
+<td>
+0.127
+</td>
+<td>
+0.345
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+4686.0
+</td>
+<td>
+2972.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+theta[3]
+</th>
+<td>
+0.108
+</td>
+<td>
+0.043
+</td>
+<td>
+0.025
+</td>
+<td>
+0.185
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+5843.0
+</td>
+<td>
+2914.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+theta[4]
+</th>
+<td>
+0.094
+</td>
+<td>
+0.035
+</td>
+<td>
+0.030
+</td>
+<td>
+0.165
+</td>
+<td>
+0.000
+</td>
+<td>
+0.001
+</td>
+<td>
+6175.0
+</td>
+<td>
+2700.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The summary statistics show effective sample sizes (ESS) and <span class="math inline">\(\hat{R}\)</span> diagnostics for key parameters. Values of <span class="math inline">\(\hat{R} \approx 1\)</span> indicate convergence across chains. The treatment effect parameter (<code>theta</code>) and variance components are our main interest.</p>
+<pre class="python"><code>axes = az.plot_trace(
+    idata,
+    var_names=[
+        &quot;beta_x&quot;,
+        &quot;mu_alpha&quot;,
+        &quot;sigma_alpha&quot;,
+        &quot;sigma_outcome&quot;,
+        &quot;theta&quot;,
+    ],
+    figsize=(10, 8),
+)
+
+
+plt.gcf().suptitle(&quot;Model Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_29_0.png" style="width: 900px;"/>
+</center>
+<p>The trace plots show good mixing across chains (overlapping colors) and stable posterior distributions (smooth histograms on the left). The chains have converged to stationary distributions, confirming the reliability of our posterior estimates.</p>
+<p>Next, we check the posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(idata, group=&quot;posterior&quot;, num_pp_samples=500, ax=ax)
+ax.set_title(&quot;Posterior Predictive Check&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.02);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_32_0.png" style="width: 800px;"/>
+</center>
+<p>The posterior predictive distribution closely matches the observed data, indicating that the model captures the essential features of the data-generating process.</p>
+</div>
+<div id="treatment-effect-estimates" class="section level3">
+<h3>Treatment Effect Estimates</h3>
+<p>We now examine the estimated treatment effects. The parameter <code>theta</code> represents the average causal effect of watching “The Electric Company” on standardized test scores, estimated separately for each grade level.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    idata,
+    combined=True,
+    var_names=[&quot;theta&quot;],
+    figsize=(10, 6),
+)
+ax.set_title(
+    r&quot;Treatment Effect Estimates $(94\% HDI)$&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.02,
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_34_0.png" style="width: 800px;"/>
+</center>
+<p>The forest plot shows the posterior distributions of treatment effects for each grade. The point estimates and credible intervals provide evidence about the magnitude and uncertainty of the causal effect. To interpret these effects in the original scale, we transform them back from standardized units.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    idata[&quot;posterior&quot;][&quot;theta&quot;]
+    * preprocessor[&quot;num&quot;].scale_[numeric_features.index(&quot;post_test&quot;)],
+    combined=True,
+    var_names=[&quot;theta&quot;],
+    figsize=(10, 6),
+)
+ax.set_title(
+    r&quot;Treatment Effect Estimates $(94\% HDI)$ (Original Scale)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.02,
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_36_0.png" style="width: 800px;"/>
+</center>
+<p>These are the treatment effects expressed in the original units of the test scores. Positive values indicate that the treatment group (who watched the show) scored higher on average than the control group. These values match the results from the book.</p>
+</div>
+<div id="counterfactual-prediction-grids" class="section level3">
+<h3>Counterfactual Prediction Grids</h3>
+<p>Here we want to show another way to compute the average treatment effect (ATE) using the <a href="https://marginaleffects.com/"><code>marginaleffects</code></a> package and PyMC <a href="https://www.pymc.io/projects/examples/en/latest/causal_inference/interventional_distribution.html"><code>do</code> operator</a> to generate counterfactual predictions.</p>
+<p>We construct balanced prediction grids that span the range of pre-test scores for both treatment and control conditions. This allows us to compute counterfactual predictions: what would have happened to the same students under both treatment and control.</p>
+<p><strong>Remark</strong>: We can use the real data instead of the prediction grid. However, this is unnecessary and potentially computationally expensive if the data is large.</p>
+<pre class="python"><code># Construct prediction grids (control)
+raw_df_control_grid = datagrid(
+    newdata=raw_df,
+    treatment=0,
+    grade=preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;grade&quot;)],
+    pair_id=preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;pair_id&quot;)],
+    pre_test=np.linspace(raw_df[&quot;pre_test&quot;].min(), raw_df[&quot;pre_test&quot;].max(), 10),
+)
+# Preprocess the prediction grid
+df_control_grid = preprocessor.transform(raw_df_control_grid)
+df_control_grid.columns = [col.split(&quot;__&quot;)[-1] for col in df_control_grid.columns]
+x_df_control_grid = df_control_grid[x_columns]
+
+# Construct prediction grids (treatment)
+raw_df_treatment_grid = datagrid(
+    newdata=raw_df,
+    treatment=1,
+    grade=preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;grade&quot;)],
+    pair_id=preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;pair_id&quot;)],
+    pre_test=np.linspace(raw_df[&quot;pre_test&quot;].min(), raw_df[&quot;pre_test&quot;].max(), 10),
+)
+# Preprocess the prediction grid
+df_treatment_grid = preprocessor.transform(raw_df_treatment_grid)
+df_treatment_grid.columns = [col.split(&quot;__&quot;)[-1] for col in df_treatment_grid.columns]
+x_df_treatment_grid = df_treatment_grid[x_columns]</code></pre>
+<p>We have created two grids: one with treatment set to 0 (control) and one with treatment set to 1 (treated), both spanning the observed range of pre-test scores and all grade-pair combinations.</p>
+</div>
+<div id="counterfactual-estimates" class="section level3">
+<h3>Counterfactual Estimates</h3>
+<p>We now generate posterior predictive samples under each counterfactual scenario. For the control grid, we predict outcomes as if all students were in the control condition. For the treatment grid, we predict outcomes as if all students watched the show.</p>
+<pre class="python"><code>with model:
+    pm.set_data(
+        new_data={
+            &quot;x_data&quot;: x_df_control_grid,
+            &quot;grade_idx_data&quot;: df_control_grid[&quot;grade&quot;].to_numpy(),
+            &quot;pair_idx_data&quot;: df_control_grid[&quot;pair_id&quot;].to_numpy(),
+            &quot;treatment_data&quot;: df_control_grid[&quot;treatment&quot;].to_numpy(),
+            &quot;post_test_data&quot;: df_control_grid[&quot;post_test&quot;].to_numpy(),
+        },
+        coords={
+            &quot;covariates&quot;: x_df_control_grid.columns,
+            &quot;grade&quot;: preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;grade&quot;)],
+            &quot;pair_id&quot;: preprocessor[&quot;ord&quot;].categories_[
+                ordinal_features.index(&quot;pair_id&quot;)
+            ],
+            &quot;obs_idx&quot;: np.arange(len(df_control_grid)),
+        },
+    )
+
+    posterior_predictive_control = pm.sample_posterior_predictive(
+        idata, var_names=[&quot;post_test_obs&quot;, &quot;mu_outcome&quot;], random_seed=rng
+    )</code></pre>
+<p>The control counterfactual predictions represent the expected outcomes in the absence of treatment, conditioning on the observed covariates and the estimated model parameters.</p>
+<pre class="python"><code>with model:
+    pm.set_data(
+        new_data={
+            &quot;x_data&quot;: x_df_treatment_grid,
+            &quot;grade_idx_data&quot;: df_treatment_grid[&quot;grade&quot;].to_numpy(),
+            &quot;pair_idx_data&quot;: df_treatment_grid[&quot;pair_id&quot;].to_numpy(),
+            &quot;treatment_data&quot;: df_treatment_grid[&quot;treatment&quot;].to_numpy(),
+            &quot;post_test_data&quot;: df_treatment_grid[&quot;post_test&quot;].to_numpy(),
+        },
+        coords={
+            &quot;covariates&quot;: x_df_treatment_grid.columns,
+            &quot;grade&quot;: preprocessor[&quot;ord&quot;].categories_[ordinal_features.index(&quot;grade&quot;)],
+            &quot;pair_id&quot;: preprocessor[&quot;ord&quot;].categories_[
+                ordinal_features.index(&quot;pair_id&quot;)
+            ],
+            &quot;obs_idx&quot;: np.arange(len(df_treatment_grid)),
+        },
+    )
+
+    posterior_predictive_treatment = pm.sample_posterior_predictive(
+        idata, var_names=[&quot;post_test_obs&quot;, &quot;mu_outcome&quot;], random_seed=rng
+    )</code></pre>
+<p>Similarly, the treatment counterfactual predictions represent expected outcomes if all students had watched the show. The difference between these two counterfactuals yields the causal effect.</p>
+</div>
+<div id="results-treatment-effect-estimates" class="section level3">
+<h3>Results: Treatment Effect Estimates</h3>
+<p>We can now compute the <strong>average treatment effect (ATE)</strong> by comparing the posterior predictive distributions under the counterfactual scenarios (Treatment vs. Control). The difference between these predictions, averaged across all observations in the grid, provides a distribution for the causal effect.</p>
+<p>For illustration, we focus on Grade 1 students. We first extract and transform the predictions back to the original scale of test scores.</p>
+<pre class="python"><code>control_mask = (
+    raw_df_control_grid.select(pl.col(&quot;grade&quot;).eq(pl.lit(1))).to_numpy().flatten()
+)
+control_posterior_grade = posterior_predictive_control[&quot;posterior_predictive&quot;][
+    &quot;mu_outcome&quot;
+][:, :, control_mask]
+
+original_scale_control_posterior_grade = (
+    control_posterior_grade
+    * preprocessor[&quot;num&quot;].scale_[numeric_features.index(&quot;post_test&quot;)]
+    + preprocessor[&quot;num&quot;].mean_[numeric_features.index(&quot;post_test&quot;)]
+)
+
+treatment_mask = (
+    raw_df_treatment_grid.select(pl.col(&quot;grade&quot;).eq(pl.lit(1))).to_numpy().flatten()
+)
+treatment_posterior_grade = posterior_predictive_treatment[&quot;posterior_predictive&quot;][
+    &quot;mu_outcome&quot;
+][:, :, treatment_mask]
+
+original_scale_treatment_posterior_grade = (
+    treatment_posterior_grade
+    * preprocessor[&quot;num&quot;].scale_[numeric_features.index(&quot;post_test&quot;)]
+    + preprocessor[&quot;num&quot;].mean_[numeric_features.index(&quot;post_test&quot;)]
+)</code></pre>
+<p>We now visualize the posterior distribution of the average treatment effect for Grade 1. The first plot shows the effect computed from the counterfactual predictions, while the second shows the direct coefficient estimate. These should be consistent, providing a validation of our approach.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    sharex=True,
+    sharey=True,
+    figsize=(10, 8),
+    layout=&quot;constrained&quot;,
+)
+
+
+az.plot_posterior(
+    (
+        original_scale_treatment_posterior_grade
+        - original_scale_control_posterior_grade
+    ).mean(dim=(&quot;obs_idx&quot;)),
+    ref_val=0,
+    ax=ax[0],
+)
+ax[0].set(title=&quot;ATE from Counterfactual Predictions&quot;)
+
+az.plot_posterior(
+    (
+        idata[&quot;posterior&quot;][&quot;theta&quot;]
+        * preprocessor[&quot;num&quot;].scale_[numeric_features.index(&quot;post_test&quot;)]
+    ).sel(grade=1),
+    ref_val=0,
+    ax=ax[1],
+)
+ax[1].set(
+    title=&quot;ATE from Parameter Estimates (beta coefficient)&quot;,
+    xlabel=&quot;ATE (Original Scale)&quot;,
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_46_0.png" style="width: 800px;"/>
+</center>
+<p>Both approaches yield similar posterior distributions, confirming the robustness of our causal effect estimate. The positive treatment effect indicates that watching “The Electric Company” improved reading scores for Grade 1 students. The credible intervals quantify our uncertainty about the magnitude of this effect.</p>
+</div>
+</div>
+<div id="part-2-covariance-model" class="section level2">
+<h2>Part 2: Covariance Model</h2>
+<div id="motivation-modeling-treatment-effect-heterogeneity" class="section level3">
+<h3>Motivation: Modeling Treatment Effect Heterogeneity</h3>
+<p>The hierarchical intercept model in Part 1 assumes that the treatment effect is constant across all pairs (after accounting for grade differences). While this model efficiently controls for pair-level confounding, it does not allow us to explore whether the treatment effect varies across pairs. In practice, some schools or classrooms may respond more strongly to the intervention than others due to unmeasured factors such as teacher implementation fidelity, student engagement, or local context.</p>
+<p>To capture this <strong>treatment effect heterogeneity</strong>, we extend our model to allow both the baseline intercept <span class="math inline">\(\alpha_j\)</span> and the treatment effect <span class="math inline">\(\theta_j\)</span> to vary across pairs. Moreover, we model the joint distribution of these pair-specific parameters using a bivariate normal distribution with a covariance structure:</p>
+<p><span class="math display">\[
+\begin{pmatrix} \alpha_j \\ \theta_j \end{pmatrix} \sim \text{MvNormal}\left(\begin{pmatrix} \mu_\alpha \\ \mu_\theta \end{pmatrix}, \Sigma\right)
+\]</span></p>
+<p>where <span class="math inline">\(\Sigma\)</span> is a <span class="math inline">\(2 \times 2\)</span> covariance matrix. The off-diagonal elements of <span class="math inline">\(\Sigma\)</span> capture the correlation between baseline performance and treatment response. For example, a positive correlation would indicate that pairs with higher baseline scores also tend to experience larger treatment effects, while a negative correlation would suggest compensatory effects (treatment helps struggling pairs more).</p>
+<div id="benefits-of-modeling-covariances" class="section level4">
+<h4>Benefits of Modeling Covariances</h4>
+<p>This approach represents what Huntington-Klein (2021, <em>The Effect</em>, Chapter 16) calls “Advanced Random Effects” or multi-level modeling. By explicitly modeling the covariance structure, we gain several advantages over both standard Fixed Effects and basic Random Effects:</p>
+<ul>
+<li><strong>Captures heterogeneity</strong>: We estimate not just the average treatment effect <span class="math inline">\(\mu_\theta\)</span>, but also the distribution of pair-specific effects <span class="math inline">\(\theta_j\)</span>, revealing how treatment impacts vary across contexts.</li>
+<li><strong>Partial pooling on treatment effects</strong>: Noisy pair-specific estimates are shrunk toward the population mean, borrowing strength across groups. This provides more stable estimates than treating each pair entirely separately.</li>
+<li><strong>Correlation structure</strong>: We learn whether baseline performance and treatment response are related, which can inform targeting and generalization of the intervention. This addresses the limitation of basic Random Effects by explicitly modeling the relationship between group characteristics and effects.</li>
+<li><strong>Separation of between and within effects</strong>: By allowing both intercepts and slopes to vary, we can distinguish population-level patterns from group-specific deviations, providing richer substantive interpretation.</li>
+<li><strong>Efficiency with hierarchical data</strong>: Multi-level models make full use of the hierarchical structure, improving statistical efficiency compared to Fixed Effects while relaxing the strong independence assumptions of basic Random Effects.</li>
+</ul>
+<p>We implement this model using a non-centered parametrization with a Cholesky decomposition of the covariance matrix for computational efficiency. We follow closely the approach described in the (great!) blog post <a href="https://tomicapretto.com/posts/2022-06-12_lkj-prior/">Hierarchical modeling with the LKJ prior in PyMC</a> by <a href="https://tomicapretto.com/">Tomi Capretto</a>.</p>
+<p>There is a small caveat though: PyMC does not allow us (yet) to vectorize the LKJ prior. So we need to do it manually. Which in this case is relatively easy as we just have one correlation factor to vectorize (so we simply use a shifted Beta distribution).</p>
+<p>The following helper functions construct correlation and covariance matrices in a vectorized manner for each grade level.</p>
+<pre class="python"><code>def vectorized_correlation_matrices(corr_values, size=2):
+    n_matrices = corr_values.shape[0]
+
+    # Reshape for broadcasting
+    # Use reshape or expand_dims instead of dimshuffle
+    corr_expanded = pt.reshape(corr_values, (n_matrices, 1, 1))
+
+    # Create base: all elements are correlation values
+    base = corr_expanded * pt.ones((n_matrices, size, size))
+
+    # Create diagonal mask
+    diag_mask = pt.eye(size, dtype=&quot;bool&quot;)
+
+    # Set diagonal to 1
+    return pt.where(diag_mask, 1.0, base)
+
+
+def vectorized_diagonal_matrices_v4(values):
+    k = values.shape[1]  # 2
+
+    # Create identity matrix (2, 2)
+    identity_matrix = pt.eye(k)
+
+    # Reshape values for broadcasting: (4, 2) -&gt; (4, 2, 1)
+    values_expanded = values[:, :, None]
+
+    # Multiply: (4, 2, 1) * (2, 2) -&gt; (4, 2, 2)
+    # This puts values[i, j] at position [i, j, j]
+    return values_expanded * identity_matrix</code></pre>
+</div>
+</div>
+<div id="prior-specification-for-correlation" class="section level3">
+<h3>Prior Specification for Correlation</h3>
+<p>Before specifying the full model, we visualize our prior distribution for the correlation parameter. We use a <span class="math inline">\(\text{Beta}(20, 5)\)</span> distribution (scaled to <span class="math inline">\([-1, 1]\)</span>) to encode a prior belief that the correlation between intercepts and treatment effects is likely positive but with substantial uncertainty. This prior is weakly informative and allows the data to dominate the posterior inference.</p>
+<pre class="python"><code>pz.Beta(alpha=20, beta=5).plot_pdf(pointinterval=True);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_52_0.png" style="width: 800px;"/>
+</center>
+<p>The Beta distribution shown above is transformed to the correlation scale via the mapping <span class="math inline">\(\psi = 2 \times \text{Beta}(20, 5) - 1\)</span>. This induces a prior that favors positive correlations but remains flexible enough to accommodate a range of values.</p>
+</div>
+<div id="model-specification-1" class="section level3">
+<h3>Model Specification</h3>
+<p>We now specify the full covariance model. The key difference from Part 1 is that both the intercept and the treatment effect vary by pair. The model structure is:</p>
+<p><span class="math display">\[
+\begin{align}
+\text{post_test}_i &amp;\sim \text{Normal}(\mu_i, \sigma_y) \\
+\mu_i &amp;= \alpha_{\text{pair}[i]} + \theta_{\text{pair}[i]} \cdot T_i + \beta_x \cdot \text{pre_test}_i \\
+\begin{pmatrix} \alpha_j \\ \theta_j \end{pmatrix} &amp;\sim \text{Normal}\left(\begin{pmatrix} \mu_\alpha \\ \mu_\theta \end{pmatrix}, \Sigma\right)
+\end{align}
+\]</span></p>
+<p>where <span class="math inline">\(\Sigma\)</span> is decomposed as <span class="math inline">\(\Sigma = D \Omega D\)</span>, with <span class="math inline">\(D\)</span> being a diagonal matrix of standard deviations and <span class="math inline">\(\Omega\)</span> being the correlation matrix. This decomposition allows us to place separate priors on the marginal variances and the correlation structure, which improves interpretability and sampling efficiency.</p>
+<p>As in the model in Part 1, we use a non-centered parametrization to improve sampling efficiency.</p>
+<pre class="python"><code>coords.update({&quot;effect&quot;: [&quot;intercept&quot;, &quot;slope&quot;], &quot;effect_copy&quot;: [&quot;intercept&quot;, &quot;slope&quot;]})
+coords.update({&quot;corr_dim&quot;: [&quot;corr_dim_1&quot;]})
+
+with pm.Model(coords=coords) as cov_model:
+    # --- Data Containers ---
+    # covariates
+    x_data = pm.Data(&quot;x_data&quot;, x_df, dims=(&quot;obs_idx&quot;, &quot;covariates&quot;))
+    # grade
+    grade_idx_data = pm.Data(&quot;grade_idx_data&quot;, df[&quot;grade&quot;].to_numpy(), dims=&quot;obs_idx&quot;)
+    # object categories
+    pair_idx_data = pm.Data(&quot;pair_idx_data&quot;, df[&quot;pair_id&quot;].to_numpy(), dims=&quot;obs_idx&quot;)
+    # treatment
+    treatment_data = pm.Data(
+        &quot;treatment_data&quot;, df[&quot;treatment&quot;].to_numpy(), dims=(&quot;obs_idx&quot;)
+    )
+    # outcome
+    post_test_data = pm.Data(
+        &quot;post_test_data&quot;, df[&quot;post_test&quot;].to_numpy(), dims=&quot;obs_idx&quot;
+    )
+
+    # --- Priors ---
+
+    beta_x = pm.Normal(&quot;beta_x&quot;, mu=0, sigma=1, dims=(&quot;grade&quot;, &quot;covariates&quot;))
+    sigma_outcome = pm.HalfNormal(&quot;sigma_outcome&quot;, sigma=1, dims=(&quot;grade&quot;))
+
+    mu_alpha = pm.Normal(&quot;mu_alpha&quot;, mu=0, sigma=0.5, dims=(&quot;grade&quot;))
+    mu_theta = pm.Normal(&quot;mu_theta&quot;, mu=0, sigma=0.5, dims=(&quot;grade&quot;))
+
+    # Group-level standard deviations
+    sigma_u = pm.HalfNormal(
+        &quot;sigma_u&quot;, sigma=np.array([0.2, 0.2]), dims=(&quot;grade&quot;, &quot;effect&quot;)
+    )
+
+    # Triangular upper part of the correlation matrix
+    # omega_triu = pm.LKJCorr(&quot;omega_triu&quot;, eta=1, n=2, dims=(&quot;grade&quot;, &quot;corr_dim&quot;)) &lt;- Not supported yet! # noqa: E501
+    omega_triu = pm.Beta(&quot;omega_triu&quot;, alpha=20, beta=5, dims=(&quot;grade&quot;, &quot;corr_dim&quot;))
+    omega_triu_scaled = pm.Deterministic(
+        &quot;omega_triu_scaled&quot;, omega_triu * 2 - 1, dims=(&quot;grade&quot;, &quot;corr_dim&quot;)
+    )
+
+    # Construct correlation matrix
+    omega = pm.Deterministic(
+        &quot;omega&quot;,
+        vectorized_correlation_matrices(omega_triu_scaled),
+        dims=(&quot;grade&quot;, &quot;effect&quot;, &quot;effect_copy&quot;),
+    )
+
+    # Construct diagonal matrix of standard deviation
+    sigma_diagonal = pm.Deterministic(
+        &quot;sigma_diagonal&quot;,
+        vectorized_diagonal_matrices_v4(sigma_u),
+        dims=(&quot;grade&quot;, &quot;effect&quot;, &quot;effect_copy&quot;),
+    )
+
+    # Compute covariance matrix
+    cov = pm.Deterministic(
+        &quot;cov&quot;,
+        pt.einsum(&quot;bij,bjk,bkl-&gt;bil&quot;, sigma_diagonal, omega, sigma_diagonal),
+        dims=(&quot;grade&quot;, &quot;effect&quot;, &quot;effect_copy&quot;),
+    )
+
+    # Cholesky decomposition of covariance matrix
+    cholesky_cov = pm.Deterministic(
+        &quot;cholesky_cov&quot;,
+        pt.slinalg.cholesky(cov),
+        dims=(&quot;grade&quot;, &quot;effect&quot;, &quot;effect_copy&quot;),
+    )
+
+    # And finally get group-specific coefficients
+    u_raw = pm.Normal(&quot;u_raw&quot;, mu=0, sigma=1, dims=(&quot;grade&quot;, &quot;effect&quot;, &quot;pair_id&quot;))
+    u = pm.Deterministic(
+        &quot;u&quot;,
+        pt.einsum(&quot;bik,bkj-&gt;bji&quot;, cholesky_cov, u_raw),
+        dims=(&quot;grade&quot;, &quot;pair_id&quot;, &quot;effect&quot;),
+    )
+
+    # Extract the intercept and slope components deviations from the population means
+    u0 = pm.Deterministic(&quot;u0&quot;, u[:, :, 0], dims=(&quot;grade&quot;, &quot;pair_id&quot;))
+    u1 = pm.Deterministic(&quot;u1&quot;, u[:, :, 1], dims=(&quot;grade&quot;, &quot;pair_id&quot;))
+
+    # Extract the intercept and slope components
+    alpha = pm.Deterministic(&quot;alpha&quot;, mu_alpha + u0.T, dims=(&quot;pair_id&quot;, &quot;grade&quot;))
+    theta = pm.Deterministic(&quot;theta&quot;, mu_theta + u1.T, dims=(&quot;pair_id&quot;, &quot;grade&quot;))
+
+    mu_outcome = pm.Deterministic(
+        &quot;mu_outcome&quot;,
+        alpha[pair_idx_data, grade_idx_data]
+        + theta[pair_idx_data, grade_idx_data] * treatment_data
+        + (beta_x[grade_idx_data] * x_data).sum(axis=-1),
+        dims=(&quot;obs_idx&quot;),
+    )
+
+    # --- Likelihood ---
+    pm.Normal(
+        &quot;post_test_obs&quot;,
+        mu=mu_outcome,
+        sigma=sigma_outcome[grade_idx_data],
+        observed=post_test_data,
+        dims=&quot;obs_idx&quot;,
+    )
+
+pm.model_to_graphviz(cov_model)</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_54_0.svg" style="width: 900px;"/>
+</center>
+</div>
+<div id="prior-predictive-check-1" class="section level3">
+<h3>Prior Predictive Check</h3>
+<p>As in Part 1, we sample from the prior distribution to verify that our priors produce reasonable predictions before observing the data. This is especially important for the covariance model, where the additional flexibility could lead to implausible outcomes if priors are poorly calibrated.</p>
+<pre class="python"><code>with cov_model:
+    cov_idata = pm.sample_prior_predictive(random_seed=rng)
+
+fig, ax = plt.subplots()
+az.plot_ppc(cov_idata, group=&quot;prior&quot;, ax=ax)
+az.plot_dist(df[&quot;post_test&quot;].to_numpy(), color=&quot;black&quot;, ax=ax)
+ax.set_title(
+    &quot;Prior Predictive Check - Covariance Model&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.02
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_57_0.png" style="width: 800px;"/>
+</center>
+<p>This prior predictive distribution looks quite reasonable.</p>
+</div>
+<div id="posterior-inference-1" class="section level3">
+<h3>Posterior Inference</h3>
+<p>We now fit the covariance model using HMC. Due to the increased complexity of the model (additional parameters and correlation structure), we use a longer tuning phase (2,000 iterations) and a higher target acceptance rate (0.95) to ensure thorough exploration of the posterior geometry.</p>
+<pre class="python"><code>with cov_model:
+    cov_idata.extend(
+        pm.sample(
+            tune=2_000,
+            draws=1_000,
+            chains=4,
+            nuts_sampler=&quot;numpyro&quot;,
+            target_accept=0.95,
+            random_seed=rng,
+        )
+    )
+
+    cov_idata.extend(pm.sample_posterior_predictive(cov_idata))</code></pre>
+<p>Posterior sampling is complete without any issues.</p>
+</div>
+<div id="model-diagnostics-1" class="section level3">
+<h3>Model Diagnostics</h3>
+<p>We examine diagnostic statistics to ensure the sampler converged successfully. The covariance model has a more complex posterior geometry, so careful attention to diagnostics is essential.</p>
+<pre class="python"><code>cov_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
+<p>The absence of divergent transitions indicates successful sampling. The more complex model structure did not cause problematic posterior geometry, which validates our use of the non-centered parametrization and appropriate tuning parameters.</p>
+<p>Next, let’s check the posterior predictive distribution.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_ppc(cov_idata, group=&quot;posterior&quot;, num_pp_samples=500, ax=ax)
+ax.set_title(
+    &quot;Posterior Predictive Check - Covariance Model&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.02,
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_65_0.png" style="width: 800px;"/>
+</center>
+<p>Overall, the posterior predictive distribution looks good.</p>
+<p>As the key ingredient of the covariance model is the correlation parameter, let’s visualize the posterior distribution of the correlation parameter and compare it to the prior.</p>
+<pre class="python"><code>axes = az.plot_dist_comparison(
+    cov_idata,
+    var_names=[&quot;omega_triu_scaled&quot;],
+    figsize=(10, 18),
+)
+plt.gcf().suptitle(
+    &quot;Prior vs Posterior Comparison - Covariance Model&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.02,
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_68_0.png" style="width: 600px;"/>
+</center>
+<p>We do not see much difference between the prior and posterior distribution of the correlation parameter. Hence, this shows the covariance structure is not overly influential in the average treatment effect for this example. This is consistent with Gelman and Hill’s findings in their book.</p>
+</div>
+<div id="treatment-effect-estimates-1" class="section level3">
+<h3>Treatment Effect Estimates</h3>
+<p>We now examine the estimated treatment effects from the covariance model. Unlike Part 1, where we had a single treatment effect parameter per grade, here we have a population-level mean treatment effect (<code>mu_theta</code>) and pair-specific deviations from this mean (<code>theta</code>). The parameter <code>mu_theta</code> represents the average causal effect across all pairs within a grade.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    sharex=True,
+    sharey=True,
+    figsize=(10, 8),
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_forest(
+    idata[&quot;posterior&quot;][&quot;theta&quot;]
+    * preprocessor[&quot;num&quot;].scale_[numeric_features.index(&quot;post_test&quot;)],
+    combined=True,
+    var_names=[&quot;theta&quot;],
+    ax=ax[0],
+)
+ax[0].set(title=&quot;Hierarchical Intercept Model&quot;)
+
+az.plot_forest(
+    cov_idata[&quot;posterior&quot;][&quot;mu_theta&quot;]
+    * preprocessor[&quot;num&quot;].scale_[numeric_features.index(&quot;post_test&quot;)],
+    combined=True,
+    var_names=[&quot;mu_theta&quot;],
+    ax=ax[1],
+)
+ax[1].set(title=&quot;Covariance Model&quot;)
+fig.suptitle(
+    r&quot;Treatment Effect Estimates $(94\% HDI)$ (Original Scale)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.05,
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_72_0.png" style="width: 800px;"/>
+</center>
+<p>The forest plot shows the posterior distribution of the average treatment effect (<code>mu_theta</code>) for each grade. These estimates are comparable to the <code>theta</code> estimates from Part 1, but they now represent the mean of a distribution of pair-specific effects rather than a fixed common effect.</p>
+</div>
+<div id="hierarchical-shrinkage-population-vs.-group-level-effects" class="section level3">
+<h3>Hierarchical Shrinkage: Population vs. Group-Level Effects</h3>
+<p>One of the key advantages of the covariance model is that it allows us to estimate both population-level parameters (the means <span class="math inline">\(\mu_\alpha\)</span> and <span class="math inline">\(\mu_\theta\)</span>) and group-level parameters (the pair-specific <span class="math inline">\(\alpha_j\)</span> and <span class="math inline">\(\theta_j\)</span>). Through partial pooling, the model borrows strength across pairs: estimates for pairs with sparse data are shrunk toward the population mean, while estimates for data-rich pairs are allowed to deviate more.</p>
+<p>The visualization below compares population-level and group-level estimates for Grade 1. The top row shows the population means (<span class="math inline">\(\mu_\alpha\)</span> and <span class="math inline">\(\mu_\theta\)</span>), while the bottom row shows the distribution of pair-specific effects (<span class="math inline">\(\alpha_j\)</span> and <span class="math inline">\(\theta_j\)</span>) for pairs within Grade 1. The degree of shrinkage depends on the estimated between-pair variance: if pairs are highly similar, estimates will be heavily pooled; if pairs differ substantially, estimates will retain more individual variation.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=2,
+    height_ratios=[0.3, 1],
+    figsize=(15, 8),
+    sharex=True,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_forest(
+    cov_idata[&quot;posterior&quot;].sel(grade=1),
+    combined=True,
+    var_names=[&quot;mu_alpha&quot;],
+    colors=&quot;C0&quot;,
+    ax=ax[0, 0],
+)
+ax[0, 0].set_title(&quot;Intercepts Population-Level Estimates (Grade 1)&quot;, fontsize=14)
+
+
+az.plot_forest(
+    cov_idata[&quot;posterior&quot;]
+    .sel(grade=1)
+    .where(
+        cov_idata[&quot;posterior&quot;].pair_id.isin(
+            raw_df.group_by(&quot;grade&quot;)
+            .agg(pl.col(&quot;pair_id&quot;).unique())
+            .filter(pl.col(&quot;grade&quot;).eq(pl.lit(1)))[&quot;pair_id&quot;]
+            .to_list()
+        ),
+        drop=True,
+    ),
+    var_names=[&quot;alpha&quot;],
+    combined=True,
+    colors=&quot;C1&quot;,
+    ax=ax[1, 0],
+)
+ax[1, 0].set_title(&quot;Intercepts Group-Level Estimates (Grade 1)&quot;, fontsize=14)
+
+
+az.plot_forest(
+    cov_idata[&quot;posterior&quot;].sel(grade=1),
+    combined=True,
+    var_names=[&quot;mu_theta&quot;],
+    colors=&quot;C0&quot;,
+    ax=ax[0, 1],
+)
+ax[0, 1].set_title(&quot;Treatment Effect Population-Level Estimates (Grade 1)&quot;, fontsize=14)
+
+az.plot_forest(
+    cov_idata[&quot;posterior&quot;]
+    .sel(grade=1)
+    .where(
+        cov_idata[&quot;posterior&quot;].pair_id.isin(
+            raw_df.group_by(&quot;grade&quot;)
+            .agg(pl.col(&quot;pair_id&quot;).unique())
+            .filter(pl.col(&quot;grade&quot;).eq(pl.lit(1)))[&quot;pair_id&quot;]
+            .to_list()
+        ),
+        drop=True,
+    ),
+    var_names=[&quot;theta&quot;],
+    combined=True,
+    colors=&quot;C1&quot;,
+    ax=ax[1, 1],
+)
+ax[1, 1].set_title(&quot;Treatment Effect Group-Level Estimates (Grade 1)&quot;, fontsize=14)
+fig.suptitle(
+    &quot;Hierarchical Shrinkage: Population vs. Group-Level Effects (Grade 1)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.07,
+);</code></pre>
+<center>
+<img src="../images/ci_multilevel_files/ci_multilevel_74_0.png" style="width: 1000px;"/>
+</center>
+</div>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>This analysis demonstrates how multilevel models provide a principled framework for causal inference in clustered data, combining the virtues of experimental design with efficient statistical estimation. We estimated the causal effect of watching “The Electric Company” on reading scores using two complementary hierarchical models, each offering distinct insights and tradeoffs.</p>
+<div id="references" class="section level3">
+<h3>References</h3>
+<ul>
+<li>Gelman, A., &amp; Hill, J. (2006). <em>Data Analysis Using Regression and Multilevel/Hierarchical Models</em>. Cambridge University Press. Chapter 23: Causal Inference Using Multilevel Models.</li>
+<li>Huntington-Klein, N. (2021). <em>The Effect: An Introduction to Research Design and Causality</em>. Chapman and Hall/CRC. Chapter 16: Fixed Effects. Available online at <a href="https://theeffectbook.net/ch-FixedEffects.html" class="uri">https://theeffectbook.net/ch-FixedEffects.html</a></li>
+</ul>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-5NM5EDH834', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+  </body>
+</html>
+
