@@ -152,8 +152,12 @@ implementing the same causal modeling strategy using <a href="https://docs.pymc.
 We’ll build models step-by-step, validate them thoroughly, and compare different estimation
 approaches to build intuition for causal inference with probabilistic programming.</p>
 <p>This approach is very similar to the one presented in the great blog post <a href="https://solomonkurz.netlify.app/blog/2023-05-14-causal-inference-with-gamma-regression-or-the-problem-is-with-the-link-function-not-the-likelihood/">Causal inference with gamma regression or: The problem is with the link function,
-not the likelihood (Part 6 of the GLM and causal inference series.)</a>. Tha main difference, is that we rely on PyMC and the <code>do</code> operator to compute counterfactuals.</p>
-<p><strong>Remark:</strong> <a href="https://solomonkurz.netlify.app/">Solomon Kurz</a>’s blog is a fantastic resource to learn about Bayesian methods and causal inference(he mainly uses Stan and <code>brms</code>).</p>
+not the likelihood (Part 6 of the GLM and causal inference series.)</a>. The main difference, is that we rely on PyMC and the <code>do</code> operator to compute counterfactuals.</p>
+<p><strong>Remark [Resources]:</strong></p>
+<ul>
+<li><p><a href="https://solomonkurz.netlify.app/">Solomon Kurz</a>’s blog is a fantastic resource to learn about Bayesian methods and causal inference(he mainly uses Stan and <code>brms</code>).</p></li>
+<li><p>The book <a href="https://www.oreilly.com/library/view/causal-ai/9781633439917/">Causal AI</a> by <a href="https://scholar.google.com/citations?user=8gWTOBAAAAAJ&amp;hl=en">Robert Ness</a> privides an extensive introduction to causal inference with PPLs. The book as an associated repository <a href="https://github.com/altdeep/causalML">causalML</a>, where you can find a lot of great examples.</p></li>
+</ul>
 </div>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
