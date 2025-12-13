@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>CATE Estimation with Causal Effect Variational Autoencoders - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="CATE Estimation with Causal Effect Variational Autoencoders - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">19 min read</span>
+    
+
+    <h1 class="article-title">CATE Estimation with Causal Effect Variational Autoencoders</h1>
+
+    
+    <span class="article-date">2025-12-13</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we demonstrate how to estimate <strong>Conditional Average Treatment Effects
+(CATE)</strong> using a <strong>Causal Effect Variational Autoencoder (CEVAE)</strong> by implementing an example
+from scratch in <a href="https://num.pyro.ai/">NumPyro</a>. This approach is particularly useful when we suspect
+the presence of <strong>unobserved confounders</strong> that affect both treatment assignment and outcomes.</p>
+<p><strong>Disclaimer</strong>: I am not an expert in this specific approach, so please take all the results with a grain of salt and please do not hesitate to provide feedback.</p>
+<div id="motivation-why-cevae" class="section level2">
+<h2>Motivation: Why CEVAE?</h2>
+<p>In observational studies, estimating causal effects is challenging because:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Confounding</strong>: Variables that affect both treatment and outcome can bias naive
+estimates</li>
+<li><strong>Unobserved confounders</strong>: Often, we cannot measure all confounding variables</li>
+<li><strong>Selection bias</strong>: Treatment assignment is typically not random</li>
+</ol>
+<p>The CEVAE framework, introduced by
+<a href="https://arxiv.org/abs/1705.08821">Louizos et al. (2017)</a>, addresses these challenges
+by:</p>
+<ul>
+<li>Modeling a <strong>latent confounder</strong> <span class="math inline">\(z\)</span> that captures unobserved confounding</li>
+<li>Using <strong>variational inference</strong> to infer the posterior distribution of <span class="math inline">\(z\)</span></li>
+<li>Leveraging <strong>neural networks</strong> for flexible function approximation</li>
+</ul>
+<p>This notebook works out the simulation example from the paper above, following the methodology from the
+<a href="https://basisresearch.github.io/chirho/cevae.html">ChiRho CEVAE tutorial</a>, adapted
+for pure NumPyro. The main difference is that we specify the model in the spirit of parameter recovery
+(e.g. by specifying a smaller latent dimension) rather than trying to test the sensitivity with respect to the model specification.
+As a matter of fact, we have also seen that the results can vary quite a lot depending on the model parameters. From the ChiRho tutorial:</p>
+<blockquote>
+<p>“Recent work [rissanen2021critical] has investigated the consequences of misspecifying components of the CEVAE model, concluding that its derived causal estimate are in fact sensitive to these detailed assumptions about the generative model. While some more restrictive settings may yield more robust identification results or bounds on causal effects (e.g. binary variables [kuroki2014measurement]), to the best of our knowledge little more is known about the nonparametric or semiparametric settings.”</p>
+</blockquote>
+<p>Therefore, for practical applications, we recommend to do a sensitivity analysis with respect to the model specification (e.g. neural network architecture, latent dimension, etc.), to assess the robustness of the CATE estimates.</p>
+<p><strong>Remark [CEVAE in Pyro]</strong>: <a href="https://pyro.ai/">Pyro</a> has an implementation of the CEVAE model encapsulating the main components, see <a href="https://pyro.ai/examples/cevae.html">Example: Causal Effect VAE</a>.</p>
+</div>
+<div id="key-concepts" class="section level2">
+<h2>Key Concepts</h2>
+<div id="potential-outcomes-framework" class="section level3">
+<h3>Potential Outcomes Framework</h3>
+<p>The <strong>Conditional Average Treatment Effect (CATE)</strong> for an individual with
+characteristics captured by latent variable <span class="math inline">\(z\)</span> is defined as:</p>
+<p><span class="math display">\[\text{CATE}(z) = \text{E}[Y(1) - Y(0) \mid z] = P(Y=1 \mid \text{do}(T=1), z) -
+P(Y=1 \mid \text{do}(T=0), z)\]</span></p>
+<p>where:</p>
+<ul>
+<li><span class="math inline">\(Y(1)\)</span> is the <strong>potential outcome</strong> under treatment (<span class="math inline">\(T=1\)</span>)</li>
+<li><span class="math inline">\(Y(0)\)</span> is the <strong>potential outcome</strong> under control (<span class="math inline">\(T=0\)</span>)</li>
+<li><span class="math inline">\(\text{do}(T=t)\)</span> denotes an <strong>intervention</strong> setting treatment to value <span class="math inline">\(t\)</span></li>
+</ul>
+<p>The fundamental problem of causal inference is that we only observe one potential
+outcome per individual, the one corresponding to their actual treatment assignment.</p>
+</div>
+<div id="the-cevae-graphical-model" class="section level3">
+<h3>The CEVAE Graphical Model</h3>
+<p>The CEVAE assumes the following generative process:</p>
+<pre class="python"><code>import graphviz as gr
+
+g = gr.Digraph()
+g.node(&quot;z&quot;, style=&quot;filled&quot;, fillcolor=&quot;gray&quot;)
+g.edge(&quot;t&quot;, &quot;y&quot;)
+g.edge(&quot;z&quot;, &quot;y&quot;)
+g.edge(&quot;z&quot;, &quot;t&quot;)
+g.edge(&quot;z&quot;, &quot;x&quot;)
+
+g</code></pre>
+<center>
+<img src="../images/cate_nn_files/cate_nn_2_0.svg" style="width: 400px;"/>
+</center>
+<p>Where:</p>
+<ul>
+<li><span class="math inline">\(z\)</span>: Latent confounder (unobserved)</li>
+<li><span class="math inline">\(x\)</span>: Observed covariates (proxy for <span class="math inline">\(z\)</span>)</li>
+<li><span class="math inline">\(t\)</span>: Treatment assignment</li>
+<li><span class="math inline">\(y\)</span>: Outcome</li>
+</ul>
+<p>The key insight is that while <span class="math inline">\(z\)</span> is unobserved, we can <strong>infer</strong> it from the observed
+variables using variational inference.</p>
+</div>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from itertools import pairwise
+
+import arviz as az
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+import optax
+from flax import nnx
+from jax import random
+from jaxtyping import Array, Float32, Int32, UInt32
+from numpyro.contrib.module import nnx_module
+from numpyro.handlers import condition, do, seed, trace
+from numpyro.infer import SVI, Predictive, Trace_ELBO
+from pydantic import BaseModel
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="data-generating-process-dgp" class="section level2">
+<h2>Data Generating Process (DGP)</h2>
+<p>We simulate data with a <strong>known</strong> data generating process so we can validate our
+CATE estimates. This is crucial for understanding whether our method works correctly.
+This data generating process is the same as the one used in the original CEVAE paper
+and the ChiRho tutorial.</p>
+<div id="the-true-dgp" class="section level3">
+<h3>The True DGP</h3>
+<p>Our synthetic data follows this generative process:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Latent confounder</strong>: <span class="math inline">\(z \sim \text{Bernoulli}(0.5)\)</span>
+<ul>
+<li>Binary latent variable that we <strong>cannot observe</strong> in practice</li>
+</ul></li>
+<li><strong>Covariates</strong>: <span class="math inline">\(x_i \mid z \sim \text{Normal}(z \cdot \text{z_gap},
+\sigma_z)\)</span> for <span class="math inline">\(i = 1, \ldots, d\)</span>
+<ul>
+<li>Covariates are <strong>proxies</strong> for the latent confounder</li>
+<li>Different means and variances depending on <span class="math inline">\(z\)</span></li>
+</ul></li>
+<li><strong>Treatment</strong>: <span class="math inline">\(t \mid z \sim \text{Bernoulli}(0.75z + 0.25(1-z))\)</span>
+<ul>
+<li>Treatment probability depends on <span class="math inline">\(z\)</span> (confounding!)</li>
+<li>When <span class="math inline">\(z=1\)</span>: <span class="math inline">\(P(T=1) = 0.75\)</span></li>
+<li>When <span class="math inline">\(z=0\)</span>: <span class="math inline">\(P(T=1) = 0.25\)</span></li>
+</ul></li>
+<li><strong>Outcome</strong>: <span class="math inline">\(y \mid z, t \sim \text{Bernoulli}(\text{logits} =
+\text{y_gap} \cdot (z + 2(2t - 1)))\)</span>
+<ul>
+<li>Outcome depends on <strong>both</strong> <span class="math inline">\(z\)</span> and <span class="math inline">\(t\)</span></li>
+<li>The treatment effect varies with <span class="math inline">\(z\)</span></li>
+</ul></li>
+</ol>
+</div>
+<div id="true-cate-calculation" class="section level3">
+<h3>True CATE Calculation</h3>
+<p>From the DGP, we can analytically compute the true CATE:</p>
+<p><span class="math display">\[\text{CATE}(z) = \text{sigmoid}(\text{y_gap} \cdot (z + 2)) -
+\text{sigmoid}(\text{y_gap} \cdot (z - 2))\]</span></p>
+<p>With <code>y_gap = 3.0</code>:</p>
+<ul>
+<li>For <span class="math inline">\(z=0\)</span>: <span class="math inline">\(\text{CATE} = \text{sigmoid}(6) - \text{sigmoid}(-6) \approx 0.995\)</span></li>
+<li>For <span class="math inline">\(z=1\)</span>: <span class="math inline">\(\text{CATE} = \text{sigmoid}(9) - \text{sigmoid}(-3) \approx 0.952\)</span></li>
+</ul>
+<p>Let’s express this data generating process as a NumPyro model:</p>
+<pre class="python"><code>class DGPParams(BaseModel):
+    num_train: int = 10_000
+    num_test: int = 2_000
+    feature_dim: int = 10
+    z_gap: float = 1.0
+    y_gap: float = 3.0
+
+
+def generate_data(
+    num_data: int, feature_dim: int, z_gap: float, y_gap: float
+) -&gt; tuple[Array, Array, Array, Array]:
+    &quot;&quot;&quot;Generate synthetic data with latent confounder.
+
+    Parameters
+    ----------
+    num_data : int
+        Number of observations to generate
+    feature_dim : int
+        Dimension of the covariate vector x
+    z_gap : float
+        Controls separation between z=0 and z=1 in covariate space
+    y_gap : float
+        Controls the strength of treatment effect
+
+    Returns
+    -------
+    x : Array of shape (num_data, feature_dim)
+        Observed covariates
+    t : Array of shape (num_data,)
+        Binary treatment assignment
+    y : Array of shape (num_data,)
+        Binary outcome
+    z : Array of shape (num_data,)
+        Latent confounder (for evaluation only)
+    &quot;&quot;&quot;
+    with numpyro.plate(&quot;num_data&quot;, num_data):
+        # Latent confounder - THIS IS UNOBSERVED IN PRACTICE
+        z = numpyro.sample(&quot;z&quot;, dist.Bernoulli(0.5))
+
+        # Covariates depend on z (proxies for the confounder)
+        with numpyro.plate(&quot;feature_dim&quot;, feature_dim):
+            x = numpyro.sample(&quot;x&quot;, dist.Normal(z * z_gap, 5 * z + 3 * (1 - z))).T
+
+        # Treatment depends on z (confounding!)
+        t = numpyro.sample(&quot;t&quot;, dist.Bernoulli(0.75 * z + 0.25 * (1 - z)))
+
+        # Outcome depends on BOTH z and t
+        y = numpyro.sample(&quot;y&quot;, dist.Bernoulli(logits=y_gap * (z + 2 * (2 * t - 1))))
+
+        return x, t, y, z</code></pre>
+<p>We can now generate the training and test data:</p>
+<pre class="python"><code>dgp_params = DGPParams()
+
+# Generate training data (z is discarded - we pretend we can&#39;t observe it)
+rng_key, rng_subkey = random.split(rng_key)
+x_train, t_train, y_train, z_train = trace(seed(generate_data, rng_subkey))(
+    num_data=dgp_params.num_train,
+    feature_dim=dgp_params.feature_dim,
+    z_gap=dgp_params.z_gap,
+    y_gap=dgp_params.y_gap,
+)
+
+# Generate test data (keep z for evaluation purposes)
+rng_key, rng_subkey = random.split(rng_key)
+x_test, t_test, y_test, z_test = trace(seed(generate_data, rng_subkey))(
+    num_data=dgp_params.num_test,
+    feature_dim=dgp_params.feature_dim,
+    z_gap=dgp_params.z_gap,
+    y_gap=dgp_params.y_gap,
+)
+
+# Compute TRUE CATE for evaluation (we know the DGP!)
+train_true_cate_probs = jax.nn.sigmoid(
+    dgp_params.y_gap * (z_train + 2)
+) - jax.nn.sigmoid(dgp_params.y_gap * (z_train - 2))
+
+test_true_cate_probs = jax.nn.sigmoid(dgp_params.y_gap * (z_test + 2)) - jax.nn.sigmoid(
+    dgp_params.y_gap * (z_test - 2)
+)
+
+print(f&quot;Train True CATE (z=0): {train_true_cate_probs[z_train == 0].mean():.4f}&quot;)
+print(f&quot;Train True CATE (z=1): {train_true_cate_probs[z_train == 1].mean():.4f}&quot;)
+print(&quot;-&quot; * 30)
+print(f&quot;Test True CATE (z=0): {test_true_cate_probs[z_test == 0].mean():.4f}&quot;)
+print(f&quot;Test True CATE (z=1): {test_true_cate_probs[z_test == 1].mean():.4f}&quot;)</code></pre>
+<pre><code>Train True CATE (z=0): 0.9951
+Train True CATE (z=1): 0.9524
+------------------------------
+Test True CATE (z=0): 0.9951
+Test True CATE (z=1): 0.9524</code></pre>
+<p>It is of course not surprising that:</p>
+<ul>
+<li>The CATE depends on <span class="math inline">\(z\)</span>.</li>
+<li>The CATE is the same for the train and test set in this synthetic example.</li>
+</ul>
+</div>
+</div>
+<div id="why-naive-approaches-fail" class="section level2">
+<h2>Why Naive Approaches Fail?</h2>
+<p>Before diving into CEVAE, let’s understand why simpler approaches fail for CATE
+estimation with unobserved confounders.</p>
+<div id="simple-difference-in-means" class="section level3">
+<h3>Simple Difference in Means</h3>
+<p>A naive estimate would be:
+<span class="math display">\[\widehat{\text{ATE}}_{\text{naive}} = \text{E}[Y \mid T=1] - \text{E}[Y \mid T=0]\]</span></p>
+<p>This is <strong>biased</strong> because treatment assignment is confounded by <span class="math inline">\(z\)</span>. People with
+<span class="math inline">\(z=1\)</span> are more likely to receive treatment AND have different baseline outcomes.</p>
+<p>We can now compute the naive ATE estimates and compare them to the true ATE:</p>
+<pre class="python"><code># Naive ATE estimate (biased due to confounding)
+train_naive_ate = y_train[t_train == 1].mean() - y_train[t_train == 0].mean()
+train_true_ate = train_true_cate_probs.mean()
+
+print(f&quot;Naive ATE estimate (train): {train_naive_ate:.4f}&quot;)
+print(f&quot;True ATE (train): {train_true_ate:.4f}&quot;)
+print(f&quot;Bias (train): {train_naive_ate - train_true_ate:.4f}&quot;)
+
+print(&quot;-&quot; * 40)
+
+test_naive_ate = y_test[t_test == 1].mean() - y_test[t_test == 0].mean()
+test_true_ate = test_true_cate_probs.mean()
+
+print(f&quot;Naive ATE estimate (test): {test_naive_ate:.4f}&quot;)
+print(f&quot;True ATE (test): {test_true_ate:.4f}&quot;)
+print(f&quot;Bias (test): {test_naive_ate - test_true_ate:.4f}&quot;)</code></pre>
+<pre><code>Naive ATE estimate (train): 0.9873
+True ATE (train): 0.9738
+Bias (train): 0.0136
+----------------------------------------
+Naive ATE estimate (test): 0.9940
+True ATE (test): 0.9738
+Bias (test): 0.0202</code></pre>
+<p>The strategy in CEVAE is to use a Bayesian <code>model</code>, to account for the unobserved confounder, to estimate the CATE (and of course with a variational autoencoder) by generating counterfactuals using the <a href="https://num.pyro.ai/en/stable/handlers.html#do"><code>do</code></a> operator. It is, in essence, the same strategy as in the blog post <a href="https://juanitorduz.github.io/intro_causal_inference_ppl_pymc/">“Introduction to Causal Inference with PPLs”</a>. We will see how to do this in NumPyro in the next sections.</p>
+</div>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>Ok! Now that we know that we need some work to account for the unobserved confounder, let’s see how to do this in NumPyro with the CEVAE approach.
+The main steps are as follows:</p>
+<p><strong>Modeling Strategy</strong>:</p>
+<ol style="list-style-type: decimal">
+<li>Learn a latent variable <span class="math inline">\(z\)</span> that captures the confounding structure.</li>
+<li>Use a <strong>generative model</strong> (decoder) that generates <span class="math inline">\(x\)</span>, <span class="math inline">\(t\)</span>, and <span class="math inline">\(y\)</span> from <span class="math inline">\(z\)</span></li>
+<li>Use an <strong>inference model</strong> (encoder) that infers <span class="math inline">\(z\)</span> from observed data</li>
+<li>Crucially, use <strong>separate outcome networks</strong> for each treatment level to avoid
+the network collapsing to a constant prediction</li>
+<li>At test time, infer <span class="math inline">\(z\)</span> from covariates <span class="math inline">\(x\)</span> only, then compute counterfactual
+outcomes under both treatments using the same <span class="math inline">\(z\)</span> sample</li>
+</ol>
+<p>For the generative models, we will use simple neural network architectures.</p>
+<p>If this feels a bit abstract, it’s ok! That is the reason why we are going to implement this from scratch.</p>
+<div id="neural-network-components" class="section level3">
+<h3>Neural Network Components</h3>
+<p>We use <a href="https://flax.readthedocs.io/en/latest/nnx/index.html">Flax NNX</a> for defining
+neural network modules that integrate with NumPyro via <a href="https://num.pyro.ai/en/0.19.0/primitives.html#nnx-module"><code>nnx_module</code></a>.</p>
+<div id="architecture-overview" class="section level4">
+<h4>Architecture Overview</h4>
+<p>Now that we have stated the overall strategy, we can look into the architecture in detail. Our CEVAE consists of:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>Decoder networks</strong> (generative model):</p>
+<ul>
+<li><code>x_nn</code>: <span class="math inline">\(z \to (\mu_x, \sigma_x)\)</span> - generates covariates from latent</li>
+<li><code>t_nn</code>: <span class="math inline">\(z \to \text{logits}_t\)</span> - generates treatment probability</li>
+<li><code>y_nn_t0</code>, <code>y_nn_t1</code>: <span class="math inline">\(z \to \text{logits}_y\)</span> - generates outcome probability</li>
+</ul></li>
+<li><p><strong>Encoder networks</strong> (inference/guide):</p>
+<ul>
+<li>Training encoder: <span class="math inline">\((x, t, y) \to (\mu_z, \sigma_z)\)</span> - infers <span class="math inline">\(z\)</span> from all
+observed data</li>
+<li>Test encoder: <span class="math inline">\(x \to (\mu_z, \sigma_z)\)</span> - infers <span class="math inline">\(z\)</span> from covariates only</li>
+</ul></li>
+</ol>
+<p>In order to make everything tangible, let’s start with the implementation.</p>
+<p>We start by defining a helper class to store the model parameters:</p>
+<pre class="python"><code>class ModelParams(BaseModel):
+    feature_dim: int = 10
+    latent_dim: int = 1
+    hidden_dim: int = 50
+    num_layers: int = 2
+
+    @property
+    def hidden_layers(self) -&gt; list[int]:
+        return [self.hidden_dim] * self.num_layers</code></pre>
+<p>Now we are ready to define the neural network modules:</p>
+<pre class="python"><code>class FullyConnected(nnx.Module):
+    &quot;&quot;&quot;Base fully connected network with ELU activations.&quot;&quot;&quot;
+
+    def __init__(
+        self, din: int, dout: int, hidden_layers: list[int], *, rngs: nnx.Rngs
+    ) -&gt; None:
+        self.layers = nnx.List([])
+        layer_dims = [din, *hidden_layers, dout]
+        for in_dim, out_dim in pairwise(layer_dims):
+            self.layers.append(nnx.Linear(in_dim, out_dim, rngs=rngs))
+
+    def __call__(self, x: Array) -&gt; Array:
+        for layer in self.layers:
+            x = jax.nn.elu(layer(x))
+        return x
+
+
+class DiagNormalNet(FullyConnected):
+    &quot;&quot;&quot;Network outputting mean and scale for a diagonal normal distribution.&quot;&quot;&quot;
+
+    def __init__(
+        self, din: int, dout: int, hidden_layers: list[int], *, rngs: nnx.Rngs
+    ):
+        super().__init__(din, 2 * dout, hidden_layers, rngs=rngs)
+
+    def __call__(self, x: Array) -&gt; tuple[Array, Array]:
+        loc, scale = jnp.split(super().__call__(x), 2, axis=-1)
+        return loc, jax.nn.softplus(scale)
+
+
+class BernoulliNet(FullyConnected):
+    &quot;&quot;&quot;Network outputting logits for a Bernoulli distribution.&quot;&quot;&quot;
+
+    def __call__(self, x: Array) -&gt; Array:
+        return jax.lax.clamp(-10.0, super().__call__(x), 10.0)
+
+
+class Encoder(nnx.Module):
+    &quot;&quot;&quot;Encoder for amortized variational inference q(z|inputs).
+
+    Maps observed data to the parameters of the approximate posterior
+    distribution over the latent confounder z.
+    &quot;&quot;&quot;
+
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        hidden_layers: list[int],
+        *,
+        rngs: nnx.Rngs,
+    ) -&gt; None:
+        self.layers = nnx.List([])
+        layer_dims = [input_dim, *hidden_layers]
+        for in_dim, out_dim in pairwise(layer_dims):
+            self.layers.append(nnx.Linear(in_dim, out_dim, rngs=rngs))
+
+        final_dim = hidden_layers[-1] if hidden_layers else input_dim
+        self.f_loc = nnx.Linear(final_dim, latent_dim, rngs=rngs)
+        self.f_scale = nnx.Linear(final_dim, latent_dim, rngs=rngs)
+
+    def __call__(self, x: Array) -&gt; tuple[Array, Array]:
+        for layer in self.layers:
+            x = jax.nn.elu(layer(x))
+        return self.f_loc(x), jax.nn.softplus(self.f_scale(x)) + 1e-6</code></pre>
+<p>We now initialize all the neural network modules:</p>
+<pre class="python"><code># Initialize all neural network modules with default values.
+model_params = ModelParams()
+
+# We generate random keys for the neural network initialization.
+rng_key, *subkeys = random.split(rng_key, 7)
+
+# Decoder networks (generative model)
+x_nn_module = DiagNormalNet(
+    din=model_params.latent_dim,
+    dout=model_params.feature_dim,
+    hidden_layers=model_params.hidden_layers,
+    rngs=nnx.Rngs(subkeys[0]),
+)
+
+t_nn_module = BernoulliNet(
+    din=model_params.latent_dim,
+    dout=1,
+    hidden_layers=model_params.hidden_layers,
+    rngs=nnx.Rngs(subkeys[1]),
+)
+
+# We use simple linear layers for the outcome networks.
+y_nn_t0_module = nnx.Linear(
+    in_features=model_params.latent_dim,
+    out_features=1,
+    rngs=nnx.Rngs(subkeys[2]),
+)
+y_nn_t1_module = nnx.Linear(
+    in_features=model_params.latent_dim,
+    out_features=1,
+    rngs=nnx.Rngs(subkeys[3]),
+)
+
+# Training encoder: q(z|x,t,y) - uses all observed data
+encoder_module = Encoder(
+    # The +2 accounts for the treatment and outcome variables
+    input_dim=model_params.feature_dim + 2,
+    latent_dim=model_params.latent_dim,
+    hidden_layers=model_params.hidden_layers,
+    rngs=nnx.Rngs(subkeys[4]),
+)
+
+# Test-time encoder: q(z|x) - infers z from covariates only
+test_encoder_module = Encoder(
+    input_dim=model_params.feature_dim,
+    latent_dim=model_params.latent_dim,
+    hidden_layers=model_params.hidden_layers,
+    rngs=nnx.Rngs(subkeys[5]),
+)</code></pre>
+<p>With these components at hand, we can now define the generative model:</p>
+<pre class="python"><code># Even though we are not using all the variables in the model
+# signature, we need this signature to match the corresponding guide.
+def model(
+    x: Float32[Array, &quot;n d&quot;],
+    t: Int32[Array, &quot; n&quot;],
+    y: Int32[Array, &quot; n&quot;] | None = None,
+    latent_dim: int = 1,
+) -&gt; None:
+    &quot;&quot;&quot;Generative model: p(x, t, y | z) p(z).
+
+    This defines the causal structure where the latent confounder z
+    affects covariates x, treatment t, and outcome y.
+    &quot;&quot;&quot;
+    num_data = t.shape[0]
+
+    # Register neural network modules
+    x_nn = nnx_module(&quot;x_nn&quot;, x_nn_module)
+    t_nn = nnx_module(&quot;t_nn&quot;, t_nn_module)
+    y_nn_t0 = nnx_module(&quot;y_nn_t0&quot;, y_nn_t0_module)
+    y_nn_t1 = nnx_module(&quot;y_nn_t1&quot;, y_nn_t1_module)
+
+    with numpyro.plate(&quot;obs&quot;, num_data):
+        # Prior on latent confounder
+        z = numpyro.sample(&quot;z&quot;, dist.Normal(0, 1).expand([latent_dim]).to_event(1))
+
+        # Covariates depend on z
+        x_loc, x_scale = x_nn(z)
+        numpyro.sample(&quot;x_obs&quot;, dist.Normal(x_loc, x_scale).to_event(1))
+
+        # Treatment depends on z
+        t_logits = t_nn(z).squeeze(-1)
+        t_obs = numpyro.sample(&quot;t_obs&quot;, dist.Bernoulli(logits=t_logits))
+
+        # Outcome depends on z and t
+        # Use the appropriate network based on treatment value
+        y_logits_0 = y_nn_t0(z).squeeze(-1)
+        y_logits_1 = y_nn_t1(z).squeeze(-1)
+        y_logits = jnp.where(t_obs == 1, y_logits_1, y_logits_0)
+        numpyro.sample(&quot;y_obs&quot;, dist.Bernoulli(logits=y_logits))
+
+
+# Visualize the model
+numpyro.render_model(
+    model,
+    model_kwargs={
+        &quot;x&quot;: x_train,
+        &quot;t&quot;: t_train,
+        &quot;y&quot;: y_train,
+        &quot;latent_dim&quot;: model_params.latent_dim,
+    },
+)</code></pre>
+<center>
+<img src="../images/cate_nn_files/cate_nn_21_0.svg" style="width: 400px;"/>
+</center>
+</div>
+</div>
+</div>
+<div id="model-and-guide-definitions" class="section level2">
+<h2>Model and Guide Definitions</h2>
+<p>Next, we focus on the training process. We are going to use stochastic variational inference (SVI) to maximize the evidence lower bound (ELBO).
+For this, we need to define the guide, that is the variational distribution over the latent variables. If you are not familiar with SVI, please see the previous blog post <a href="https://juanitorduz.github.io/intro_svi/">PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</a>.</p>
+<div id="the-training-guide" class="section level3">
+<h3>The Training Guide</h3>
+<p>During training, we use a guide (variational distribution) that conditions on
+<strong>all observed data</strong>: <span class="math inline">\(q(z \mid x, t, y)\)</span>.</p>
+<p>This is the standard CEVAE approach—using all available information to get the
+best possible inference of <span class="math inline">\(z\)</span>.</p>
+</div>
+<div id="the-test-time-guide" class="section level3">
+<h3>The Test-Time Guide</h3>
+<p>At test time, we need to estimate CATE for new individuals where we want to
+predict <strong>both</strong> potential outcomes. We cannot use <span class="math inline">\(t\)</span> and <span class="math inline">\(y\)</span> in the guide because:</p>
+<ol style="list-style-type: decimal">
+<li>We want to intervene on <span class="math inline">\(t\)</span> (set it to <span class="math inline">\(0\)</span> and <span class="math inline">\(1\)</span>)</li>
+<li>We don’t know what <span class="math inline">\(y\)</span> would be under the counterfactual treatment</li>
+</ol>
+<p>Therefore, we train a <strong>separate encoder</strong> that infers <span class="math inline">\(z\)</span> from <span class="math inline">\(x\)</span> alone:
+<span class="math inline">\(q(z \mid x)\)</span>.</p>
+<p>This two-stage approach follows the <a href="https://basisresearch.github.io/chirho/cevae.html">ChiRho CEVAE tutorial</a>.</p>
+<p>Let’s implement both of these guides using the encoder modules we defined earlier:</p>
+<pre class="python"><code>def guide(
+    x: Float32[Array, &quot;n d&quot;],
+    t: Int32[Array, &quot; n&quot;],
+    y: Int32[Array, &quot; n&quot;] | None = None,
+    latent_dim: int = 1,
+) -&gt; None:
+    &quot;&quot;&quot;Training guide: q(z | x, t, y).
+
+    Uses all observed data to infer the latent confounder.
+    This provides the best possible inference during training.
+    &quot;&quot;&quot;
+    num_data = x.shape[0]
+    encoder = nnx_module(&quot;encoder&quot;, encoder_module)
+
+    # Concatenate all observed data as encoder input
+    encoder_input = jnp.concatenate(
+        [x, t[:, None].astype(jnp.float32), y[:, None].astype(jnp.float32)], axis=-1
+    )
+    z_loc, z_scale = encoder(encoder_input)
+
+    with numpyro.plate(&quot;obs&quot;, num_data):
+        numpyro.sample(&quot;z&quot;, dist.Normal(z_loc, z_scale).to_event(1))
+
+
+def test_guide(
+    x: Float32[Array, &quot;n d&quot;],
+    t: Int32[Array, &quot; n&quot;],
+    y: Int32[Array, &quot; n&quot;] | None = None,
+    latent_dim: int = 1,
+) -&gt; None:
+    &quot;&quot;&quot;Test-time guide: q(z | x).
+
+    Infers z from covariates only. This is necessary for CATE estimation
+    because we need to predict outcomes under BOTH treatment values,
+    so we cannot condition on the observed t and y.
+    &quot;&quot;&quot;
+    num_data = x.shape[0]
+    test_encoder = nnx_module(&quot;test_encoder&quot;, test_encoder_module)
+
+    # Only use covariates x for inference
+    z_loc, z_scale = test_encoder(x)
+
+    with numpyro.plate(&quot;obs&quot;, num_data):
+        numpyro.sample(&quot;z&quot;, dist.Normal(z_loc, z_scale).to_event(1))</code></pre>
+</div>
+</div>
+<div id="stage-1-train-the-model" class="section level2">
+<h2>Stage 1: Train the Model</h2>
+<p>Now that we have all the ingredients ready, we can start the inference process.</p>
+<p>Before training, we need to condition the model on the training data. The
+<a href="https://num.pyro.ai/en/0.19.0/handlers.html#condition"><code>condition</code></a> handler fixes the observed variables to their data values, allowing
+the model to learn the relationship between the latent <span class="math inline">\(z\)</span> and the observations.</p>
+<pre class="python"><code># Condition model on training data
+conditioned_model = condition(
+    model, data={&quot;x_obs&quot;: x_train, &quot;t_obs&quot;: t_train, &quot;y_obs&quot;: y_train}
+)
+
+numpyro.render_model(
+    conditioned_model,
+    model_kwargs={
+        &quot;x&quot;: x_train,
+        &quot;t&quot;: t_train,
+        &quot;y&quot;: y_train,
+        &quot;latent_dim&quot;: model_params.latent_dim,
+    },
+)</code></pre>
+<center>
+<img src="../images/cate_nn_files/cate_nn_25_0.svg" style="width: 400px;"/>
+</center>
+<p>Now we can train the model:</p>
+<pre class="python"><code>%%time
+
+num_steps = 20_000
+
+# One-cycle learning rate schedule for stable training
+scheduler = optax.linear_onecycle_schedule(
+    transition_steps=num_steps,
+    peak_value=0.0005,
+    pct_start=0.3,
+    pct_final=0.85,
+    div_factor=2,
+    final_div_factor=5,
+)
+
+optimizer = optax.adam(learning_rate=scheduler)
+svi = SVI(conditioned_model, guide, optimizer, loss=Trace_ELBO())
+
+rng_key, rng_subkey = random.split(rng_key)
+svi_result = svi.run(
+    rng_subkey,
+    num_steps,
+    x=x_train,
+    t=t_train,
+    y=y_train,
+    latent_dim=model_params.latent_dim,
+)
+
+fig, ax = plt.subplots(figsize=(9, 5))
+ax.plot(svi_result.losses)
+ax.set(
+    title=&quot;Stage 1: Training ELBO Loss&quot;,
+    xlabel=&quot;Step&quot;,
+    ylabel=&quot;Loss&quot;,
+    yscale=&quot;log&quot;,
+);</code></pre>
+<pre><code>100%|██████████| 20000/20000 [01:30&lt;00:00, 221.15it/s, init loss: 2540562.0000, avg. loss [19001-20000]: 287445.3438]
+
+
+CPU times: user 6min 40s, sys: 2min 3s, total: 8min 43s
+Wall time: 1min 31s</code></pre>
+<center>
+<img src="../images/cate_nn_files/cate_nn_27_2.png" style="width: 800px;"/>
+</center>
+<p>The ELBO loss looks good, so we can proceed to the next stage.</p>
+</div>
+<div id="stage-2-test-time-encoder-training" class="section level2">
+<h2>Stage 2: Test-Time Encoder Training</h2>
+<p>This is a <strong>critical step</strong>! At test time, we need to infer <span class="math inline">\(z\)</span> from <span class="math inline">\(x\)</span> alone (not <span class="math inline">\(t\)</span> and <span class="math inline">\(y\)</span>) because:</p>
+<ol style="list-style-type: decimal">
+<li><strong>For CATE estimation</strong>: We want to predict outcomes under <strong>both</strong> treatments,
+so we cannot condition on the observed treatment</li>
+<li><strong>For counterfactual reasoning</strong>: We need the same <span class="math inline">\(z\)</span> for both potential
+outcomes</li>
+</ol>
+<p>We train a new encoder <span class="math inline">\(q(z \mid x)\)</span> while <strong>keeping the decoder networks fixed</strong>.
+This ensures the test encoder learns to produce <span class="math inline">\(z\)</span> values that are consistent
+with the learned generative model.</p>
+<pre class="python"><code>%%time
+
+params = svi_result.params
+
+# Condition on test data for the second stage
+test_conditioned_model = condition(
+    model, data={&quot;x_obs&quot;: x_test, &quot;t_obs&quot;: t_test, &quot;y_obs&quot;: y_test}
+)
+
+test_num_steps = 20_000
+test_scheduler = optax.linear_onecycle_schedule(
+    transition_steps=test_num_steps,
+    peak_value=0.001,
+    pct_start=0.3,
+    pct_final=0.85,
+    div_factor=2,
+    final_div_factor=5,
+)
+test_optimizer = optax.adam(learning_rate=test_scheduler)
+test_svi = SVI(test_conditioned_model, test_guide, test_optimizer, loss=Trace_ELBO())
+
+rng_key, rng_subkey = random.split(rng_key)
+test_svi_result = test_svi.run(
+    rng_subkey,
+    test_num_steps,
+    x=x_test,
+    t=t_test,
+    y=y_test,
+    latent_dim=model_params.latent_dim,
+    # Initialize with trained parameters (keeps decoders fixed)
+    init_params=params.copy(),
+)
+
+fig, ax = plt.subplots(figsize=(9, 5))
+ax.plot(test_svi_result.losses)
+ax.set(
+    title=&quot;Stage 2: Test-time Encoder ELBO Loss&quot;,
+    xlabel=&quot;Step&quot;,
+    ylabel=&quot;Loss&quot;,
+    yscale=&quot;log&quot;,
+);</code></pre>
+<pre><code>100%|██████████| 20000/20000 [00:42&lt;00:00, 475.43it/s, init loss: 80796.7656, avg. loss [19001-20000]: 57652.3477]
+
+
+CPU times: user 1min 31s, sys: 31.5 s, total: 2min 2s
+Wall time: 43.3 s</code></pre>
+<center>
+<img src="../images/cate_nn_files/cate_nn_30_2.png" style="width: 800px;"/>
+</center>
+<p>As above, the loss looks good.</p>
+</div>
+<div id="cate-estimation-the-correct-approach" class="section level2">
+<h2>CATE Estimation: The Correct Approach</h2>
+<p>Now that we have learned the parameters from the data, we can estimate CATE using the trained model. The key observation is that we must
+use the <strong>same</strong> <span class="math inline">\(z\)</span> samples when computing both potential outcomes.</p>
+<div id="the-algorithm" class="section level3">
+<h3>The Algorithm</h3>
+<ol style="list-style-type: decimal">
+<li><strong>Sample <span class="math inline">\(z\)</span> from the test-time guide</strong>: <span class="math inline">\(z \sim q(z \mid x)\)</span>
+<ul>
+<li>This infers the latent confounder from covariates only</li>
+</ul></li>
+<li><strong>Compute <span class="math inline">\(Y(0)\)</span></strong>: Use <code>condition(model, {"z": z_sample})</code> + <code>do({"t_obs": 0})</code>
+<ul>
+<li>Fix <span class="math inline">\(z\)</span> to the sampled value</li>
+<li>Intervene to set treatment to 0</li>
+</ul></li>
+<li><strong>Compute <span class="math inline">\(Y(1)\)</span></strong>: Use <code>condition(model, {"z": z_sample})</code> + <code>do({"t_obs": 1})</code>
+<ul>
+<li>Use the <strong>same</strong> <span class="math inline">\(z\)</span> sample</li>
+<li>Intervene to set treatment to 1</li>
+</ul></li>
+<li><strong>CATE</strong>: <span class="math inline">\(\widehat{\text{CATE}} = Y(1) - Y(0)\)</span></li>
+</ol>
+</div>
+<div id="numpyro-handlers" class="section level3">
+<h3>NumPyro Handlers</h3>
+<p>Recall from above, we use two NumPyro handlers:</p>
+<ul>
+<li><a href="https://num.pyro.ai/en/0.19.0/handlers.html#condition"><code>condition</code></a>: Fixes a random variable to a specific value (for <span class="math inline">\(z\)</span>).</li>
+<li><a href="https://num.pyro.ai/en/0.19.0/handlers.html#do"><code>do</code></a>: Implements a causal intervention (for <span class="math inline">\(t\)</span>).</li>
+</ul>
+<p>The combination <code>do(condition(model, {"z": z}), {"t_obs": t})</code> gives us the
+interventional distribution <span class="math inline">\(p(y \mid \text{do}(T=t), z)\)</span>.</p>
+<p>Let’s see how we can do this in practice:</p>
+<pre class="python"><code>test_params = test_svi_result.params
+num_samples = 4_000
+
+# Step 1: Sample z from the test-time guide (infers z from x only)
+z_predictive_test = Predictive(
+    model=model,
+    guide=test_guide,
+    params=test_params,
+    num_samples=num_samples,
+    return_sites=[&quot;z&quot;],
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+z_samples_test = z_predictive_test(
+    rng_subkey, x=x_test, t=t_test, y=y_test, latent_dim=model_params.latent_dim
+)[&quot;z&quot;]  # Shape: (num_samples, num_data, latent_dim)
+
+
+# Step 2: Compute potential outcomes using the SAME z samples
+@jax.jit
+def compute_y_obs_under_intervention(
+    rng_key: UInt32[Array, &quot;2&quot;],
+    z_sample: Float32[Array, &quot;n latent_dim&quot;],
+    t_value: Int32[Array, &quot;&quot;],
+) -&gt; Int32[Array, &quot; n&quot;]:
+    &quot;&quot;&quot;Compute y_obs under do(t_obs=t_value) with fixed z.
+
+    This is the correct way to compute counterfactuals:
+    1. condition on z to fix the latent confounder
+    2. do() to intervene on treatment
+    3. Sample from the resulting distribution
+    &quot;&quot;&quot;
+    # Intervene on t_obs AND condition on z
+    intervened_model = do(
+        condition(model, data={&quot;z&quot;: z_sample}),
+        data={&quot;t_obs&quot;: jnp.full(dgp_params.num_test, t_value)},
+    )
+
+    predictive = Predictive(
+        model=intervened_model,
+        guide=test_guide,
+        params=test_params,
+        num_samples=1,
+        return_sites=[&quot;y_obs&quot;],
+    )
+
+    return predictive(
+        rng_key, x=x_test, t=t_test, y=y_test, latent_dim=model_params.latent_dim
+    )[&quot;y_obs&quot;].squeeze(0)
+
+
+rng_key, rng_subkey = random.split(rng_key)
+rng_keys = random.split(rng_subkey, num_samples * 2)
+
+# Y(0): Outcome under control (t=0)
+test_y_obs_t0_samples = jax.vmap(
+    lambda z, key: compute_y_obs_under_intervention(key, z, 0)
+)(z_samples_test, rng_keys[:num_samples])
+
+# Y(1): Outcome under treatment (t=1)
+test_y_obs_t1_samples = jax.vmap(
+    lambda z, key: compute_y_obs_under_intervention(key, z, 1)
+)(z_samples_test, rng_keys[num_samples:])
+
+# CATE = E[Y(1) - Y(0) | z]
+# Since y_obs is binary, the mean across samples gives P(Y=1|do(T), z)
+test_cate_samples = (
+    test_y_obs_t1_samples - test_y_obs_t0_samples
+)  # Shape: (num_samples, num_data)
+
+# Take the mean across samples to get the estimated CATEs per individual
+test_est_cates = test_cate_samples.mean(axis=0)  # Shape: (num_data,)</code></pre>
+</div>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<p>Let’s compare our CATE estimates to the true values from the DGP.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.hist(
+    test_est_cates,
+    bins=40,
+    color=&quot;C0&quot;,
+    label=&quot;Estimated CATEs&quot;,
+    density=True,
+    alpha=0.7,
+)
+ax.axvline(
+    test_est_cates.mean(),
+    color=&quot;C0&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=2,
+    label=f&quot;Est. mean: {test_est_cates.mean():.3f}&quot;,
+)
+ax.axvline(
+    test_true_ate,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=2,
+    label=f&quot;True mean CATE: {test_true_ate:.3f}&quot;,
+)
+ax.axvline(
+    test_naive_ate,
+    color=&quot;C3&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=2,
+    label=f&quot;Naive ATE (test): {test_naive_ate:.3f}&quot;,
+)
+ax.legend()
+ax.set(xlabel=&quot;CATE&quot;, ylabel=&quot;Density&quot;)
+ax.set_title(&quot;CATE Estimates - Test Set&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/cate_nn_files/cate_nn_35_0.png" style="width: 900px;"/>
+</center>
+<p>The histogram of estimated CATEs contains the true average CATE and is indeed closer to the true CATE than the naive estimate.</p>
+<p>We can also separate the estimates by the true <span class="math inline">\(z\)</span> value to see if the model
+can recover the CATEs for different values of the latent confounder.</p>
+<pre class="python"><code># Separate estimates by true z value (for evaluation)
+test_cates_z0 = test_est_cates[z_test == 0]
+test_cates_z1 = test_est_cates[z_test == 1]
+true_cate_z0 = test_true_cate_probs[z_test == 0]
+true_cate_z1 = test_true_cate_probs[z_test == 1]
+
+fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(12, 10),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+ax[0].hist(test_cates_z0, bins=20, color=&quot;C1&quot;, alpha=0.7, label=&quot;Estimated CATE&quot;)
+ax[0].axvline(
+    true_cate_z0.mean().item(),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=2,
+    label=f&quot;True CATE: {true_cate_z0.mean().item():.3f}&quot;,
+)
+ax[0].axvline(
+    test_cates_z0.mean(),
+    color=&quot;C1&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=2,
+    label=f&quot;Est. mean: {test_cates_z0.mean():.3f}&quot;,
+)
+ax[0].legend()
+ax[0].set(title=&quot;CATE Estimates for Z=0&quot;, xlabel=&quot;CATE&quot;, ylabel=&quot;Count&quot;)
+
+ax[1].hist(test_cates_z1, bins=20, color=&quot;C2&quot;, alpha=0.7, label=&quot;Estimated CATE&quot;)
+ax[1].axvline(
+    true_cate_z1.mean().item(),
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=2,
+    label=f&quot;True CATE: {true_cate_z1.mean().item():.3f}&quot;,
+)
+ax[1].axvline(
+    test_cates_z1.mean(),
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=2,
+    label=f&quot;Est. mean: {test_cates_z1.mean():.3f}&quot;,
+)
+ax[1].legend()
+ax[1].set(title=&quot;CATE Estimates for Z=1&quot;, xlabel=&quot;CATE&quot;, ylabel=&quot;Count&quot;);</code></pre>
+<center>
+<img src="../images/cate_nn_files/cate_nn_38_0.png" style="width: 900px;"/>
+</center>
+<p>For <span class="math inline">\(z=0\)</span> the model is able to recover the true CATE mean, but for <span class="math inline">\(z=1\)</span> the
+model overestimates the CATEs a bit.</p>
+</div>
+<div id="summary-and-key-takeaways" class="section level2">
+<h2>Summary and Key Takeaways</h2>
+<p>We have seen an explicit implementation of the CEVAE approach to estimate the CATEs for a synthetic dataset. The main takeaways are:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>CEVAE can recover CATE</strong> even with unobserved confounders, by inferring
+the latent confounder from observed proxies (covariates).</p></li>
+<li><p><strong>Architecture matters</strong>: Using separate linear networks for each treatment
+level prevents the model from ignoring the latent variable.</p></li>
+<li><p><strong>Two-stage inference</strong>: Train the main model first, then train a test-time
+encoder that infers <span class="math inline">\(z\)</span> from <span class="math inline">\(x\)</span> alone.</p></li>
+<li><p><strong>Correct counterfactual computation</strong>: Use <code>condition</code> + <code>do</code> to ensure the
+same <span class="math inline">\(z\)</span> is used for both potential outcomes.</p></li>
+<li><p>Results are sensitive to the choice of architecture, so it is important to
+carefully design the model and do proper sensitivity analysis.</p></li>
+</ol>
+<div id="references" class="section level3">
+<h3>References</h3>
+<ul>
+<li><a href="https://arxiv.org/abs/1705.08821">Louizos et al. (2017) - Causal Effect Inference with Deep Latent-Variable
+Models</a></li>
+<li><a href="https://basisresearch.github.io/chirho/cevae.html">ChiRho CEVAE Tutorial</a></li>
+<li><a href="https://num.pyro.ai/">NumPyro Documentation</a></li>
+</ul>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+

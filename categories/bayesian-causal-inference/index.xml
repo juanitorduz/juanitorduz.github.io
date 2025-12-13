@@ -6,8 +6,22 @@
     <description>Recent content in Bayesian, Causal Inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 28 Nov 2025 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 13 Dec 2025 00:00:00 +0000</lastBuildDate>
     <atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>CATE Estimation with Causal Effect Variational Autoencoders</title>
+      <link>/cate_nn/</link>
+      <pubDate>Sat, 13 Dec 2025 00:00:00 +0000</pubDate>
+      <guid>/cate_nn/</guid>
+      <description>&lt;p&gt;In this notebook, we demonstrate how to estimate &lt;strong&gt;Conditional Average Treatment Effects&#xA;(CATE)&lt;/strong&gt; using a &lt;strong&gt;Causal Effect Variational Autoencoder (CEVAE)&lt;/strong&gt; by implementing an example&#xA;from scratch in &lt;a href=&#34;https://num.pyro.ai/&#34;&gt;NumPyro&lt;/a&gt;. This approach is particularly useful when we suspect&#xA;the presence of &lt;strong&gt;unobserved confounders&lt;/strong&gt; that affect both treatment assignment and outcomes.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Disclaimer&lt;/strong&gt;: I am not an expert in this specific approach, so please take all the results with a grain of salt and please do not hesitate to provide feedback.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Causal Effect Estimation with Variational Inference and Latent Confounders</title>
+      <link>/online_game_ate/</link>
+      <pubDate>Wed, 10 Dec 2025 00:00:00 +0000</pubDate>
+      <guid>/online_game_ate/</guid>
+      <description>&lt;p&gt;This notebook demonstrates how to estimate the Average Treatment Effect (ATE) using variational&#xA;inference in the presence of unobserved confounders. The approach is based on the tutorial by &lt;a href=&#34;https://scholar.google.com/citations?user=8gWTOBAAAAAJ&amp;amp;hl=en&#34;&gt;Robert Ness&lt;/a&gt; from his book: &lt;a href=&#34;https://github.com/altdeep/causalAI/blob/master/book/chapter%2011/Chapter_11_Bayesian_Causal_Graphical_Inference.ipynb&#34;&gt;Causal AI book&lt;/a&gt;. We port his Pyro code to NumPyro (this was the objective for me to learn the details of the method).&lt;/p&gt;&#xA;&lt;p&gt;The fundamental challenge in causal inference from observational data is confounding: variables&#xA;that affect both the treatment and outcome can bias naive estimates. When confounders are&#xA;unobserved, traditional adjustment methods fail. However, as shown in the CEVAE paper&#xA;(&lt;a href=&#34;https://proceedings.neurips.cc/paper_files/paper/2017/file/94b5bde6de888ddf9cde6748ad2523d1-Paper.pdf&#34;&gt;Louizos et al., NeurIPS 2017&lt;/a&gt;),&#xA;latent variable models can simultaneously infer the hidden confounders and estimate causal&#xA;effects. The variational autoencoder framework provides flexibility to model complex latent&#xA;structures without strong parametric assumptions. The encoder (recognition network) learns to&#xA;map observed data to the latent confounder distribution, enabling amortized inference.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Causal Inference with Multilevel Models: The Electric Company Example</title>
       <link>/ci_multilevel/</link>

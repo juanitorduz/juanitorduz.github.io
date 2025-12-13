@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Causal Effect Estimation with Variational Inference and Latent Confounders - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Causal Effect Estimation with Variational Inference and Latent Confounders - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">14 min read</span>
+    
+
+    <h1 class="article-title">Causal Effect Estimation with Variational Inference and Latent Confounders</h1>
+
+    
+    <span class="article-date">2025-12-10</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This notebook demonstrates how to estimate the Average Treatment Effect (ATE) using variational
+inference in the presence of unobserved confounders. The approach is based on the tutorial by <a href="https://scholar.google.com/citations?user=8gWTOBAAAAAJ&amp;hl=en">Robert Ness</a> from his book: <a href="https://github.com/altdeep/causalAI/blob/master/book/chapter%2011/Chapter_11_Bayesian_Causal_Graphical_Inference.ipynb">Causal AI book</a>. We port his Pyro code to NumPyro (this was the objective for me to learn the details of the method).</p>
+<p>The fundamental challenge in causal inference from observational data is confounding: variables
+that affect both the treatment and outcome can bias naive estimates. When confounders are
+unobserved, traditional adjustment methods fail. However, as shown in the CEVAE paper
+(<a href="https://proceedings.neurips.cc/paper_files/paper/2017/file/94b5bde6de888ddf9cde6748ad2523d1-Paper.pdf">Louizos et al., NeurIPS 2017</a>),
+latent variable models can simultaneously infer the hidden confounders and estimate causal
+effects. The variational autoencoder framework provides flexibility to model complex latent
+structures without strong parametric assumptions. The encoder (recognition network) learns to
+map observed data to the latent confounder distribution, enabling amortized inference.</p>
+<p>In this notebook, we estimate the causal effect of side-quest engagement on in-game purchases
+in an online game dataset. The causal graph includes an unobserved confounder <span class="math inline">\(Z\)</span> that affects
+both treatment and outcome. We compare the Bayesian variational approach with a classical
+frontdoor adjustment estimate from DoWhy.</p>
+<p><strong>Warning:</strong> This notebook is not self contained and if you wan to have more details plase look into Chapter 11 in the <a href="https://www.manning.com/books/causal-ai">Causal AI book</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<p>We use NumPyro for probabilistic modeling, Flax NNX for neural network modules, ArviZ for
+diagnostics, and DoWhy for baseline causal identification.</p>
+<pre class="python"><code>import arviz as az
+import graphviz as gr
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import optax
+import polars as pl
+from dowhy import CausalModel
+from flax import nnx
+from jax import random
+from jaxtyping import Array, Float32, Int32
+from numpyro.contrib.module import nnx_module
+from numpyro.handlers import condition, do
+from numpyro.infer import SVI, Predictive, Trace_ELBO
+
+numpyro.set_host_device_count(n=10)
+
+rng_key = random.PRNGKey(seed=42)
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="load-data" class="section level2">
+<h2>Load Data</h2>
+<p>The dataset contains player behavior from an online game. We focus on four variables:</p>
+<ul>
+<li><strong>Guild Membership</strong>: Binary indicator of whether a player belongs to a guild.</li>
+<li><strong>Side-quest Engagement</strong>: Binary indicator of high engagement with side-quests (treatment).</li>
+<li><strong>Won Items</strong>: Binary indicator of whether the player won items through gameplay.</li>
+<li><strong>In-game Purchases</strong>: Continuous variable measuring purchase amount (outcome).</li>
+</ul>
+<p>We are interested in the causal effect of side-quest engagement on in-game purchases.</p>
+<p>The original dataset contains more confounders, but we encode these as unobserved confounder <span class="math inline">\(Z\)</span> as we typically won’t have access to them in many real world cases.</p>
+<pre class="python"><code>data_path = &quot;https://raw.githubusercontent.com/altdeep/causalML/master/datasets/online_game_ate.csv&quot;
+
+raw_df = pl.read_csv(data_path)
+
+
+columns_to_keep = [
+    &quot;Guild Membership&quot;,
+    &quot;Side-quest Engagement&quot;,
+    &quot;Won Items&quot;,
+    &quot;In-game Purchases&quot;,
+]
+
+df = raw_df[columns_to_keep]
+
+df.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 4)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+Guild Membership
+</th>
+<th>
+Side-quest Engagement
+</th>
+<th>
+Won Items
+</th>
+<th>
+In-game Purchases
+</th>
+</tr>
+<tr>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+1030.29
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+2453.34
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+3761.4
+</td>
+</tr>
+<tr>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+1
+</td>
+<td>
+1007.84
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+0
+</td>
+<td>
+4153.94
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="specify-causal-graph" class="section level2">
+<h2>Specify Causal Graph</h2>
+<p>The causal graph encodes our assumptions about the data generating process:</p>
+<ul>
+<li><strong>Treatment</strong>: Side-quest Engagement</li>
+<li><strong>Outcome</strong>: In-game Purchases</li>
+<li><strong>Mediator</strong>: Won Items (lies on the causal path from treatment to outcome)</li>
+<li><strong>Observed common cause</strong>: Guild Membership (affects both engagement and purchases)</li>
+<li><strong>Unobserved confounder</strong>: <span class="math inline">\(Z\)</span> (affects both engagement and purchases)</li>
+</ul>
+<p>Because <span class="math inline">\(Z\)</span> is unobserved, we cannot use backdoor adjustment directly. However, the causal
+effect is still identifiable via the <strong>frontdoor criterion</strong>: Won Items fully mediates the
+effect of Side-quest Engagement on In-game Purchases (condition 1), there is no unblocked
+backdoor path from treatment to mediator (condition 2), and all backdoor paths from mediator
+to outcome are blocked by the treatment (condition 3).</p>
+<pre class="python"><code>g = gr.Digraph()
+
+g.node(&quot;Side-quest Engagement&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+g.node(&quot;In-game Purchases&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;)
+
+g.node(&quot;Z&quot;, style=&quot;filled&quot;, fillcolor=&quot;gray&quot;)
+
+g.edge(&quot;Side-quest Engagement&quot;, &quot;Won Items&quot;)
+g.edge(&quot;Won Items&quot;, &quot;In-game Purchases&quot;)
+g.edge(&quot;Guild Membership&quot;, &quot;Side-quest Engagement&quot;)
+g.edge(&quot;Guild Membership&quot;, &quot;In-game Purchases&quot;)
+
+g.edge(&quot;Z&quot;, &quot;Side-quest Engagement&quot;)
+g.edge(&quot;Z&quot;, &quot;In-game Purchases&quot;)
+
+g</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_6_0.svg" style="width: 500px;"/>
+</center>
+<pre class="python"><code># Convert graphviz graph to networkx
+# (a bit hacky, there should be a better way to do this)
+# It works tho ¯\_(ツ)_/¯
+g_nx = nx.DiGraph()
+
+# Extract edges from graphviz graph
+for edge in g.body:
+    if &quot;-&gt;&quot; in edge:
+        # Parse edge string (format: &quot;node1 -&gt; node2&quot;)
+        parts = edge.strip().split(&quot;-&gt;&quot;)
+        source = parts[0].strip().strip(&#39;&quot;&#39;)
+        target = parts[1].strip().strip(&#39;&quot;&#39;)
+        g_nx.add_edge(source, target)</code></pre>
+</div>
+<div id="define-dowhy-causal-model" class="section level2">
+<h2>Define DoWhy Causal Model</h2>
+<p>We use DoWhy to formalize the causal model and identify estimands. This serves as a baseline
+for comparison with our Bayesian approach.</p>
+<pre class="python"><code>model = CausalModel(
+    data=df.to_pandas(),
+    graph=g_nx,
+    treatment=&quot;Side-quest Engagement&quot;,
+    outcome=&quot;In-game Purchases&quot;,
+)
+
+model.view_model()</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_9_1.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="estimate-ate-with-dowhy" class="section level2">
+<h2>Estimate ATE with DoWhy</h2>
+<p>DoWhy identifies the frontdoor estimand and we choose to estimate the ATE using two-stage regression
+(you can choose other methods, see Causal AI book, Chapter 11).
+This provides a point estimate with confidence intervals that we will later compare to the
+posterior distribution from our Bayesian model.</p>
+<pre class="python"><code>estimand = model.identify_effect()
+
+print(estimand)</code></pre>
+<pre><code>Estimand type: EstimandType.NONPARAMETRIC_ATE
+
+### Estimand : 1
+Estimand name: backdoor
+No such variable(s) found!
+
+### Estimand : 2
+Estimand name: iv
+No such variable(s) found!
+
+### Estimand : 3
+Estimand name: frontdoor
+Estimand expression:
+ ⎡     d                                     d                         ⎤
+E⎢────────────(In-game Purchases)⋅────────────────────────([Won Items])⎥
+ ⎣d[Won Items]                    d[Side-quest Engagement]             ⎦
+Estimand assumption 1, Full-mediation: Won Items intercepts (blocks) all directed paths from Side-quest Engagement to I,n,-,g,a,m,e, ,P,u,r,c,h,a,s,e,s.
+Estimand assumption 2, First-stage-unconfoundedness: If U→{Side-quest Engagement} and U→{Won Items} then P(Won Items|Side-quest Engagement,U) = P(Won Items|Side-quest Engagement)
+Estimand assumption 3, Second-stage-unconfoundedness: If U→{Won Items} and U→In-game Purchases then P(In-game Purchases|Won Items, Side-quest Engagement, U) = P(In-game Purchases|Won Items, Side-quest Engagement)
+
+### Estimand : 4
+Estimand name: general_adjustment
+No such variable(s) found!</code></pre>
+<pre class="python"><code>estimate = model.estimate_effect(
+    identified_estimand=estimand,
+    method_name=&quot;frontdoor.two_stage_regression&quot;,
+    target_units=&quot;ate&quot;,
+    method_params={&quot;weighting_scheme&quot;: &quot;ips_weight&quot;},
+    test_significance=True,
+    confidence_intervals=True,
+)
+
+estimate_value = estimate.value
+estimate_ci = estimate.get_confidence_intervals()
+
+print(f&quot;Estimate of causal effect (linear regression): {estimate_value}&quot;)
+print(f&quot;confidence interval: {estimate_ci}&quot;)</code></pre>
+<pre><code>Estimate of causal effect (linear regression): 170.2056058128939
+confidence interval: (np.float64(135.97592441709543), np.float64(208.93176884974557))</code></pre>
+</div>
+<div id="prepare-data-for-bayesian-model" class="section level2">
+<h2>Prepare Data for Bayesian Model</h2>
+<p>Now we want to estimate the ATE effect using a Bayesian model explicitly.</p>
+<p>First, we convert the data to JAX arrays for use in the NumPyro model.</p>
+<pre class="python"><code>is_guild_member: Int32[Array, &quot; n_obs&quot;] = df[&quot;Guild Membership&quot;].to_jax()
+is_highly_engaged: Int32[Array, &quot; n_obs&quot;] = df[&quot;Side-quest Engagement&quot;].to_jax()
+won_items: Int32[Array, &quot; n_obs&quot;] = df[&quot;Won Items&quot;].to_jax()
+in_game_purchases: Float32[Array, &quot; n_obs&quot;] = df[&quot;In-game Purchases&quot;].to_jax()</code></pre>
+</div>
+<div id="specify-bayesian-model" class="section level2">
+<h2>Specify Bayesian Model</h2>
+<p>We now build a Bayesian model that explicitly represents the unobserved confounder <span class="math inline">\(Z\)</span> as a
+latent variable. The model uses neural networks to parameterize flexible conditional
+distributions, following the structure of the causal graph. Variational inference allows us
+to scale to large datasets while inferring the posterior over both model parameters and the
+latent confounder.</p>
+<div id="neural-network-modules" class="section level3">
+<h3>Neural Network Modules</h3>
+<p>We define two neural networks using Flax NNX:</p>
+<ul>
+<li><code>Confounders2Engagement</code>: Maps guild membership and latent confounder <span class="math inline">\(Z\)</span> to the probability
+of high engagement. This captures how the observed covariate and latent confounder jointly
+influence the treatment.</li>
+<li><code>PurchasesNetwork</code>: Maps won items, guild membership, and <span class="math inline">\(Z\)</span> to the purchase distribution
+(mean and standard deviation). This captures how the mediator, observed covariate, and
+latent confounder influence the outcome.</li>
+</ul>
+<pre class="python"><code>class Confounders2Engagement(nnx.Module):
+    def __init__(
+        self,
+        input_dim: int = 2,
+        output_dim: int = 1,
+        hidden_dim: int = 5,
+        *,
+        rngs: nnx.Rngs,
+    ) -&gt; None:
+        self.fc1 = nnx.Linear(input_dim, hidden_dim, rngs=rngs)
+        self.f_engagement_ρ = nnx.Linear(hidden_dim, 1, rngs=rngs)
+
+    def __call__(self, x: jax.Array) -&gt; jax.Array:
+        hidden = jax.nn.softplus(self.fc1(x))
+        ρ_engagement = jax.nn.sigmoid(self.f_engagement_ρ(hidden))
+        return ρ_engagement.T.squeeze(0)
+
+
+class PurchasesNetwork(nnx.Module):
+    def __init__(
+        self,
+        input_dim=3,
+        hidden_dim=5,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        super().__init__()
+        self.f_hidden = nnx.Linear(input_dim, hidden_dim, rngs=rngs)
+        self.f_purchase_μ = nnx.Linear(hidden_dim, 1, rngs=rngs)
+        self.f_purchase_σ = nnx.Linear(hidden_dim, 1, rngs=rngs)
+
+    def __call__(self, x: jax.Array) -&gt; tuple[jax.Array, jax.Array]:
+        hidden = jax.nn.softplus(self.f_hidden(x))
+        μ_purchases = self.f_purchase_μ(hidden)
+        σ_purchases = eps + jax.nn.softplus(self.f_purchase_σ(hidden))
+        μ_purchases = μ_purchases.T.squeeze(0)
+        σ_purchases = σ_purchases.T.squeeze(0)
+        return μ_purchases, σ_purchases</code></pre>
+<p>We do an eager initialization of the neural networks.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+nn_confounders_2_engagement = Confounders2Engagement(rngs=nnx.Rngs(rng_subkey))
+
+rng_key, rng_subkey = random.split(rng_key)
+nn_purchases_network = PurchasesNetwork(rngs=nnx.Rngs(rng_subkey))</code></pre>
+</div>
+<div id="numpyro-model" class="section level3">
+<h3>NumPyro Model</h3>
+<p>The generative model follows the causal graph structure:</p>
+<ol style="list-style-type: decimal">
+<li>Sample the latent confounder <span class="math inline">\(Z \sim \text{Normal}(0, 1)\)</span> for each observation.</li>
+<li>Sample guild membership from a Bernoulli with probability <span class="math inline">\(\rho_{\text{member}}\)</span>.</li>
+<li>Compute engagement probability using the neural network on (guild membership, <span class="math inline">\(Z\)</span>).</li>
+<li>Sample side-quest engagement from a Bernoulli.</li>
+<li>Sample won items, where the probability depends on engagement status.</li>
+<li>Compute purchase distribution using the neural network on (won items, guild membership, <span class="math inline">\(Z\)</span>).</li>
+<li>Sample in-game purchases from a Normal distribution.</li>
+</ol>
+<p>The <a href="https://num.pyro.ai/en/stable/primitives.html#nnx-module"><code>nnx_module</code></a> function integrates Flax NNX modules into NumPyro, treating network weights
+as parameters to be learned during inference. For more details, see the blog post <a href="https://juanitorduz.github.io/intro_svi/">PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</a>.</p>
+<pre class="python"><code>eps = jnp.finfo(jnp.float32).eps
+
+
+def is_highly_engaged_model(z: jax.Array, is_guild_member: jax.Array) -&gt; jax.Array:
+    &quot;&quot;&quot;
+    This function models the probability of high engagement as a function of guild
+    membership and the latent confounder $Z$. We use a neural network to model the
+    relationship.
+    &quot;&quot;&quot;
+    engagement_input = jnp.stack((is_guild_member, z)).T
+
+    nnx_confounders_2_engagement = nnx_module(
+        &quot;nnx_confounders_2_engagement&quot;, nn_confounders_2_engagement
+    )
+
+    ρ_engagement = nnx_confounders_2_engagement(engagement_input)
+
+    return numpyro.sample(
+        &quot;is_highly_engaged&quot;,
+        dist.Bernoulli(ρ_engagement),
+    )
+
+
+def won_items_model(
+    ρ_won_engaged: jax.Array,
+    ρ_won_not_engaged: jax.Array,
+    is_highly_engaged: jax.Array,
+) -&gt; jax.Array:
+    &quot;&quot;&quot;
+    This function models the probability of won items as a function of
+    engagement status.
+    &quot;&quot;&quot;
+    p_won = ρ_won_engaged * is_highly_engaged + ρ_won_not_engaged * (
+        1 - is_highly_engaged
+    )
+
+    return numpyro.sample(&quot;won_items&quot;, dist.Bernoulli(p_won))
+
+
+def purchases_model(
+    z: jax.Array, is_guild_member: jax.Array, won_items: jax.Array
+) -&gt; None:
+    &quot;&quot;&quot;
+    This function models the purchase distribution as a function of won items,
+    guild membership, and the latent confounder $Z$. We use a neural network to
+    model the relationship.
+    &quot;&quot;&quot;
+    purchase_input = jnp.stack((won_items, is_guild_member, z)).T
+
+    nnx_purchases_network = nnx_module(&quot;nnx_purchases_network&quot;, nn_purchases_network)
+
+    μ_purchases, σ_purchases = nnx_purchases_network(purchase_input)
+
+    numpyro.sample(&quot;in_game_purchases&quot;, dist.Normal(μ_purchases, σ_purchases))
+
+
+# Some function arguments are not used.
+# The reason is need to have the same signature as the guide function (below).
+def model(
+    is_guild_member: Int32[Array, &quot; n_obs&quot;],
+    is_highly_engaged: Int32[Array, &quot; n_obs&quot;],
+    won_items: Int32[Array, &quot; n_obs&quot;],
+    in_game_purchases: Float32[Array, &quot; n_obs&quot;],
+) -&gt; None:
+    n_obs = is_guild_member.shape[0]
+
+    ρ_member = numpyro.sample(&quot;ρ_member&quot;, dist.Beta(2, 5))
+
+    ρ_won_engaged = numpyro.sample(&quot;ρ_won_engaged&quot;, dist.Beta(5, 2))
+    ρ_won_not_engaged = numpyro.sample(&quot;ρ_won_not_engaged&quot;, dist.Beta(2, 5))
+
+    with numpyro.plate(&quot;obs&quot;, n_obs):
+        z = numpyro.sample(&quot;z&quot;, dist.Normal(0.0, 1.0))
+
+        is_guild_member = numpyro.sample(&quot;is_guild_member&quot;, dist.Bernoulli(ρ_member))
+
+        is_highly_engaged = is_highly_engaged_model(z, is_guild_member)
+
+        won_items = won_items_model(ρ_won_engaged, ρ_won_not_engaged, is_highly_engaged)
+
+        purchases_model(z, is_guild_member, won_items)
+
+
+numpyro.render_model(
+    model,
+    model_kwargs={
+        &quot;is_guild_member&quot;: is_guild_member,
+        &quot;is_highly_engaged&quot;: is_highly_engaged,
+        &quot;won_items&quot;: won_items,
+        &quot;in_game_purchases&quot;: in_game_purchases,
+    },
+)</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_21_0.svg" style="width: 800px;"/>
+</center>
+<p>Here we see how the model captures the causal graph structure (by design).</p>
+</div>
+<div id="condition-model-on-data" class="section level3">
+<h3>Condition Model on Data</h3>
+<p>We use NumPyro’s <a href="https://num.pyro.ai/en/stable/handlers.html#condition"><code>condition</code></a> handler to fix the observed variables to their data values.
+This transforms the generative model into a model suitable for inference, where only the
+latent confounder <span class="math inline">\(Z\)</span> and model parameters remain to be inferred.</p>
+<pre class="python"><code>conditioned_model = condition(
+    model,
+    data={
+        &quot;is_guild_member&quot;: is_guild_member,
+        &quot;is_highly_engaged&quot;: is_highly_engaged,
+        &quot;won_items&quot;: won_items,
+        &quot;in_game_purchases&quot;: in_game_purchases,
+    },
+)
+
+numpyro.render_model(
+    conditioned_model,
+    model_kwargs={
+        &quot;is_guild_member&quot;: is_guild_member,
+        &quot;is_highly_engaged&quot;: is_highly_engaged,
+        &quot;won_items&quot;: won_items,
+        &quot;in_game_purchases&quot;: in_game_purchases,
+    },
+)</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_24_0.svg" style="width: 800px;"/>
+</center>
+</div>
+</div>
+<div id="implement-custom-guide" class="section level2">
+<h2>Implement Custom Guide</h2>
+<p>The guide (variational distribution) specifies the approximate posterior family for inference.
+It has two components:</p>
+<ul>
+<li><strong>Global parameters</strong>: Beta distributions for <span class="math inline">\(\rho_{\text{member}}\)</span>, <span class="math inline">\(\rho_{\text{won\_engaged}}\)</span>,
+and <span class="math inline">\(\rho_{\text{won\_not\_engaged}}\)</span>, with learnable concentration parameters.</li>
+<li><strong>Local latent variable</strong>: The <code>Encoder</code> network implements amortized inference for <span class="math inline">\(Z\)</span>.
+Given observed data (guild membership, engagement, purchases), it outputs the mean and
+standard deviation of a Normal distribution over <span class="math inline">\(Z\)</span>. This is the recognition network
+that maps observations to the latent confounder posterior.</li>
+</ul>
+<pre class="python"><code>class Encoder(nnx.Module):
+    def __init__(
+        self,
+        input_dim=3,
+        z_dim=1,
+        hidden_dim=5,
+        *,
+        rngs: nnx.Rngs,
+    ):
+        super().__init__()
+        self.f_hidden = nnx.Linear(input_dim, hidden_dim, rngs=rngs)
+        self.f_loc = nnx.Linear(hidden_dim, z_dim, rngs=rngs)
+        self.f_scale = nnx.Linear(hidden_dim, z_dim, rngs=rngs)
+
+    def __call__(self, x: jax.Array) -&gt; tuple[jax.Array, jax.Array]:
+        x = x.T
+        hidden = jax.nn.softplus(self.f_hidden(x))
+        z_loc = self.f_loc(hidden)
+        z_scale = eps + jax.nn.softplus(self.f_scale(hidden))
+        return z_loc.T.squeeze(0), z_scale.T.squeeze(0)
+
+
+rng_key, rng_subkey = random.split(rng_key)
+nn_encoder = Encoder(rngs=nnx.Rngs(rng_subkey))</code></pre>
+<p>We are now ready to define the guide.</p>
+<pre class="python"><code>def ρ_member_guide() -&gt; None:
+    α_member = numpyro.param(&quot;α_member&quot;, jnp.array(1.0))
+    β_member = numpyro.param(&quot;β_member&quot;, jnp.array(1.0))
+    numpyro.sample(&quot;ρ_member&quot;, dist.Beta(α_member, β_member))
+
+
+def ρ_won_engaged_guide() -&gt; None:
+    α_won_engaged = numpyro.param(
+        &quot;α_won_engaged&quot;, jnp.array(5.0), constraint=dist.constraints.positive
+    )
+    β_won_engaged = numpyro.param(
+        &quot;β_won_engaged&quot;, jnp.array(2.0), constraint=dist.constraints.positive
+    )
+    numpyro.sample(&quot;ρ_won_engaged&quot;, dist.Beta(α_won_engaged, β_won_engaged))
+
+
+def ρ_won_not_engaged_guide() -&gt; None:
+    α_won_not_engaged = numpyro.param(
+        &quot;α_won_not_engaged&quot;, jnp.array(2.0), constraint=dist.constraints.positive
+    )
+    β_won_not_engaged = numpyro.param(
+        &quot;β_won_not_engaged&quot;, jnp.array(5.0), constraint=dist.constraints.positive
+    )
+    beta_dist = dist.Beta(α_won_not_engaged, β_won_not_engaged)
+    numpyro.sample(&quot;ρ_won_not_engaged&quot;, beta_dist)
+
+
+def guide(
+    is_guild_member: Int32[Array, &quot; n_obs&quot;],
+    is_highly_engaged: Int32[Array, &quot; n_obs&quot;],
+    won_items: Int32[Array, &quot; n_obs&quot;],
+    in_game_purchases: Float32[Array, &quot; n_obs&quot;],
+) -&gt; None:
+    ρ_member_guide()
+    ρ_won_engaged_guide()
+    ρ_won_not_engaged_guide()
+
+    n_obs = is_guild_member.shape[0]
+
+    nnx_encoder = nnx_module(&quot;nnx_encoder&quot;, nn_encoder)
+
+    with numpyro.plate(&quot;obs&quot;, n_obs):
+        z_input = jnp.stack((is_guild_member, is_highly_engaged, in_game_purchases))
+        z_loc, z_scale = nnx_encoder(z_input)
+        numpyro.sample(&quot;z&quot;, dist.Normal(z_loc, z_scale))</code></pre>
+</div>
+<div id="model-fit" class="section level2">
+<h2>Model Fit</h2>
+<p>We train the model using Stochastic Variational Inference (SVI) with the Evidence Lower Bound
+(ELBO) as the objective. The optimizer combines Adam with a one-cycle learning rate schedule
+and plateau-based reduction for stable convergence.</p>
+<pre class="python"><code>%%time
+
+n_samples = 120_000
+scheduler = optax.linear_onecycle_schedule(
+    transition_steps=n_samples,
+    peak_value=0.0001,
+    pct_start=0.3,
+    pct_final=0.85,
+    div_factor=2,
+    final_div_factor=5,
+)
+
+optimizer = optax.chain(
+    optax.adam(learning_rate=scheduler),
+    optax.contrib.reduce_on_plateau(
+        factor=0.8,
+        patience=20,
+        accumulation_size=100,
+    ),
+)
+
+svi = SVI(conditioned_model, guide, optimizer, loss=Trace_ELBO())
+rng_key, rng_subkey = random.split(key=rng_key)
+svi_result = svi.run(
+    rng_subkey,
+    n_samples,
+    is_guild_member=is_guild_member,
+    is_highly_engaged=is_highly_engaged,
+    won_items=won_items,
+    in_game_purchases=in_game_purchases,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set(yscale=&quot;log&quot;)
+ax.set_title(&quot;ELBO Loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 120000/120000 [02:41&lt;00:00, 744.83it/s, init loss: 14015630336.0000, avg. loss [114001-120000]: 120616.9844]
+
+
+CPU times: user 4min 9s, sys: 2min 32s, total: 6min 41s
+Wall time: 2min 45s</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_30_2.png" style="width: 800px;"/>
+</center>
+<p>Overall, the ELBO loss is decreasing monotonically, as expected.</p>
+</div>
+<div id="posterior-predictive-sampling" class="section level2">
+<h2>Posterior Predictive Sampling</h2>
+<p>We validate the model by generating posterior predictive samples and comparing them to
+observed data. A well-calibrated model should produce predictions that resemble the
+empirical distribution of in-game purchases.</p>
+<pre class="python"><code>params = svi_result.params
+
+posterior_predictive = Predictive(
+    model=model,
+    guide=guide,
+    params=params,
+    num_samples=2_000,
+    return_sites=[
+        &quot;in_game_purchases&quot;,
+    ],
+)
+rng_key, rng_subkey = random.split(key=rng_key)
+posterior_predictive_samples = posterior_predictive(
+    rng_subkey,
+    is_guild_member,
+    is_highly_engaged,
+    won_items,
+    in_game_purchases,
+)
+
+idata = az.from_dict(
+    posterior_predictive={
+        k: np.expand_dims(a=np.asarray(v), axis=0)
+        for k, v in posterior_predictive_samples.items()
+    },
+    observed_data={
+        &quot;in_game_purchases&quot;: in_game_purchases,
+    },
+    coords={&quot;obs_idx&quot;: range(df.shape[0])},
+    dims={
+        &quot;in_game_purchases&quot;: [&quot;obs_idx&quot;],
+    },
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots()
+rng_key, rng_subkey = random.split(rng_key)
+az.plot_ppc(idata, num_pp_samples=100, group=&quot;posterior&quot;, random_seed=rng_subkey, ax=ax)
+ax.set_title(&quot;Posterior Predictive Check&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_34_0.png" style="width: 900px;"/>
+</center>
+<p>Ok, the model is not terrible, but also nos great. It seems the posterior predictive has the expected shape but it is skewed.</p>
+</div>
+<div id="apply-do-operator-and-estimate-ate" class="section level2">
+<h2>Apply Do Operator and Estimate ATE</h2>
+<p>To estimate causal effects, we use NumPyro’s <a href="https://num.pyro.ai/en/stable/handlers.html#do"><code>do</code></a> handler to implement interventions. The <a href="https://num.pyro.ai/en/stable/handlers.html#do"><code>do</code></a>
+operator sets a variable to a fixed value, breaking incoming causal arrows. We compute the ATE
+as:</p>
+<p><span class="math display">\[\text{ATE} = \text{E}[Y \mid \text{do}(T=1)] - \text{E}[Y \mid \text{do}(T=0)]\]</span></p>
+<p>where <span class="math inline">\(T\)</span> is side-quest engagement and <span class="math inline">\(Y\)</span> is in-game purchases.</p>
+<div id="using-the-same-z-for-both-interventions" class="section level3">
+<h3>Using the Same <span class="math inline">\(Z\)</span> for Both Interventions</h3>
+<p>A naive approach would be to run separate <code>Predictive</code> calls with <code>do(T=0)</code> and <code>do(T=1)</code>.
+However, this would sample <strong>different</strong> <span class="math inline">\(Z\)</span> values for each intervention, leading to
+inflated variance in the ATE estimate (we’d be comparing different individuals!).</p>
+<p>The correct approach is:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Sample <span class="math inline">\(Z\)</span> once</strong> from the guide</li>
+<li><strong>Condition on the same <span class="math inline">\(Z\)</span></strong> when computing outcomes under both interventions</li>
+<li>This ensures we compare potential outcomes for the <strong>same</strong> individuals</li>
+</ol>
+<p>We use the combination of <code>condition</code> (to fix <span class="math inline">\(Z\)</span>) and <code>do</code> (to intervene on treatment).</p>
+<pre class="python"><code>num_samples = 5_000
+n_obs = is_guild_member.shape[0]
+
+# Step 1: Sample z from the guide (infers z from observed data)
+z_predictive = Predictive(
+    model=model,
+    guide=guide,
+    params=params,
+    num_samples=num_samples,
+    return_sites=[&quot;z&quot;],
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+z_samples = z_predictive(
+    rng_subkey,
+    is_guild_member,
+    is_highly_engaged,
+    won_items,
+    in_game_purchases,
+)[&quot;z&quot;]  # Shape: (num_samples, n_obs)
+
+
+# Step 2: Compute outcomes under both interventions using the SAME z samples
+@jax.jit
+def compute_purchases_under_intervention(rng_key, z_sample, treatment_value, params):
+    &quot;&quot;&quot;Compute in_game_purchases under do(is_highly_engaged=treatment_value)
+    with fixed z.
+
+    This ensures we use the same z for both interventions, giving us valid
+    counterfactual comparisons for the same individuals.
+    &quot;&quot;&quot;
+    # Intervene on treatment AND condition on z
+    intervened_model = do(
+        condition(model, data={&quot;z&quot;: z_sample}),
+        data={&quot;is_highly_engaged&quot;: jnp.full(n_obs, treatment_value)},
+    )
+
+    predictive = Predictive(
+        model=intervened_model,
+        params=params,
+        num_samples=1,
+        return_sites=[&quot;in_game_purchases&quot;],
+    )
+
+    return predictive(
+        rng_key, is_guild_member, is_highly_engaged, won_items, in_game_purchases
+    )[&quot;in_game_purchases&quot;].squeeze(0)
+
+
+# Compute purchases under both interventions for each z sample
+rng_key, rng_subkey = random.split(rng_key)
+rng_keys = random.split(rng_subkey, num_samples * 2)
+
+# Y(0): Purchases under do(is_highly_engaged=0)
+purchases_t0_samples = jax.vmap(
+    lambda z, key: compute_purchases_under_intervention(key, z, 0, params)
+)(z_samples, rng_keys[:num_samples])
+
+# Y(1): Purchases under do(is_highly_engaged=1)
+purchases_t1_samples = jax.vmap(
+    lambda z, key: compute_purchases_under_intervention(key, z, 1, params)
+)(z_samples, rng_keys[num_samples:])
+
+# Create InferenceData objects for visualization (same structure as before)
+do_0_idata = az.from_dict(
+    posterior_predictive={
+        &quot;in_game_purchases&quot;: np.expand_dims(np.asarray(purchases_t0_samples), axis=0)
+    },
+    observed_data={&quot;in_game_purchases&quot;: in_game_purchases},
+    coords={&quot;obs_idx&quot;: range(n_obs)},
+    dims={&quot;in_game_purchases&quot;: [&quot;obs_idx&quot;]},
+)
+
+do_1_idata = az.from_dict(
+    posterior_predictive={
+        &quot;in_game_purchases&quot;: np.expand_dims(np.asarray(purchases_t1_samples), axis=0)
+    },
+    observed_data={&quot;in_game_purchases&quot;: in_game_purchases},
+    coords={&quot;obs_idx&quot;: range(n_obs)},
+    dims={&quot;in_game_purchases&quot;: [&quot;obs_idx&quot;]},
+)</code></pre>
+<p>Before computing the ATE, we can visualize the posterior predictive for both interventions.</p>
+<pre class="python"><code>num_pp_samples = 300
+
+fig, ax = plt.subplots()
+az.plot_ppc(
+    do_0_idata,
+    num_pp_samples=num_pp_samples,
+    group=&quot;posterior&quot;,
+    ax=ax,
+)
+az.plot_ppc(
+    do_1_idata,
+    num_pp_samples=num_pp_samples,
+    group=&quot;posterior&quot;,
+    observed=False,
+    colors=[&quot;C2&quot;, &quot;k&quot;, &quot;C3&quot;],
+    ax=ax,
+)
+ax.set(xlim=(-5_000, 10_000))
+ax.set_title(
+    &quot;Posterior Predictive Check\ndo(is_highly_engaged=1) vs do(is_highly_engaged=0)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_39_0.png" style="width: 900px;"/>
+</center>
+<p>Now we can compute the ATE by taking the mean of the difference between the posterior predictive for the two interventions.</p>
+<pre class="python"><code>ate = (
+    (
+        do_1_idata[&quot;posterior_predictive&quot;][&quot;in_game_purchases&quot;]
+        - do_0_idata[&quot;posterior_predictive&quot;][&quot;in_game_purchases&quot;]
+    )
+    .mean(dim=&quot;obs_idx&quot;)
+    .rename(&quot;ate&quot;)
+)
+
+
+fig, ax = plt.subplots(figsize=(9, 6))
+az.plot_posterior(ate, ref_val=0, ax=ax)
+ax.axvspan(
+    estimate_ci[0], estimate_ci[1], color=&quot;C2&quot;, alpha=0.2, label=r&quot;DoWhy $95\%$ CI&quot;
+)
+ax.axvline(
+    estimate_value,
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    label=&quot;DoWhy Frontdoor Estimate (Two-Stage Regression)&quot;,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.05), ncol=2)
+ax.set_title(&quot;ATE Posterior Distribution&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/online_game_ate_files/online_game_ate_41_0.png" style="width: 900px;"/>
+</center>
+<p>The posterior distribution over the ATE aligns well with the DoWhy frontdoor estimate.
+By using the same <span class="math inline">\(Z\)</span> samples for both interventions, we obtain a tighter credible interval
+that properly reflects uncertainty about the causal effect.</p>
+</div>
+</div>
+<div id="summary-and-conclusion" class="section level2">
+<h2>Summary and Conclusion</h2>
+<p>This notebook demonstrated how to estimate causal effects in the presence of unobserved
+confounders using variational inference. We built a Bayesian model in NumPyro that explicitly
+represents the latent confounder <span class="math inline">\(Z\)</span> and uses neural networks to parameterize flexible
+conditional distributions. The encoder network enables amortized inference, learning to map
+observed data to the posterior distribution over the hidden confounder.</p>
+<div id="key-implementation-detail-consistent-z-samples" class="section level3">
+<h3>Key Implementation Detail: Consistent <span class="math inline">\(Z\)</span> Samples</h3>
+<p>A critical insight is that when computing the ATE as <span class="math inline">\(\text{E}[Y(1) - Y(0)]\)</span>, we must
+use the <strong>same</strong> <span class="math inline">\(Z\)</span> samples for both potential outcomes. The naive approach of running
+separate <code>do()</code> interventions samples different <span class="math inline">\(Z\)</span> values, which:</p>
+<ul>
+<li>Compares outcomes for <strong>different individuals</strong> rather than counterfactuals</li>
+<li>Inflates variance in the ATE estimate</li>
+<li>Does not properly answer the causal question</li>
+</ul>
+<p>The correct approach uses <code>condition(model, {"z": z_sample})</code> combined with <code>do()</code> to
+ensure both potential outcomes are computed for the same latent confounder values.</p>
+<p>The posterior distribution over the ATE aligns well with the DoWhy frontdoor estimate,
+providing validation for both approaches. The Bayesian method offers the additional benefit
+of uncertainty quantification through the full posterior, rather than relying solely on
+asymptotic confidence intervals. This framework can be extended to more complex causal
+structures and larger datasets, leveraging the scalability of stochastic variational inference.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.6/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
