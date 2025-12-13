@@ -1,40 +1,33 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, causal_inference on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Causal_inference on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-causal_inference/</link>
-    <description>Recent content in python, pymc, causal_inference on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Causal_inference on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 28 Nov 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 28 Nov 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-causal_inference/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Causal Inference with Multilevel Models: The Electric Company Example</title>
       <link>/ci_multilevel/</link>
       <pubDate>Fri, 28 Nov 2025 00:00:00 +0000</pubDate>
-      
       <guid>/ci_multilevel/</guid>
-      <description>Estimating causal effects from clustered or grouped data requires careful attention to the hierarchical structure of observations. When units are nested within groups such as students within classrooms, or patients within hospitals—ignoring this structure can lead to incorrect standard errors, inefficient estimates, and invalid causal inferences. Multilevel models provide a principled framework for handling such data while leveraging the advantages of partial pooling across groups.
-This notebook reproduces and extends the analysis from Chapter 23 of Gelman and Hill’s “Data Analysis Using Regression and Multilevel/Hierarchical Models”.</description>
+      <description>&lt;p&gt;Estimating causal effects from clustered or grouped data requires careful attention to the hierarchical structure of observations. When units are nested within groups such as students within classrooms, or patients within hospitals—ignoring this structure can lead to incorrect standard errors, inefficient estimates, and invalid causal inferences. Multilevel models provide a principled framework for handling such data while leveraging the advantages of partial pooling across groups.&lt;/p&gt;&#xA;&lt;p&gt;This notebook reproduces and extends the analysis from &lt;strong&gt;Chapter 23&lt;/strong&gt; of Gelman and Hill’s &lt;em&gt;“Data Analysis Using Regression and Multilevel/Hierarchical Models”&lt;/em&gt;. We demonstrate two complementary approaches to modeling treatment effects in hierarchical data: first, a model with varying intercepts that efficiently controls for group-level confounding, and second, a more flexible covariance model that allows treatment effects themselves to vary across groups. Together, these models illustrate how multilevel structures enhance both the efficiency and interpretability of causal effect estimation. In addition to reproducing the analysis, we show how to efficiently vectorize the model (across &lt;code&gt;grades&lt;/code&gt; and &lt;code&gt;pairs&lt;/code&gt;) using PyMC.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Introduction to Causal Inference with PPLs</title>
       <link>/intro_causal_inference_ppl_pymc/</link>
       <pubDate>Thu, 27 Nov 2025 00:00:00 +0000</pubDate>
-      
       <guid>/intro_causal_inference_ppl_pymc/</guid>
-      <description>Causal inference asks a deceptively simple question: “What would have happened if things were different?” Whether we’re evaluating a job training program, testing a new medical treatment, or analyzing the impact of a policy change, we want to understand the causal effect of an intervention not just observe correlations in the data.
-Traditional statistical methods often struggle with causal questions because they conflate correlation with causation. When confounders variables that affect both treatment assignment and outcomes are present, naive comparisons can lead us astray.</description>
+      <description>&lt;p&gt;Causal inference asks a deceptively simple question: &lt;em&gt;“What would have happened if things were&#xA;different?”&lt;/em&gt; Whether we’re evaluating a job training program, testing a new medical treatment,&#xA;or analyzing the impact of a policy change, we want to understand the causal effect of an&#xA;intervention not just observe correlations in the data.&lt;/p&gt;&#xA;&lt;p&gt;Traditional statistical methods often struggle with causal questions because they conflate&#xA;correlation with causation. When confounders variables that affect both treatment assignment&#xA;and outcomes are present, naive comparisons can lead us astray. This notebook demonstrates how&#xA;&lt;strong&gt;probabilistic programming languages (PPLs)&lt;/strong&gt; provide a powerful framework for causal inference&#xA;that makes confounding explicit, quantifies uncertainty properly, and enables us to answer&#xA;counterfactual questions directly.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Introduction to Bayesian Power Analysis: Exclude a Null Value</title>
       <link>/power_sample_size_exclude_null/</link>
       <pubDate>Tue, 29 Apr 2025 00:00:00 +0000</pubDate>
-      
       <guid>/power_sample_size_exclude_null/</guid>
-      <description>Recently, I have been thinking a lot about data-driven decision-making, particularly in the context of experimentation. Why? I am uncomfortable with the common practice of using p-values and frequentist null hypothesis significance testing to make decisions. I don’t feel confident about the approach. I think it is because I do not get it. For instance, when I am forced to explain the definition of a confidence interval precisely, it does not come naturally.</description>
+      <description>&lt;p&gt;Recently, I have been thinking a lot about data-driven decision-making, particularly in the context of experimentation. Why? I am uncomfortable with the common practice of using p-values and frequentist null hypothesis significance testing to make decisions. I don’t feel confident about the approach. I think it is because I do not get it. For instance, when I am forced to explain the definition of a confidence interval precisely, it does not come naturally. I always need to check with a trustworthy source (it is common to find wrong explanations online). If I do not understand it, I cannot use it, especially for decision-making. I always play this exercise when thinking about business recommendations in real applications: “Would I bet my salary on this?” Whenever I work with p-values, the answer to this question is no.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

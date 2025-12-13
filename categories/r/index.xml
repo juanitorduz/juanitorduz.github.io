@@ -4,74 +4,58 @@
     <title>R on Dr. Juan Camilo Orduz</title>
     <link>/categories/r/</link>
     <description>Recent content in R on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 15 Jun 2019 00:00:00 +0000</lastBuildDate><atom:link href="/categories/r/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 15 Jun 2019 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/r/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>satRday Berlin 2019: Remedies for Severe Class Imbalance</title>
       <link>/class_imbalance/</link>
       <pubDate>Sat, 15 Jun 2019 00:00:00 +0000</pubDate>
-      
       <guid>/class_imbalance/</guid>
-      <description>In this post I present a concrete case study illustrating some techniques to improve model performance in class-imbalanced classification problems. The methodologies described here are based on Chapter 16: Remedies for Severe Class Imbalance of the (great!) book Applied Predictive Modeling by Max Kuhn and Kjell Johnson. I absolutely recommend this reference to anyone interested in predictive modeling.
-This notebook should serve as an extension of my talk given at satRday Berlin 2019: A conference for R users in Berlin.</description>
+      <description>&lt;p&gt;In this post I present a concrete case study illustrating some techniques to improve model performance in class-imbalanced classification problems. The methodologies described here are based on &lt;em&gt;Chapter 16: Remedies for Severe Class Imbalance&lt;/em&gt; of the (great!) book &lt;a href=&#34;http://appliedpredictivemodeling.com/&#34;&gt;Applied Predictive Modeling&lt;/a&gt; by Max Kuhn and Kjell Johnson. I absolutely recommend this reference to anyone interested in predictive modeling.&lt;/p&gt;&#xA;&lt;p&gt;This notebook should serve as an extension of my talk given at &lt;a href=&#34;https://berlin2019.satrdays.org/&#34;&gt;satRday Berlin 2019: A conference for R users in Berlin&lt;/a&gt;. Here are the slides:&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>The Spectral Theorem for Matrices</title>
       <link>/the-spectral-theorem-for-matrices/</link>
       <pubDate>Sat, 02 Feb 2019 00:00:00 +0000</pubDate>
-      
       <guid>/the-spectral-theorem-for-matrices/</guid>
-      <description>When working in data analysis it is almost impossible to avoid using linear algebra, even if it is on the background, e.g. simple linear regression. In this post I want to discuss one of the most important theorems of finite dimensional vector spaces: the spectral theorem. The objective is not to give a complete and rigorous treatment of the subject, but rather show the main ingredients, some examples and applications.</description>
+      <description>&lt;p&gt;When working in data analysis it is almost impossible to avoid using linear algebra, even if it is on the background, e.g. simple linear regression. In this post I want to discuss one of the most important theorems of finite dimensional vector spaces: &lt;strong&gt;the spectral theorem&lt;/strong&gt;. The objective is not to give a complete and rigorous treatment of the subject, but rather show the main ingredients, some examples and applications.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Exploring the Curse of Dimensionality - Part II.</title>
       <link>/exploring-the-curse-of-dimensionality-part-ii./</link>
       <pubDate>Tue, 01 Jan 2019 00:00:00 +0000</pubDate>
-      
       <guid>/exploring-the-curse-of-dimensionality-part-ii./</guid>
-      <description>I continue exploring the curse of dimensionality. Following the analysis form Part I., I want to discuss another consequence of sparse sampling in high dimensions: sample points are close to an edge of the sample. This post is based on The Elements of Statistical Learning, Section 2.5, which I encourage to read!
-Uniform Sampling Consider \(N\) data points uniformly distributed in a \(p\)-dimensional unit ball centered at the origin. Suppose we consider a nearest-neighbor estimate at the origin.</description>
+      <description>&lt;p&gt;I continue exploring the &lt;strong&gt;curse of dimensionality&lt;/strong&gt;. Following the analysis form &lt;a href=&#34;https://juanitorduz.github.io/exploring-the-curse-of-dimensionality-part-i./&#34;&gt;Part I.&lt;/a&gt;, I want to discuss another consequence of sparse sampling in high dimensions: sample points are close to an edge of the sample. This post is based on &lt;a href=&#34;https://web.stanford.edu/~hastie/ElemStatLearn/&#34;&gt;The Elements of Statistical Learning, Section 2.5&lt;/a&gt;, which I encourage to read!&lt;/p&gt;&#xA;&lt;div id=&#34;uniform-sampling&#34; class=&#34;section level1&#34;&gt;&#xA;&lt;h1&gt;Uniform Sampling&lt;/h1&gt;&#xA;&lt;p&gt;&lt;em&gt;Consider &lt;span class=&#34;math inline&#34;&gt;\(N\)&lt;/span&gt; data points uniformly distributed in a &lt;span class=&#34;math inline&#34;&gt;\(p\)&lt;/span&gt;-dimensional unit ball centered at the origin. Suppose we consider a nearest-neighbor estimate at the origin. The median distance from the origin to the closest data point is given by the expression&lt;/em&gt;&#xA;&lt;span class=&#34;math display&#34;&gt;\[&#xA;d(p,N)  = \left(1-\frac{1}{2}^{1/N}\right)^{1/p}.&#xA;\]&lt;/span&gt;&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Text Mining, Networks and Visualization: Plebiscito Tweets</title>
       <link>/text-mining-networks-and-visualization-plebiscito-tweets/</link>
       <pubDate>Thu, 20 Dec 2018 00:00:00 +0000</pubDate>
-      
       <guid>/text-mining-networks-and-visualization-plebiscito-tweets/</guid>
-      <description>Nowadays social media generates a vast amount of raw data (text, images, videos, etc). It is a very interesting challenge to discover techniques to get insights on the content and development of social media data. In addition, as a fundamental component of the analysis, it is important to find ways of communicating the results, i.e. data visualization. In this post I want to present a small case study where I analyze Twitter text data.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/htmlwidgets/htmlwidgets.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/plotly-binding/plotly.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/typedarray/typedarray.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/jquery/jquery.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;link href=&#34;../../rmarkdown-libs/crosstalk/css/crosstalk.css&#34; rel=&#34;stylesheet&#34; /&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/crosstalk/js/crosstalk.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;link href=&#34;../../rmarkdown-libs/plotly-htmlwidgets-css/plotly-htmlwidgets.css&#34; rel=&#34;stylesheet&#34; /&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/plotly-main/plotly-latest.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/d3/d3.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/forceNetwork-binding/forceNetwork.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;Nowadays social media generates a vast amount of raw data (text, images, videos, etc). It is a very interesting challenge to discover techniques to get insights on the content and development of social media data. In addition, as a fundamental component of the analysis, it is important to find ways of communicating the results, i.e. data visualization. In this post I want to present a small case study where I analyze Twitter text data. The aim is not to give a complete analysis (as it would require many interations), but rather to describe how to to start. The emphasis of this post is in the data manipulation and data visualization. In particular, I describe how networks (graphs) can be used as data structures to describe text relations (some measure of pairwise count occurrences).&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Exploring the Curse of Dimensionality - Part I.</title>
       <link>/exploring-the-curse-of-dimensionality-part-i./</link>
       <pubDate>Sun, 09 Dec 2018 00:00:00 +0000</pubDate>
-      
       <guid>/exploring-the-curse-of-dimensionality-part-i./</guid>
-      <description>In this post I want to present the notion of curse of dimensionality following a suggested exercise (Chapter 4 - Ex. 4) of the book An Introduction to Statistical Learning, written by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani.
-When the number of features \(p\) is large, there tends to be a deterioration in the performance of KNN and other local approaches that perform prediction using only observations that are near the test observation for which a prediction must be made.</description>
+      <description>&lt;p&gt;In this post I want to present the notion of &lt;strong&gt;curse of dimensionality&lt;/strong&gt; following a suggested exercise (Chapter 4 - Ex. 4) of the book &lt;a href=&#34;http://www-bcf.usc.edu/~gareth/ISL/&#34;&gt;An Introduction to Statistical Learning&lt;/a&gt;, written by Gareth James, Daniela Witten, Trevor Hastie and Robert Tibshirani.&lt;/p&gt;&#xA;&lt;p&gt;&lt;em&gt;When the number of features &lt;span class=&#34;math inline&#34;&gt;\(p\)&lt;/span&gt; is large, there tends to be a deterioration in the performance of KNN and other local approaches that perform prediction using only observations that are near the test observation for which a prediction must be made. This phenomenon is known as the &lt;strong&gt;curse of dimensionality&lt;/strong&gt;, and it ties into the fact that non-parametric approaches often perform poorly when &lt;span class=&#34;math inline&#34;&gt;\(p\)&lt;/span&gt; is large. We will now investigate this curse.&lt;/em&gt;&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Introduction to R Plumber : Expose a Caret model to a web API</title>
       <link>/intro_plumber/</link>
       <pubDate>Fri, 12 Oct 2018 00:00:00 +0000</pubDate>
-      
       <guid>/intro_plumber/</guid>
       <description>In this post we present a simple example of how to expose a prediction model to a web API using the Plumber package.</description>
     </item>
-    
     <item>
       <title>Circle Radius Fit for a Cloud of Points</title>
       <link>/circle-radius-fit-for-a-cloud-of-points/</link>
       <pubDate>Sun, 09 Sep 2018 00:00:00 +0000</pubDate>
-      
       <guid>/circle-radius-fit-for-a-cloud-of-points/</guid>
       <description>We explore how to include an R notebook into a pelican post. As an example, we describe how to fit a circle onto a cloud of points.</description>
     </item>
-    
   </channel>
 </rss>

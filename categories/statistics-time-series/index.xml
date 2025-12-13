@@ -4,28 +4,23 @@
     <title>Statistics, Time Series on Dr. Juan Camilo Orduz</title>
     <link>/categories/statistics-time-series/</link>
     <description>Recent content in Statistics, Time Series on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 21 Feb 2020 00:00:00 +0000</lastBuildDate><atom:link href="/categories/statistics-time-series/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 21 Feb 2020 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/statistics-time-series/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Forecasting Weekly Data with Prophet</title>
       <link>/fb_prophet/</link>
       <pubDate>Fri, 21 Feb 2020 00:00:00 +0000</pubDate>
-      
       <guid>/fb_prophet/</guid>
-      <description>In this notebook we are present an initial exploration of the Prophet package by Facebook. From the documentation:
-Prophet is a procedure for forecasting time series data based on an additive model where non-linear trends are fit with yearly, weekly, and daily seasonality, plus holiday effects. It works best with time series that have strong seasonal effects and several seasons of historical data. Prophet is robust to missing data and shifts in the trend, and typically handles outliers well.</description>
+      <description>&lt;p&gt;In this notebook we are present an initial exploration of the &lt;a href=&#34;https://facebook.github.io/prophet/&#34;&gt;Prophet&lt;/a&gt; package by &lt;a href=&#34;https://opensource.facebook.com/&#34;&gt;Facebook&lt;/a&gt;. From the documentation:&lt;/p&gt;&#xA;&lt;p&gt;&lt;em&gt;Prophet is a procedure for forecasting time series data based on an additive model where non-linear trends are fit with yearly, weekly, and daily seasonality, plus holiday effects. It works best with time series that have strong seasonal effects and several seasons of historical data. Prophet is robust to missing data and shifts in the trend, and typically handles outliers well.&lt;/em&gt;&lt;a href=&#34;#fn1&#34; class=&#34;footnote-ref&#34; id=&#34;fnref1&#34;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/a&gt;&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Exploring TensorFlow Probability STS Forecasting</title>
       <link>/intro_sts_tfp/</link>
       <pubDate>Tue, 11 Feb 2020 00:00:00 +0000</pubDate>
-      
       <guid>/intro_sts_tfp/</guid>
-      <description>In this notebook we explore the Structural Time Series (STS) Module of TensorFlow Probability. We follow closely the use cases presented in their Medium blog. As described there: An STS model expresses an observed time series as the sum of simpler components 1:    \[ f(t) = \sum_{k=1}^{N}f_{k}(t) + \varepsilon, \quad \text{where}\quad \varepsilon \sim N(0, \sigma^2). \]
-Each summand \(f_{k}(t)\) has a particular structure, e.g. specific seasonality, trend, autoregressive terms, etc.</description>
+      <description>&lt;dl&gt;&#xA;&lt;dt&gt;In this notebook we explore the &lt;a href=&#34;https://www.tensorflow.org/probability/api_docs/python/tfp/sts&#34;&gt;Structural Time Series (STS) Module&lt;/a&gt; of &lt;a href=&#34;https://www.tensorflow.org/probability/&#34;&gt;TensorFlow Probability&lt;/a&gt;. We follow closely the &lt;a href=&#34;https://medium.com/tensorflow/structural-time-series-modeling-in-tensorflow-probability-344edac24083&#34;&gt;use cases&lt;/a&gt; presented in their &lt;a href=&#34;https://medium.com/tensorflow&#34;&gt;Medium blog&lt;/a&gt;. As described there: &lt;em&gt;An STS model expresses an observed time series as the sum of simpler components&lt;/em&gt; &lt;a href=&#34;#fn1&#34; class=&#34;footnote-ref&#34; id=&#34;fnref1&#34;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/a&gt;:&lt;/dt&gt;&#xA;&lt;dd&gt;&#xA;&#xA;&lt;/dd&gt;&#xA;&lt;/dl&gt;&#xA;&lt;p&gt;&lt;span class=&#34;math display&#34;&gt;\[&#xA;f(t) = \sum_{k=1}^{N}f_{k}(t) + \varepsilon, \quad \text{where}\quad \varepsilon \sim N(0, \sigma^2).&#xA;\]&lt;/span&gt;&lt;/p&gt;&#xA;&lt;p&gt;Each summand &lt;span class=&#34;math inline&#34;&gt;\(f_{k}(t)\)&lt;/span&gt; has a particular structure, e.g. specific seasonality, trend, autoregressive terms, etc.&lt;/p&gt;&#xA;&lt;p&gt;In this notebook we generate a time series sample and then present some techniques to recover its component structure. This is indeed a crucial step since in real applications we are not given the components separately. We then show how to fit and generate predictions using &lt;a href=&#34;https://en.wikipedia.org/wiki/Variational_Bayesian_methods&#34;&gt;variational inference&lt;/a&gt;. Finally we run some diagnostics of the errors on the test set.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

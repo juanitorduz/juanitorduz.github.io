@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, scikit-learn, machine_learning on Dr. Juan Camilo Orduz</title>
+    <title>Python, Scikit-Learn, Machine_learning on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-scikit-learn-machine_learning/</link>
-    <description>Recent content in python, scikit-learn, machine_learning on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Scikit-Learn, Machine_learning on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 01 May 2021 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-scikit-learn-machine_learning/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 01 May 2021 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-scikit-learn-machine_learning/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Feature Engineering: patsy as FormulaTransformer</title>
       <link>/formula_transformer/</link>
       <pubDate>Sat, 01 May 2021 00:00:00 +0000</pubDate>
-      
       <guid>/formula_transformer/</guid>
-      <description>In this notebook I want to describe how to create features inside scikit-learn pipelines using patsy-like formulas. I have used this approach to generate features in a previous post: GLM in PyMC3: Out-Of-Sample Predictions, so I will consider the same data set here for the sake of comparison.
-Remark: Very recently (2021-09-01) I discovered there is an implementation of this transformer in scikit-lego, see PatsyTransformer. In addition, please refer to the great tutorial on patsy in calmcode.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this notebook I want to describe how to create features inside &lt;a href=&#34;https://scikit-learn.org/stable/modules/compose.html&#34;&gt;scikit-learn pipelines&lt;/a&gt; using &lt;a href=&#34;https://patsy.readthedocs.io/en/latest/formulas.html&#34;&gt;patsy-like formulas&lt;/a&gt;. I have used this approach to generate features in a previous post: &lt;a href=&#34;https://juanitorduz.github.io/glm_pymc3/&#34;&gt;GLM in PyMC3: Out-Of-Sample Predictions&lt;/a&gt;, so I will consider the same data set here for the sake of comparison.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Remark:&lt;/strong&gt; Very recently (2021-09-01) I discovered there is an implementation of this transformer in &lt;a href=&#34;https://github.com/koaning/scikit-lego&#34;&gt;scikit-lego&lt;/a&gt;, see &lt;a href=&#34;https://scikit-lego.readthedocs.io/en/latest/preprocessing.html#Patsy-Formulas&#34;&gt;&lt;code&gt;PatsyTransformer&lt;/code&gt;&lt;/a&gt;. In addition, please refer to the great &lt;a href=&#34;https://calmcode.io/patsy/introduction.html&#34;&gt;tutorial on patsy&lt;/a&gt; in &lt;a href=&#34;https://calmcode.io&#34;&gt;calmcode.io&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

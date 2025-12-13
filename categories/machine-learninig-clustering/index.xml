@@ -4,18 +4,16 @@
     <title>Machine Learninig, Clustering on Dr. Juan Camilo Orduz</title>
     <link>/categories/machine-learninig-clustering/</link>
     <description>Recent content in Machine Learninig, Clustering on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 04 Apr 2020 00:00:00 +0000</lastBuildDate><atom:link href="/categories/machine-learninig-clustering/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 04 Apr 2020 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/machine-learninig-clustering/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Getting Started with Spectral Clustering</title>
       <link>/spectral_clustering/</link>
       <pubDate>Sat, 04 Apr 2020 00:00:00 +0000</pubDate>
-      
       <guid>/spectral_clustering/</guid>
-      <description>In this post I want to explore the ideas behind spectral clustering. I do not intend to develop the theory. Instead, I will unravel a practical example to illustrate and motivate the intuition behind each step of the spectral clustering algorithm. I particularly recommend two references:
- For an introduction/overview on the theory, see the lecture notes A Tutorial on Spectral Clustering by Prof. Dr. Ulrike von Luxburg. For a concrete application of this clustering method you can see the PyData’s talk: Extracting relevant Metrics with Spectral Clustering by Dr.</description>
+      <description>&lt;p&gt;In this post I want to explore the ideas behind &lt;a href=&#34;https://en.wikipedia.org/wiki/Spectral_clustering&#34;&gt;spectral clustering&lt;/a&gt;. I do not intend to develop the theory. Instead, I will unravel a practical example to illustrate and motivate the intuition behind each step of the spectral clustering algorithm. I particularly recommend two references:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;For an introduction/overview on the theory, see the lecture notes &lt;a href=&#34;http://www.tml.cs.uni-tuebingen.de/team/luxburg/publications/Luxburg07_tutorial.pdf&#34;&gt;A Tutorial on Spectral Clustering&lt;/a&gt; by &lt;a href=&#34;http://www.tml.cs.uni-tuebingen.de/team/luxburg/index.php&#34;&gt;Prof. Dr. Ulrike von Luxburg&lt;/a&gt;.&lt;/li&gt;&#xA;&lt;li&gt;For a concrete application of this clustering method you can see the PyData’s talk: &lt;a href=&#34;https://www.youtube.com/watch?v=3heWpR6dC8k&#34;&gt;Extracting relevant Metrics with Spectral Clustering&lt;/a&gt; by Dr. Evelyn Trautmann.&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import numpy as np&#xA;import pandas as pd&#xA;&#xA;import matplotlib.pyplot as plt&#xA;import seaborn as sns&#xA;sns.set_style(&amp;#39;darkgrid&amp;#39;, {&amp;#39;axes.facecolor&amp;#39;: &amp;#39;.9&amp;#39;})&#xA;sns.set_palette(palette=&amp;#39;deep&amp;#39;)&#xA;sns_c = sns.color_palette(palette=&amp;#39;deep&amp;#39;)&#xA;%matplotlib inline&#xA;&#xA;from pandas.plotting import register_matplotlib_converters&#xA;register_matplotlib_converters()&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-sample-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Sample Data&lt;/h2&gt;&#xA;&lt;p&gt;Let us generate some sample data. As we will see, spectral clustering is very effective for non-convex clusters. In this example, we consider concentric circles:&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

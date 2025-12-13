@@ -1,31 +1,26 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, pricing, elasticities on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Pricing, Elasticities on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-pricing-elasticities/</link>
-    <description>Recent content in python, pymc, pricing, elasticities on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Pricing, Elasticities on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 13 Nov 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-pricing-elasticities/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 13 Nov 2023 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-pricing-elasticities/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Multilevel Elasticities for a Single SKU - Part II.</title>
       <link>/multilevel_elasticities_single_sku_2/</link>
       <pubDate>Mon, 13 Nov 2023 00:00:00 +0000</pubDate>
-      
       <guid>/multilevel_elasticities_single_sku_2/</guid>
-      <description>In this notebook we go deeper into the last covariance model presented in the previous blog post Multilevel Elasticities for a Single SKU. In particular we describe how to generate posterior predictive samples from an unseen region by the model. This can be useful for scenario planning: once can simulated outcome quantities from price ranges through the elasticity estimates (with uncertainty!)
-We strongly recommend reading the previous blog post before reading this one as we will skip the EDA and baseline model comparison parts.</description>
+      <description>&lt;p&gt;In this notebook we go deeper into the last covariance model presented in the previous blog post &lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku/&#34;&gt;Multilevel Elasticities for a Single SKU&lt;/a&gt;. In particular we describe how to generate posterior predictive samples from an unseen region by the model. This can be useful for scenario planning: once can simulated outcome quantities from price ranges through the elasticity estimates (with uncertainty!)&lt;/p&gt;&#xA;&lt;p&gt;We strongly recommend reading the previous blog post before reading this one as we will skip the EDA and baseline model comparison parts.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Multilevel Elasticities for a Single SKU - Part I.</title>
       <link>/multilevel_elasticities_single_sku/</link>
       <pubDate>Thu, 10 Aug 2023 00:00:00 +0000</pubDate>
-      
       <guid>/multilevel_elasticities_single_sku/</guid>
-      <description>In this notebook I want to experiment with some basic models for price elasticity estimation in the simple context of a simple sku across multiple stores and regions. The motivation is to have a concrete example of the elasticity models presented in the Chapter 11: Big Data Pricing Models of the book Pricing Analytics by Walter R. Paczkowski.
-Elasticity Definition Here I provide a very succinct definition of elasticity (there is a vast literature on this topic, see the reference above).</description>
+      <description>&lt;p&gt;In this notebook I want to experiment with some basic models for price elasticity estimation in the simple context of a simple &lt;a href=&#34;https://en.wikipedia.org/wiki/Stock_keeping_unit&#34;&gt;sku&lt;/a&gt; across multiple stores and regions. The motivation is to have a concrete example of the elasticity models presented in the Chapter 11: Big Data Pricing Models of the book &lt;a href=&#34;https://www.routledge.com/Pricing-Analytics-Models-and-Advanced-Quantitative-Techniques-for-Product/Paczkowski/p/book/9781138623934&#34;&gt;Pricing Analytics&lt;/a&gt; by &lt;a href=&#34;https://www.linkedin.com/in/walter-paczkowski-a17a1511/&#34;&gt;Walter R. Paczkowski&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;elasticity-definition&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Elasticity Definition&lt;/h2&gt;&#xA;&lt;p&gt;Here I provide a very succinct definition of elasticity (there is a vast literature on this topic, see the reference above). The elasticity of a variable &lt;span class=&#34;math inline&#34;&gt;\(y(x, z)\)&lt;/span&gt; with respect to another variable &lt;span class=&#34;math inline&#34;&gt;\(x\)&lt;/span&gt; is defined as the percentage change in &lt;span class=&#34;math inline&#34;&gt;\(y\)&lt;/span&gt; for a one percent change in &lt;span class=&#34;math inline&#34;&gt;\(x\)&lt;/span&gt;. Mathematically, this is written as&#xA;&lt;span class=&#34;math display&#34;&gt;\[&#xA;\eta = \frac{\partial \log(y(x, z))}{\partial \log(x)}&#xA;\]&lt;/span&gt;&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

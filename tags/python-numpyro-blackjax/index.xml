@@ -1,24 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, numpyro, blackjax on Dr. Juan Camilo Orduz</title>
+    <title>Python, Numpyro, Blackjax on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-numpyro-blackjax/</link>
-    <description>Recent content in python, numpyro, blackjax on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Numpyro, Blackjax on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 04 Dec 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-blackjax/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 04 Dec 2023 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-numpyro-blackjax/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>NumPyro with Pathfinder</title>
       <link>/numpyro_pathfinder/</link>
       <pubDate>Mon, 04 Dec 2023 00:00:00 +0000</pubDate>
-      
       <guid>/numpyro_pathfinder/</guid>
-      <description>In this notebook we describe how to use blackjax’s pathfinder implementation to do inference with a numpyro model.
-I am simply putting some pieces together from the following resources (strongly recommended to read):
-References:
- Blackjax docs: Use with Numpyro models Blackjax Sampling Book: Pathfinder Numpyro Issue #1485 PyMC Experimental - Pathfinder Pathfinder: Parallel quasi-Newton variational inference  What and Why Pathfinder? From the paper’s abstract:
- What?   We propose Pathfinder, a variational method for approximately sampling from differentiable log densities.</description>
+      <description>&lt;p&gt;In this notebook we describe how to use &lt;a href=&#34;https://blackjax-devs.github.io/blackjax/index.html&#34;&gt;&lt;code&gt;blackjax&lt;/code&gt;&lt;/a&gt;’s &lt;a href=&#34;https://blackjax-devs.github.io/sampling-book/algorithms/pathfinder.html&#34;&gt;&lt;code&gt;pathfinder&lt;/code&gt;&lt;/a&gt; implementation to do inference with a &lt;a href=&#34;https://num.pyro.ai/en/stable/&#34;&gt;&lt;code&gt;numpyro&lt;/code&gt;&lt;/a&gt; model.&lt;/p&gt;&#xA;&lt;p&gt;I am simply putting some pieces together from the following resources (strongly recommended to read):&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;References:&lt;/strong&gt;&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;Blackjax docs: &lt;a href=&#34;https://blackjax-devs.github.io/blackjax/examples/howto_use_numpyro.html&#34;&gt;Use with Numpyro models&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;Blackjax Sampling Book: &lt;a href=&#34;https://blackjax-devs.github.io/sampling-book/algorithms/pathfinder.html&#34;&gt;Pathfinder&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;Numpyro Issue &lt;a href=&#34;https://github.com/pyro-ppl/numpyro/issues/1485&#34;&gt;#1485&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://github.com/pymc-devs/pymc-experimental/blob/main/pymc_experimental/inference/pathfinder.py&#34;&gt;PyMC Experimental - Pathfinder&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://arxiv.org/abs/2108.03782&#34;&gt;Pathfinder: Parallel quasi-Newton variational inference&lt;/a&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;div id=&#34;what-and-why-pathfinder&#34; class=&#34;section level3&#34;&gt;&#xA;&lt;h3&gt;What and Why Pathfinder?&lt;/h3&gt;&#xA;&lt;p&gt;From the &lt;a href=&#34;https://arxiv.org/abs/2108.03782&#34;&gt;paper&lt;/a&gt;’s abstract:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;strong&gt;What?&lt;/strong&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;We propose Pathfinder, a variational method for approximately sampling from differentiable log densities. Starting from a random initialization, Pathfinder locates normal approximations to the target density along a quasi-Newton optimization path, with local covariance estimated using the inverse Hessian estimates produced by the optimizer. Pathfinder returns draws from the approximation with the lowest estimated Kullback-Leibler (KL) divergence to the true posterior.&lt;/em&gt;&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

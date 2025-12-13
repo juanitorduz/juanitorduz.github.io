@@ -1,40 +1,33 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, bayes, pymc, marketing on Dr. Juan Camilo Orduz</title>
+    <title>Python, Bayes, Pymc, Marketing on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-bayes-pymc-marketing/</link>
-    <description>Recent content in python, bayes, pymc, marketing on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Bayes, Pymc, Marketing on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 23 Jan 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-marketing/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 23 Jan 2023 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-bayes-pymc-marketing/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Cohort Revenue &amp; Retention Analysis: A Bayesian Approach</title>
       <link>/revenue_retention/</link>
       <pubDate>Mon, 23 Jan 2023 00:00:00 +0000</pubDate>
-      
       <guid>/revenue_retention/</guid>
-      <description>In this notebook we extend the cohort retention model presented in the post Cohort Retention Analysis with BART so that we just model retention and per cohort simultaneously (we recommend reading the referenced post before this one). The idea is to keep modeling the retention using a Bayesian Additive Regression Tree (BART) model (see pymc-bart) and linearly model the revenue per cohort using a Gamma distribution. We couple the retention and revenue components in a similar way as presented in the notebook Introduction to Bayesian A/B Testing.</description>
+      <description>&lt;p&gt;In this notebook we extend the cohort retention model presented in the post &lt;a href=&#34;https://juanitorduz.github.io/retention_bart/&#34;&gt;Cohort Retention Analysis with BART&lt;/a&gt; so that we just model retention &lt;strong&gt;and&lt;/strong&gt; per cohort simultaneously (we recommend reading the referenced post before this one). The idea is to keep modeling the retention using a Bayesian Additive Regression Tree (BART) model (see &lt;a href=&#34;https://www.pymc.io/projects/bart/en/latest/&#34;&gt;&lt;code&gt;pymc-bart&lt;/code&gt;&lt;/a&gt;) and linearly model the revenue per cohort using a Gamma distribution. We couple the retention and revenue components in a similar way as presented in the notebook &lt;a href=&#34;https://www.pymc.io/projects/examples/en/latest/case_studies/bayesian_ab_testing_introduction.html&#34;&gt;Introduction to Bayesian A/B Testing&lt;/a&gt;. For this simulated example we use a synthetic data set, see the blog post &lt;a href=&#34;https://juanitorduz.github.io/retention/&#34;&gt;A Simple Cohort Retention Analysis in PyMC&lt;/a&gt; For more details. &lt;a href=&#34;https://github.com/juanitorduz/website_projects/blob/master/data/retention_data.csv&#34;&gt;Here&lt;/a&gt; you can find the data to reproduce the results.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Cohort Retention Analysis with BART</title>
       <link>/retention_bart/</link>
       <pubDate>Mon, 02 Jan 2023 00:00:00 +0000</pubDate>
-      
       <guid>/retention_bart/</guid>
-      <description>In this notebook we study an alternative approach for the cohort analysis problem presented in A Simple Cohort Retention Analysis in PyMC. Instead of using a linear model to estimate the retention rate, we use a Bayesian Additive Regression Tree (BART) model(see pymc-bart). The BART model is a flexible non-parametric model that can be used to model complex relationships between the response and the predictors.
-Prepare Notebook import arviz as az import matplotlib.</description>
+      <description>&lt;p&gt;In this notebook we study an alternative approach for the cohort analysis problem presented in &lt;a href=&#34;https://juanitorduz.github.io/retention/&#34;&gt;A Simple Cohort Retention Analysis in PyMC&lt;/a&gt;. Instead of using a linear model to estimate the retention rate, we use a Bayesian Additive Regression Tree (BART) model(see &lt;a href=&#34;https://www.pymc.io/projects/bart/en/latest/&#34;&gt;&lt;code&gt;pymc-bart&lt;/code&gt;&lt;/a&gt;). The BART model is a flexible non-parametric model that can be used to model complex relationships between the response and the predictors.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import matplotlib.ticker as mtick&#xA;import numpy as np&#xA;import pandas as pd&#xA;import pymc as pm&#xA;import pymc_bart as pmb&#xA;import pytensor.tensor as pt&#xA;import seaborn as sns&#xA;&#xA;from scipy.special import expit, logit&#xA;from sklearn.preprocessing import LabelEncoder&#xA;from pymc_bart.split_rules import ContinuousSplitRule, SubsetSplitRule&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [12, 7]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;seed: int = sum(map(ord, &amp;quot;retention&amp;quot;))&#xA;rng: np.random.Generator = np.random.default_rng(seed=seed)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;read-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Read Data&lt;/h2&gt;&#xA;&lt;p&gt;Here we simply read the data from the previous post.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>A Simple Cohort Retention Analysis in PyMC</title>
       <link>/retention/</link>
       <pubDate>Tue, 20 Dec 2022 00:00:00 +0000</pubDate>
-      
       <guid>/retention/</guid>
-      <description>In this notebook we present a simple approach to study cohort retention analysis through a simulated data set. The aim is to understand how retention rates change over time and provide a simple model to predict them (with uncertainty estimates!). We do not expect this technique to be a silver bullet for all retention problems, but rather a simple approach to get started with the problem.
-Remark: A motivation for this notebook was the great post Bayesian Age/Period/Cohort Models in Python with PyMC by Austin Rochford.</description>
+      <description>&lt;p&gt;In this notebook we present a simple approach to study cohort retention analysis through a simulated data set. The aim is to understand how retention rates change over time and provide a simple model to predict them (with uncertainty estimates!). We do not expect this technique to be a silver bullet for all retention problems, but rather a simple approach to get started with the problem.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Remark:&lt;/strong&gt; A motivation for this notebook was the great post &lt;em&gt;&lt;a href=&#34;https://www.austinrochford.com/posts/apc-pymc.html&#34;&gt;Bayesian Age/Period/Cohort Models in Python with PyMC&lt;/a&gt;&lt;/em&gt; by &lt;a href=&#34;https://www.austinrochford.com/about.html&#34;&gt;Austin Rochford&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

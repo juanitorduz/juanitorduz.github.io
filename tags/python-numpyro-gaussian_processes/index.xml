@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, numpyro, gaussian_processes on Dr. Juan Camilo Orduz</title>
+    <title>Python, Numpyro, Gaussian_processes on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-numpyro-gaussian_processes/</link>
-    <description>Recent content in python, numpyro, gaussian_processes on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Numpyro, Gaussian_processes on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 01 Jan 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-gaussian_processes/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 01 Jan 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-numpyro-gaussian_processes/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Notes on Hierarchical Hilbert Space Gaussian Processes</title>
       <link>/hierarchical_hsgp/</link>
       <pubDate>Wed, 01 Jan 2025 00:00:00 +0000</pubDate>
-      
       <guid>/hierarchical_hsgp/</guid>
-      <description>In this notebook, we want to explore some ideas on hierarchical Hilbert Space Gaussian Processes following the fantastic exposition of the PyMC example notebook: “Gaussian Processes: HSGP Advanced Usage” by Bill Engels, Alexandre Andorra and Maxim Kochurov. I can only recommend to read the notebook and the references therein! For an introduction to Hilbert Space Gaussian Processes, please see my introductory blog post: “A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods”.</description>
+      <description>&lt;p&gt;In this notebook, we want to explore some ideas on hierarchical Hilbert Space Gaussian Processes following the fantastic exposition of the PyMC example notebook: &lt;a href=&#34;https://www.pymc.io/projects/examples/en/latest/gaussian_processes/HSGP-Advanced.html&#34;&gt;“Gaussian Processes: HSGP Advanced Usage”&lt;/a&gt; by &lt;a href=&#34;https://github.com/bwengals&#34;&gt;Bill Engels&lt;/a&gt;, &lt;a href=&#34;https://github.com/AlexAndorra&#34;&gt;Alexandre Andorra&lt;/a&gt; and &lt;a href=&#34;https://github.com/ferrine&#34;&gt;Maxim Kochurov&lt;/a&gt;. I can only recommend to read the notebook and the references therein!&#xA;For an introduction to Hilbert Space Gaussian Processes, please see my introductory blog post: &lt;a href=&#34;https://juanitorduz.github.io/hsgp_intro/&#34;&gt;“A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods”&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Motivation&lt;/strong&gt;: In many applications, one is interested in understanding the dynamic effect of one variable on another. For example, in marketing, one is interested in efficiency across many channels on sales (or conversions) as a function of time. For such a purpose, one typically uses a time-varying regression model with time-varying coefficients (for a simple example, see &lt;a href=&#34;https://juanitorduz.github.io/bikes_gp/&#34;&gt;“Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation”&lt;/a&gt;). The main challenge is that, if not done carefully, the model will easily overfit the data. One can use a hierarchical model with a global component and a group-specific component to overcome this. The global component will capture the overall trend, while the group-specific component will capture the idiosyncratic behavior of each group. As a side effect, we will gain some regularization effect that will help to avoid overfitting. For the marketing example above, &lt;a href=&#34;https://www.pymc-labs.com/blog-posts/&#34;&gt;PyMC Labs&lt;/a&gt; has successfully applied this approach in the context of media mix modeling: &lt;a href=&#34;https://www.pymc-labs.com/blog-posts/modelling-changes-marketing-effectiveness-over-time/&#34;&gt;“Bayesian Media Mix Models: Modelling changes in marketing effectiveness over time”&lt;/a&gt;. This hierarchical approach was motivated by the work &lt;a href=&#34;https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-14-252&#34;&gt;“Hierarchical Bayesian modeling of gene expression time series across irregularly sampled replicates and clusters”&lt;/a&gt;. Here is a schematic diagram of the hierarchical approach (taken from the paper):&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

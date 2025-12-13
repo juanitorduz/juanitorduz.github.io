@@ -1,22 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, numpyro, bayes on Dr. Juan Camilo Orduz</title>
+    <title>Python, Numpyro, Bayes on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-numpyro-bayes/</link>
-    <description>Recent content in python, numpyro, bayes on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Numpyro, Bayes on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 01 Sep 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-bayes/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 01 Sep 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-numpyro-bayes/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</title>
       <link>/intro_svi/</link>
       <pubDate>Mon, 01 Sep 2025 00:00:00 +0000</pubDate>
-      
       <guid>/intro_svi/</guid>
-      <description>In this notebook we provide a brief introduction to Stochastic Variational Inference (SVI) with NumPyro. We provide the key mathematical concepts, but we focus on the code implementation. This introductory notebook is meant for practitioners. We do this by working through two examples: a very simple parameter recovery model and a Bayesian Neural Network.
-This work was presented at PyData Berlin 2025, you can find the slides here.
-Overview Stochastic Variational Inference (SVI) is a scalable approximate inference method that transforms the problem of posterior inference into an optimization problem.</description>
+      <description>&lt;p&gt;In this notebook we provide a brief introduction to Stochastic Variational Inference (SVI) with &lt;a href=&#34;https://pyro.ai/numpyro&#34;&gt;NumPyro&lt;/a&gt;. We provide the key mathematical concepts, but we focus on the code implementation. This introductory notebook is meant for practitioners. We do this by working through two examples: a very simple parameter recovery model and a Bayesian Neural Network.&lt;/p&gt;&#xA;&lt;p&gt;This work was presented at &lt;a href=&#34;https://cfp.pydata.org/berlin2025/talk/BCGJQB/&#34;&gt;PyData Berlin 2025&lt;/a&gt;, you can find the slides &lt;a href=&#34;../../html/intro_svi.html&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;overview&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Overview&lt;/h2&gt;&#xA;&lt;p&gt;&lt;strong&gt;Stochastic Variational Inference (SVI)&lt;/strong&gt; is a scalable approximate inference method that transforms the problem of posterior inference into an optimization problem. Instead of sampling from the posterior distribution (like MCMC), SVI finds the best approximation to the posterior within a family of simpler distributions.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, machine_learning on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Machine_learning on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-machine_learning/</link>
-    <description>Recent content in python, pymc, machine_learning on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Machine_learning on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 24 Sep 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-machine_learning/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 24 Sep 2022 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-machine_learning/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Scikit-Learn Example in PyMC: Gaussian Process Classifier</title>
       <link>/sklearn_pymc_classifier/</link>
       <pubDate>Sat, 24 Sep 2022 00:00:00 +0000</pubDate>
-      
       <guid>/sklearn_pymc_classifier/</guid>
-      <description>In this notebook we want to describe how to port a couple of classification examples from scikit-learn’s documentation (classifier comparison) to PyMC. We focus in the classical moons synthetic dataset.
-Prepare Notebook import arviz as az import matplotlib.pyplot as plt import numpy as np import pandas as pd import pymc as pm import pymc.sampling_jax import seaborn as sns from sklearn.datasets import make_moons from sklearn.metrics import accuracy_score from sklearn.model_selection import train_test_split plt.</description>
+      <description>&lt;p&gt;In this notebook we want to describe how to port a couple of classification examples from &lt;a href=&#34;https://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html#sphx-glr-auto-examples-classification-plot-classifier-comparison-py&#34;&gt;scikit-learn’s documentation (classifier comparison)&lt;/a&gt; to PyMC. We focus in the classical &lt;a href=&#34;https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html#sklearn.datasets.make_moons&#34;&gt;&lt;code&gt;moons&lt;/code&gt;&lt;/a&gt; synthetic dataset.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import pandas as pd&#xA;import pymc as pm&#xA;import pymc.sampling_jax&#xA;import seaborn as sns&#xA;from sklearn.datasets import make_moons&#xA;from sklearn.metrics import accuracy_score&#xA;from sklearn.model_selection import train_test_split&#xA;&#xA;&#xA;plt.style.use(&amp;quot;bmh&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [8, 6]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-raw-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Raw Data&lt;/h2&gt;&#xA;&lt;p&gt;We generate synthetic data using the &lt;a href=&#34;https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html#sklearn.datasets.make_moons&#34;&gt;&lt;code&gt;moons&lt;/code&gt;&lt;/a&gt; function from &lt;code&gt;sklearn.datasets&lt;/code&gt; and split it into a training and test set.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

@@ -1,33 +1,26 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, bayesian, tfp on Dr. Juan Camilo Orduz</title>
+    <title>Python, Bayesian, Tfp on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-bayesian-tfp/</link>
-    <description>Recent content in python, bayesian, tfp on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Bayesian, Tfp on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 06 Oct 2020 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayesian-tfp/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 06 Oct 2020 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-bayesian-tfp/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Simple Bayesian Linear Regression with TensorFlow Probability</title>
       <link>/tfp_lm/</link>
       <pubDate>Tue, 06 Oct 2020 00:00:00 +0000</pubDate>
-      
       <guid>/tfp_lm/</guid>
-      <description>In this post we show how to fit a simple linear regression model using TensorFlow Probability by replicating the first example on the getting started guide for PyMC3. We are going to use Auto-Batched Joint Distributions as they simplify the model specification considerably. Moreover, there is a great resource to get deeper into this type of distribution: Auto-Batched Joint Distributions: A Gentle Tutorial, which I strongly recommend (see this post to get a brief introduction on TensorFlow probability distributions).</description>
+      <description>&lt;p&gt;In this post we show how to fit a simple linear regression model using &lt;a href=&#34;https://www.tensorflow.org/probability&#34;&gt;TensorFlow Probability&lt;/a&gt; by replicating the first example on the &lt;a href=&#34;https://docs.pymc.io/notebooks/getting_started.html&#34;&gt;getting started guide for PyMC3&lt;/a&gt;. We are going to use &lt;a href=&#34;https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/JointDistributionCoroutineAutoBatched&#34;&gt;Auto-Batched Joint Distributions&lt;/a&gt; as they simplify the model specification considerably. Moreover, there is a great resource to get deeper into this type of distribution: &lt;a href=&#34;https://www.tensorflow.org/probability/examples/JointDistributionAutoBatched_A_Gentle_Tutorial&#34;&gt;Auto-Batched Joint Distributions: A Gentle Tutorial&lt;/a&gt;, which I &lt;strong&gt;strongly recommend&lt;/strong&gt; (see &lt;a href=&#34;https://juanitorduz.github.io/intro_tfd/&#34;&gt;this post&lt;/a&gt; to get a brief introduction on TensorFlow probability distributions). In addition the tutorial: &lt;a href=&#34;https://www.tensorflow.org/probability/examples/Modeling_with_JointDistribution&#34;&gt;Bayesian Modeling with Joint Distribution&lt;/a&gt; is also a great reference to get started with linear models in TensorFlow Probability.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>A Simple Hamiltonian Monte Carlo Example with TensorFlow Probability</title>
       <link>/tfp_hcm/</link>
       <pubDate>Fri, 24 Jul 2020 00:00:00 +0000</pubDate>
-      
       <guid>/tfp_hcm/</guid>
-      <description>In this post we want to revisit a simple bayesian inference example worked out in this blog post. This time we want to use TensorFlow Probability (TFP) instead of PyMC3.
-References:
- Statistical Rethinking is an amazing reference for Bayesian analysis. It also has a sequence of online lectures freely available on YouTube.
- An introduction to probabilistic programming, now available in TensorFlow Probability
- There are many examples on the TensorFlow’s GitHub repository.</description>
+      <description>&lt;p&gt;In this post we want to revisit a simple bayesian inference example worked out in &lt;a href=&#34;https://juanitorduz.github.io/intro_pymc3/&#34;&gt;this blog post&lt;/a&gt;. This time we want to use &lt;a href=&#34;https://www.tensorflow.org/probability&#34;&gt;TensorFlow Probability&lt;/a&gt; (TFP) instead of &lt;a href=&#34;https://docs.pymc.io/notebooks/getting_started.html&#34;&gt;PyMC3&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;References:&lt;/strong&gt;&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://xcelab.net/rm/statistical-rethinking/&#34;&gt;Statistical Rethinking&lt;/a&gt; is an amazing reference for Bayesian analysis. It also has a sequence of online lectures freely available on &lt;a href=&#34;https://www.youtube.com/watch?v=4WVelCswXo4&amp;amp;list=PLDcUM9US4XdNM4Edgs7weiyIguLSToZRI&#34;&gt;YouTube&lt;/a&gt;.&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://blog.tensorflow.org/2018/12/an-introduction-to-probabilistic.html&#34;&gt;An introduction to probabilistic programming, now available in TensorFlow Probability&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;There are many examples on the &lt;a href=&#34;https://github.com/tensorflow/probability/tree/master/tensorflow_probability/examples/jupyter_notebooks&#34;&gt;TensorFlow’s GitHub repository&lt;/a&gt;. I am following the case study &lt;a href=&#34;https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Bayesian_Switchpoint_Analysis.ipynb&#34;&gt;Bayesian Switchpoint Analysis&lt;/a&gt; for this example.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

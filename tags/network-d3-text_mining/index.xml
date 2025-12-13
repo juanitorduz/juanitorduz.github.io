@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>network, d3, text_mining on Dr. Juan Camilo Orduz</title>
+    <title>Network, D3, Text_mining on Dr. Juan Camilo Orduz</title>
     <link>/tags/network-d3-text_mining/</link>
-    <description>Recent content in network, d3, text_mining on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Network, D3, Text_mining on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 20 Dec 2018 00:00:00 +0000</lastBuildDate><atom:link href="/tags/network-d3-text_mining/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 20 Dec 2018 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/network-d3-text_mining/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Text Mining, Networks and Visualization: Plebiscito Tweets</title>
       <link>/text-mining-networks-and-visualization-plebiscito-tweets/</link>
       <pubDate>Thu, 20 Dec 2018 00:00:00 +0000</pubDate>
-      
       <guid>/text-mining-networks-and-visualization-plebiscito-tweets/</guid>
-      <description>Nowadays social media generates a vast amount of raw data (text, images, videos, etc). It is a very interesting challenge to discover techniques to get insights on the content and development of social media data. In addition, as a fundamental component of the analysis, it is important to find ways of communicating the results, i.e. data visualization. In this post I want to present a small case study where I analyze Twitter text data.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/htmlwidgets/htmlwidgets.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/plotly-binding/plotly.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/typedarray/typedarray.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/jquery/jquery.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;link href=&#34;../../rmarkdown-libs/crosstalk/css/crosstalk.css&#34; rel=&#34;stylesheet&#34; /&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/crosstalk/js/crosstalk.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;link href=&#34;../../rmarkdown-libs/plotly-htmlwidgets-css/plotly-htmlwidgets.css&#34; rel=&#34;stylesheet&#34; /&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/plotly-main/plotly-latest.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/d3/d3.min.js&#34;&gt;&lt;/script&gt;&#xA;&lt;script src=&#34;../../rmarkdown-libs/forceNetwork-binding/forceNetwork.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;Nowadays social media generates a vast amount of raw data (text, images, videos, etc). It is a very interesting challenge to discover techniques to get insights on the content and development of social media data. In addition, as a fundamental component of the analysis, it is important to find ways of communicating the results, i.e. data visualization. In this post I want to present a small case study where I analyze Twitter text data. The aim is not to give a complete analysis (as it would require many interations), but rather to describe how to to start. The emphasis of this post is in the data manipulation and data visualization. In particular, I describe how networks (graphs) can be used as data structures to describe text relations (some measure of pairwise count occurrences).&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

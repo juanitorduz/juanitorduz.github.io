@@ -4,18 +4,16 @@
     <title>Bayesian, Forecasting on Dr. Juan Camilo Orduz</title>
     <link>/categories/bayesian-forecasting/</link>
     <description>Recent content in Bayesian, Forecasting on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 21 Apr 2024 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sun, 21 Apr 2024 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/bayesian-forecasting/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Demand Forecasting with Censored Likelihood</title>
       <link>/demand/</link>
       <pubDate>Sun, 21 Apr 2024 00:00:00 +0000</pubDate>
-      
       <guid>/demand/</guid>
-      <description>In this notebook we will explore the use of censored likelihoods for demand forecasting.
-Business Problem: Let us assume we have a store with a single product. We want to forecast the (true!) demand for this product for the next 30 days using historical data. The historical data consists of the daily sales of the product for the last year (approximately). An important challenge is that our historical sales data is censored.</description>
+      <description>&lt;p&gt;In this notebook we will explore the use of censored likelihoods for demand forecasting.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Business Problem&lt;/strong&gt;: Let us assume we have a store with a single product. We want to forecast the (true!) demand for this product for the next 30 days using historical data. The historical data consists of the daily sales of the product for the last year (approximately). An important challenge is that our historical sales data is censored. This means that we only observe the sales of the product when it is in stock. If the product is out of stock, we do not observe any sales. This includes when the product is not available in the store or when we sold out of the product.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

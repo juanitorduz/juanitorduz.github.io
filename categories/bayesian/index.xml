@@ -4,379 +4,275 @@
     <title>Bayesian on Dr. Juan Camilo Orduz</title>
     <link>/categories/bayesian/</link>
     <description>Recent content in Bayesian on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 03 Oct 2025 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 03 Oct 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/bayesian/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Bayesian Vector Autoregressive Models in NumPyro</title>
       <link>/var_numpyro/</link>
       <pubDate>Fri, 03 Oct 2025 00:00:00 +0000</pubDate>
-      
       <guid>/var_numpyro/</guid>
-      <description>In this notebook, we present how to implement and fit Bayesian Vector Autoregressive (VAR) models using NumPyro. We work out three components:
-Specifying and fitting the model in NumPyro Using the model to generate forecasts Computing the Impulse Response Functions (IRFs)  We compare these three components with the ones obtained using the statsmodels implementation from the Vector Autoregressions tsa.vector_ar tutorial.
-Prepare Notebook from functools import partial import arviz as az import jax.</description>
+      <description>&lt;p&gt;In this notebook, we present how to implement and fit Bayesian Vector Autoregressive (VAR) models using &lt;a href=&#34;https://num.pyro.ai/en/stable/&#34;&gt;NumPyro&lt;/a&gt;. We work out three components:&lt;/p&gt;&#xA;&lt;ol style=&#34;list-style-type: decimal&#34;&gt;&#xA;&lt;li&gt;Specifying and fitting the model in NumPyro&lt;/li&gt;&#xA;&lt;li&gt;Using the model to generate forecasts&lt;/li&gt;&#xA;&lt;li&gt;Computing the Impulse Response Functions (IRFs)&lt;/li&gt;&#xA;&lt;/ol&gt;&#xA;&lt;p&gt;We compare these three components with the ones obtained using the &lt;code&gt;statsmodels&lt;/code&gt; implementation from the &lt;a href=&#34;https://www.statsmodels.org/stable/vector_ar.html&#34;&gt;Vector Autoregressions tsa.vector_ar&lt;/a&gt; tutorial.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;from functools import partial&#xA;&#xA;import arviz as az&#xA;import jax.numpy as jnp&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import numpyro&#xA;import numpyro.distributions as dist&#xA;import pandas as pd&#xA;import statsmodels.api as sm&#xA;import xarray as xr&#xA;from jax import jit, lax, random, vmap&#xA;from jaxtyping import Array, Float&#xA;from numpyro.contrib.control_flow import scan&#xA;from numpyro.handlers import condition&#xA;from numpyro.infer import MCMC, NUTS&#xA;from statsmodels.tsa.api import VAR&#xA;from statsmodels.tsa.base.datetools import dates_from_str&#xA;&#xA;numpyro.set_host_device_count(n=10)&#xA;&#xA;rng_key = random.PRNGKey(seed=42)&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [12, 7]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%load_ext jaxtyping&#xA;%jaxtyping.typechecker beartype.beartype&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;load-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Load Data&lt;/h2&gt;&#xA;&lt;p&gt;We are going to use a dataset from the &lt;a href=&#34;https://www.statsmodels.org/stable/datasets/index.html&#34;&gt;&lt;code&gt;statsmodels&lt;/code&gt; package&lt;/a&gt;. Specifically, we will use the &lt;code&gt;macrodata&lt;/code&gt; dataset from &lt;a href=&#34;https://www.statsmodels.org/stable/vector_ar.html&#34;&gt;Vector Autoregressions tsa.vector_ar&lt;/a&gt; tutorial. For the sake of reproducibility, we will keep the exact same code as in the tutorial.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Electricity Demand Forecast: Dynamic Time-Series Model with Prior Calibration</title>
       <link>/electricity_forecast_with_priors/</link>
       <pubDate>Mon, 07 Oct 2024 00:00:00 +0000</pubDate>
-      
       <guid>/electricity_forecast_with_priors/</guid>
-      <description>We present an example of a dynamic forecasting time-series model that incorporates a prior calibration process to estimate the temperature effect on electricity demand. The model is based on the previous example Electricity Demand Forecast: Dynamic Time-Series Model. In this second iteration, we borrow the ideas from the Pyro great example Forecasting with Dynamic Linear Model (DLM) where they use a prior calibration process on a local level forecasting model.</description>
+      <description>&lt;p&gt;We present an example of a dynamic forecasting time-series model that incorporates a prior calibration process to estimate the temperature effect on electricity demand. The model is based on the previous example &lt;a href=&#34;https://juanitorduz.github.io/electricity_forecast/&#34;&gt;Electricity Demand Forecast: Dynamic Time-Series Model&lt;/a&gt;. In this second iteration, we borrow the ideas from the Pyro great example &lt;a href=&#34;https://pyro.ai/examples/forecasting_dlm.html&#34;&gt;Forecasting with Dynamic Linear Model (DLM)&lt;/a&gt; where they use a prior calibration process on a local level forecasting model. In our case, we use the same technique with a Hilbert Space Gaussian Process latent component model.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Electricity Demand Forecast: Dynamic Time-Series Model</title>
       <link>/electricity_forecast/</link>
       <pubDate>Sun, 06 Oct 2024 00:00:00 +0000</pubDate>
-      
       <guid>/electricity_forecast/</guid>
-      <description>We work out a classical electricity demand forecasting model form the case study Structural Time Series Modeling Case Studies: Atmospheric CO2 and Electricity Demand from the TensorFlow Probability documentation. The idea of this example is to use temperature as a linear covariate to model the electricity demand. In this example, we show how to use a (Hilbert Space Approximation) Gaussian process to model the non-linear relationship between temperature and electricity demand (for an introduction to the topic see A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods).</description>
+      <description>&lt;p&gt;We work out a classical electricity demand forecasting model form the case study &lt;a href=&#34;https://www.tensorflow.org/probability/examples/Structural_Time_Series_Modeling_Case_Studies_Atmospheric_CO2_and_Electricity_Demand&#34;&gt;Structural Time Series Modeling Case Studies: Atmospheric CO2 and Electricity Demand&lt;/a&gt; from the TensorFlow Probability documentation. The idea of this example is to use temperature as a linear covariate to model the electricity demand. In this example, we show how to use a (Hilbert Space Approximation) Gaussian process to model the non-linear relationship between temperature and electricity demand (for an introduction to the topic see &lt;a href=&#34;https://juanitorduz.github.io/hsgp_intro/&#34;&gt;A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods&lt;/a&gt;). This technique improves the simple linear model in and out of sample predictions as we aro not using the Gaussian process to extrapolate over time, but rather to model the non-linear relationship between temperature and electricity demand, similarly as how it has done in the example &lt;a href=&#34;https://juanitorduz.github.io/bikes_gp/&#34;&gt;Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part II</title>
       <link>/numpyro_hierarchical_forecasting_2/</link>
       <pubDate>Sat, 05 Oct 2024 00:00:00 +0000</pubDate>
-      
       <guid>/numpyro_hierarchical_forecasting_2/</guid>
-      <description>In this second notebook, we continue working on the NumPyro implementation of the hierarchical forecasting models presented in Pyro’s forecasting documentation: Forecasting III: hierarchical models. In this second part, we extend the model described in the first part From Pyro to NumPyro: Forecasting Hierarchical Models - Part I by adding all stations to the model.
-Prepare Notebook import arviz as az import jax import jax.numpy as jnp import matplotlib.pyplot as plt import numpyro import numpyro.</description>
+      <description>&lt;p&gt;In this second notebook, we continue working on the NumPyro implementation of the hierarchical forecasting models presented in Pyro’s forecasting documentation: &lt;a href=&#34;https://pyro.ai/examples/forecasting_iii.html&#34;&gt;Forecasting III: hierarchical models&lt;/a&gt;. In this second part, we extend the model described in the first part &lt;a href=&#34;https://juanitorduz.github.io/numpyro_hierarchical_forecasting_1/&#34;&gt;From Pyro to NumPyro: Forecasting Hierarchical Models - Part I&lt;/a&gt; by adding all stations to the model.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import jax&#xA;import jax.numpy as jnp&#xA;import matplotlib.pyplot as plt&#xA;import numpyro&#xA;import numpyro.distributions as dist&#xA;from jax import random&#xA;from jaxtyping import Array, Float&#xA;from numpyro.contrib.control_flow import scan&#xA;from numpyro.infer import SVI, Predictive, Trace_ELBO&#xA;from numpyro.infer.autoguide import AutoNormal&#xA;from numpyro.infer.reparam import LocScaleReparam&#xA;from pyro.contrib.examples.bart import load_bart_od&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [12, 7]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;numpyro.set_host_device_count(n=4)&#xA;&#xA;rng_key = random.PRNGKey(seed=42)&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%load_ext jaxtyping&#xA;%jaxtyping.typechecker beartype.beartype&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre&gt;&lt;code&gt;The autoreload extension is already loaded. To reload it, use:&#xA;  %reload_ext autoreload&#xA;The jaxtyping extension is already loaded. To reload it, use:&#xA;  %reload_ext jaxtyping&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;read-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Read Data&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;dataset = load_bart_od()&#xA;print(dataset.keys())&#xA;print(dataset[&amp;quot;counts&amp;quot;].shape)&#xA;print(&amp;quot; &amp;quot;.join(dataset[&amp;quot;stations&amp;quot;]))&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre&gt;&lt;code&gt;dict_keys([&amp;#39;stations&amp;#39;, &amp;#39;start_date&amp;#39;, &amp;#39;counts&amp;#39;])&#xA;torch.Size([78888, 50, 50])&#xA;12TH 16TH 19TH 24TH ANTC ASHB BALB BAYF BERY CAST CIVC COLM COLS CONC DALY DBRK DELN DUBL EMBR FRMT FTVL GLEN HAYW LAFY LAKE MCAR MLBR MLPT MONT NBRK NCON OAKL ORIN PCTR PHIL PITT PLZA POWL RICH ROCK SANL SBRN SFIA SHAY SSAN UCTY WARM WCRK WDUB WOAK&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;p&gt;In this second example, we model all the rides from all stations to all other stations.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>From Pyro to NumPyro: Forecasting Hierarchical Models - Part I</title>
       <link>/numpyro_hierarchical_forecasting_1/</link>
       <pubDate>Thu, 03 Oct 2024 00:00:00 +0000</pubDate>
-      
       <guid>/numpyro_hierarchical_forecasting_1/</guid>
-      <description>In this notebook we provide a NumPyro implementation of the first model presented in the Pyro forecasting documentation: Forecasting III: hierarchical models. This model generalizes the local level model with seasonality presented in the univariate example Forecasting I: univariate, heavy tailed (see From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series for the corresponding NumPyro implementation).
-In this example, we continue working with the BART train ridership dataset.</description>
+      <description>&lt;p&gt;In this notebook we provide a NumPyro implementation of the first model presented in the Pyro forecasting documentation: &lt;a href=&#34;https://pyro.ai/examples/forecasting_iii.html&#34;&gt;Forecasting III: hierarchical models&lt;/a&gt;. This model generalizes the local level model with seasonality presented in the univariate example &lt;a href=&#34;https://pyro.ai/examples/forecasting_i.html&#34;&gt;Forecasting I: univariate, heavy tailed&lt;/a&gt; (see &lt;a href=&#34;https://juanitorduz.github.io/numpyro_forecasting-univariate/&#34;&gt;From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series&lt;/a&gt; for the corresponding NumPyro implementation).&lt;/p&gt;&#xA;&lt;p&gt;In this example, we continue working with the BART train ridership &lt;a href=&#34;https://www.bart.gov/about/reports/ridership&#34;&gt;dataset&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import jax&#xA;import jax.numpy as jnp&#xA;import matplotlib.pyplot as plt&#xA;import numpyro&#xA;import numpyro.distributions as dist&#xA;import torch&#xA;from jax import random&#xA;from jaxtyping import Array, Float&#xA;from numpyro.contrib.control_flow import scan&#xA;from numpyro.infer import SVI, Predictive, Trace_ELBO&#xA;from numpyro.infer.autoguide import AutoNormal&#xA;from numpyro.infer.reparam import LocScaleReparam&#xA;from pyro.contrib.examples.bart import load_bart_od&#xA;from pyro.ops.tensor_utils import periodic_repeat&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [12, 7]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;numpyro.set_host_device_count(n=4)&#xA;&#xA;rng_key = random.PRNGKey(seed=42)&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%load_ext jaxtyping&#xA;%jaxtyping.typechecker beartype.beartype&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre&gt;&lt;code&gt;The autoreload extension is already loaded. To reload it, use:&#xA;  %reload_ext autoreload&#xA;The jaxtyping extension is already loaded. To reload it, use:&#xA;  %reload_ext jaxtyping&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;read-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Read Data&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;dataset = load_bart_od()&#xA;print(dataset.keys())&#xA;print(dataset[&amp;quot;counts&amp;quot;].shape)&#xA;print(&amp;quot; &amp;quot;.join(dataset[&amp;quot;stations&amp;quot;]))&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre&gt;&lt;code&gt;dict_keys([&amp;#39;stations&amp;#39;, &amp;#39;start_date&amp;#39;, &amp;#39;counts&amp;#39;])&#xA;torch.Size([78888, 50, 50])&#xA;12TH 16TH 19TH 24TH ANTC ASHB BALB BAYF BERY CAST CIVC COLM COLS CONC DALY DBRK DELN DUBL EMBR FRMT FTVL GLEN HAYW LAFY LAKE MCAR MLBR MLPT MONT NBRK NCON OAKL ORIN PCTR PHIL PITT PLZA POWL RICH ROCK SANL SBRN SFIA SHAY SSAN UCTY WARM WCRK WDUB WOAK&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;p&gt;For this first model, we just model the rides to Embarcadero station, from each of the other &lt;span class=&#34;math inline&#34;&gt;\(50\)&lt;/span&gt; stations.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series</title>
       <link>/numpyro_forecasting-univariate/</link>
       <pubDate>Tue, 01 Oct 2024 00:00:00 +0000</pubDate>
-      
       <guid>/numpyro_forecasting-univariate/</guid>
-      <description>In this notebooks we port the Pyro forecasting example Forecasting I: univariate, heavy tailed to NumPyro. The forecasting module in Pyro is fantastic as it provides an easy interface to develop custom forecasting models. It has also many helpful utility functions to generate features and for model evaluation. The purpose of this translation is to dig deeper into the some forecasting components and to show that translating Pyro code to NumPyro is not that hard, even though there are come caveats.</description>
+      <description>&lt;p&gt;In this notebooks we port the &lt;a href=&#34;https://github.com/pyro-ppl/pyro&#34;&gt;&lt;code&gt;Pyro&lt;/code&gt;&lt;/a&gt; forecasting example &lt;a href=&#34;https://pyro.ai/examples/forecasting_i.html&#34;&gt;Forecasting I: univariate, heavy tailed&lt;/a&gt; to &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt;. The forecasting module in Pyro is fantastic as it provides an easy interface to develop custom forecasting models. It has also many helpful utility functions to generate features and for model evaluation. The purpose of this translation is to dig deeper into the some forecasting components and to show that translating Pyro code to NumPyro is not that hard, even though there are come caveats.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Hierarchical Pricing Elasticity Models</title>
       <link>/elasticities/</link>
       <pubDate>Thu, 01 Aug 2024 00:00:00 +0000</pubDate>
-      
       <guid>/elasticities/</guid>
-      <description>In this notebook we use a retail publicly available dataset to fit and compare various pricing elasticity models. This example can be seen as a continuation of the notebooks regarding Bayesian hierarchical models (see for example Multilevel Elasticities for a Single SKU - Part I). In this example we also see how Bayesian hierarchical models can help regularize elasticity estimates when taking advantage of the hierarchical structure of the data.</description>
+      <description>&lt;p&gt;In this notebook we use a retail publicly available dataset to fit and compare various pricing elasticity models. This example can be seen as a continuation of the notebooks regarding Bayesian hierarchical models (see for example &lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku/&#34;&gt;Multilevel Elasticities for a Single SKU - Part I&lt;/a&gt;). In this example we also see how Bayesian hierarchical models can help regularize elasticity estimates when taking advantage of the hierarchical structure of the data. In addition, this example shows that these models can scale well using stochastic variational inference in &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;NumPyro&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Multilevel Elasticities for a Single SKU - Part III.</title>
       <link>/multilevel_elasticities_single_sku_3/</link>
       <pubDate>Fri, 19 Jul 2024 00:00:00 +0000</pubDate>
-      
       <guid>/multilevel_elasticities_single_sku_3/</guid>
-      <description>In this notebook we continue our simulation study for elasticities, see:
- Multilevel Elasticities for a Single SKU - Part I
- Multilevel Elasticities for a Single SKU - Part II
-  for an introduction to the problem and some models. We extend the covariance model to allow two covariance components on both the intercepts and slopes (coefficient of the median_ income variable). Also, to abstract from a specific framework, we do the implementation in NumPyro.</description>
+      <description>&lt;p&gt;In this notebook we continue our simulation study for elasticities, see:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku/&#34;&gt;Multilevel Elasticities for a Single SKU - Part I&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku_2/&#34;&gt;Multilevel Elasticities for a Single SKU - Part II&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;p&gt;for an introduction to the problem and some models. We extend the covariance model to allow two covariance components on both the intercepts and slopes (coefficient of the &lt;code&gt;median_ income&lt;/code&gt; variable). Also, to abstract from a specific framework, we do the implementation in &lt;a href=&#34;https://num.pyro.ai/&#34;&gt;NumPyro&lt;/a&gt;. The corresponding &lt;a href=&#34;https://docs.pymc.io/&#34;&gt;PyMC&lt;/a&gt; is very similar.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Hierarchical Exponential Smoothing Model</title>
       <link>/hierarchical_exponential_smoothing/</link>
       <pubDate>Fri, 07 Jun 2024 00:00:00 +0000</pubDate>
-      
       <guid>/hierarchical_exponential_smoothing/</guid>
-      <description>In this blog post, we experiment with a hierarchical exponential smoothing forecasting model, extending the ideas from the univariate case presented in the blog post “Notes on Exponential Smoothing with NumPyro”. We use NumPyro and compare the NUTS and SVI results. For such a purpose, we use Continuous Ranked Probability Score (CRPS). We also compare these forecasts with univariate statistical models like Holt-Winters, AutoETS and Seasonal Naive from the great Statsforecast package.</description>
+      <description>&lt;p&gt;In this blog post, we experiment with a hierarchical exponential smoothing forecasting model, extending the ideas from the univariate case presented in the blog post &lt;a href=&#34;https://juanitorduz.github.io/exponential_smoothing_numpyro/&#34;&gt;“Notes on Exponential Smoothing with NumPyro”&lt;/a&gt;. We use &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;NumPyro&lt;/a&gt; and compare the NUTS and SVI results. For such a purpose, we use &lt;strong&gt;Continuous Ranked Probability Score&lt;/strong&gt; (&lt;a href=&#34;https://towardsdatascience.com/crps-a-scoring-function-for-bayesian-machine-learning-models-dd55a7a337a8&#34;&gt;CRPS&lt;/a&gt;). We also compare these forecasts with univariate statistical models like Holt-Winters, AutoETS and Seasonal Naive from the great &lt;a href=&#34;https://nixtlaverse.nixtla.io/statsforecast/index.html&#34;&gt;Statsforecast&lt;/a&gt; package. These baseline models are, in general, hard to beat!&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Bayesian Censoring Data Modeling</title>
       <link>/censoring/</link>
       <pubDate>Mon, 26 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/censoring/</guid>
-      <description>In this notebook, we explore how we can use Bayesian modeling to estimate the parameters of a censored data set. These datasets are common in many fields, including survival analysis and supply chain management. I was motivated to write this notebook after reading the excellent blog post “Modeling Anything With First Principles: Demand under extreme stockouts” by Kyle Caron where he uses these techniques to model and balance demand under extreme stockouts and other constraints.</description>
+      <description>&lt;p&gt;In this notebook, we explore how we can use Bayesian modeling to estimate the parameters of a censored data set. These datasets are common in many fields, including survival analysis and supply chain management. I was motivated to write this notebook after reading the excellent blog post &lt;a href=&#34;https://kylejcaron.github.io/posts/censored_demand/2024-02-06-censored-demand.html&#34;&gt;“Modeling Anything With First Principles: Demand under extreme stockouts”&lt;/a&gt; by &lt;a href=&#34;https://kylejcaron.github.io/&#34;&gt;Kyle Caron&lt;/a&gt; where he uses these techniques to model and balance demand under extreme stockouts and other constraints.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Zero-Inflated TSB Model</title>
       <link>/zi_tsb_numpyro/</link>
       <pubDate>Tue, 20 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/zi_tsb_numpyro/</guid>
-      <description>After going through the fundamentals of the TSB Method for Intermittent Time Series Forecasting in NumPyro in the previous notebook, we explore a variation of it that might be useful for certain applications. In a nutshell, we keep the same model structure of the TSB model, but we modify the likelihood function to account for the sparsity of the time series. Concretely, we replace the classic Gaussian likelihood function with a zero-inflated Negative Binomial likelihood function.</description>
+      <description>&lt;p&gt;After going through the fundamentals of the &lt;a href=&#34;https://juanitorduz.github.io/tsb_numpyro/&#34;&gt;TSB Method for Intermittent Time Series Forecasting in NumPyro&lt;/a&gt; in the previous notebook, we explore a variation of it that might be useful for certain applications. In a nutshell, we keep the same model structure of the TSB model, but we modify the likelihood function to account for the sparsity of the time series. Concretely, we replace the classic Gaussian likelihood function with a zero-inflated Negative Binomial likelihood function. One clear conceptual advantage of this approach that all our prediction and credible intervals will be non-negative.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>TSB Method for Intermittent Time Series Forecasting in NumPyro</title>
       <link>/tsb_numpyro/</link>
       <pubDate>Sat, 17 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/tsb_numpyro/</guid>
-      <description>In this notebook we provide a NumPyro implementation of the TSB (Teunter, Syntetos and Babai) method for forecasting intermittent time series. The TSB method is similar to the Croston’s method in the sense that is constructs two different time series out of the original one and then forecast each of them separately, so that the final forecast is generated by combining the forecasts of the two time series. The main difference between the two methods is that the TSB method uses the demand probability instead of the demand periods.</description>
+      <description>&lt;p&gt;In this notebook we provide a &lt;a href=&#34;http://num.pyro.ai&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt; implementation of the TSB (Teunter, Syntetos and Babai) method for forecasting intermittent time series. The TSB method is similar to the &lt;a href=&#34;https://juanitorduz.github.io/croston_numpyro/&#34;&gt;Croston’s method&lt;/a&gt; in the sense that is constructs two different time series out of the original one and then forecast each of them separately, so that the final forecast is generated by combining the forecasts of the two time series. The main difference between the two methods is that the TSB method uses the demand probability instead of the demand periods. Consequently, let &lt;span class=&#34;math inline&#34;&gt;\(y_{t}\)&lt;/span&gt; denote the input time series then the TSB method is specified by the following equations:&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Croston&#39;s Method for Intermittent Time Series Forecasting in NumPyro</title>
       <link>/croston_numpyro/</link>
       <pubDate>Thu, 15 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/croston_numpyro/</guid>
-      <description>In this notebook, we will implement Croston’s method for intermittent demand forecasting using NumPyro. Croston’s method is a popular forecasting method for intermittent demand data, which is characterized by a large number of zero values. The method is based on the idea of separating the demand size and the demand interval, and then forecasting them separately using simple exponential smoothing. We therefore can leverage on top of the previous post Notes on Exponential Smoothing with NumPyro.</description>
+      <description>&lt;p&gt;In this notebook, we will implement Croston’s method for intermittent demand forecasting using &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt;. Croston’s method is a popular forecasting method for intermittent demand data, which is characterized by a large number of zero values. The method is based on the idea of separating the demand size and the demand interval, and then forecasting them separately using simple exponential smoothing. We therefore can leverage on top of the previous post &lt;a href=&#34;https://juanitorduz.github.io/exponential_smoothing_numpyro/&#34;&gt;Notes on Exponential Smoothing with NumPyro&lt;/a&gt;. Once we have the forecasts for the demand size and the demand interval, we can combine them to get the final forecast. For a succinct explanation of Croston’s method, I recommend the following blog post: &lt;a href=&#34;https://www.pmorgan.com.au/tutorials/crostons-method/&#34; class=&#34;uri&#34;&gt;https://www.pmorgan.com.au/tutorials/crostons-method/&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Notes on an ARMA(1, 1) Model with NumPyro</title>
       <link>/arma_numpyro/</link>
       <pubDate>Tue, 13 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/arma_numpyro/</guid>
-      <description>This are some notes on how to implement an ARMA(1, 1) model using NumPyro for time series forecasting. The ARMA(1, 1) model is given by
-\[y_t = \mu + \phi y_{t-1} + \theta \varepsilon_{t-1} + \varepsilon_t\]
-where \(y_t\) is the time series, \(\mu\) is the mean, \(\phi\) is the autoregressive parameter, \(\theta\) is the moving average parameter, and \(\varepsilon_t\) is a white noise process with mean zero and variance \(\sigma^2\).</description>
+      <description>&lt;p&gt;This are some notes on how to implement an ARMA(1, 1) model using &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt; for time series forecasting. The ARMA(1, 1) model is given by&lt;/p&gt;&#xA;&lt;p&gt;&lt;span class=&#34;math display&#34;&gt;\[y_t = \mu + \phi y_{t-1} + \theta \varepsilon_{t-1} + \varepsilon_t\]&lt;/span&gt;&lt;/p&gt;&#xA;&lt;p&gt;where &lt;span class=&#34;math inline&#34;&gt;\(y_t\)&lt;/span&gt; is the time series, &lt;span class=&#34;math inline&#34;&gt;\(\mu\)&lt;/span&gt; is the mean, &lt;span class=&#34;math inline&#34;&gt;\(\phi\)&lt;/span&gt; is the autoregressive parameter, &lt;span class=&#34;math inline&#34;&gt;\(\theta\)&lt;/span&gt; is the moving average parameter, and &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon_t\)&lt;/span&gt; is a white noise process with mean zero and variance &lt;span class=&#34;math inline&#34;&gt;\(\sigma^2\)&lt;/span&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Notes on Exponential Smoothing with NumPyro</title>
       <link>/exponential_smoothing_numpyro/</link>
       <pubDate>Sun, 11 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/exponential_smoothing_numpyro/</guid>
-      <description>This notebook serves as personal notes on NumPyro’s implementation of the classic exponential smoothing forecasting method. I use Example: Holt-Winters Exponential Smoothing. The strategy is to go into the nitty-gritty details of the code presented in the example from the documentation: “Example: Holt-Winters Exponential Smoothing”. In particular, I want to understand the auto-regressive components using the scan function, which always confuses me 😅. After reproducing the example from the documentation, we go a step further and extend the algorithm to include a damped trend.</description>
+      <description>&lt;p&gt;This notebook serves as personal notes on &lt;a href=&#34;https://num.pyro.ai/en/stable/index.html&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt;’s implementation of the classic &lt;a href=&#34;https://en.wikipedia.org/wiki/Exponential_smoothing&#34;&gt;exponential smoothing&lt;/a&gt; forecasting method. I use &lt;a href=&#34;https://num.pyro.ai/en/stable/examples/holt_winters.html&#34;&gt;Example: Holt-Winters Exponential Smoothing&lt;/a&gt;. The strategy is to go into the nitty-gritty details of the code presented in the example from the documentation: &lt;a href=&#34;https://num.pyro.ai/en/stable/examples/holt_winters.html&#34;&gt;“Example: Holt-Winters Exponential Smoothing”&lt;/a&gt;. In particular, I want to understand the auto-regressive components using the &lt;a href=&#34;https://num.pyro.ai/en/stable/primitives.html#scan&#34;&gt;&lt;code&gt;scan&lt;/code&gt;&lt;/a&gt; function, which always confuses me 😅. After reproducing the example from the documentation, we go a step further and extend the algorithm to include a damped trend.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Media Mix Model and Experimental Calibration: A Simulation Study</title>
       <link>/mmm_roas/</link>
       <pubDate>Sun, 04 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/mmm_roas/</guid>
-      <description>In this notebook, we present a complete simulation study of the media mix model (MMM) and experimental calibration method presented in the paper “Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al., where the authors propose a convenient parametrization the regression model in terms of the ROAs (return on advertising spend) instead of the classical regression (beta) coefficients. The benefit of this parametrization is that it allows for using Bayesian priors on the ROAS, which typically come from previous experiments or domain knowledge.</description>
+      <description>&lt;p&gt;In this notebook, we present a complete simulation study of the media mix model (MMM) and experimental calibration method presented in the paper &lt;a href=&#34;https://research.google/pubs/media-mix-model-calibration-with-bayesian-priors/&#34;&gt;“Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al.&lt;/a&gt;, where the authors propose a convenient parametrization the regression model in terms of the ROAs (return on advertising spend) instead of the classical regression (beta) coefficients. The benefit of this parametrization is that it allows for using Bayesian priors on the ROAS, which typically come from previous experiments or domain knowledge. Providing this information to the model is essential in real-life MMM applications, as biases and noise can easily fool us. Similar to the author’s paper, we show that the proposed method can provide better ROAS estimation when we have a bias due to missing covariates or omitted variables. We work out an example of the classical media mix model presented in the paper &lt;a href=&#34;https://research.google/pubs/bayesian-methods-for-media-mix-modeling-with-carryover-and-shape-effects/&#34;&gt;“Bayesian Methods for Media Mix Modeling with Carryover and Shape Effects”, by Jin, et al.&lt;/a&gt;. I strongly recommend taking a look in too these two papers before reading this notebook. Reading them in parallel with this notebook is also a good alternative.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Flax and NumPyro Toy Example</title>
       <link>/flax_numpyro/</link>
       <pubDate>Fri, 05 Jan 2024 00:00:00 +0000</pubDate>
-      
       <guid>/flax_numpyro/</guid>
-      <description>In this notebook I want to experiment with the numpyro/contrib/module.py module which allow us to integrate Flax models with NumPyro models. I am interested in this because I want to experiment with complex bayesian models with larger datasets.
-Most of the main components can be found in the great blog post Bayesian Neural Networks with Flax and Numpyro. The author takes a different path working directly with potentials, but he also points out the recent addition of the numpyro/contrib/module.</description>
+      <description>&lt;p&gt;In this notebook I want to experiment with the &lt;a href=&#34;https://github.com/pyro-ppl/numpyro/blob/master/numpyro/contrib/module.py&#34;&gt;&lt;code&gt;numpyro/contrib/module.py&lt;/code&gt;&lt;/a&gt; module which allow us to integrate &lt;a href=&#34;https://github.com/google/flax&#34;&gt;&lt;code&gt;Flax&lt;/code&gt;&lt;/a&gt; models with &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt; models. I am interested in this because I want to experiment with complex bayesian models with larger datasets.&lt;/p&gt;&#xA;&lt;p&gt;Most of the main components can be found in the great blog post &lt;a href=&#34;https://omarfsosa.github.io/bayesian_nn&#34;&gt;Bayesian Neural Networks with Flax and Numpyro&lt;/a&gt;. The author takes a different path working directly with potentials, but he also points out the recent addition of the &lt;code&gt;numpyro/contrib/module.py&lt;/code&gt; module. The main difference with the model presented here is that I am using two components in the model (to model the mean and standard deviation of the data), I use &lt;em&gt;stochastic variational inference&lt;/em&gt; instead of &lt;em&gt;MCMC&lt;/em&gt; and I work with scaling transformations.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Time Series Modeling with HSGP: Baby Births Example</title>
       <link>/birthdays/</link>
       <pubDate>Tue, 02 Jan 2024 00:00:00 +0000</pubDate>
-      
       <guid>/birthdays/</guid>
-      <description>In this notebook we want to reproduce a classical example of using Gaussian processes to model time series data: The birthdays data set. I first encountered this example in the seminal book Chapter 21, Bayesian Data Analysis (Third edition) when learning about the subject. One thing I rapidly realized was that fitting these types of models in practice is very computationally expensive and sometimes almost infeasible for real industry applications where the data size is larger than all of these academic examples.</description>
+      <description>&lt;p&gt;In this notebook we want to reproduce a classical example of using Gaussian processes to model time series data: The birthdays data set. I first encountered this example in the seminal book &lt;a href=&#34;http://www.stat.columbia.edu/~gelman/book/BDA3.pdf&#34;&gt;Chapter 21, Bayesian Data Analysis (Third edition)&lt;/a&gt; when learning about the subject. One thing I rapidly realized was that fitting these types of models in practice is very computationally expensive and sometimes almost infeasible for real industry applications where the data size is larger than all of these academic examples. Recently, there has been a lot of progress in approximation methods to speed up the computations. We investigate one such method: the Hilbert Space Gaussian Process (HSGP) approximation introduced in &lt;a href=&#34;https://link.springer.com/article/10.1007/s11222-019-09886-w&#34;&gt;Hilbert space methods for reduced-rank Gaussian process regression&lt;/a&gt;. The main idea of this method relies on the Laplacian’s spectral decomposition to approximate kernels’ spectral measures as a function of basis functions. The key observation is that the basis functions in the reduced-rank approximation do not depend on the hyperparameters of the covariance function for the Gaussian process. This allows us to speed up the computations tremendously. We do not go into the mathematical details here (we might do this in a future post), as the original article is very well written and easy to follow (see also the great paper &lt;a href=&#34;https://link.springer.com/article/10.1007/s11222-022-10167-2&#34;&gt;Practical Hilbert space approximate Bayesian Gaussian processes for probabilistic programming&lt;/a&gt;). Instead, we reproduce this classical example using PyMC using a very raw implementation from &lt;a href=&#34;https://num.pyro.ai/en/stable/examples/hsgp.html&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt; Docs - Example: Hilbert space approximation for Gaussian processes&lt;/a&gt;, which is a great resource to learn about the method internals (so it is also strongly recommended!).&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Non-Parametric Product Life Cycle Modeling</title>
       <link>/iphone_trends/</link>
       <pubDate>Sun, 10 Dec 2023 00:00:00 +0000</pubDate>
-      
       <guid>/iphone_trends/</guid>
-      <description>In this notebook we present an example of how to use a combination of Bayesian hierarchical models and the non-parametric methods , namely bayesian additive trees (BART), to model the product life cycles. This approach is motivated by previous work in cohort analysis, see here.
-As a case study we use the Google search index (trends) data for iPhones worldwide. We use the data of four different models to predict the development of the latest iPhone.</description>
+      <description>&lt;p&gt;In this notebook we present an example of how to use a combination of Bayesian hierarchical models and the non-parametric methods , namely bayesian additive trees (&lt;a href=&#34;https://www.pymc.io/projects/bart/en/latest/&#34;&gt;BART&lt;/a&gt;), to model the product life cycles. This approach is motivated by previous work in cohort analysis, see &lt;a href=&#34;https://juanitorduz.github.io/revenue_retention/&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;As a case study we use the Google search index (trends) data for iPhones worldwide. We use the data of four different models to predict the development of the latest iPhone. The model presented for this specific example can be easily extended for other products and product life cycles structures.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>NumPyro with Pathfinder</title>
       <link>/numpyro_pathfinder/</link>
       <pubDate>Mon, 04 Dec 2023 00:00:00 +0000</pubDate>
-      
       <guid>/numpyro_pathfinder/</guid>
-      <description>In this notebook we describe how to use blackjax’s pathfinder implementation to do inference with a numpyro model.
-I am simply putting some pieces together from the following resources (strongly recommended to read):
-References:
- Blackjax docs: Use with Numpyro models Blackjax Sampling Book: Pathfinder Numpyro Issue #1485 PyMC Experimental - Pathfinder Pathfinder: Parallel quasi-Newton variational inference  What and Why Pathfinder? From the paper’s abstract:
- What?   We propose Pathfinder, a variational method for approximately sampling from differentiable log densities.</description>
+      <description>&lt;p&gt;In this notebook we describe how to use &lt;a href=&#34;https://blackjax-devs.github.io/blackjax/index.html&#34;&gt;&lt;code&gt;blackjax&lt;/code&gt;&lt;/a&gt;’s &lt;a href=&#34;https://blackjax-devs.github.io/sampling-book/algorithms/pathfinder.html&#34;&gt;&lt;code&gt;pathfinder&lt;/code&gt;&lt;/a&gt; implementation to do inference with a &lt;a href=&#34;https://num.pyro.ai/en/stable/&#34;&gt;&lt;code&gt;numpyro&lt;/code&gt;&lt;/a&gt; model.&lt;/p&gt;&#xA;&lt;p&gt;I am simply putting some pieces together from the following resources (strongly recommended to read):&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;References:&lt;/strong&gt;&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;Blackjax docs: &lt;a href=&#34;https://blackjax-devs.github.io/blackjax/examples/howto_use_numpyro.html&#34;&gt;Use with Numpyro models&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;Blackjax Sampling Book: &lt;a href=&#34;https://blackjax-devs.github.io/sampling-book/algorithms/pathfinder.html&#34;&gt;Pathfinder&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;Numpyro Issue &lt;a href=&#34;https://github.com/pyro-ppl/numpyro/issues/1485&#34;&gt;#1485&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://github.com/pymc-devs/pymc-experimental/blob/main/pymc_experimental/inference/pathfinder.py&#34;&gt;PyMC Experimental - Pathfinder&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://arxiv.org/abs/2108.03782&#34;&gt;Pathfinder: Parallel quasi-Newton variational inference&lt;/a&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;div id=&#34;what-and-why-pathfinder&#34; class=&#34;section level3&#34;&gt;&#xA;&lt;h3&gt;What and Why Pathfinder?&lt;/h3&gt;&#xA;&lt;p&gt;From the &lt;a href=&#34;https://arxiv.org/abs/2108.03782&#34;&gt;paper&lt;/a&gt;’s abstract:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;strong&gt;What?&lt;/strong&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;We propose Pathfinder, a variational method for approximately sampling from differentiable log densities. Starting from a random initialization, Pathfinder locates normal approximations to the target density along a quasi-Newton optimization path, with local covariance estimated using the inverse Hessian estimates produced by the optimizer. Pathfinder returns draws from the approximation with the lowest estimated Kullback-Leibler (KL) divergence to the true posterior.&lt;/em&gt;&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Multilevel Elasticities for a Single SKU - Part II.</title>
       <link>/multilevel_elasticities_single_sku_2/</link>
       <pubDate>Mon, 13 Nov 2023 00:00:00 +0000</pubDate>
-      
       <guid>/multilevel_elasticities_single_sku_2/</guid>
-      <description>In this notebook we go deeper into the last covariance model presented in the previous blog post Multilevel Elasticities for a Single SKU. In particular we describe how to generate posterior predictive samples from an unseen region by the model. This can be useful for scenario planning: once can simulated outcome quantities from price ranges through the elasticity estimates (with uncertainty!)
-We strongly recommend reading the previous blog post before reading this one as we will skip the EDA and baseline model comparison parts.</description>
+      <description>&lt;p&gt;In this notebook we go deeper into the last covariance model presented in the previous blog post &lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku/&#34;&gt;Multilevel Elasticities for a Single SKU&lt;/a&gt;. In particular we describe how to generate posterior predictive samples from an unseen region by the model. This can be useful for scenario planning: once can simulated outcome quantities from price ranges through the elasticity estimates (with uncertainty!)&lt;/p&gt;&#xA;&lt;p&gt;We strongly recommend reading the previous blog post before reading this one as we will skip the EDA and baseline model comparison parts.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Multilevel Elasticities for a Single SKU - Part I.</title>
       <link>/multilevel_elasticities_single_sku/</link>
       <pubDate>Thu, 10 Aug 2023 00:00:00 +0000</pubDate>
-      
       <guid>/multilevel_elasticities_single_sku/</guid>
-      <description>In this notebook I want to experiment with some basic models for price elasticity estimation in the simple context of a simple sku across multiple stores and regions. The motivation is to have a concrete example of the elasticity models presented in the Chapter 11: Big Data Pricing Models of the book Pricing Analytics by Walter R. Paczkowski.
-Elasticity Definition Here I provide a very succinct definition of elasticity (there is a vast literature on this topic, see the reference above).</description>
+      <description>&lt;p&gt;In this notebook I want to experiment with some basic models for price elasticity estimation in the simple context of a simple &lt;a href=&#34;https://en.wikipedia.org/wiki/Stock_keeping_unit&#34;&gt;sku&lt;/a&gt; across multiple stores and regions. The motivation is to have a concrete example of the elasticity models presented in the Chapter 11: Big Data Pricing Models of the book &lt;a href=&#34;https://www.routledge.com/Pricing-Analytics-Models-and-Advanced-Quantitative-Techniques-for-Product/Paczkowski/p/book/9781138623934&#34;&gt;Pricing Analytics&lt;/a&gt; by &lt;a href=&#34;https://www.linkedin.com/in/walter-paczkowski-a17a1511/&#34;&gt;Walter R. Paczkowski&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;elasticity-definition&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Elasticity Definition&lt;/h2&gt;&#xA;&lt;p&gt;Here I provide a very succinct definition of elasticity (there is a vast literature on this topic, see the reference above). The elasticity of a variable &lt;span class=&#34;math inline&#34;&gt;\(y(x, z)\)&lt;/span&gt; with respect to another variable &lt;span class=&#34;math inline&#34;&gt;\(x\)&lt;/span&gt; is defined as the percentage change in &lt;span class=&#34;math inline&#34;&gt;\(y\)&lt;/span&gt; for a one percent change in &lt;span class=&#34;math inline&#34;&gt;\(x\)&lt;/span&gt;. Mathematically, this is written as&#xA;&lt;span class=&#34;math display&#34;&gt;\[&#xA;\eta = \frac{\partial \log(y(x, z))}{\partial \log(x)}&#xA;\]&lt;/span&gt;&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</title>
       <link>/bikes_gp/</link>
       <pubDate>Wed, 05 Jul 2023 00:00:00 +0000</pubDate>
-      
       <guid>/bikes_gp/</guid>
-      <description>In this notebook we present an example of a regression model with time varying coefficients using Gaussian processes. In particular, we use a Hilbert space Gaussian process approximation in pymc to speed up the computations (see HSGP). We continue using the bikes dataset from the previous posts (Exploring Tools for Interpretable Machine Learning and Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC). Please refer to those posts for more details on the dataset, EDA and base models.</description>
+      <description>&lt;p&gt;In this notebook we present an example of a regression model with time varying coefficients using Gaussian processes. In particular, we use a Hilbert space Gaussian process approximation in &lt;a href=&#34;https://www.pymc.io/welcome.html&#34;&gt;&lt;code&gt;pymc&lt;/code&gt;&lt;/a&gt; to speed up the computations (see &lt;a href=&#34;https://www.pymc.io/projects/docs/en/latest/api/gp/generated/pymc.gp.HSGP.html&#34;&gt;&lt;code&gt;HSGP&lt;/code&gt;&lt;/a&gt;). We continue using the &lt;code&gt;bikes&lt;/code&gt; dataset from the previous posts (&lt;a href=&#34;https://juanitorduz.github.io/interpretable_ml/&#34;&gt;Exploring Tools for Interpretable Machine Learning&lt;/a&gt; and &lt;a href=&#34;https://juanitorduz.github.io/bikes_pymc/&#34;&gt;Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC&lt;/a&gt;). Please refer to those posts for more details on the dataset, EDA and base models. In essence, we are trying to model bike count rentals as a function of meteorological variables and seasonality. We are particularly interested in the marginal effect of temperature on bike rentals, which we expect to be non-linear.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Counting the Number of Kitas per PLZ in Berlin using a Hierarchical Bayesian Model</title>
       <link>/kitas-hierarchical/</link>
       <pubDate>Fri, 28 Apr 2023 00:00:00 +0000</pubDate>
-      
       <guid>/kitas-hierarchical/</guid>
-      <description>This notebook is the continuation of data gathering and data analysis post Open Data: Berlin Kitas. In this second part we use the data gathered to model the number of Kitas per PLZ in Berlin using a hierarchical bayesian model. The hierarchy is defined by the Berlin districts. The objective is to develop a sound basic model which can be enhanced in the future with a richer data set.</description>
+      <description>&lt;p&gt;This notebook is the continuation of data gathering and data analysis post &lt;a href=&#34;https://juanitorduz.github.io/kitas_berlin/&#34;&gt;Open Data: Berlin Kitas&lt;/a&gt;. In this second part we use the data gathered to model the number of Kitas per PLZ in Berlin using a hierarchical bayesian model. The hierarchy is defined by the Berlin districts. The objective is to develop a sound basic model which can be enhanced in the future with a richer data set.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import geopandas as gpd&#xA;import jax.numpy as jnp&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import numpyro&#xA;import numpyro.distributions as dist&#xA;import pandas as pd&#xA;import seaborn as sns&#xA;from jax import random&#xA;from jaxlib.xla_extension import ArrayImpl&#xA;from numpyro.infer import MCMC, NUTS, Predictive&#xA;from sklearn.preprocessing import LabelEncoder&#xA;&#xA;plt.style.use(&amp;quot;bmh&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [10, 6]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;numpyro.set_host_device_count(n=4)&#xA;&#xA;rng_key = random.PRNGKey(seed=0)&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;read-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Read Data&lt;/h2&gt;&#xA;&lt;p&gt;Let’s start by reading the data we gathered in the previous post.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Simple Hierarchical Model with NumPyro: Cookie Chips Example</title>
       <link>/cookies_example_numpyro/</link>
       <pubDate>Mon, 24 Apr 2023 00:00:00 +0000</pubDate>
-      
       <guid>/cookies_example_numpyro/</guid>
-      <description>This notebook presents a simple example of a hierarchical model using NumPyro. The example is based on the cookie chips example in presented in the post Introduction to Bayesian Modeling with PyMC3. There are many great resources regarding bayesian hierarchical model and probabilistic programming NumPyro. This notebook aims to provide a succinct simple example to get started.
-Remark: Well, the real reason is that I want to get acquainted other probabilistic programming libraries in order to abstract the core principles of probabilistic programming.</description>
+      <description>&lt;p&gt;This notebook presents a simple example of a hierarchical model using &lt;a href=&#34;https://num.pyro.ai/en/latest/index.html#&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt;. The example is based on the cookie chips example in presented in the post &lt;a href=&#34;https://juanitorduz.github.io/intro_pymc3/&#34;&gt;Introduction to Bayesian Modeling with PyMC3&lt;/a&gt;. There are many great resources regarding bayesian hierarchical model and probabilistic programming &lt;a href=&#34;https://num.pyro.ai/en/latest/index.html#&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt;. This notebook aims to provide a succinct simple example to get started.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Remark:&lt;/strong&gt; Well, the real reason is that I want to get acquainted other probabilistic programming libraries in order to abstract the core principles of probabilistic programming.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Scikit-Learn Example in PyMC: Gaussian Process Classifier</title>
       <link>/sklearn_pymc_classifier/</link>
       <pubDate>Sat, 24 Sep 2022 00:00:00 +0000</pubDate>
-      
       <guid>/sklearn_pymc_classifier/</guid>
-      <description>In this notebook we want to describe how to port a couple of classification examples from scikit-learn’s documentation (classifier comparison) to PyMC. We focus in the classical moons synthetic dataset.
-Prepare Notebook import arviz as az import matplotlib.pyplot as plt import numpy as np import pandas as pd import pymc as pm import pymc.sampling_jax import seaborn as sns from sklearn.datasets import make_moons from sklearn.metrics import accuracy_score from sklearn.model_selection import train_test_split plt.</description>
+      <description>&lt;p&gt;In this notebook we want to describe how to port a couple of classification examples from &lt;a href=&#34;https://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html#sphx-glr-auto-examples-classification-plot-classifier-comparison-py&#34;&gt;scikit-learn’s documentation (classifier comparison)&lt;/a&gt; to PyMC. We focus in the classical &lt;a href=&#34;https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html#sklearn.datasets.make_moons&#34;&gt;&lt;code&gt;moons&lt;/code&gt;&lt;/a&gt; synthetic dataset.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import pandas as pd&#xA;import pymc as pm&#xA;import pymc.sampling_jax&#xA;import seaborn as sns&#xA;from sklearn.datasets import make_moons&#xA;from sklearn.metrics import accuracy_score&#xA;from sklearn.model_selection import train_test_split&#xA;&#xA;&#xA;plt.style.use(&amp;quot;bmh&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [8, 6]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-raw-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Raw Data&lt;/h2&gt;&#xA;&lt;p&gt;We generate synthetic data using the &lt;a href=&#34;https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html#sklearn.datasets.make_moons&#34;&gt;&lt;code&gt;moons&lt;/code&gt;&lt;/a&gt; function from &lt;code&gt;sklearn.datasets&lt;/code&gt; and split it into a training and test set.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Synthetic Control in PyMC</title>
       <link>/synthetic_control_pymc/</link>
       <pubDate>Tue, 09 Aug 2022 00:00:00 +0000</pubDate>
-      
       <guid>/synthetic_control_pymc/</guid>
-      <description>Synthetic control can be considered “the most important innovation in the policy evaluation literature in the last few years” (see The State of Applied Econometrics: Causality and Policy Evaluation by Susan Athey and Guido W. Imbens).
- In this notebook we provide an example of how to implement a synthetic control problem in PyMC to answer a “what if this had happened?” type of question in the context of causal inference.</description>
+      <description>&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;Synthetic control can be considered “the most important innovation in the policy evaluation literature in the last few years”&lt;/em&gt; (see &lt;a href=&#34;https://www.aeaweb.org/articles?id=10.1257/jep.31.2.3&#34;&gt;The State of Applied Econometrics: Causality and Policy Evaluation&lt;/a&gt; by Susan Athey and Guido W. Imbens).&lt;/p&gt;&#xA;&lt;/blockquote&gt;&#xA;&lt;p&gt;In this notebook we provide an example of how to implement a synthetic control problem in &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;PyMC&lt;/a&gt; to answer a “what if this had happened?” type of question in the context of causal inference. We reproduce the results of the example provided in the great book &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/landing-page.html&#34;&gt;Causal Inference for The Brave and True&lt;/a&gt; by &lt;a href=&#34;https://matheusfacure.github.io/&#34;&gt;Matheus Facure&lt;/a&gt;. Specifically, we look into the problem of estimating the &lt;em&gt;effect of cigarette taxation on its consumption&lt;/em&gt; presented in Chapter &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/15-Synthetic-Control.html&#34;&gt;15 - Synthetic Control&lt;/a&gt;. The purpose of this notebook is not to present a general description of this method but rather show how to implement it in PyMC. Therefore, we strongly recommend to look into the book to understand the problem, motivation and details of the method.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Modeling Short Time Series with Prior Knowledge in PyMC</title>
       <link>/short_time_series_pymc/</link>
       <pubDate>Tue, 19 Jul 2022 00:00:00 +0000</pubDate>
-      
       <guid>/short_time_series_pymc/</guid>
-      <description>In this notebook I want to reproduce in PyMC the methodology described in the amazing blog post Modeling Short Time Series with Prior Knowledge by Tim Radtke to forecast short time series using bayesian transfer learning 🚀. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete.</description>
+      <description>&lt;p&gt;In this notebook I want to reproduce in &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;PyMC&lt;/a&gt; the methodology described in the amazing blog post &lt;a href=&#34;https://minimizeregret.com/short-time-series-prior-knowledge&#34;&gt;Modeling Short Time Series with Prior Knowledge&lt;/a&gt; by &lt;a href=&#34;https://minimizeregret.com/about/&#34;&gt;Tim Radtke&lt;/a&gt; to forecast short time series using &lt;em&gt;bayesian transfer learning&lt;/em&gt; 🚀. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete. The challenge of the example is to generate long term forecast for a short time series of bike sales data. Specifically, the input sales data consists of three months of daily data and the objective is to generate at least a two years forecast. In general this is very hard to to with commonly available methods (as we will show below) due the fact we do not have enough historical data to capture seasonal patterns. For this concrete example, we do expect to have a strong yearly seasonal pattern as bike sales are usually much higher during summer than in winter. Hence, we could use temperature as a proxy for this seasonal pattern. However, as mentioned above, we can not simply try to use such data in a model with just 3 months of daily data … ¯\&lt;em&gt;(ツ)&lt;/em&gt;/¯ …&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</title>
       <link>/bikes_pymc/</link>
       <pubDate>Sun, 03 Jul 2022 00:00:00 +0000</pubDate>
-      
       <guid>/bikes_pymc/</guid>
-      <description>In this notebook we want to illustrate how to use PyMC to fit a time-varying coefficient regression model. The motivation comes from post Exploring Tools for Interpretable Machine Learning where we studied a time series problem, regarding the prediction of the number of bike rentals, from a machine learning perspective. Concretely, we fitted and compared two machine learning models: a linear regression with interactions and a gradient boost model (XGBoost).</description>
+      <description>&lt;p&gt;In this notebook we want to illustrate how to use PyMC to fit a time-varying coefficient regression model. The motivation comes from post &lt;a href=&#34;https://juanitorduz.github.io/interpretable_ml/&#34;&gt;Exploring Tools for Interpretable Machine Learning&lt;/a&gt; where we studied a time series problem, regarding the &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/bike-data.html&#34;&gt;prediction of the number of bike rentals&lt;/a&gt;, from a machine learning perspective. Concretely, we fitted and compared two machine learning models: a linear regression with interactions and a gradient boost model (XGBoost). The models regressors were mainly meteorological data and seasonality features. One interesting feature we saw, through &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/pdp.html&#34;&gt;PDP&lt;/a&gt; and &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/ice.html&#34;&gt;ICE&lt;/a&gt; plots was that the temperature feature had a non-constant effect over the bike rentals (see &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/ice.html#examples-4&#34;&gt;here&lt;/a&gt;). Indeed, when the temperature is high (more than 25 degrees approximately), the bike rentals are negatively impacted by the temperature (to be fair, this is when controlling by other regressors) on average. What we want to do in this notebook is to tackle the same problem from a different perspective. Namely, use to use a &lt;a href=&#34;https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html&#34;&gt;GaussianRandomWalk&lt;/a&gt; to model the interaction effect between the temperature and the bike rentals. We of course start with the simple regression baseline for comparison.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>PyConDE &amp; PyData Berlin 2022: Introduction to Uplift Modeling</title>
       <link>/uplift/</link>
       <pubDate>Mon, 11 Apr 2022 00:00:00 +0000</pubDate>
-      
       <guid>/uplift/</guid>
-      <description>In this notebook we present a simple example of uplift modeling estimation via meta-models using causalml and scikit-uplift. For a more detailed introduction to uplift modeling, see:
- Diemert, Eustache, et.al. (2020) “A Large Scale Benchmark for Uplift Modeling”
- Gutierrez, P., &amp;amp; Gérardy, J. Y. (2017). “Causal Inference and Uplift Modelling: A Review of the Literature”
- Karlsson, H. (2019) “Uplift Modeling: Identifying Optimal Treatment Group Allocation and Whom to Contact to Maximize Return on Investment”</description>
+      <description>&lt;p&gt;In this notebook we present a simple example of &lt;a href=&#34;https://en.wikipedia.org/wiki/Uplift_modelling&#34;&gt;uplift modeling&lt;/a&gt; estimation via &lt;em&gt;meta-models&lt;/em&gt; using &lt;a href=&#34;https://github.com/uber/causalml&#34;&gt;&lt;code&gt;causalml&lt;/code&gt;&lt;/a&gt; and &lt;a href=&#34;scikit-uplift&#34;&gt;&lt;code&gt;scikit-uplift&lt;/code&gt;&lt;/a&gt;. For a more detailed introduction to uplift modeling, see:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://ama.imag.fr/~amini/Publis/large-scale-benchmark.pdf&#34;&gt;Diemert, Eustache, et.al. (2020) &lt;em&gt;“A Large Scale Benchmark for Uplift Modeling”&lt;/em&gt;&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://proceedings.mlr.press/v67/gutierrez17a/gutierrez17a.pdf&#34;&gt;Gutierrez, P., &amp;amp; Gérardy, J. Y. (2017). &lt;em&gt;“Causal Inference and Uplift Modelling: A Review of the Literature”&lt;/em&gt;&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://www.diva-portal.org/smash/get/diva2:1328437/FULLTEXT01.pdf&#34;&gt;Karlsson, H. (2019) &lt;em&gt;“Uplift Modeling: Identifying Optimal Treatment Group Allocation and Whom to Contact to Maximize Return on Investment”&lt;/em&gt;&lt;/a&gt;&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Gamma-Gamma Model of Monetary Value in PyMC</title>
       <link>/gamma_gamma_pymc/</link>
       <pubDate>Tue, 29 Mar 2022 00:00:00 +0000</pubDate>
-      
       <guid>/gamma_gamma_pymc/</guid>
-      <description>In this notebook we describe how to fit Fader’s and Hardie’s gamma-gamma model presented in the paper “RFM and CLV: Using Iso-value Curves for Customer Base Analysis” and the note “The Gamma-Gamma Model of Monetary Value”. The approach is very similar as the one presented in the previous post BG/NBD Model in PyMC where we simply ported the log-likelihood of the lifetimes package from numpy to pytensor.
-Prepare Notebook import arviz as az import matplotlib.</description>
+      <description>&lt;p&gt;In this notebook we describe how to fit Fader’s and Hardie’s &lt;em&gt;gamma-gamma model&lt;/em&gt; presented in the paper &lt;a href=&#34;http://www.brucehardie.com/papers/rfm_clv_2005-02-16.pdf&#34;&gt;“RFM and CLV: Using Iso-value Curves&#xA;for Customer Base Analysis”&lt;/a&gt; and the note &lt;a href=&#34;http://www.brucehardie.com/notes/025/gamma_gamma.pdf&#34;&gt;“The Gamma-Gamma Model of Monetary&#xA;Value”&lt;/a&gt;. The approach is very similar as the one presented in the previous post &lt;a href=&#34;https://juanitorduz.github.io/bg_nbd_pymc/&#34;&gt;BG/NBD Model in PyMC&lt;/a&gt; where we simply ported the log-likelihood of the &lt;a href=&#34;https://github.com/CamDavidsonPilon/lifetimes&#34;&gt;&lt;code&gt;lifetimes&lt;/code&gt;&lt;/a&gt; package from &lt;code&gt;numpy&lt;/code&gt; to &lt;code&gt;pytensor&lt;/code&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import pymc as pm&#xA;import pytensor.tensor as pt&#xA;import seaborn as sns&#xA;from lifetimes import GammaGammaFitter&#xA;from lifetimes.datasets import load_cdnow_summary_data_with_monetary_value&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [12, 7]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;seed = sum(map(ord, &amp;quot;juanitorduz&amp;quot;))&#xA;rng = np.random.default_rng(seed)&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;load-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Load Data&lt;/h2&gt;&#xA;&lt;p&gt;We are going to use an existing data set from the &lt;a href=&#34;https://github.com/CamDavidsonPilon/lifetimes&#34;&gt;&lt;code&gt;lifetimes&lt;/code&gt;&lt;/a&gt; package documentation, see &lt;a href=&#34;https://lifetimes.readthedocs.io/en/latest/Quickstart.html&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>BG/NBD Model in PyMC</title>
       <link>/bg_nbd_pymc/</link>
       <pubDate>Thu, 03 Mar 2022 00:00:00 +0000</pubDate>
-      
       <guid>/bg_nbd_pymc/</guid>
-      <description>In this notebook we show how to port the BG/NBD model from the the lifetimes (developed mainly by Cameron Davidson-Pilon) package to pymc. The BG/NBD model, introduced in the seminal paper “Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model by Peter S. Fader, Bruce G. S. Hardie and Ka Lok Lee in 2005, is used to
- predict future purchasing patterns, which can then serve as an input into “lifetime value” calculations, in the “non-contractual” setting (i.</description>
+      <description>&lt;p&gt;In this notebook we show how to port the BG/NBD model from the the &lt;a href=&#34;https://github.com/CamDavidsonPilon/lifetimes&#34;&gt;&lt;code&gt;lifetimes&lt;/code&gt;&lt;/a&gt; (developed mainly by &lt;a href=&#34;https://github.com/CamDavidsonPilon&#34;&gt;Cameron Davidson-Pilon&lt;/a&gt;) package to &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;&lt;code&gt;pymc&lt;/code&gt;&lt;/a&gt;. The BG/NBD model, introduced in the seminal paper &lt;a href=&#34;http://brucehardie.com/papers/018/fader_et_al_mksc_05.pdf&#34;&gt;“Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model&lt;/a&gt; by Peter S. Fader, Bruce G. S. Hardie and Ka Lok Lee in 2005, is used to&lt;/p&gt;&#xA;&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;predict future purchasing patterns, which can then serve as an input into “lifetime value” calculations, in the “non-contractual” setting (i.e., where the opportunities for transactions are continuous and the time at which customers become inactive is unobserved).&lt;/em&gt;&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</title>
       <link>/pymc_mmm/</link>
       <pubDate>Fri, 11 Feb 2022 00:00:00 +0000</pubDate>
-      
       <guid>/pymc_mmm/</guid>
-      <description>In this notebook we present a concrete example of estimating the media effects via bayesian methods, following the strategy outlined in Google’s paper Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017). This example can be considered the continuation of the post Media Effect Estimation with Orbit’s KTR Model. However, it is not strictly necessary to read before as we make this notebook self-contained.</description>
+      <description>&lt;p&gt;In this notebook we present a concrete example of estimating the media effects via bayesian methods, following the strategy outlined in Google’s paper &lt;a href=&#34;https://research.google/pubs/pub46001/&#34;&gt;Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)&lt;/a&gt;. This example can be considered the continuation of the post &lt;a href=&#34;https://juanitorduz.github.io/orbit_mmm/&#34;&gt;Media Effect Estimation with Orbit’s KTR Model&lt;/a&gt;. However, it is not strictly necessary to read before as we make this notebook self-contained. In addition, we provide some remarks and references regarding MMM projects in practice.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Media Effect Estimation with Orbit&#39;s KTR Model</title>
       <link>/orbit_mmm/</link>
       <pubDate>Fri, 04 Feb 2022 00:00:00 +0000</pubDate>
-      
       <guid>/orbit_mmm/</guid>
-      <description>In this notebook we want to experiment to the new KTR model included in the new orbit’s release (1.1). In particular, we are interested in its applications to media effects estimation in the context of media mix modeling. This is one of the applications for the KTR model by the Uber’s team, see the corresponding paper Edwin, Ng, et al. “Bayesian Time Varying Coefficient Model with Applications to Marketing Mix Modeling”.</description>
+      <description>&lt;p&gt;In this notebook we want to experiment to the new &lt;a href=&#34;https://orbit-ml.readthedocs.io/en/stable/tutorials/ktr1.html&#34;&gt;KTR model&lt;/a&gt; included in the new &lt;a href=&#34;https://github.com/uber/orbit&#34;&gt;&lt;code&gt;orbit&lt;/code&gt;&lt;/a&gt;’s release &lt;a href=&#34;https://github.com/uber/orbit/releases/tag/v1.1.0&#34;&gt;(1.1)&lt;/a&gt;. In particular, we are interested in its applications to media effects estimation in the context of media mix modeling. This is one of the applications for the KTR model by the Uber’s team, see the corresponding paper &lt;a href=&#34;https://arxiv.org/abs/2106.03322&#34;&gt;Edwin, Ng, et al. “Bayesian Time Varying Coefficient Model with Applications to Marketing Mix Modeling”&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;KTR stands for &lt;em&gt;kernel-based Time-varying regression&lt;/em&gt; as its main feature is to fit time-variant regression coefficients in a bayesian forecasting model. For details on the KTR model, see the paper mentioned above and &lt;a href=&#34;https://orbit-ml.readthedocs.io/en/stable/tutorials/ktr1.html&#34;&gt;KTR documentation&lt;/a&gt; where there is a great sequence of tutorials. In a nutshell, given a time series &lt;span class=&#34;math inline&#34;&gt;\(y_t\)&lt;/span&gt; the KTR models its components as &lt;span class=&#34;math inline&#34;&gt;\(y_t = l_t + s_t + r_t + \varepsilon_t\)&lt;/span&gt;, where &lt;span class=&#34;math inline&#34;&gt;\(l_t\)&lt;/span&gt; is the local-trend (level) , &lt;span class=&#34;math inline&#34;&gt;\(s_t\)&lt;/span&gt; is the seasonal component, &lt;span class=&#34;math inline&#34;&gt;\(r_t\)&lt;/span&gt; are the regression terms and &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon_t\)&lt;/span&gt; is a stationary random error process. This is very similar to the &lt;a href=&#34;https://facebook.github.io/prophet/&#34;&gt;Prophet&lt;/a&gt; model (we actually compare these two models bellow). One of the main differences is that the regression coefficients are time-varying. From the model documentation:&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Unobserved Components Model as a Bayesian Model with PyMC</title>
       <link>/uc_pymc/</link>
       <pubDate>Fri, 10 Dec 2021 00:00:00 +0000</pubDate>
-      
       <guid>/uc_pymc/</guid>
-      <description>In this notebook I want to deep-dive into the idea of wrapping a statsmodels UnobservedComponents model as a bayesian model with PyMC described in the (great!) post Fast Bayesian estimation of SARIMAX models. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponents model to a simulated time series.</description>
+      <description>&lt;p&gt;In this notebook I want to deep-dive into the idea of wrapping a &lt;a href=&#34;https://www.statsmodels.org/stable/index.html&#34;&gt;&lt;code&gt;statsmodels&lt;/code&gt;&lt;/a&gt; &lt;a href=&#34;https://www.statsmodels.org/dev/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html&#34;&gt;&lt;code&gt;UnobservedComponents&lt;/code&gt;&lt;/a&gt; model as a bayesian model with &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;PyMC&lt;/a&gt; described in the (great!) post &lt;a href=&#34;https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html&#34;&gt;Fast Bayesian estimation of SARIMAX models&lt;/a&gt;. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponents model to a simulated time series. In the second part we describe the process of wrapping the model as a PyMC model, running the MCMC and sampling and generating out of sample predictions.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Simple Bayesian Linear Regression with TensorFlow Probability</title>
       <link>/tfp_lm/</link>
       <pubDate>Tue, 06 Oct 2020 00:00:00 +0000</pubDate>
-      
       <guid>/tfp_lm/</guid>
-      <description>In this post we show how to fit a simple linear regression model using TensorFlow Probability by replicating the first example on the getting started guide for PyMC3. We are going to use Auto-Batched Joint Distributions as they simplify the model specification considerably. Moreover, there is a great resource to get deeper into this type of distribution: Auto-Batched Joint Distributions: A Gentle Tutorial, which I strongly recommend (see this post to get a brief introduction on TensorFlow probability distributions).</description>
+      <description>&lt;p&gt;In this post we show how to fit a simple linear regression model using &lt;a href=&#34;https://www.tensorflow.org/probability&#34;&gt;TensorFlow Probability&lt;/a&gt; by replicating the first example on the &lt;a href=&#34;https://docs.pymc.io/notebooks/getting_started.html&#34;&gt;getting started guide for PyMC3&lt;/a&gt;. We are going to use &lt;a href=&#34;https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/JointDistributionCoroutineAutoBatched&#34;&gt;Auto-Batched Joint Distributions&lt;/a&gt; as they simplify the model specification considerably. Moreover, there is a great resource to get deeper into this type of distribution: &lt;a href=&#34;https://www.tensorflow.org/probability/examples/JointDistributionAutoBatched_A_Gentle_Tutorial&#34;&gt;Auto-Batched Joint Distributions: A Gentle Tutorial&lt;/a&gt;, which I &lt;strong&gt;strongly recommend&lt;/strong&gt; (see &lt;a href=&#34;https://juanitorduz.github.io/intro_tfd/&#34;&gt;this post&lt;/a&gt; to get a brief introduction on TensorFlow probability distributions). In addition the tutorial: &lt;a href=&#34;https://www.tensorflow.org/probability/examples/Modeling_with_JointDistribution&#34;&gt;Bayesian Modeling with Joint Distribution&lt;/a&gt; is also a great reference to get started with linear models in TensorFlow Probability.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>A Simple Hamiltonian Monte Carlo Example with TensorFlow Probability</title>
       <link>/tfp_hcm/</link>
       <pubDate>Fri, 24 Jul 2020 00:00:00 +0000</pubDate>
-      
       <guid>/tfp_hcm/</guid>
-      <description>In this post we want to revisit a simple bayesian inference example worked out in this blog post. This time we want to use TensorFlow Probability (TFP) instead of PyMC3.
-References:
- Statistical Rethinking is an amazing reference for Bayesian analysis. It also has a sequence of online lectures freely available on YouTube.
- An introduction to probabilistic programming, now available in TensorFlow Probability
- There are many examples on the TensorFlow’s GitHub repository.</description>
+      <description>&lt;p&gt;In this post we want to revisit a simple bayesian inference example worked out in &lt;a href=&#34;https://juanitorduz.github.io/intro_pymc3/&#34;&gt;this blog post&lt;/a&gt;. This time we want to use &lt;a href=&#34;https://www.tensorflow.org/probability&#34;&gt;TensorFlow Probability&lt;/a&gt; (TFP) instead of &lt;a href=&#34;https://docs.pymc.io/notebooks/getting_started.html&#34;&gt;PyMC3&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;References:&lt;/strong&gt;&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://xcelab.net/rm/statistical-rethinking/&#34;&gt;Statistical Rethinking&lt;/a&gt; is an amazing reference for Bayesian analysis. It also has a sequence of online lectures freely available on &lt;a href=&#34;https://www.youtube.com/watch?v=4WVelCswXo4&amp;amp;list=PLDcUM9US4XdNM4Edgs7weiyIguLSToZRI&#34;&gt;YouTube&lt;/a&gt;.&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://blog.tensorflow.org/2018/12/an-introduction-to-probabilistic.html&#34;&gt;An introduction to probabilistic programming, now available in TensorFlow Probability&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;There are many examples on the &lt;a href=&#34;https://github.com/tensorflow/probability/tree/master/tensorflow_probability/examples/jupyter_notebooks&#34;&gt;TensorFlow’s GitHub repository&lt;/a&gt;. I am following the case study &lt;a href=&#34;https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Bayesian_Switchpoint_Analysis.ipynb&#34;&gt;Bayesian Switchpoint Analysis&lt;/a&gt; for this example.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Introduction to Bayesian Modeling with PyMC3</title>
       <link>/intro_pymc3/</link>
       <pubDate>Sun, 13 Aug 2017 00:00:00 +0000</pubDate>
-      
       <guid>/intro_pymc3/</guid>
       <description>We give an introduction to PyMC3, a probabilistic programming framework written in Python. We revise the basic mahematical theory and present two concrete examples.</description>
     </item>
-    
   </channel>
 </rss>

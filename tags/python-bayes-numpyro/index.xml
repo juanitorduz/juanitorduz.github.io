@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, bayes, numpyro on Dr. Juan Camilo Orduz</title>
+    <title>Python, Bayes, Numpyro on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-bayes-numpyro/</link>
-    <description>Recent content in python, bayes, numpyro on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Bayes, Numpyro on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 04 Aug 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-numpyro/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 04 Aug 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-bayes-numpyro/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Hierarchical Revenue &amp; Retention Modeling</title>
       <link>/hierarchical_revenue_retention/</link>
       <pubDate>Mon, 04 Aug 2025 00:00:00 +0000</pubDate>
-      
       <guid>/hierarchical_revenue_retention/</guid>
-      <description>In this notebook, we extend the revenue-retention model introduced in the sequence of blog posts “Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach” and “Cohort Revenue Retention Analysis with Flax and NumPyro” (plus the associated pre-print “Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach”) to include analysis across different markets (or any type of grouping variable). The motivation for this extension is that in many real applications one is interested in understanding the revenue and retention patterns across different markets where typically we have different data sizes.</description>
+      <description>&lt;p&gt;In this notebook, we extend the revenue-retention model introduced in the sequence of blog posts &lt;a href=&#34;https://juanitorduz.github.io/revenue_retention/&#34;&gt;“Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach”&lt;/a&gt; and &lt;a href=&#34;https://juanitorduz.github.io/revenue_retention_numpyro/&#34;&gt;“Cohort Revenue Retention Analysis with Flax and NumPyro”&lt;/a&gt; (plus the associated pre-print &lt;a href=&#34;https://arxiv.org/abs/2504.16216&#34;&gt;“Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach”&lt;/a&gt;) to include analysis across different &lt;em&gt;markets&lt;/em&gt; (or any type of grouping variable). The motivation for this extension is that in many real applications one is interested in understanding the revenue and retention patterns across different &lt;em&gt;markets&lt;/em&gt; where typically we have different data sizes. Instead of modeling all separately, we take advantage of the hierarchical structure of the data to share information across markets. This will help have better forecasts for younger markets where limited data is available. We show through a simulation the power of this approach (and how relatively simple it is to implement once we have the basic model in place).&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

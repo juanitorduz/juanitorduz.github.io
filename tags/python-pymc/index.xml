@@ -1,38 +1,33 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc/</link>
-    <description>Recent content in python, pymc on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 02 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 02 Jan 2024 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Time Series Modeling with HSGP: Baby Births Example</title>
       <link>/birthdays/</link>
       <pubDate>Tue, 02 Jan 2024 00:00:00 +0000</pubDate>
-      
       <guid>/birthdays/</guid>
-      <description>In this notebook we want to reproduce a classical example of using Gaussian processes to model time series data: The birthdays data set. I first encountered this example in the seminal book Chapter 21, Bayesian Data Analysis (Third edition) when learning about the subject. One thing I rapidly realized was that fitting these types of models in practice is very computationally expensive and sometimes almost infeasible for real industry applications where the data size is larger than all of these academic examples.</description>
+      <description>&lt;p&gt;In this notebook we want to reproduce a classical example of using Gaussian processes to model time series data: The birthdays data set. I first encountered this example in the seminal book &lt;a href=&#34;http://www.stat.columbia.edu/~gelman/book/BDA3.pdf&#34;&gt;Chapter 21, Bayesian Data Analysis (Third edition)&lt;/a&gt; when learning about the subject. One thing I rapidly realized was that fitting these types of models in practice is very computationally expensive and sometimes almost infeasible for real industry applications where the data size is larger than all of these academic examples. Recently, there has been a lot of progress in approximation methods to speed up the computations. We investigate one such method: the Hilbert Space Gaussian Process (HSGP) approximation introduced in &lt;a href=&#34;https://link.springer.com/article/10.1007/s11222-019-09886-w&#34;&gt;Hilbert space methods for reduced-rank Gaussian process regression&lt;/a&gt;. The main idea of this method relies on the Laplacian’s spectral decomposition to approximate kernels’ spectral measures as a function of basis functions. The key observation is that the basis functions in the reduced-rank approximation do not depend on the hyperparameters of the covariance function for the Gaussian process. This allows us to speed up the computations tremendously. We do not go into the mathematical details here (we might do this in a future post), as the original article is very well written and easy to follow (see also the great paper &lt;a href=&#34;https://link.springer.com/article/10.1007/s11222-022-10167-2&#34;&gt;Practical Hilbert space approximate Bayesian Gaussian processes for probabilistic programming&lt;/a&gt;). Instead, we reproduce this classical example using PyMC using a very raw implementation from &lt;a href=&#34;https://num.pyro.ai/en/stable/examples/hsgp.html&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt; Docs - Example: Hilbert space approximation for Gaussian processes&lt;/a&gt;, which is a great resource to learn about the method internals (so it is also strongly recommended!).&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Time-Varying Regression Coefficients via Hilbert Space Gaussian Process Approximation</title>
       <link>/bikes_gp/</link>
       <pubDate>Wed, 05 Jul 2023 00:00:00 +0000</pubDate>
-      
       <guid>/bikes_gp/</guid>
-      <description>In this notebook we present an example of a regression model with time varying coefficients using Gaussian processes. In particular, we use a Hilbert space Gaussian process approximation in pymc to speed up the computations (see HSGP). We continue using the bikes dataset from the previous posts (Exploring Tools for Interpretable Machine Learning and Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC). Please refer to those posts for more details on the dataset, EDA and base models.</description>
+      <description>&lt;p&gt;In this notebook we present an example of a regression model with time varying coefficients using Gaussian processes. In particular, we use a Hilbert space Gaussian process approximation in &lt;a href=&#34;https://www.pymc.io/welcome.html&#34;&gt;&lt;code&gt;pymc&lt;/code&gt;&lt;/a&gt; to speed up the computations (see &lt;a href=&#34;https://www.pymc.io/projects/docs/en/latest/api/gp/generated/pymc.gp.HSGP.html&#34;&gt;&lt;code&gt;HSGP&lt;/code&gt;&lt;/a&gt;). We continue using the &lt;code&gt;bikes&lt;/code&gt; dataset from the previous posts (&lt;a href=&#34;https://juanitorduz.github.io/interpretable_ml/&#34;&gt;Exploring Tools for Interpretable Machine Learning&lt;/a&gt; and &lt;a href=&#34;https://juanitorduz.github.io/bikes_pymc/&#34;&gt;Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC&lt;/a&gt;). Please refer to those posts for more details on the dataset, EDA and base models. In essence, we are trying to model bike count rentals as a function of meteorological variables and seasonality. We are particularly interested in the marginal effect of temperature on bike rentals, which we expect to be non-linear.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Time-Varying Regression Coefficients via Gaussian Random Walk in PyMC</title>
       <link>/bikes_pymc/</link>
       <pubDate>Sun, 03 Jul 2022 00:00:00 +0000</pubDate>
-      
       <guid>/bikes_pymc/</guid>
-      <description>In this notebook we want to illustrate how to use PyMC to fit a time-varying coefficient regression model. The motivation comes from post Exploring Tools for Interpretable Machine Learning where we studied a time series problem, regarding the prediction of the number of bike rentals, from a machine learning perspective. Concretely, we fitted and compared two machine learning models: a linear regression with interactions and a gradient boost model (XGBoost).</description>
+      <description>&lt;p&gt;In this notebook we want to illustrate how to use PyMC to fit a time-varying coefficient regression model. The motivation comes from post &lt;a href=&#34;https://juanitorduz.github.io/interpretable_ml/&#34;&gt;Exploring Tools for Interpretable Machine Learning&lt;/a&gt; where we studied a time series problem, regarding the &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/bike-data.html&#34;&gt;prediction of the number of bike rentals&lt;/a&gt;, from a machine learning perspective. Concretely, we fitted and compared two machine learning models: a linear regression with interactions and a gradient boost model (XGBoost). The models regressors were mainly meteorological data and seasonality features. One interesting feature we saw, through &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/pdp.html&#34;&gt;PDP&lt;/a&gt; and &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/ice.html&#34;&gt;ICE&lt;/a&gt; plots was that the temperature feature had a non-constant effect over the bike rentals (see &lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/ice.html#examples-4&#34;&gt;here&lt;/a&gt;). Indeed, when the temperature is high (more than 25 degrees approximately), the bike rentals are negatively impacted by the temperature (to be fair, this is when controlling by other regressors) on average. What we want to do in this notebook is to tackle the same problem from a different perspective. Namely, use to use a &lt;a href=&#34;https://www.pymc.io/projects/docs/en/stable/api/distributions/generated/pymc.GaussianRandomWalk.html&#34;&gt;GaussianRandomWalk&lt;/a&gt; to model the interaction effect between the temperature and the bike rentals. We of course start with the simple regression baseline for comparison.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

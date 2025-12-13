@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, causality on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Causality on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-causality/</link>
-    <description>Recent content in python, pymc, causality on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Causality on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 09 Aug 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-causality/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 09 Aug 2022 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-causality/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Synthetic Control in PyMC</title>
       <link>/synthetic_control_pymc/</link>
       <pubDate>Tue, 09 Aug 2022 00:00:00 +0000</pubDate>
-      
       <guid>/synthetic_control_pymc/</guid>
-      <description>Synthetic control can be considered “the most important innovation in the policy evaluation literature in the last few years” (see The State of Applied Econometrics: Causality and Policy Evaluation by Susan Athey and Guido W. Imbens).
- In this notebook we provide an example of how to implement a synthetic control problem in PyMC to answer a “what if this had happened?” type of question in the context of causal inference.</description>
+      <description>&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;Synthetic control can be considered “the most important innovation in the policy evaluation literature in the last few years”&lt;/em&gt; (see &lt;a href=&#34;https://www.aeaweb.org/articles?id=10.1257/jep.31.2.3&#34;&gt;The State of Applied Econometrics: Causality and Policy Evaluation&lt;/a&gt; by Susan Athey and Guido W. Imbens).&lt;/p&gt;&#xA;&lt;/blockquote&gt;&#xA;&lt;p&gt;In this notebook we provide an example of how to implement a synthetic control problem in &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;PyMC&lt;/a&gt; to answer a “what if this had happened?” type of question in the context of causal inference. We reproduce the results of the example provided in the great book &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/landing-page.html&#34;&gt;Causal Inference for The Brave and True&lt;/a&gt; by &lt;a href=&#34;https://matheusfacure.github.io/&#34;&gt;Matheus Facure&lt;/a&gt;. Specifically, we look into the problem of estimating the &lt;em&gt;effect of cigarette taxation on its consumption&lt;/em&gt; presented in Chapter &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/15-Synthetic-Control.html&#34;&gt;15 - Synthetic Control&lt;/a&gt;. The purpose of this notebook is not to present a general description of this method but rather show how to implement it in PyMC. Therefore, we strongly recommend to look into the book to understand the problem, motivation and details of the method.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

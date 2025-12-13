@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, statistics, probability, tfp on Dr. Juan Camilo Orduz</title>
+    <title>Python, Statistics, Probability, Tfp on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-statistics-probability-tfp/</link>
-    <description>Recent content in python, statistics, probability, tfp on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Statistics, Probability, Tfp on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 16 Jun 2020 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-statistics-probability-tfp/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 16 Jun 2020 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-statistics-probability-tfp/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>A Glimpse into TensorFlow Probability Distributions</title>
       <link>/intro_tfd/</link>
       <pubDate>Tue, 16 Jun 2020 00:00:00 +0000</pubDate>
-      
       <guid>/intro_tfd/</guid>
-      <description>In this notebook we want to go take a look into the distributions module of TensorFlow probability. The aim is to understand the fundamentals and then explore further this probabilistic programming framework. Here you can find an overview of TensorFlow Probability. We will concentrate on the first part of Layer 1: Statistical Building Blocks. As you could see from the distributions module documentation, there are many classes of distributions. We will explore a small sample of them in order to get an overall overview.</description>
+      <description>&lt;p&gt;In this notebook we want to go take a look into the &lt;a href=&#34;https://www.tensorflow.org/probability/api_docs/python/tfp/distributions&#34;&gt;distributions&lt;/a&gt; module of &lt;a href=&#34;https://www.tensorflow.org/probability/api_docs/python/tfp&#34;&gt;TensorFlow probability&lt;/a&gt;. The aim is to understand the fundamentals and then explore further this probabilistic programming framework. &lt;a href=&#34;https://www.tensorflow.org/probability/overview&#34;&gt;Here&lt;/a&gt; you can find an overview of TensorFlow Probability. We will concentrate on the first part of &lt;em&gt;Layer 1: Statistical Building Blocks&lt;/em&gt;. As you could see from the distributions module documentation, there are many classes of distributions. We will explore a small sample of them in order to get an overall overview. I find the documentation itself a great place to start. In addition, there is a &lt;a href=&#34;https://github.com/tensorflow/probability/tree/master/tensorflow_probability/examples/jupyter_notebooks&#34;&gt;sample of notebooks&lt;/a&gt; with concrete examples on the &lt;a href=&#34;https://github.com/tensorflow/probability&#34;&gt;GitHub repository&lt;/a&gt;. In particular, I will follow some of cases presented on the &lt;a href=&#34;https://github.com/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/A_Tour_of_TensorFlow_Probability.ipynb&#34;&gt;A_Tour_of_TensorFlow_Probability&lt;/a&gt; notebook, expand on some details and add some other additional examples.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>
