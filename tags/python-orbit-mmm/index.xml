@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, orbit, mmm on Dr. Juan Camilo Orduz</title>
+    <title>Python, Orbit, Mmm on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-orbit-mmm/</link>
-    <description>Recent content in python, orbit, mmm on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Orbit, Mmm on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 04 Feb 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-orbit-mmm/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 04 Feb 2022 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-orbit-mmm/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Media Effect Estimation with Orbit&#39;s KTR Model</title>
       <link>/orbit_mmm/</link>
       <pubDate>Fri, 04 Feb 2022 00:00:00 +0000</pubDate>
-      
       <guid>/orbit_mmm/</guid>
-      <description>In this notebook we want to experiment to the new KTR model included in the new orbit’s release (1.1). In particular, we are interested in its applications to media effects estimation in the context of media mix modeling. This is one of the applications for the KTR model by the Uber’s team, see the corresponding paper Edwin, Ng, et al. “Bayesian Time Varying Coefficient Model with Applications to Marketing Mix Modeling”.</description>
+      <description>&lt;p&gt;In this notebook we want to experiment to the new &lt;a href=&#34;https://orbit-ml.readthedocs.io/en/stable/tutorials/ktr1.html&#34;&gt;KTR model&lt;/a&gt; included in the new &lt;a href=&#34;https://github.com/uber/orbit&#34;&gt;&lt;code&gt;orbit&lt;/code&gt;&lt;/a&gt;’s release &lt;a href=&#34;https://github.com/uber/orbit/releases/tag/v1.1.0&#34;&gt;(1.1)&lt;/a&gt;. In particular, we are interested in its applications to media effects estimation in the context of media mix modeling. This is one of the applications for the KTR model by the Uber’s team, see the corresponding paper &lt;a href=&#34;https://arxiv.org/abs/2106.03322&#34;&gt;Edwin, Ng, et al. “Bayesian Time Varying Coefficient Model with Applications to Marketing Mix Modeling”&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;KTR stands for &lt;em&gt;kernel-based Time-varying regression&lt;/em&gt; as its main feature is to fit time-variant regression coefficients in a bayesian forecasting model. For details on the KTR model, see the paper mentioned above and &lt;a href=&#34;https://orbit-ml.readthedocs.io/en/stable/tutorials/ktr1.html&#34;&gt;KTR documentation&lt;/a&gt; where there is a great sequence of tutorials. In a nutshell, given a time series &lt;span class=&#34;math inline&#34;&gt;\(y_t\)&lt;/span&gt; the KTR models its components as &lt;span class=&#34;math inline&#34;&gt;\(y_t = l_t + s_t + r_t + \varepsilon_t\)&lt;/span&gt;, where &lt;span class=&#34;math inline&#34;&gt;\(l_t\)&lt;/span&gt; is the local-trend (level) , &lt;span class=&#34;math inline&#34;&gt;\(s_t\)&lt;/span&gt; is the seasonal component, &lt;span class=&#34;math inline&#34;&gt;\(r_t\)&lt;/span&gt; are the regression terms and &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon_t\)&lt;/span&gt; is a stationary random error process. This is very similar to the &lt;a href=&#34;https://facebook.github.io/prophet/&#34;&gt;Prophet&lt;/a&gt; model (we actually compare these two models bellow). One of the main differences is that the regression coefficients are time-varying. From the model documentation:&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

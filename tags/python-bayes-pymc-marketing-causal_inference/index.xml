@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, bayes, pymc, marketing, causal_inference on Dr. Juan Camilo Orduz</title>
+    <title>Python, Bayes, Pymc, Marketing, Causal_inference on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-bayes-pymc-marketing-causal_inference/</link>
-    <description>Recent content in python, bayes, pymc, marketing, causal_inference on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Bayes, Pymc, Marketing, Causal_inference on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 20 Feb 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-marketing-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 20 Feb 2023 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-bayes-pymc-marketing-causal_inference/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Experimentation, Non-Compliance and Instrumental Variables with PyMC</title>
       <link>/iv_pymc/</link>
       <pubDate>Mon, 20 Feb 2023 00:00:00 +0000</pubDate>
-      
       <guid>/iv_pymc/</guid>
-      <description>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables.
-By non-compliance we mean that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can not simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the time not at random and may introduce confounders.</description>
+      <description>&lt;p&gt;In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables.&lt;/p&gt;&#xA;&lt;p&gt;By non-compliance we mean that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can not simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the time not at random and may introduce confounders. For a more detailed discussion of the problem see &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/09-Non-Compliance-and-LATE.html&#34;&gt;Chapter 9&lt;/a&gt; in the (amazing!) book &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/landing-page.html&#34;&gt;&lt;em&gt;Causal Inference for The Brave and True&lt;/em&gt;&lt;/a&gt; by &lt;a href=&#34;https://github.com/matheusfacure&#34;&gt;Matheus Facure Alves&lt;/a&gt;. One very common tool to tackle such problem are instrumental variables (see &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/08-Instrumental-Variables.html&#34;&gt;Chapter 8&lt;/a&gt;) for a nice introduction. In essence, we can use the variant assignment as an instrument to control for confounders introduced by the non-compliance mechanism.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

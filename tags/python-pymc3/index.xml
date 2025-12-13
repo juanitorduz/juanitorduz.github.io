@@ -1,29 +1,26 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc3 on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc3 on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc3/</link>
-    <description>Recent content in python, pymc3 on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc3 on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 10 Dec 2021 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc3/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 10 Dec 2021 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc3/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Unobserved Components Model as a Bayesian Model with PyMC</title>
       <link>/uc_pymc/</link>
       <pubDate>Fri, 10 Dec 2021 00:00:00 +0000</pubDate>
-      
       <guid>/uc_pymc/</guid>
-      <description>In this notebook I want to deep-dive into the idea of wrapping a statsmodels UnobservedComponents model as a bayesian model with PyMC described in the (great!) post Fast Bayesian estimation of SARIMAX models. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponents model to a simulated time series.</description>
+      <description>&lt;p&gt;In this notebook I want to deep-dive into the idea of wrapping a &lt;a href=&#34;https://www.statsmodels.org/stable/index.html&#34;&gt;&lt;code&gt;statsmodels&lt;/code&gt;&lt;/a&gt; &lt;a href=&#34;https://www.statsmodels.org/dev/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html&#34;&gt;&lt;code&gt;UnobservedComponents&lt;/code&gt;&lt;/a&gt; model as a bayesian model with &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;PyMC&lt;/a&gt; described in the (great!) post &lt;a href=&#34;https://www.statsmodels.org/dev/examples/notebooks/generated/statespace_sarimax_pymc3.html&#34;&gt;Fast Bayesian estimation of SARIMAX models&lt;/a&gt;. This is a nice excuse to get into some internals of how PyMC works. I hope this can serve as a complement to the original post mentioned above. This post has two parts: In the first one we fit a UnobservedComponents model to a simulated time series. In the second part we describe the process of wrapping the model as a PyMC model, running the MCMC and sampling and generating out of sample predictions.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Introduction to Bayesian Modeling with PyMC3</title>
       <link>/intro_pymc3/</link>
       <pubDate>Sun, 13 Aug 2017 00:00:00 +0000</pubDate>
-      
       <guid>/intro_pymc3/</guid>
       <description>We give an introduction to PyMC3, a probabilistic programming framework written in Python. We revise the basic mahematical theory and present two concrete examples.</description>
     </item>
-    
   </channel>
 </rss>

@@ -4,27 +4,23 @@
     <title>Feature Engineering on Dr. Juan Camilo Orduz</title>
     <link>/categories/feature-engineering/</link>
     <description>Recent content in Feature Engineering on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 30 Jun 2025 00:00:00 +0000</lastBuildDate><atom:link href="/categories/feature-engineering/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 30 Jun 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/feature-engineering/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Vectorize ROC Curve for Bayesian Models</title>
       <link>/vectorize_roc_curve/</link>
       <pubDate>Mon, 30 Jun 2025 00:00:00 +0000</pubDate>
-      
       <guid>/vectorize_roc_curve/</guid>
-      <description>In this notebook, we present a simple example to illustrate how to vectorize the ROC curve computation over a Bayesian model. This is helpful when we want to compute the ROC curve using the implementations from scikit-learn. We use the classical moons dataset to generate the data and fit a Gaussian process models similarly as the previous post Scikit-Learn Example in PyMC: Gaussian Process Classifier.
-Prepare Notebook import arviz as az import matplotlib.</description>
+      <description>&lt;p&gt;In this notebook, we present a simple example to illustrate how to vectorize the ROC curve computation over a Bayesian model. This is helpful when we want to compute the ROC curve using the implementations from &lt;a href=&#34;https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html&#34;&gt;&lt;code&gt;scikit-learn&lt;/code&gt;&lt;/a&gt;. We use the classical &lt;a href=&#34;https://scikit-learn.org/stable/modules/generated/sklearn.datasets.make_moons.html&#34;&gt;moons dataset&lt;/a&gt; to generate the data and fit a Gaussian process models similarly as the previous post &lt;a href=&#34;https://juanitorduz.github.io/sklearn_pymc_classifier/&#34;&gt;Scikit-Learn Example in PyMC: Gaussian Process Classifier&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import preliz as pz&#xA;import pymc as pm&#xA;import pytensor&#xA;import seaborn as sns&#xA;import xarray as xr&#xA;from sklearn.datasets import make_moons&#xA;from sklearn.metrics import roc_auc_score, roc_curve&#xA;from sklearn.model_selection import train_test_split&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [10, 6]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;seed: int = sum(map(ord, &amp;quot;vectorize_roc_curve&amp;quot;))&#xA;rng: np.random.Generator = np.random.default_rng(seed=seed)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-synthetic-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Synthetic Data&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;# Generate data&#xA;x, y = make_moons(n_samples=150, noise=0.25, random_state=seed)&#xA;# Split data into training and test sets&#xA;x_train, x_test, y_train, y_test = train_test_split(&#xA;    x, y, test_size=0.3, random_state=seed&#xA;)&#xA;# Get number of samples in training and test sets&#xA;n_train = x_train.shape[0]&#xA;n_test = x_test.shape[0]&#xA;n = n_train + n_test&#xA;# Create indices for training and test sets&#xA;idx_train = range(n_train)&#xA;idx_test = range(n_train, n_train + n_test)&#xA;# Get dimension of the domain&#xA;domain_dim = x.shape[1]&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;p&gt;Let’s start by visualizing the data.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>How to vectorize an scikit-learn transformer over a numpy array?</title>
       <link>/vectorize_sklearn_transformer/</link>
       <pubDate>Mon, 01 May 2023 00:00:00 +0000</pubDate>
-      
       <guid>/vectorize_sklearn_transformer/</guid>
-      <description>In this short post, I show how to vectorize an scikit-learn transformer over a numpy array. That is, how to apply a transformer along a specific axes of a numpy array. I have found this to be particularly useful when working with output sample posterior distributions from a bayesian model where I want to apply a transformer to each sample. This is not particularly difficult, but I always forget how to do it, so I thought I would write it down once and for all 😄.</description>
+      <description>&lt;p&gt;In this short post, I show how to vectorize an &lt;a href=&#34;https://scikit-learn.org/stable/&#34;&gt;&lt;code&gt;scikit-learn&lt;/code&gt;&lt;/a&gt; transformer over a &lt;a href=&#34;https://numpy.org/doc/stable/&#34;&gt;&lt;code&gt;numpy&lt;/code&gt;&lt;/a&gt; array. That is, how to apply a transformer along a specific axes of a &lt;code&gt;numpy&lt;/code&gt; array. I have found this to be particularly useful when working with output sample posterior distributions from a bayesian model where I want to apply a transformer to each sample. This is not particularly difficult, but I always forget how to do it, so I thought I would write it down once and for all 😄.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

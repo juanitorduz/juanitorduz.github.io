@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, bg_nbd, btyd on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Bg_nbd, Btyd on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-bg_nbd-btyd/</link>
-    <description>Recent content in python, pymc, bg_nbd, btyd on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Bg_nbd, Btyd on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 03 Mar 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-bg_nbd-btyd/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 03 Mar 2022 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-bg_nbd-btyd/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>BG/NBD Model in PyMC</title>
       <link>/bg_nbd_pymc/</link>
       <pubDate>Thu, 03 Mar 2022 00:00:00 +0000</pubDate>
-      
       <guid>/bg_nbd_pymc/</guid>
-      <description>In this notebook we show how to port the BG/NBD model from the the lifetimes (developed mainly by Cameron Davidson-Pilon) package to pymc. The BG/NBD model, introduced in the seminal paper “Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model by Peter S. Fader, Bruce G. S. Hardie and Ka Lok Lee in 2005, is used to
- predict future purchasing patterns, which can then serve as an input into “lifetime value” calculations, in the “non-contractual” setting (i.</description>
+      <description>&lt;p&gt;In this notebook we show how to port the BG/NBD model from the the &lt;a href=&#34;https://github.com/CamDavidsonPilon/lifetimes&#34;&gt;&lt;code&gt;lifetimes&lt;/code&gt;&lt;/a&gt; (developed mainly by &lt;a href=&#34;https://github.com/CamDavidsonPilon&#34;&gt;Cameron Davidson-Pilon&lt;/a&gt;) package to &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;&lt;code&gt;pymc&lt;/code&gt;&lt;/a&gt;. The BG/NBD model, introduced in the seminal paper &lt;a href=&#34;http://brucehardie.com/papers/018/fader_et_al_mksc_05.pdf&#34;&gt;“Counting Your Customers” the Easy Way: An Alternative to the Pareto/NBD Model&lt;/a&gt; by Peter S. Fader, Bruce G. S. Hardie and Ka Lok Lee in 2005, is used to&lt;/p&gt;&#xA;&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;predict future purchasing patterns, which can then serve as an input into “lifetime value” calculations, in the “non-contractual” setting (i.e., where the opportunities for transactions are continuous and the time at which customers become inactive is unobserved).&lt;/em&gt;&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

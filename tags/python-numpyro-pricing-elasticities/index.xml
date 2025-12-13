@@ -1,32 +1,26 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, numpyro, pricing, elasticities on Dr. Juan Camilo Orduz</title>
+    <title>Python, Numpyro, Pricing, Elasticities on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-numpyro-pricing-elasticities/</link>
-    <description>Recent content in python, numpyro, pricing, elasticities on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Numpyro, Pricing, Elasticities on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 01 Aug 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-pricing-elasticities/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 01 Aug 2024 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-numpyro-pricing-elasticities/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Hierarchical Pricing Elasticity Models</title>
       <link>/elasticities/</link>
       <pubDate>Thu, 01 Aug 2024 00:00:00 +0000</pubDate>
-      
       <guid>/elasticities/</guid>
-      <description>In this notebook we use a retail publicly available dataset to fit and compare various pricing elasticity models. This example can be seen as a continuation of the notebooks regarding Bayesian hierarchical models (see for example Multilevel Elasticities for a Single SKU - Part I). In this example we also see how Bayesian hierarchical models can help regularize elasticity estimates when taking advantage of the hierarchical structure of the data.</description>
+      <description>&lt;p&gt;In this notebook we use a retail publicly available dataset to fit and compare various pricing elasticity models. This example can be seen as a continuation of the notebooks regarding Bayesian hierarchical models (see for example &lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku/&#34;&gt;Multilevel Elasticities for a Single SKU - Part I&lt;/a&gt;). In this example we also see how Bayesian hierarchical models can help regularize elasticity estimates when taking advantage of the hierarchical structure of the data. In addition, this example shows that these models can scale well using stochastic variational inference in &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;NumPyro&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Multilevel Elasticities for a Single SKU - Part III.</title>
       <link>/multilevel_elasticities_single_sku_3/</link>
       <pubDate>Fri, 19 Jul 2024 00:00:00 +0000</pubDate>
-      
       <guid>/multilevel_elasticities_single_sku_3/</guid>
-      <description>In this notebook we continue our simulation study for elasticities, see:
- Multilevel Elasticities for a Single SKU - Part I
- Multilevel Elasticities for a Single SKU - Part II
-  for an introduction to the problem and some models. We extend the covariance model to allow two covariance components on both the intercepts and slopes (coefficient of the median_ income variable). Also, to abstract from a specific framework, we do the implementation in NumPyro.</description>
+      <description>&lt;p&gt;In this notebook we continue our simulation study for elasticities, see:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku/&#34;&gt;Multilevel Elasticities for a Single SKU - Part I&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://juanitorduz.github.io/multilevel_elasticities_single_sku_2/&#34;&gt;Multilevel Elasticities for a Single SKU - Part II&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;p&gt;for an introduction to the problem and some models. We extend the covariance model to allow two covariance components on both the intercepts and slopes (coefficient of the &lt;code&gt;median_ income&lt;/code&gt; variable). Also, to abstract from a specific framework, we do the implementation in &lt;a href=&#34;https://num.pyro.ai/&#34;&gt;NumPyro&lt;/a&gt;. The corresponding &lt;a href=&#34;https://docs.pymc.io/&#34;&gt;PyMC&lt;/a&gt; is very similar.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

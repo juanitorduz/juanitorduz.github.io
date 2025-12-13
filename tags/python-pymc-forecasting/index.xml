@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, forecasting on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Forecasting on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-forecasting/</link>
-    <description>Recent content in python, pymc, forecasting on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Forecasting on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 19 Jul 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 19 Jul 2022 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-forecasting/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Modeling Short Time Series with Prior Knowledge in PyMC</title>
       <link>/short_time_series_pymc/</link>
       <pubDate>Tue, 19 Jul 2022 00:00:00 +0000</pubDate>
-      
       <guid>/short_time_series_pymc/</guid>
-      <description>In this notebook I want to reproduce in PyMC the methodology described in the amazing blog post Modeling Short Time Series with Prior Knowledge by Tim Radtke to forecast short time series using bayesian transfer learning 🚀. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete.</description>
+      <description>&lt;p&gt;In this notebook I want to reproduce in &lt;a href=&#34;https://github.com/pymc-devs/pymc&#34;&gt;PyMC&lt;/a&gt; the methodology described in the amazing blog post &lt;a href=&#34;https://minimizeregret.com/short-time-series-prior-knowledge&#34;&gt;Modeling Short Time Series with Prior Knowledge&lt;/a&gt; by &lt;a href=&#34;https://minimizeregret.com/about/&#34;&gt;Tim Radtke&lt;/a&gt; to forecast short time series using &lt;em&gt;bayesian transfer learning&lt;/em&gt; 🚀. The main idea is to transfer information (e.g. long term seasonality) from a long time series to a short time series via prior distributions. Tim’s blog post treats a very concrete example where all the concepts become very concrete. The challenge of the example is to generate long term forecast for a short time series of bike sales data. Specifically, the input sales data consists of three months of daily data and the objective is to generate at least a two years forecast. In general this is very hard to to with commonly available methods (as we will show below) due the fact we do not have enough historical data to capture seasonal patterns. For this concrete example, we do expect to have a strong yearly seasonal pattern as bike sales are usually much higher during summer than in winter. Hence, we could use temperature as a proxy for this seasonal pattern. However, as mentioned above, we can not simply try to use such data in a model with just 3 months of daily data … ¯\&lt;em&gt;(ツ)&lt;/em&gt;/¯ …&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

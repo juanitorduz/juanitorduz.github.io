@@ -1,44 +1,33 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, statistics on Dr. Juan Camilo Orduz</title>
+    <title>Python, Statistics on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-statistics/</link>
-    <description>Recent content in python, statistics on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Statistics on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 08 Apr 2019 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-statistics/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 08 Apr 2019 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-statistics/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>An Introduction to Gaussian Process Regression</title>
       <link>/gaussian_process_reg/</link>
       <pubDate>Mon, 08 Apr 2019 00:00:00 +0000</pubDate>
-      
       <guid>/gaussian_process_reg/</guid>
-      <description>Updated Version: 2019/09/21 (Extension + Minor Corrections)
-After a sequence of preliminary posts (Sampling from a Multivariate Normal Distribution and Regularized Bayesian Regression as a Gaussian Process), I want to explore a concrete example of a gaussian process regression. We continue following Gaussian Processes for Machine Learning, Ch 2.
-Other recommended references are:
- Gaussian Processes for Timeseries Modeling by S. Roberts, M. Osborne, M. Ebden, S. Reece, N. Gibson &amp;amp; S.</description>
+      <description>&lt;p&gt;&lt;strong&gt;Updated Version: 2019/09/21&lt;/strong&gt; (Extension + Minor Corrections)&lt;/p&gt;&#xA;&lt;p&gt;After a sequence of preliminary posts (&lt;a href=&#34;https://juanitorduz.github.io/multivariate_normal/&#34;&gt;Sampling from a Multivariate Normal Distribution&lt;/a&gt; and &lt;a href=&#34;https://juanitorduz.github.io/reg_bayesian_regression/&#34;&gt;Regularized Bayesian Regression as a Gaussian Process&lt;/a&gt;), I want to explore a concrete example of a &lt;strong&gt;gaussian process regression&lt;/strong&gt;. We continue following &lt;a href=&#34;http://www.gaussianprocess.org/gpml/chapters/RW2.pdf&#34;&gt;Gaussian Processes for Machine Learning, Ch 2&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;Other recommended references are:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;a href=&#34;http://www.robots.ox.ac.uk/~sjrob/Pubs/philTransA_2012.pdf&#34;&gt;Gaussian Processes for Timeseries Modeling&lt;/a&gt; by S. Roberts, M. Osborne, M. Ebden, S. Reece, N. Gibson &amp;amp; S. Aigrain.&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;http://www.stat.columbia.edu/~gelman/book/&#34;&gt;Bayesian Data Analyis, Chapter 21&lt;/a&gt; by by Andrew Gelman, John Carlin, Hal Stern, David Dunson, Aki Vehtari, and Donald Rubin.&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import numpy as np&#xA;import matplotlib.pyplot as plt&#xA;import seaborn as sns&#xA;sns.set_style(&#xA;    style=&amp;#39;darkgrid&amp;#39;, &#xA;    rc={&amp;#39;axes.facecolor&amp;#39;: &amp;#39;.9&amp;#39;, &amp;#39;grid.color&amp;#39;: &amp;#39;.8&amp;#39;}&#xA;)&#xA;sns.set_palette(palette=&amp;#39;deep&amp;#39;)&#xA;%matplotlib inline&#xA;plt.rcParams[&amp;#39;figure.figsize&amp;#39;] = [12, 6]&#xA;plt.rcParams[&amp;#39;figure.dpi&amp;#39;] = 100&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-data-samples&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Data Samples&lt;/h2&gt;&#xA;&lt;p&gt;We consider de model &lt;span class=&#34;math inline&#34;&gt;\(y = f(x) + \varepsilon\)&lt;/span&gt;, where &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon \sim N(0, \sigma_n)\)&lt;/span&gt;. Here &lt;span class=&#34;math inline&#34;&gt;\(f\)&lt;/span&gt; does not need to be a linear function of &lt;span class=&#34;math inline&#34;&gt;\(x\)&lt;/span&gt;. As a concrete example, let us consider (1-dim problem)&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Bayesian Regression as a Gaussian Process</title>
       <link>/reg_bayesian_regression/</link>
       <pubDate>Mon, 01 Apr 2019 00:00:00 +0000</pubDate>
-      
       <guid>/reg_bayesian_regression/</guid>
-      <description>In this post we study the Bayesian Regression model to explore and compare the weight and function space and views of Gaussian Process Regression as described in the book Gaussian Processes for Machine Learning, Ch 2. We follow this reference very closely (and encourage to read it!). Our main objective is to illustrate the concepts and results through a concrete example. We use PyMC3 to run bayesian sampling.
-References:</description>
+      <description>&lt;p&gt;In this post we study the Bayesian Regression model to explore and compare the weight and function space and views of Gaussian Process Regression as described in the book &lt;a href=&#34;http://www.gaussianprocess.org/gpml/chapters/RW2.pdf&#34;&gt;Gaussian Processes for Machine Learning, Ch 2&lt;/a&gt;. We follow this reference very closely (and encourage to read it!). Our main objective is to illustrate the concepts and results through a concrete example. We use &lt;a href=&#34;https://docs.pymc.io&#34;&gt;PyMC3&lt;/a&gt; to run bayesian sampling.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;References:&lt;/strong&gt;&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;a href=&#34;http://www.gaussianprocess.org/gpml/chapters/RW2.pdf&#34;&gt;Gaussian Processes for Machine Learning&lt;/a&gt;, Carl Edward Rasmussen and Christopher K. I. Williams, MIT Press, 2006.&lt;/li&gt;&#xA;&lt;li&gt;See &lt;a href=&#34;https://juanitorduz.github.io/intro_pymc3/&#34;&gt;this&lt;/a&gt; post for an introduction to bayesian methods and PyMC3.&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://docs.pymc.io/notebooks/GLM-linear.html&#34;&gt;Documentation&lt;/a&gt; of linear regression in PyMC3.&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://docs.pymc.io/api/distributions/multivariate.html#pymc3.distributions.multivariate.MvNormal&#34;&gt;Documentation&lt;/a&gt; for the multivariate normal distribution in PyMC3.&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://stackoverflow.com/questions/52509602/cant-compile-c-program-on-a-mac-after-upgrade-to-mojave&#34;&gt;Here&lt;/a&gt; is an Stackoverflow post which can help Mac OS users which might have problems with Theano after upgrading to Mojave.&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;p&gt;Let us consider the model:&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Sampling from a Multivariate Normal Distribution</title>
       <link>/multivariate_normal/</link>
       <pubDate>Sat, 23 Mar 2019 00:00:00 +0000</pubDate>
-      
       <guid>/multivariate_normal/</guid>
-      <description>In this post I want to describe how to sample from a multivariate normal distribution following section A.2 Gaussian Identities of the book Gaussian Processes for Machine Learning. This is a first step towards exploring and understanding Gaussian Processes methods in machine learning.
-Multivariate Normal Distribution Recall that a random vector \(X = (X_1, , X_d)\) has a multivariate normal (or Gaussian) distribution if every linear combination
-\[ \sum_{i=1}^{d} a_iX_i, \quad a_i\in\mathbb{R} \] is normally distributed.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this post I want to describe how to sample from a multivariate normal distribution following section &lt;a href=&#34;http://www.gaussianprocess.org/gpml/chapters/RWA.pdf&#34;&gt;A.2 Gaussian Identities&lt;/a&gt; of the book &lt;a href=&#34;http://www.gaussianprocess.org/gpml/chapters/&#34;&gt;Gaussian Processes for Machine Learning&lt;/a&gt;. This is a first step towards exploring and understanding Gaussian Processes methods in machine learning.&lt;/p&gt;&#xA;&lt;div id=&#34;multivariate-normal-distribution&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Multivariate Normal Distribution&lt;/h2&gt;&#xA;&lt;p&gt;&lt;a href=&#34;https://en.wikipedia.org/wiki/Multivariate_normal_distribution&#34;&gt;Recall&lt;/a&gt; that a random vector \(X = (X_1, , X_d)\) has a &lt;em&gt;multivariate normal (or Gaussian) distribution&lt;/em&gt; if every linear combination&lt;/p&gt;&#xA;&lt;p&gt;&lt;span class=&#34;math display&#34;&gt;\[&#xA;\sum_{i=1}^{d} a_iX_i, \quad a_i\in\mathbb{R} &#xA;\]&lt;/span&gt;&#xA;is normally distributed.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

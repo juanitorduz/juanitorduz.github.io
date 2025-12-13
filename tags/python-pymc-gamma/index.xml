@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, gamma on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Gamma on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-gamma/</link>
-    <description>Recent content in python, pymc, gamma on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Gamma on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 29 Mar 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-gamma/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 29 Mar 2022 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-gamma/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Gamma-Gamma Model of Monetary Value in PyMC</title>
       <link>/gamma_gamma_pymc/</link>
       <pubDate>Tue, 29 Mar 2022 00:00:00 +0000</pubDate>
-      
       <guid>/gamma_gamma_pymc/</guid>
-      <description>In this notebook we describe how to fit Fader’s and Hardie’s gamma-gamma model presented in the paper “RFM and CLV: Using Iso-value Curves for Customer Base Analysis” and the note “The Gamma-Gamma Model of Monetary Value”. The approach is very similar as the one presented in the previous post BG/NBD Model in PyMC where we simply ported the log-likelihood of the lifetimes package from numpy to pytensor.
-Prepare Notebook import arviz as az import matplotlib.</description>
+      <description>&lt;p&gt;In this notebook we describe how to fit Fader’s and Hardie’s &lt;em&gt;gamma-gamma model&lt;/em&gt; presented in the paper &lt;a href=&#34;http://www.brucehardie.com/papers/rfm_clv_2005-02-16.pdf&#34;&gt;“RFM and CLV: Using Iso-value Curves&#xA;for Customer Base Analysis”&lt;/a&gt; and the note &lt;a href=&#34;http://www.brucehardie.com/notes/025/gamma_gamma.pdf&#34;&gt;“The Gamma-Gamma Model of Monetary&#xA;Value”&lt;/a&gt;. The approach is very similar as the one presented in the previous post &lt;a href=&#34;https://juanitorduz.github.io/bg_nbd_pymc/&#34;&gt;BG/NBD Model in PyMC&lt;/a&gt; where we simply ported the log-likelihood of the &lt;a href=&#34;https://github.com/CamDavidsonPilon/lifetimes&#34;&gt;&lt;code&gt;lifetimes&lt;/code&gt;&lt;/a&gt; package from &lt;code&gt;numpy&lt;/code&gt; to &lt;code&gt;pytensor&lt;/code&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import pymc as pm&#xA;import pytensor.tensor as pt&#xA;import seaborn as sns&#xA;from lifetimes import GammaGammaFitter&#xA;from lifetimes.datasets import load_cdnow_summary_data_with_monetary_value&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [12, 7]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;seed = sum(map(ord, &amp;quot;juanitorduz&amp;quot;))&#xA;rng = np.random.default_rng(seed)&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;load-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Load Data&lt;/h2&gt;&#xA;&lt;p&gt;We are going to use an existing data set from the &lt;a href=&#34;https://github.com/CamDavidsonPilon/lifetimes&#34;&gt;&lt;code&gt;lifetimes&lt;/code&gt;&lt;/a&gt; package documentation, see &lt;a href=&#34;https://lifetimes.readthedocs.io/en/latest/Quickstart.html&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

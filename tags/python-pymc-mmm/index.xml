@@ -1,29 +1,26 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, pymc, mmm on Dr. Juan Camilo Orduz</title>
+    <title>Python, Pymc, Mmm on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-pymc-mmm/</link>
-    <description>Recent content in python, pymc, mmm on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Pymc, Mmm on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 04 Feb 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-pymc-mmm/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sun, 04 Feb 2024 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-mmm/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Media Mix Model and Experimental Calibration: A Simulation Study</title>
       <link>/mmm_roas/</link>
       <pubDate>Sun, 04 Feb 2024 00:00:00 +0000</pubDate>
-      
       <guid>/mmm_roas/</guid>
-      <description>In this notebook, we present a complete simulation study of the media mix model (MMM) and experimental calibration method presented in the paper “Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al., where the authors propose a convenient parametrization the regression model in terms of the ROAs (return on advertising spend) instead of the classical regression (beta) coefficients. The benefit of this parametrization is that it allows for using Bayesian priors on the ROAS, which typically come from previous experiments or domain knowledge.</description>
+      <description>&lt;p&gt;In this notebook, we present a complete simulation study of the media mix model (MMM) and experimental calibration method presented in the paper &lt;a href=&#34;https://research.google/pubs/media-mix-model-calibration-with-bayesian-priors/&#34;&gt;“Media Mix Model Calibration With Bayesian Priors”, by Zhang, et al.&lt;/a&gt;, where the authors propose a convenient parametrization the regression model in terms of the ROAs (return on advertising spend) instead of the classical regression (beta) coefficients. The benefit of this parametrization is that it allows for using Bayesian priors on the ROAS, which typically come from previous experiments or domain knowledge. Providing this information to the model is essential in real-life MMM applications, as biases and noise can easily fool us. Similar to the author’s paper, we show that the proposed method can provide better ROAS estimation when we have a bias due to missing covariates or omitted variables. We work out an example of the classical media mix model presented in the paper &lt;a href=&#34;https://research.google/pubs/bayesian-methods-for-media-mix-modeling-with-carryover-and-shape-effects/&#34;&gt;“Bayesian Methods for Media Mix Modeling with Carryover and Shape Effects”, by Jin, et al.&lt;/a&gt;. I strongly recommend taking a look in too these two papers before reading this notebook. Reading them in parallel with this notebook is also a good alternative.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Media Effect Estimation with PyMC: Adstock, Saturation &amp; Diminishing Returns</title>
       <link>/pymc_mmm/</link>
       <pubDate>Fri, 11 Feb 2022 00:00:00 +0000</pubDate>
-      
       <guid>/pymc_mmm/</guid>
-      <description>In this notebook we present a concrete example of estimating the media effects via bayesian methods, following the strategy outlined in Google’s paper Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017). This example can be considered the continuation of the post Media Effect Estimation with Orbit’s KTR Model. However, it is not strictly necessary to read before as we make this notebook self-contained.</description>
+      <description>&lt;p&gt;In this notebook we present a concrete example of estimating the media effects via bayesian methods, following the strategy outlined in Google’s paper &lt;a href=&#34;https://research.google/pubs/pub46001/&#34;&gt;Jin, Yuxue, et al. “Bayesian methods for media mix modeling with carryover and shape effects.” (2017)&lt;/a&gt;. This example can be considered the continuation of the post &lt;a href=&#34;https://juanitorduz.github.io/orbit_mmm/&#34;&gt;Media Effect Estimation with Orbit’s KTR Model&lt;/a&gt;. However, it is not strictly necessary to read before as we make this notebook self-contained. In addition, we provide some remarks and references regarding MMM projects in practice.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

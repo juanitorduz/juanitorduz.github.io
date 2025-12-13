@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, bayes, numpyro, flax, marketing on Dr. Juan Camilo Orduz</title>
+    <title>Python, Bayes, Numpyro, Flax, Marketing on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-bayes-numpyro-flax-marketing/</link>
-    <description>Recent content in python, bayes, numpyro, flax, marketing on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Bayes, Numpyro, Flax, Marketing on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 08 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-numpyro-flax-marketing/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 08 Jan 2024 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-bayes-numpyro-flax-marketing/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Cohort Revenue Retention Analysis with Flax and NumPyro</title>
       <link>/revenue_retention_numpyro/</link>
       <pubDate>Mon, 08 Jan 2024 00:00:00 +0000</pubDate>
-      
       <guid>/revenue_retention_numpyro/</guid>
-      <description>In this notebook we present an alternative implementation of the cohort-revenue-retention model presented in the blog post Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach where we show how to replace the BART retention component with a general neural network implemented with Flax. This allows faster inference, as we can use NumPyro’s NUTS sampler or any of the stochastic variational inference (SVI) algorithms available. We could even use a wider family of samplers using the newly released package Bayeux or the great BlackJax (see for example, the MLP Classifier Example).</description>
+      <description>&lt;p&gt;In this notebook we present an alternative implementation of the cohort-revenue-retention model presented in the blog post &lt;a href=&#34;https://juanitorduz.github.io/revenue_retention/&#34;&gt;Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach&lt;/a&gt; where we show how to replace the &lt;a href=&#34;https://github.com/pymc-devs/pymc-bart&#34;&gt;BART&lt;/a&gt; retention component with a general neural network implemented with &lt;a href=&#34;https://github.com/google/flax&#34;&gt;Flax&lt;/a&gt;. This allows faster inference, as we can use &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;NumPyro&lt;/a&gt;’s NUTS sampler or any of the stochastic variational inference (SVI) algorithms available. We could even use a wider family of samplers using the newly released package &lt;a href=&#34;https://jax-ml.github.io/bayeux/&#34;&gt;Bayeux&lt;/a&gt; or the great &lt;a href=&#34;https://github.com/blackjax-devs/blackjax&#34;&gt;BlackJax&lt;/a&gt; (see for example, the &lt;a href=&#34;https://blackjax-devs.github.io/sampling-book/models/mlp.html&#34;&gt;MLP Classifier Example&lt;/a&gt;).&#xA;We use the same simulated dataset to be able to compare the approaches. Overall, the retention and revenue in and out-of sample predictions, as well as the credible intervals are very similar to the ones obtained with the &lt;a href=&#34;https://github.com/pymc-devs/pymc-bart&#34;&gt;BART&lt;/a&gt; model.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

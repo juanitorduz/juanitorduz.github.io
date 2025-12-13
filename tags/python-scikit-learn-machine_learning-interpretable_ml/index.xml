@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, scikit-learn, machine_learning, interpretable_ml on Dr. Juan Camilo Orduz</title>
+    <title>Python, Scikit-Learn, Machine_learning, Interpretable_ml on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-scikit-learn-machine_learning-interpretable_ml/</link>
-    <description>Recent content in python, scikit-learn, machine_learning, interpretable_ml on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Scikit-Learn, Machine_learning, Interpretable_ml on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 01 Jul 2021 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-scikit-learn-machine_learning-interpretable_ml/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 01 Jul 2021 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-scikit-learn-machine_learning-interpretable_ml/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Exploring Tools for Interpretable Machine Learning</title>
       <link>/interpretable_ml/</link>
       <pubDate>Thu, 01 Jul 2021 00:00:00 +0000</pubDate>
-      
       <guid>/interpretable_ml/</guid>
-      <description>In this notebook we want to test various ways of getting a better understanding on how non-trivial machine learning models generate predictions and how features interact with each other. This is in general not straight forward and key components are (1) understanding on the input data and (2) domain knowledge on the problem. Two great references on the subject are:
- Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar Interpretable Machine Learning with Python by Serg Masís  Note that the methods discussed in this notebook are not related with causality.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this notebook we want to test various ways of getting a better understanding on how non-trivial machine learning models generate predictions and how features interact with each other. This is in general not straight forward and key components are (1) understanding on the input data and (2) domain knowledge on the problem. Two great references on the subject are:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/&#34;&gt;Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://github.com/PacktPublishing/Interpretable-Machine-Learning-with-Python&#34;&gt;Interpretable Machine Learning with Python by Serg Masís&lt;/a&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;p&gt;Note that the methods discussed in this notebook are not related with &lt;em&gt;causality&lt;/em&gt;. I strongly recommend to refer to the article &lt;a href=&#34;https://towardsdatascience.com/be-careful-when-interpreting-predictive-models-in-search-of-causal-insights-e68626e664b6&#34;&gt;Be Careful When Interpreting Predictive Models in Search of Causal Insights&lt;/a&gt; by &lt;a href=&#34;https://scottlundberg.com/&#34;&gt;Scott Lundberg&lt;/a&gt; (one of the core developers of &lt;a href=&#34;https://shap.readthedocs.io/en/latest/index.html&#34;&gt;SHAP&lt;/a&gt;). The following are two references I have found particularly useful as an introduction to &lt;em&gt;causal inference&lt;/em&gt;:&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

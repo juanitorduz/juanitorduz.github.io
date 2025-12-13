@@ -1,22 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>shiny, docker on Dr. Juan Camilo Orduz</title>
+    <title>Shiny, Docker on Dr. Juan Camilo Orduz</title>
     <link>/tags/shiny-docker/</link>
-    <description>Recent content in shiny, docker on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Shiny, Docker on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 02 Mar 2019 00:00:00 +0000</lastBuildDate><atom:link href="/tags/shiny-docker/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 02 Mar 2019 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/shiny-docker/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Dockerize a ShinyApp</title>
       <link>/dockerize-a-shinyapp/</link>
       <pubDate>Sat, 02 Mar 2019 00:00:00 +0000</pubDate>
-      
       <guid>/dockerize-a-shinyapp/</guid>
-      <description>In this post I want to describe how to dockerize a simple Shiny App. Docker is a great way of sharing and deploying projects. You can download it here.
-Resources:
- R Docker tutorial, recommended for Docker beginners. Running a shiny app in a docker container by Mark Sellors (which is an updated and more complete version of this post).  Assume you have a project folder structure as follows:</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this post I want to describe how to dockerize a simple &lt;a href=&#34;https://shiny.rstudio.com&#34;&gt;Shiny App&lt;/a&gt;. &lt;a href=&#34;https://www.docker.com/&#34;&gt;Docker&lt;/a&gt; is a great way of sharing and deploying projects. You can download it &lt;a href=&#34;https://www.docker.com/get-started&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Resources:&lt;/strong&gt;&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://ropenscilabs.github.io/r-docker-tutorial/&#34;&gt;R Docker tutorial&lt;/a&gt;, recommended for Docker beginners.&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://blog.sellorm.com/2021/04/25/shiny-app-in-docker/&#34;&gt;Running a shiny app in a docker container&lt;/a&gt; by Mark Sellors (which is an updated and more complete version of this post).&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;p&gt;Assume you have a project folder structure as follows:&lt;/p&gt;&#xA;&lt;pre&gt;&lt;code&gt;.&#xA;+-- project.Rproj&#xA;+-- app.R&#xA;+-- R&#xA;|   +-- script_1.R&#xA;|   +-- script_2.R&#xA;+-- data&#xA;|   +-- data_df.rds&#xA;|   +-- raw_data.csv&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;The script &lt;code&gt;app.R&lt;/code&gt; contains the code of the Shiny application.&lt;/li&gt;&#xA;&lt;li&gt;The folder &lt;code&gt;R&lt;/code&gt; contains auxiliary scripts.&lt;/li&gt;&#xA;&lt;li&gt;The folder &lt;code&gt;data&lt;/code&gt; contains a csv and an rds file which might be nessesary for the application (cleaned data set, for example).&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;p&gt;To create a docker image you need to create a &lt;a href=&#34;https://docs.docker.com/engine/reference/builder/&#34;&gt;Dockerfile&lt;/a&gt;, which is a simple text file located in the same directory as &lt;code&gt;app.R&lt;/code&gt;. The name of the file must be &lt;code&gt;Dockerfile&lt;/code&gt;. A common structure of this file is the following:&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

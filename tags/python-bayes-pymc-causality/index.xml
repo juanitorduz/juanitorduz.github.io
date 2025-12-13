@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, bayes, pymc, causality on Dr. Juan Camilo Orduz</title>
+    <title>Python, Bayes, Pymc, Causality on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-bayes-pymc-causality/</link>
-    <description>Recent content in python, bayes, pymc, causality on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Bayes, Pymc, Causality on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 01 Dec 2022 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-causality/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 01 Dec 2022 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-bayes-pymc-causality/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Geo-Experimentation via Time Based Regression in PyMC</title>
       <link>/time_based_regression_pymc/</link>
       <pubDate>Thu, 01 Dec 2022 00:00:00 +0000</pubDate>
-      
       <guid>/time_based_regression_pymc/</guid>
-      <description>Introduction In this notebook I describe and present an implementation of the time based regression (TBR) approach to marketing campaign analysis in the context of geo experimentation presented in the paper Estimating Ad Effectiveness using Geo Experiments in a Time-Based Regression Framework by Jouni Kerman, Peng Wang and Jon Vaver (Google, Inc. 2017). I strongly recommend reading the paper as it is quite clear in the exposition of the approach and presents some simulation results.</description>
+      <description>&lt;div id=&#34;introduction&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Introduction&lt;/h2&gt;&#xA;&lt;p&gt;In this notebook I describe and present an implementation of the &lt;strong&gt;time based regression&lt;/strong&gt; (TBR) approach to marketing campaign analysis in the context of geo experimentation presented in the paper &lt;a href=&#34;https://research.google/pubs/pub45950/&#34;&gt;Estimating Ad Effectiveness using Geo Experiments in a Time-Based Regression Framework&lt;/a&gt; by Jouni Kerman, Peng Wang and Jon Vaver (Google, Inc. 2017). I strongly recommend reading the paper as it is quite clear in the exposition of the approach and presents some simulation results. Here I will focus on the basic model specification and on the implementation in PyMC.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

@@ -4,48 +4,37 @@
     <title>Machine Learning on Dr. Juan Camilo Orduz</title>
     <link>/categories/machine-learning/</link>
     <description>Recent content in Machine Learning on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 01 Jul 2021 00:00:00 +0000</lastBuildDate><atom:link href="/categories/machine-learning/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 01 Jul 2021 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/machine-learning/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Exploring Tools for Interpretable Machine Learning</title>
       <link>/interpretable_ml/</link>
       <pubDate>Thu, 01 Jul 2021 00:00:00 +0000</pubDate>
-      
       <guid>/interpretable_ml/</guid>
-      <description>In this notebook we want to test various ways of getting a better understanding on how non-trivial machine learning models generate predictions and how features interact with each other. This is in general not straight forward and key components are (1) understanding on the input data and (2) domain knowledge on the problem. Two great references on the subject are:
- Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar Interpretable Machine Learning with Python by Serg Masís  Note that the methods discussed in this notebook are not related with causality.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this notebook we want to test various ways of getting a better understanding on how non-trivial machine learning models generate predictions and how features interact with each other. This is in general not straight forward and key components are (1) understanding on the input data and (2) domain knowledge on the problem. Two great references on the subject are:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://christophm.github.io/interpretable-ml-book/&#34;&gt;Interpretable Machine Learning, A Guide for Making Black Box Models Explainable by Christoph Molnar&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://github.com/PacktPublishing/Interpretable-Machine-Learning-with-Python&#34;&gt;Interpretable Machine Learning with Python by Serg Masís&lt;/a&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;p&gt;Note that the methods discussed in this notebook are not related with &lt;em&gt;causality&lt;/em&gt;. I strongly recommend to refer to the article &lt;a href=&#34;https://towardsdatascience.com/be-careful-when-interpreting-predictive-models-in-search-of-causal-insights-e68626e664b6&#34;&gt;Be Careful When Interpreting Predictive Models in Search of Causal Insights&lt;/a&gt; by &lt;a href=&#34;https://scottlundberg.com/&#34;&gt;Scott Lundberg&lt;/a&gt; (one of the core developers of &lt;a href=&#34;https://shap.readthedocs.io/en/latest/index.html&#34;&gt;SHAP&lt;/a&gt;). The following are two references I have found particularly useful as an introduction to &lt;em&gt;causal inference&lt;/em&gt;:&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Feature Engineering: patsy as FormulaTransformer</title>
       <link>/formula_transformer/</link>
       <pubDate>Sat, 01 May 2021 00:00:00 +0000</pubDate>
-      
       <guid>/formula_transformer/</guid>
-      <description>In this notebook I want to describe how to create features inside scikit-learn pipelines using patsy-like formulas. I have used this approach to generate features in a previous post: GLM in PyMC3: Out-Of-Sample Predictions, so I will consider the same data set here for the sake of comparison.
-Remark: Very recently (2021-09-01) I discovered there is an implementation of this transformer in scikit-lego, see PatsyTransformer. In addition, please refer to the great tutorial on patsy in calmcode.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this notebook I want to describe how to create features inside &lt;a href=&#34;https://scikit-learn.org/stable/modules/compose.html&#34;&gt;scikit-learn pipelines&lt;/a&gt; using &lt;a href=&#34;https://patsy.readthedocs.io/en/latest/formulas.html&#34;&gt;patsy-like formulas&lt;/a&gt;. I have used this approach to generate features in a previous post: &lt;a href=&#34;https://juanitorduz.github.io/glm_pymc3/&#34;&gt;GLM in PyMC3: Out-Of-Sample Predictions&lt;/a&gt;, so I will consider the same data set here for the sake of comparison.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Remark:&lt;/strong&gt; Very recently (2021-09-01) I discovered there is an implementation of this transformer in &lt;a href=&#34;https://github.com/koaning/scikit-lego&#34;&gt;scikit-lego&lt;/a&gt;, see &lt;a href=&#34;https://scikit-lego.readthedocs.io/en/latest/preprocessing.html#Patsy-Formulas&#34;&gt;&lt;code&gt;PatsyTransformer&lt;/code&gt;&lt;/a&gt;. In addition, please refer to the great &lt;a href=&#34;https://calmcode.io/patsy/introduction.html&#34;&gt;tutorial on patsy&lt;/a&gt; in &lt;a href=&#34;https://calmcode.io&#34;&gt;calmcode.io&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Seasonal Bump Functions</title>
       <link>/bump_func/</link>
       <pubDate>Thu, 11 Apr 2019 00:00:00 +0000</pubDate>
-      
       <guid>/bump_func/</guid>
-      <description>Motivated by the nice talk on Winning with Simple, even Linear, Models by Vincent D. Warmerdam, I briefly describe how to construct certain class of bump functions to encode seasonal variables in R.
-Prepare Notebook library(glue) library(lubridate) library(magrittr) library(tidyverse)  Generate Data Let us generate a time sequence variable stored in a tibble.
-# Define time sequence. t &amp;lt;- seq.Date(from = as.Date(&amp;quot;2017-07-01&amp;quot;), to = as.Date(&amp;quot;2019-04-01&amp;quot;), by = &amp;quot;day&amp;quot;) # Store it in a tibble.</description>
+      <description>&lt;p&gt;Motivated by the nice talk on &lt;a href=&#34;https://www.youtube.com/watch?v=68ABAU_V8qI&#34;&gt;Winning with Simple, even Linear, Models&lt;/a&gt; by Vincent D. Warmerdam, I briefly describe how to construct certain class of &lt;a href=&#34;https://en.wikipedia.org/wiki/Bump_function&#34;&gt;bump functions&lt;/a&gt; to encode seasonal variables in &lt;a href=&#34;https://www.r-project.org/&#34;&gt;R&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level1&#34;&gt;&#xA;&lt;h1&gt;Prepare Notebook&lt;/h1&gt;&#xA;&lt;pre class=&#34;r&#34;&gt;&lt;code&gt;library(glue)&#xA;library(lubridate)&#xA;library(magrittr)&#xA;library(tidyverse)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-data&#34; class=&#34;section level1&#34;&gt;&#xA;&lt;h1&gt;Generate Data&lt;/h1&gt;&#xA;&lt;p&gt;Let us generate a time sequence variable stored in a tibble.&lt;/p&gt;&#xA;&lt;pre class=&#34;r&#34;&gt;&lt;code&gt;# Define time sequence. &#xA;t &amp;lt;- seq.Date(from = as.Date(&amp;quot;2017-07-01&amp;quot;), to = as.Date(&amp;quot;2019-04-01&amp;quot;), by = &amp;quot;day&amp;quot;)&#xA;# Store it in a tibble. &#xA;df &amp;lt;- tibble(t = t)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;symmetric-bump-function&#34; class=&#34;section level1&#34;&gt;&#xA;&lt;h1&gt;Symmetric Bump Function&lt;/h1&gt;&#xA;&lt;p&gt;We want to generate a gaussian-like curve around a specific date. The width of the bump function is parametrized by a non-negative number &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon \geq 0\)&lt;/span&gt;. For &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon = 0\)&lt;/span&gt; we generate a dummy variable. Namely, for &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon \neq 0\)&lt;/span&gt;,&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Probability that a given observation is part of a bootstrap sample?</title>
       <link>/bootstrap/</link>
       <pubDate>Wed, 29 Nov 2017 00:00:00 +0000</pubDate>
-      
       <guid>/bootstrap/</guid>
       <description>We study the problem of computing the probability that a given observation is part of a bootstrap sample. We include some numerical simulations.</description>
     </item>
-    
   </channel>
 </rss>

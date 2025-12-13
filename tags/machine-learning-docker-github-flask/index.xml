@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>machine learning, docker, github, flask on Dr. Juan Camilo Orduz</title>
+    <title>Machine Learning, Docker, Github, Flask on Dr. Juan Camilo Orduz</title>
     <link>/tags/machine-learning-docker-github-flask/</link>
-    <description>Recent content in machine learning, docker, github, flask on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Machine Learning, Docker, Github, Flask on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 28 Jan 2020 00:00:00 +0000</lastBuildDate><atom:link href="/tags/machine-learning-docker-github-flask/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 28 Jan 2020 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/machine-learning-docker-github-flask/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Intro ML in Production: Flask, Docker and GitHub Actions</title>
       <link>/ml_prod_intro/</link>
       <pubDate>Tue, 28 Jan 2020 00:00:00 +0000</pubDate>
-      
       <guid>/ml_prod_intro/</guid>
       <description>We describe how to set up a toy-model repository to train and dockerize a machine learning model with data store on aws s3.</description>
     </item>
-    
   </channel>
 </rss>

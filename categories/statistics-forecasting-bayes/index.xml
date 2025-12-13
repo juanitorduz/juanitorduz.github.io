@@ -4,19 +4,16 @@
     <title>Statistics, Forecasting, Bayes on Dr. Juan Camilo Orduz</title>
     <link>/categories/statistics-forecasting-bayes/</link>
     <description>Recent content in Statistics, Forecasting, Bayes on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 02 Jan 2021 00:00:00 +0000</lastBuildDate><atom:link href="/categories/statistics-forecasting-bayes/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 02 Jan 2021 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/statistics-forecasting-bayes/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Gaussian Processes for Time Series Forecasting with PyMC3</title>
       <link>/gp_ts_pymc3/</link>
       <pubDate>Sat, 02 Jan 2021 00:00:00 +0000</pubDate>
-      
       <guid>/gp_ts_pymc3/</guid>
-      <description>In this notebook we translate the forecasting models developed for the post on Gaussian Processes for Time Series Forecasting with Scikit-Learn to the probabilistic Bayesian framework PyMC3. I strongly recommend looking into the following references for more details and examples:
-References:
- An Introduction to Gaussian Process Regression PyMC3 Docs: Gaussian Processes PyMC3 Docs Example: CO2 at Mauna Loa Bayesian Analysis with Python (Second edition) - Chapter 7 Statistical Rethinking - Chapter 14  Prepare Notebook1 import numpy as np import pandas as pd import matplotlib.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this notebook we translate the forecasting models developed for the post on &lt;a href=&#34;https://juanitorduz.github.io/gaussian_process_time_series&#34;&gt;Gaussian Processes for Time Series Forecasting with Scikit-Learn&lt;/a&gt; to the probabilistic Bayesian framework &lt;a href=&#34;https://docs.pymc.io/&#34;&gt;PyMC3&lt;/a&gt;. I strongly recommend looking into the following references for more details and&#xA;examples:&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;References:&lt;/strong&gt;&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://juanitorduz.github.io/gaussian_process_reg/&#34;&gt;An Introduction to Gaussian Process Regression&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://docs.pymc.io/Gaussian_Processes.html&#34;&gt;PyMC3 Docs: Gaussian Processes&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://docs.pymc.io/notebooks/GP-MaunaLoa.html&#34;&gt;PyMC3 Docs Example: CO2 at Mauna Loa&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://github.com/aloctavodia/BAP/blob/master/code/Chp7/07_Gaussian%20process.ipynb&#34;&gt;Bayesian Analysis with Python (Second edition) - Chapter 7&lt;/a&gt;&lt;/li&gt;&#xA;&lt;li&gt;&lt;a href=&#34;https://xcelab.net/rm/statistical-rethinking/&#34;&gt;Statistical Rethinking - Chapter 14&lt;/a&gt;&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;div id=&#34;prepare-notebook1&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook1&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import numpy as np&#xA;import pandas as pd&#xA;import matplotlib.pyplot as plt&#xA;import seaborn as sns&#xA;sns.set_style(&#xA;    style=&amp;#39;darkgrid&amp;#39;, &#xA;    rc={&amp;#39;axes.facecolor&amp;#39;: &amp;#39;.9&amp;#39;, &amp;#39;grid.color&amp;#39;: &amp;#39;.8&amp;#39;}&#xA;)&#xA;sns.set_palette(palette=&amp;#39;deep&amp;#39;)&#xA;sns_c = sns.color_palette(palette=&amp;#39;deep&amp;#39;)&#xA;&#xA;import pymc3 as pm&#xA;import arviz as az&#xA;&#xA;plt.rcParams[&amp;#39;figure.figsize&amp;#39;] = [12, 6]&#xA;plt.rcParams[&amp;#39;figure.dpi&amp;#39;] = 100&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-sample-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Sample Data&lt;/h2&gt;&#xA;&lt;p&gt;Instead of the step-by-step approach we took in &lt;a href=&#34;https://juanitorduz.github.io/gaussian_process_time_series&#34;&gt;Gaussian Processes for Time sSeries Forecasting with Scikit-Learn&lt;/a&gt;, we are just going to develop one model.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

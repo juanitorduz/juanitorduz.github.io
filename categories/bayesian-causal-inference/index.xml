@@ -4,159 +4,121 @@
     <title>Bayesian, Causal Inference on Dr. Juan Camilo Orduz</title>
     <link>/categories/bayesian-causal-inference/</link>
     <description>Recent content in Bayesian, Causal Inference on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 28 Nov 2025 00:00:00 +0000</lastBuildDate><atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 28 Nov 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Causal Inference with Multilevel Models: The Electric Company Example</title>
       <link>/ci_multilevel/</link>
       <pubDate>Fri, 28 Nov 2025 00:00:00 +0000</pubDate>
-      
       <guid>/ci_multilevel/</guid>
-      <description>Estimating causal effects from clustered or grouped data requires careful attention to the hierarchical structure of observations. When units are nested within groups such as students within classrooms, or patients within hospitals—ignoring this structure can lead to incorrect standard errors, inefficient estimates, and invalid causal inferences. Multilevel models provide a principled framework for handling such data while leveraging the advantages of partial pooling across groups.
-This notebook reproduces and extends the analysis from Chapter 23 of Gelman and Hill’s “Data Analysis Using Regression and Multilevel/Hierarchical Models”.</description>
+      <description>&lt;p&gt;Estimating causal effects from clustered or grouped data requires careful attention to the hierarchical structure of observations. When units are nested within groups such as students within classrooms, or patients within hospitals—ignoring this structure can lead to incorrect standard errors, inefficient estimates, and invalid causal inferences. Multilevel models provide a principled framework for handling such data while leveraging the advantages of partial pooling across groups.&lt;/p&gt;&#xA;&lt;p&gt;This notebook reproduces and extends the analysis from &lt;strong&gt;Chapter 23&lt;/strong&gt; of Gelman and Hill’s &lt;em&gt;“Data Analysis Using Regression and Multilevel/Hierarchical Models”&lt;/em&gt;. We demonstrate two complementary approaches to modeling treatment effects in hierarchical data: first, a model with varying intercepts that efficiently controls for group-level confounding, and second, a more flexible covariance model that allows treatment effects themselves to vary across groups. Together, these models illustrate how multilevel structures enhance both the efficiency and interpretability of causal effect estimation. In addition to reproducing the analysis, we show how to efficiently vectorize the model (across &lt;code&gt;grades&lt;/code&gt; and &lt;code&gt;pairs&lt;/code&gt;) using PyMC.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Introduction to Causal Inference with PPLs</title>
       <link>/intro_causal_inference_ppl_pymc/</link>
       <pubDate>Thu, 27 Nov 2025 00:00:00 +0000</pubDate>
-      
       <guid>/intro_causal_inference_ppl_pymc/</guid>
-      <description>Causal inference asks a deceptively simple question: “What would have happened if things were different?” Whether we’re evaluating a job training program, testing a new medical treatment, or analyzing the impact of a policy change, we want to understand the causal effect of an intervention not just observe correlations in the data.
-Traditional statistical methods often struggle with causal questions because they conflate correlation with causation. When confounders variables that affect both treatment assignment and outcomes are present, naive comparisons can lead us astray.</description>
+      <description>&lt;p&gt;Causal inference asks a deceptively simple question: &lt;em&gt;“What would have happened if things were&#xA;different?”&lt;/em&gt; Whether we’re evaluating a job training program, testing a new medical treatment,&#xA;or analyzing the impact of a policy change, we want to understand the causal effect of an&#xA;intervention not just observe correlations in the data.&lt;/p&gt;&#xA;&lt;p&gt;Traditional statistical methods often struggle with causal questions because they conflate&#xA;correlation with causation. When confounders variables that affect both treatment assignment&#xA;and outcomes are present, naive comparisons can lead us astray. This notebook demonstrates how&#xA;&lt;strong&gt;probabilistic programming languages (PPLs)&lt;/strong&gt; provide a powerful framework for causal inference&#xA;that makes confounding explicit, quantifies uncertainty properly, and enables us to answer&#xA;counterfactual questions directly.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Introduction to Bayesian Power Analysis: Exclude a Null Value</title>
       <link>/power_sample_size_exclude_null/</link>
       <pubDate>Tue, 29 Apr 2025 00:00:00 +0000</pubDate>
-      
       <guid>/power_sample_size_exclude_null/</guid>
-      <description>Recently, I have been thinking a lot about data-driven decision-making, particularly in the context of experimentation. Why? I am uncomfortable with the common practice of using p-values and frequentist null hypothesis significance testing to make decisions. I don’t feel confident about the approach. I think it is because I do not get it. For instance, when I am forced to explain the definition of a confidence interval precisely, it does not come naturally.</description>
+      <description>&lt;p&gt;Recently, I have been thinking a lot about data-driven decision-making, particularly in the context of experimentation. Why? I am uncomfortable with the common practice of using p-values and frequentist null hypothesis significance testing to make decisions. I don’t feel confident about the approach. I think it is because I do not get it. For instance, when I am forced to explain the definition of a confidence interval precisely, it does not come naturally. I always need to check with a trustworthy source (it is common to find wrong explanations online). If I do not understand it, I cannot use it, especially for decision-making. I always play this exercise when thinking about business recommendations in real applications: “Would I bet my salary on this?” Whenever I work with p-values, the answer to this question is no.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Prior Predictive Modeling in Bayesian AB Testing</title>
       <link>/prior_predictive_ab_testing/</link>
       <pubDate>Tue, 11 Mar 2025 00:00:00 +0000</pubDate>
-      
       <guid>/prior_predictive_ab_testing/</guid>
-      <description>In this notebook we generate a simulation to reproduce the results of the great blog post “The Bet Test: Spotting Problems in Bayesian A/B Test Analysis”, where Tyler Buffington discussed about some caveats of using Bayesian AB testing when not thinking about the prior predictive distribution on the key metrics of interested. If you haven’t read it yet, please do it before continuing ;)
-In a nutshell, the blog post showcases the risk of using informative priors to speed-up A/B tests in a naive way.</description>
+      <description>&lt;p&gt;In this notebook we generate a simulation to reproduce the results of the great blog post &lt;a href=&#34;https://www.geteppo.com/blog/the-bet-test-problems-in-bayesian-ab-test-analysis&#34;&gt;“The Bet Test: Spotting Problems in Bayesian A/B Test Analysis”&lt;/a&gt;, where &lt;a href=&#34;https://www.geteppo.com/author/tyler-buffington&#34;&gt;Tyler Buffington&lt;/a&gt; discussed about some caveats of using Bayesian AB testing when not thinking about the prior predictive distribution on the key metrics of interested. If you haven’t read it yet, please do it before continuing ;)&lt;/p&gt;&#xA;&lt;p&gt;In a nutshell, the blog post showcases the risk of using informative priors to speed-up A/B tests in a naive way. To be fair, it is easy to fall into this trap (I have been there 🙈), so I think it is great to have these discussions to make us think twice about what we are doing.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Hacking the TSB Model for Intermediate Time Series to Accommodate for Availability Constraints</title>
       <link>/availability_tsb/</link>
       <pubDate>Mon, 25 Nov 2024 00:00:00 +0000</pubDate>
-      
       <guid>/availability_tsb/</guid>
-      <description>In many demand forecasting problems, we face the challenge of predicting the demand for a product or service with very sparse data. This is especially true in retail, where many products are only sold occasionally. This sparsity can come from many sources, as greatly described in the (recommended!) blog post “Why zeroes happen” by Ivan Svetunkov. On one hand, the sparsity can simply come from the lack of demand for the product.</description>
+      <description>&lt;p&gt;In many demand forecasting problems, we face the challenge of predicting the demand for a product or service with very sparse data. This is especially true in retail, where many products are only sold occasionally. This sparsity can come from many sources, as greatly described in the (recommended!) blog post &lt;a href=&#34;https://openforecast.org/2024/11/18/why-zeroes-happen/&#34;&gt;“Why zeroes happen”&lt;/a&gt; by &lt;a href=&#34;https://openforecast.org/&#34;&gt;Ivan Svetunkov&lt;/a&gt;. On one hand, the sparsity can simply come from the lack of demand for the product. On the other hand, the sparsity can also come from the lack of availability of the product. For example, a product might be only available for purchase during certain times of the year or only in certain geographical locations. There could be other reasons as well. In this notebook, we experiment with an extension on a classical TSB time-series model for intermediate time series to accommodate availability constraints.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Bayesian CUPED &amp; Sensitivity Analysis</title>
       <link>/bayesian_cuped/</link>
       <pubDate>Tue, 29 Oct 2024 00:00:00 +0000</pubDate>
-      
       <guid>/bayesian_cuped/</guid>
-      <description>Motivated by the great blog post by Understanding CUPED by Matteo Courthoud, we explore a Bayesian approach to CUPED to understand its sensitivity with respect to the covariance parameter \(\theta\) of the pre-post mean model. I will assume that the reader is already familiar with CUPED and has read Matteo’s blog post (highly recommended!). Here we focus on the sensitivity component. We do not do this in full generality but rather focus on the specific example of Matteo’s blog post.</description>
+      <description>&lt;p&gt;Motivated by the great blog post by &lt;a href=&#34;https://towardsdatascience.com/understanding-cuped-a822523641af&#34;&gt;Understanding CUPED&lt;/a&gt; by &lt;a href=&#34;https://medium.com/@matteo.courthoud&#34;&gt;Matteo Courthoud&lt;/a&gt;, we explore a Bayesian approach to &lt;a href=&#34;https://dl.acm.org/doi/abs/10.1145/2433396.2433413&#34;&gt;CUPED&lt;/a&gt; to understand its sensitivity with respect to the covariance parameter &lt;span class=&#34;math inline&#34;&gt;\(\theta\)&lt;/span&gt; of the pre-post mean model. I will assume that the reader is already familiar with CUPED and has read Matteo’s blog post (highly recommended!). Here we focus on the sensitivity component. We do not do this in full generality but rather focus on the specific example of Matteo’s blog post.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Cohort Revenue Retention Analysis with Flax and NumPyro</title>
       <link>/revenue_retention_numpyro/</link>
       <pubDate>Mon, 08 Jan 2024 00:00:00 +0000</pubDate>
-      
       <guid>/revenue_retention_numpyro/</guid>
-      <description>In this notebook we present an alternative implementation of the cohort-revenue-retention model presented in the blog post Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach where we show how to replace the BART retention component with a general neural network implemented with Flax. This allows faster inference, as we can use NumPyro’s NUTS sampler or any of the stochastic variational inference (SVI) algorithms available. We could even use a wider family of samplers using the newly released package Bayeux or the great BlackJax (see for example, the MLP Classifier Example).</description>
+      <description>&lt;p&gt;In this notebook we present an alternative implementation of the cohort-revenue-retention model presented in the blog post &lt;a href=&#34;https://juanitorduz.github.io/revenue_retention/&#34;&gt;Cohort Revenue &amp;amp; Retention Analysis: A Bayesian Approach&lt;/a&gt; where we show how to replace the &lt;a href=&#34;https://github.com/pymc-devs/pymc-bart&#34;&gt;BART&lt;/a&gt; retention component with a general neural network implemented with &lt;a href=&#34;https://github.com/google/flax&#34;&gt;Flax&lt;/a&gt;. This allows faster inference, as we can use &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;NumPyro&lt;/a&gt;’s NUTS sampler or any of the stochastic variational inference (SVI) algorithms available. We could even use a wider family of samplers using the newly released package &lt;a href=&#34;https://jax-ml.github.io/bayeux/&#34;&gt;Bayeux&lt;/a&gt; or the great &lt;a href=&#34;https://github.com/blackjax-devs/blackjax&#34;&gt;BlackJax&lt;/a&gt; (see for example, the &lt;a href=&#34;https://blackjax-devs.github.io/sampling-book/models/mlp.html&#34;&gt;MLP Classifier Example&lt;/a&gt;).&#xA;We use the same simulated dataset to be able to compare the approaches. Overall, the retention and revenue in and out-of sample predictions, as well as the credible intervals are very similar to the ones obtained with the &lt;a href=&#34;https://github.com/pymc-devs/pymc-bart&#34;&gt;BART&lt;/a&gt; model.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Using Data Science for Bad Decision-Making: A Case Study</title>
       <link>/causal_inference_example/</link>
       <pubDate>Fri, 16 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/causal_inference_example/</guid>
-      <description>You will probably be intrigued by the title of this post. In this notebook I do not want to present a fancy data science trick or to test a novel technique. I would simply like to tell a story. A story about how data science can be used to make bad decisions. “How can this be?” you might ask. Everyone has been saying that data is the way to unlock insights to gain a competitive advantage.</description>
+      <description>&lt;p&gt;You will probably be intrigued by the title of this post. In this notebook I do not want to present a fancy data science trick or to test a novel technique. I would simply like to tell a story. A story about how data science can be used to make bad decisions. “How can this be?” you might ask. Everyone has been saying that data is the way to unlock insights to gain a competitive advantage. Well, it is true. But it is also true that data can be used to make decisions that can actually hurt your business. There are many possible reasons you could think of (and you might even have experienced some of them). The story I am about to tell won’t be about bad algorithms or bad data. It will be about thinking about data as simply&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Regression Discontinuity with GLMs and Kernel Weighting</title>
       <link>/regression_glmdiscontinuity_glm/</link>
       <pubDate>Sat, 10 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/regression_glmdiscontinuity_glm/</guid>
-      <description>In this notebook we explore regression discontinuity design using generalized linear models (GLMs) and kernel weighting from a bayesian perspective. The motivation comes from applications when:
-The data does not fit the usual linear regression OLS normal likelihood (e.g. modeling count data). The data size is limited.  In addition, we experiment with kernel weighting to weight the data points near the cutoff more heavily. This is a common technique in RD analysis, but it is not always clear how to do this with GLMs in the bayesian framework.</description>
+      <description>&lt;p&gt;In this notebook we explore &lt;a href=&#34;https://en.wikipedia.org/wiki/Regression_discontinuity_design&#34;&gt;regression discontinuity design&lt;/a&gt; using &lt;a href=&#34;https://en.wikipedia.org/wiki/Generalized_linear_model&#34;&gt;generalized linear models (GLMs)&lt;/a&gt; and kernel weighting from a bayesian perspective. The motivation comes from applications when:&lt;/p&gt;&#xA;&lt;ol style=&#34;list-style-type: decimal&#34;&gt;&#xA;&lt;li&gt;The data does not fit the usual linear regression OLS normal likelihood (e.g. modeling count data).&lt;/li&gt;&#xA;&lt;li&gt;The data size is limited.&lt;/li&gt;&#xA;&lt;/ol&gt;&#xA;&lt;p&gt;In addition, we experiment with kernel weighting to weight the data points near the cutoff more heavily. This is a common technique in RD analysis, but it is not always clear how to do this with GLMs in the bayesian framework. We show how to do this with the &lt;a href=&#34;https://www.pymc.io/welcome.html&#34;&gt;PyMC&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>ATE Estimation for Count Data</title>
       <link>/causal_inference_negative_binomial/</link>
       <pubDate>Wed, 07 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/causal_inference_negative_binomial/</guid>
-      <description>This notebook is a continuation of the previous notebook on ATE estimation for binary data with logistic regression based on the sequence of (great!) posts by Solomon Kurz. In this notebook, we will focus on count data. We reproduce in python an example presented in the post Causal inference with count regression by Solomon Kurz. Our intention is to simply show how to port these type of model to bambi.</description>
+      <description>&lt;p&gt;This notebook is a continuation of the &lt;a href=&#34;https://juanitorduz.github.io/causal_inference_logistic/&#34;&gt;previous notebook&lt;/a&gt; on ATE estimation for binary data with logistic regression based on the sequence of (great!) posts by &lt;a href=&#34;https://solomonkurz.netlify.app/&#34;&gt;Solomon Kurz&lt;/a&gt;. In this notebook, we will focus on count data. We reproduce in python an example presented in the post &lt;a href=&#34;https://solomonkurz.netlify.app/blog/2023-05-07-causal-inference-with-count-regression/&#34;&gt;&lt;em&gt;Causal inference with count regression&lt;/em&gt;&lt;/a&gt; by Solomon Kurz. Our intention is to simply show how to port these type of model to &lt;a href=&#34;https://bambinos.github.io/bambi/&#34;&gt;&lt;code&gt;bambi&lt;/code&gt;&lt;/a&gt;. In addition, as in the previous post, we compare the ATE estimation with a simple linear regression model.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>ATE Estimation with Logistic Regression</title>
       <link>/causal_inference_logistic/</link>
       <pubDate>Sun, 04 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/causal_inference_logistic/</guid>
-      <description>In this notebook, I want to reproduce some components of the extensive blog post Causal inference with Bayesian models by Solomon Kurz. Specifically, I want to deep dive into the logistic regression model used to estimate the average treatment effect (ATE) of the study Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial by Wilson, et.al. I can only recommend to read the original sequence of posts Solomon has written on causal inference.</description>
+      <description>&lt;p&gt;In this notebook, I want to reproduce some components of the extensive blog post &lt;a href=&#34;https://solomonkurz.netlify.app/blog/2023-04-30-causal-inference-with-bayesian-models/&#34;&gt;Causal inference with Bayesian models&lt;/a&gt; by &lt;a href=&#34;https://solomonkurz.netlify.app/&#34;&gt;Solomon Kurz&lt;/a&gt;. Specifically, I want to deep dive into the &lt;em&gt;logistic regression model&lt;/em&gt; used to estimate the &lt;em&gt;average treatment effect&lt;/em&gt; (ATE) of the study &lt;a href=&#34;https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1002479&#34;&gt;&lt;em&gt;Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial&lt;/em&gt;&lt;/a&gt; by Wilson, et.al. I can only recommend to read the original sequence of posts Solomon has written on causal inference. They are very well written, easy to follow and provide a lot of insights into the topic.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Experimentation, Non-Compliance and Instrumental Variables with PyMC</title>
       <link>/iv_pymc/</link>
       <pubDate>Mon, 20 Feb 2023 00:00:00 +0000</pubDate>
-      
       <guid>/iv_pymc/</guid>
-      <description>In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables.
-By non-compliance we mean that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can not simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the time not at random and may introduce confounders.</description>
+      <description>&lt;p&gt;In this notebook we present an example of how to use PyMC to estimate the effect of a treatment in an experiment where there is non-compliance through the use of instrumental variables.&lt;/p&gt;&#xA;&lt;p&gt;By non-compliance we mean that the treatment assignment does not guarantee that the treatment is actually received by the treated. The main challenge is that we can not simply estimate the treatment effect as a difference in means since the non-compliance mechanism is most of the time not at random and may introduce confounders. For a more detailed discussion of the problem see &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/09-Non-Compliance-and-LATE.html&#34;&gt;Chapter 9&lt;/a&gt; in the (amazing!) book &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/landing-page.html&#34;&gt;&lt;em&gt;Causal Inference for The Brave and True&lt;/em&gt;&lt;/a&gt; by &lt;a href=&#34;https://github.com/matheusfacure&#34;&gt;Matheus Facure Alves&lt;/a&gt;. One very common tool to tackle such problem are instrumental variables (see &lt;a href=&#34;https://matheusfacure.github.io/python-causality-handbook/08-Instrumental-Variables.html&#34;&gt;Chapter 8&lt;/a&gt;) for a nice introduction. In essence, we can use the variant assignment as an instrument to control for confounders introduced by the non-compliance mechanism.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Cohort Revenue &amp; Retention Analysis: A Bayesian Approach</title>
       <link>/revenue_retention/</link>
       <pubDate>Mon, 23 Jan 2023 00:00:00 +0000</pubDate>
-      
       <guid>/revenue_retention/</guid>
-      <description>In this notebook we extend the cohort retention model presented in the post Cohort Retention Analysis with BART so that we just model retention and per cohort simultaneously (we recommend reading the referenced post before this one). The idea is to keep modeling the retention using a Bayesian Additive Regression Tree (BART) model (see pymc-bart) and linearly model the revenue per cohort using a Gamma distribution. We couple the retention and revenue components in a similar way as presented in the notebook Introduction to Bayesian A/B Testing.</description>
+      <description>&lt;p&gt;In this notebook we extend the cohort retention model presented in the post &lt;a href=&#34;https://juanitorduz.github.io/retention_bart/&#34;&gt;Cohort Retention Analysis with BART&lt;/a&gt; so that we just model retention &lt;strong&gt;and&lt;/strong&gt; per cohort simultaneously (we recommend reading the referenced post before this one). The idea is to keep modeling the retention using a Bayesian Additive Regression Tree (BART) model (see &lt;a href=&#34;https://www.pymc.io/projects/bart/en/latest/&#34;&gt;&lt;code&gt;pymc-bart&lt;/code&gt;&lt;/a&gt;) and linearly model the revenue per cohort using a Gamma distribution. We couple the retention and revenue components in a similar way as presented in the notebook &lt;a href=&#34;https://www.pymc.io/projects/examples/en/latest/case_studies/bayesian_ab_testing_introduction.html&#34;&gt;Introduction to Bayesian A/B Testing&lt;/a&gt;. For this simulated example we use a synthetic data set, see the blog post &lt;a href=&#34;https://juanitorduz.github.io/retention/&#34;&gt;A Simple Cohort Retention Analysis in PyMC&lt;/a&gt; For more details. &lt;a href=&#34;https://github.com/juanitorduz/website_projects/blob/master/data/retention_data.csv&#34;&gt;Here&lt;/a&gt; you can find the data to reproduce the results.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Cohort Retention Analysis with BART</title>
       <link>/retention_bart/</link>
       <pubDate>Mon, 02 Jan 2023 00:00:00 +0000</pubDate>
-      
       <guid>/retention_bart/</guid>
-      <description>In this notebook we study an alternative approach for the cohort analysis problem presented in A Simple Cohort Retention Analysis in PyMC. Instead of using a linear model to estimate the retention rate, we use a Bayesian Additive Regression Tree (BART) model(see pymc-bart). The BART model is a flexible non-parametric model that can be used to model complex relationships between the response and the predictors.
-Prepare Notebook import arviz as az import matplotlib.</description>
+      <description>&lt;p&gt;In this notebook we study an alternative approach for the cohort analysis problem presented in &lt;a href=&#34;https://juanitorduz.github.io/retention/&#34;&gt;A Simple Cohort Retention Analysis in PyMC&lt;/a&gt;. Instead of using a linear model to estimate the retention rate, we use a Bayesian Additive Regression Tree (BART) model(see &lt;a href=&#34;https://www.pymc.io/projects/bart/en/latest/&#34;&gt;&lt;code&gt;pymc-bart&lt;/code&gt;&lt;/a&gt;). The BART model is a flexible non-parametric model that can be used to model complex relationships between the response and the predictors.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import matplotlib.ticker as mtick&#xA;import numpy as np&#xA;import pandas as pd&#xA;import pymc as pm&#xA;import pymc_bart as pmb&#xA;import pytensor.tensor as pt&#xA;import seaborn as sns&#xA;&#xA;from scipy.special import expit, logit&#xA;from sklearn.preprocessing import LabelEncoder&#xA;from pymc_bart.split_rules import ContinuousSplitRule, SubsetSplitRule&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [12, 7]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;seed: int = sum(map(ord, &amp;quot;retention&amp;quot;))&#xA;rng: np.random.Generator = np.random.default_rng(seed=seed)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;read-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Read Data&lt;/h2&gt;&#xA;&lt;p&gt;Here we simply read the data from the previous post.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>A Simple Cohort Retention Analysis in PyMC</title>
       <link>/retention/</link>
       <pubDate>Tue, 20 Dec 2022 00:00:00 +0000</pubDate>
-      
       <guid>/retention/</guid>
-      <description>In this notebook we present a simple approach to study cohort retention analysis through a simulated data set. The aim is to understand how retention rates change over time and provide a simple model to predict them (with uncertainty estimates!). We do not expect this technique to be a silver bullet for all retention problems, but rather a simple approach to get started with the problem.
-Remark: A motivation for this notebook was the great post Bayesian Age/Period/Cohort Models in Python with PyMC by Austin Rochford.</description>
+      <description>&lt;p&gt;In this notebook we present a simple approach to study cohort retention analysis through a simulated data set. The aim is to understand how retention rates change over time and provide a simple model to predict them (with uncertainty estimates!). We do not expect this technique to be a silver bullet for all retention problems, but rather a simple approach to get started with the problem.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Remark:&lt;/strong&gt; A motivation for this notebook was the great post &lt;em&gt;&lt;a href=&#34;https://www.austinrochford.com/posts/apc-pymc.html&#34;&gt;Bayesian Age/Period/Cohort Models in Python with PyMC&lt;/a&gt;&lt;/em&gt; by &lt;a href=&#34;https://www.austinrochford.com/about.html&#34;&gt;Austin Rochford&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Geo-Experimentation via Time Based Regression in PyMC</title>
       <link>/time_based_regression_pymc/</link>
       <pubDate>Thu, 01 Dec 2022 00:00:00 +0000</pubDate>
-      
       <guid>/time_based_regression_pymc/</guid>
-      <description>Introduction In this notebook I describe and present an implementation of the time based regression (TBR) approach to marketing campaign analysis in the context of geo experimentation presented in the paper Estimating Ad Effectiveness using Geo Experiments in a Time-Based Regression Framework by Jouni Kerman, Peng Wang and Jon Vaver (Google, Inc. 2017). I strongly recommend reading the paper as it is quite clear in the exposition of the approach and presents some simulation results.</description>
+      <description>&lt;div id=&#34;introduction&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Introduction&lt;/h2&gt;&#xA;&lt;p&gt;In this notebook I describe and present an implementation of the &lt;strong&gt;time based regression&lt;/strong&gt; (TBR) approach to marketing campaign analysis in the context of geo experimentation presented in the paper &lt;a href=&#34;https://research.google/pubs/pub45950/&#34;&gt;Estimating Ad Effectiveness using Geo Experiments in a Time-Based Regression Framework&lt;/a&gt; by Jouni Kerman, Peng Wang and Jon Vaver (Google, Inc. 2017). I strongly recommend reading the paper as it is quite clear in the exposition of the approach and presents some simulation results. Here I will focus on the basic model specification and on the implementation in PyMC.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

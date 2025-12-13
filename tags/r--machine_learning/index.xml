@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>R,  Machine_learning on Dr. Juan Camilo Orduz</title>
+    <link>/tags/r--machine_learning/</link>
+    <description>Recent content in R,  Machine_learning on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Thu, 11 Apr 2019 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/r--machine_learning/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Seasonal Bump Functions</title>
+      <link>/bump_func/</link>
+      <pubDate>Thu, 11 Apr 2019 00:00:00 +0000</pubDate>
+      <guid>/bump_func/</guid>
+      <description>&lt;p&gt;Motivated by the nice talk on &lt;a href=&#34;https://www.youtube.com/watch?v=68ABAU_V8qI&#34;&gt;Winning with Simple, even Linear, Models&lt;/a&gt; by Vincent D. Warmerdam, I briefly describe how to construct certain class of &lt;a href=&#34;https://en.wikipedia.org/wiki/Bump_function&#34;&gt;bump functions&lt;/a&gt; to encode seasonal variables in &lt;a href=&#34;https://www.r-project.org/&#34;&gt;R&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level1&#34;&gt;&#xA;&lt;h1&gt;Prepare Notebook&lt;/h1&gt;&#xA;&lt;pre class=&#34;r&#34;&gt;&lt;code&gt;library(glue)&#xA;library(lubridate)&#xA;library(magrittr)&#xA;library(tidyverse)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-data&#34; class=&#34;section level1&#34;&gt;&#xA;&lt;h1&gt;Generate Data&lt;/h1&gt;&#xA;&lt;p&gt;Let us generate a time sequence variable stored in a tibble.&lt;/p&gt;&#xA;&lt;pre class=&#34;r&#34;&gt;&lt;code&gt;# Define time sequence. &#xA;t &amp;lt;- seq.Date(from = as.Date(&amp;quot;2017-07-01&amp;quot;), to = as.Date(&amp;quot;2019-04-01&amp;quot;), by = &amp;quot;day&amp;quot;)&#xA;# Store it in a tibble. &#xA;df &amp;lt;- tibble(t = t)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;symmetric-bump-function&#34; class=&#34;section level1&#34;&gt;&#xA;&lt;h1&gt;Symmetric Bump Function&lt;/h1&gt;&#xA;&lt;p&gt;We want to generate a gaussian-like curve around a specific date. The width of the bump function is parametrized by a non-negative number &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon \geq 0\)&lt;/span&gt;. For &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon = 0\)&lt;/span&gt; we generate a dummy variable. Namely, for &lt;span class=&#34;math inline&#34;&gt;\(\varepsilon \neq 0\)&lt;/span&gt;,&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

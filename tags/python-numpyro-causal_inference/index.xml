@@ -1,39 +1,33 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, numpyro, causal_inference on Dr. Juan Camilo Orduz</title>
+    <title>Python, Numpyro, Causal_inference on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-numpyro-causal_inference/</link>
-    <description>Recent content in python, numpyro, causal_inference on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Numpyro, Causal_inference on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 11 Mar 2025 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 11 Mar 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-numpyro-causal_inference/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Prior Predictive Modeling in Bayesian AB Testing</title>
       <link>/prior_predictive_ab_testing/</link>
       <pubDate>Tue, 11 Mar 2025 00:00:00 +0000</pubDate>
-      
       <guid>/prior_predictive_ab_testing/</guid>
-      <description>In this notebook we generate a simulation to reproduce the results of the great blog post “The Bet Test: Spotting Problems in Bayesian A/B Test Analysis”, where Tyler Buffington discussed about some caveats of using Bayesian AB testing when not thinking about the prior predictive distribution on the key metrics of interested. If you haven’t read it yet, please do it before continuing ;)
-In a nutshell, the blog post showcases the risk of using informative priors to speed-up A/B tests in a naive way.</description>
+      <description>&lt;p&gt;In this notebook we generate a simulation to reproduce the results of the great blog post &lt;a href=&#34;https://www.geteppo.com/blog/the-bet-test-problems-in-bayesian-ab-test-analysis&#34;&gt;“The Bet Test: Spotting Problems in Bayesian A/B Test Analysis”&lt;/a&gt;, where &lt;a href=&#34;https://www.geteppo.com/author/tyler-buffington&#34;&gt;Tyler Buffington&lt;/a&gt; discussed about some caveats of using Bayesian AB testing when not thinking about the prior predictive distribution on the key metrics of interested. If you haven’t read it yet, please do it before continuing ;)&lt;/p&gt;&#xA;&lt;p&gt;In a nutshell, the blog post showcases the risk of using informative priors to speed-up A/B tests in a naive way. To be fair, it is easy to fall into this trap (I have been there 🙈), so I think it is great to have these discussions to make us think twice about what we are doing.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Hacking the TSB Model for Intermediate Time Series to Accommodate for Availability Constraints</title>
       <link>/availability_tsb/</link>
       <pubDate>Mon, 25 Nov 2024 00:00:00 +0000</pubDate>
-      
       <guid>/availability_tsb/</guid>
-      <description>In many demand forecasting problems, we face the challenge of predicting the demand for a product or service with very sparse data. This is especially true in retail, where many products are only sold occasionally. This sparsity can come from many sources, as greatly described in the (recommended!) blog post “Why zeroes happen” by Ivan Svetunkov. On one hand, the sparsity can simply come from the lack of demand for the product.</description>
+      <description>&lt;p&gt;In many demand forecasting problems, we face the challenge of predicting the demand for a product or service with very sparse data. This is especially true in retail, where many products are only sold occasionally. This sparsity can come from many sources, as greatly described in the (recommended!) blog post &lt;a href=&#34;https://openforecast.org/2024/11/18/why-zeroes-happen/&#34;&gt;“Why zeroes happen”&lt;/a&gt; by &lt;a href=&#34;https://openforecast.org/&#34;&gt;Ivan Svetunkov&lt;/a&gt;. On one hand, the sparsity can simply come from the lack of demand for the product. On the other hand, the sparsity can also come from the lack of availability of the product. For example, a product might be only available for purchase during certain times of the year or only in certain geographical locations. There could be other reasons as well. In this notebook, we experiment with an extension on a classical TSB time-series model for intermediate time series to accommodate availability constraints.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Bayesian CUPED &amp; Sensitivity Analysis</title>
       <link>/bayesian_cuped/</link>
       <pubDate>Tue, 29 Oct 2024 00:00:00 +0000</pubDate>
-      
       <guid>/bayesian_cuped/</guid>
-      <description>Motivated by the great blog post by Understanding CUPED by Matteo Courthoud, we explore a Bayesian approach to CUPED to understand its sensitivity with respect to the covariance parameter \(\theta\) of the pre-post mean model. I will assume that the reader is already familiar with CUPED and has read Matteo’s blog post (highly recommended!). Here we focus on the sensitivity component. We do not do this in full generality but rather focus on the specific example of Matteo’s blog post.</description>
+      <description>&lt;p&gt;Motivated by the great blog post by &lt;a href=&#34;https://towardsdatascience.com/understanding-cuped-a822523641af&#34;&gt;Understanding CUPED&lt;/a&gt; by &lt;a href=&#34;https://medium.com/@matteo.courthoud&#34;&gt;Matteo Courthoud&lt;/a&gt;, we explore a Bayesian approach to &lt;a href=&#34;https://dl.acm.org/doi/abs/10.1145/2433396.2433413&#34;&gt;CUPED&lt;/a&gt; to understand its sensitivity with respect to the covariance parameter &lt;span class=&#34;math inline&#34;&gt;\(\theta\)&lt;/span&gt; of the pre-post mean model. I will assume that the reader is already familiar with CUPED and has read Matteo’s blog post (highly recommended!). Here we focus on the sensitivity component. We do not do this in full generality but rather focus on the specific example of Matteo’s blog post.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

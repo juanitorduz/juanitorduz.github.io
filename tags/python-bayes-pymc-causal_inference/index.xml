@@ -1,48 +1,40 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, bayes, pymc, causal_inference on Dr. Juan Camilo Orduz</title>
+    <title>Python, Bayes, Pymc, Causal_inference on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-bayes-pymc-causal_inference/</link>
-    <description>Recent content in python, bayes, pymc, causal_inference on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Bayes, Pymc, Causal_inference on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 16 Jun 2023 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-bayes-pymc-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 16 Jun 2023 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-bayes-pymc-causal_inference/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Using Data Science for Bad Decision-Making: A Case Study</title>
       <link>/causal_inference_example/</link>
       <pubDate>Fri, 16 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/causal_inference_example/</guid>
-      <description>You will probably be intrigued by the title of this post. In this notebook I do not want to present a fancy data science trick or to test a novel technique. I would simply like to tell a story. A story about how data science can be used to make bad decisions. “How can this be?” you might ask. Everyone has been saying that data is the way to unlock insights to gain a competitive advantage.</description>
+      <description>&lt;p&gt;You will probably be intrigued by the title of this post. In this notebook I do not want to present a fancy data science trick or to test a novel technique. I would simply like to tell a story. A story about how data science can be used to make bad decisions. “How can this be?” you might ask. Everyone has been saying that data is the way to unlock insights to gain a competitive advantage. Well, it is true. But it is also true that data can be used to make decisions that can actually hurt your business. There are many possible reasons you could think of (and you might even have experienced some of them). The story I am about to tell won’t be about bad algorithms or bad data. It will be about thinking about data as simply&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>Regression Discontinuity with GLMs and Kernel Weighting</title>
       <link>/regression_glmdiscontinuity_glm/</link>
       <pubDate>Sat, 10 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/regression_glmdiscontinuity_glm/</guid>
-      <description>In this notebook we explore regression discontinuity design using generalized linear models (GLMs) and kernel weighting from a bayesian perspective. The motivation comes from applications when:
-The data does not fit the usual linear regression OLS normal likelihood (e.g. modeling count data). The data size is limited.  In addition, we experiment with kernel weighting to weight the data points near the cutoff more heavily. This is a common technique in RD analysis, but it is not always clear how to do this with GLMs in the bayesian framework.</description>
+      <description>&lt;p&gt;In this notebook we explore &lt;a href=&#34;https://en.wikipedia.org/wiki/Regression_discontinuity_design&#34;&gt;regression discontinuity design&lt;/a&gt; using &lt;a href=&#34;https://en.wikipedia.org/wiki/Generalized_linear_model&#34;&gt;generalized linear models (GLMs)&lt;/a&gt; and kernel weighting from a bayesian perspective. The motivation comes from applications when:&lt;/p&gt;&#xA;&lt;ol style=&#34;list-style-type: decimal&#34;&gt;&#xA;&lt;li&gt;The data does not fit the usual linear regression OLS normal likelihood (e.g. modeling count data).&lt;/li&gt;&#xA;&lt;li&gt;The data size is limited.&lt;/li&gt;&#xA;&lt;/ol&gt;&#xA;&lt;p&gt;In addition, we experiment with kernel weighting to weight the data points near the cutoff more heavily. This is a common technique in RD analysis, but it is not always clear how to do this with GLMs in the bayesian framework. We show how to do this with the &lt;a href=&#34;https://www.pymc.io/welcome.html&#34;&gt;PyMC&lt;/a&gt;.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>ATE Estimation for Count Data</title>
       <link>/causal_inference_negative_binomial/</link>
       <pubDate>Wed, 07 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/causal_inference_negative_binomial/</guid>
-      <description>This notebook is a continuation of the previous notebook on ATE estimation for binary data with logistic regression based on the sequence of (great!) posts by Solomon Kurz. In this notebook, we will focus on count data. We reproduce in python an example presented in the post Causal inference with count regression by Solomon Kurz. Our intention is to simply show how to port these type of model to bambi.</description>
+      <description>&lt;p&gt;This notebook is a continuation of the &lt;a href=&#34;https://juanitorduz.github.io/causal_inference_logistic/&#34;&gt;previous notebook&lt;/a&gt; on ATE estimation for binary data with logistic regression based on the sequence of (great!) posts by &lt;a href=&#34;https://solomonkurz.netlify.app/&#34;&gt;Solomon Kurz&lt;/a&gt;. In this notebook, we will focus on count data. We reproduce in python an example presented in the post &lt;a href=&#34;https://solomonkurz.netlify.app/blog/2023-05-07-causal-inference-with-count-regression/&#34;&gt;&lt;em&gt;Causal inference with count regression&lt;/em&gt;&lt;/a&gt; by Solomon Kurz. Our intention is to simply show how to port these type of model to &lt;a href=&#34;https://bambinos.github.io/bambi/&#34;&gt;&lt;code&gt;bambi&lt;/code&gt;&lt;/a&gt;. In addition, as in the previous post, we compare the ATE estimation with a simple linear regression model.&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>ATE Estimation with Logistic Regression</title>
       <link>/causal_inference_logistic/</link>
       <pubDate>Sun, 04 Jun 2023 00:00:00 +0000</pubDate>
-      
       <guid>/causal_inference_logistic/</guid>
-      <description>In this notebook, I want to reproduce some components of the extensive blog post Causal inference with Bayesian models by Solomon Kurz. Specifically, I want to deep dive into the logistic regression model used to estimate the average treatment effect (ATE) of the study Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial by Wilson, et.al. I can only recommend to read the original sequence of posts Solomon has written on causal inference.</description>
+      <description>&lt;p&gt;In this notebook, I want to reproduce some components of the extensive blog post &lt;a href=&#34;https://solomonkurz.netlify.app/blog/2023-04-30-causal-inference-with-bayesian-models/&#34;&gt;Causal inference with Bayesian models&lt;/a&gt; by &lt;a href=&#34;https://solomonkurz.netlify.app/&#34;&gt;Solomon Kurz&lt;/a&gt;. Specifically, I want to deep dive into the &lt;em&gt;logistic regression model&lt;/em&gt; used to estimate the &lt;em&gt;average treatment effect&lt;/em&gt; (ATE) of the study &lt;a href=&#34;https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.1002479&#34;&gt;&lt;em&gt;Internet-accessed sexually transmitted infection (e-STI) testing and results service: A randomised, single-blind, controlled trial&lt;/em&gt;&lt;/a&gt; by Wilson, et.al. I can only recommend to read the original sequence of posts Solomon has written on causal inference. They are very well written, easy to follow and provide a lot of insights into the topic.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

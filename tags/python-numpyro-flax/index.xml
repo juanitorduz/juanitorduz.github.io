@@ -1,21 +1,19 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, numpyro, flax on Dr. Juan Camilo Orduz</title>
+    <title>Python, Numpyro, Flax on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-numpyro-flax/</link>
-    <description>Recent content in python, numpyro, flax on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Numpyro, Flax on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 05 Jan 2024 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-numpyro-flax/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 05 Jan 2024 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-numpyro-flax/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Flax and NumPyro Toy Example</title>
       <link>/flax_numpyro/</link>
       <pubDate>Fri, 05 Jan 2024 00:00:00 +0000</pubDate>
-      
       <guid>/flax_numpyro/</guid>
-      <description>In this notebook I want to experiment with the numpyro/contrib/module.py module which allow us to integrate Flax models with NumPyro models. I am interested in this because I want to experiment with complex bayesian models with larger datasets.
-Most of the main components can be found in the great blog post Bayesian Neural Networks with Flax and Numpyro. The author takes a different path working directly with potentials, but he also points out the recent addition of the numpyro/contrib/module.</description>
+      <description>&lt;p&gt;In this notebook I want to experiment with the &lt;a href=&#34;https://github.com/pyro-ppl/numpyro/blob/master/numpyro/contrib/module.py&#34;&gt;&lt;code&gt;numpyro/contrib/module.py&lt;/code&gt;&lt;/a&gt; module which allow us to integrate &lt;a href=&#34;https://github.com/google/flax&#34;&gt;&lt;code&gt;Flax&lt;/code&gt;&lt;/a&gt; models with &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt; models. I am interested in this because I want to experiment with complex bayesian models with larger datasets.&lt;/p&gt;&#xA;&lt;p&gt;Most of the main components can be found in the great blog post &lt;a href=&#34;https://omarfsosa.github.io/bayesian_nn&#34;&gt;Bayesian Neural Networks with Flax and Numpyro&lt;/a&gt;. The author takes a different path working directly with potentials, but he also points out the recent addition of the &lt;code&gt;numpyro/contrib/module.py&lt;/code&gt; module. The main difference with the model presented here is that I am using two components in the model (to model the mean and standard deviation of the data), I use &lt;em&gt;stochastic variational inference&lt;/em&gt; instead of &lt;em&gt;MCMC&lt;/em&gt; and I work with scaling transformations.&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>

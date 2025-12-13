@@ -1,31 +1,26 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>python, machiine_learning, geometry on Dr. Juan Camilo Orduz</title>
+    <title>Python, Machiine_learning, Geometry on Dr. Juan Camilo Orduz</title>
     <link>/tags/python-machiine_learning-geometry/</link>
-    <description>Recent content in python, machiine_learning, geometry on Dr. Juan Camilo Orduz</description>
-    <generator>Hugo -- gohugo.io</generator>
+    <description>Recent content in Python, Machiine_learning, Geometry on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 04 Apr 2020 00:00:00 +0000</lastBuildDate><atom:link href="/tags/python-machiine_learning-geometry/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 04 Apr 2020 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-machiine_learning-geometry/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Getting Started with Spectral Clustering</title>
       <link>/spectral_clustering/</link>
       <pubDate>Sat, 04 Apr 2020 00:00:00 +0000</pubDate>
-      
       <guid>/spectral_clustering/</guid>
-      <description>In this post I want to explore the ideas behind spectral clustering. I do not intend to develop the theory. Instead, I will unravel a practical example to illustrate and motivate the intuition behind each step of the spectral clustering algorithm. I particularly recommend two references:
- For an introduction/overview on the theory, see the lecture notes A Tutorial on Spectral Clustering by Prof. Dr. Ulrike von Luxburg. For a concrete application of this clustering method you can see the PyData’s talk: Extracting relevant Metrics with Spectral Clustering by Dr.</description>
+      <description>&lt;p&gt;In this post I want to explore the ideas behind &lt;a href=&#34;https://en.wikipedia.org/wiki/Spectral_clustering&#34;&gt;spectral clustering&lt;/a&gt;. I do not intend to develop the theory. Instead, I will unravel a practical example to illustrate and motivate the intuition behind each step of the spectral clustering algorithm. I particularly recommend two references:&lt;/p&gt;&#xA;&lt;ul&gt;&#xA;&lt;li&gt;For an introduction/overview on the theory, see the lecture notes &lt;a href=&#34;http://www.tml.cs.uni-tuebingen.de/team/luxburg/publications/Luxburg07_tutorial.pdf&#34;&gt;A Tutorial on Spectral Clustering&lt;/a&gt; by &lt;a href=&#34;http://www.tml.cs.uni-tuebingen.de/team/luxburg/index.php&#34;&gt;Prof. Dr. Ulrike von Luxburg&lt;/a&gt;.&lt;/li&gt;&#xA;&lt;li&gt;For a concrete application of this clustering method you can see the PyData’s talk: &lt;a href=&#34;https://www.youtube.com/watch?v=3heWpR6dC8k&#34;&gt;Extracting relevant Metrics with Spectral Clustering&lt;/a&gt; by Dr. Evelyn Trautmann.&lt;/li&gt;&#xA;&lt;/ul&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import numpy as np&#xA;import pandas as pd&#xA;&#xA;import matplotlib.pyplot as plt&#xA;import seaborn as sns&#xA;sns.set_style(&amp;#39;darkgrid&amp;#39;, {&amp;#39;axes.facecolor&amp;#39;: &amp;#39;.9&amp;#39;})&#xA;sns.set_palette(palette=&amp;#39;deep&amp;#39;)&#xA;sns_c = sns.color_palette(palette=&amp;#39;deep&amp;#39;)&#xA;%matplotlib inline&#xA;&#xA;from pandas.plotting import register_matplotlib_converters&#xA;register_matplotlib_converters()&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-sample-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Sample Data&lt;/h2&gt;&#xA;&lt;p&gt;Let us generate some sample data. As we will see, spectral clustering is very effective for non-convex clusters. In this example, we consider concentric circles:&lt;/p&gt;</description>
     </item>
-    
     <item>
       <title>The Graph Laplacian &amp; Semi-Supervised Clustering</title>
       <link>/semi_supervised_clustering/</link>
       <pubDate>Thu, 05 Dec 2019 00:00:00 +0000</pubDate>
-      
       <guid>/semi_supervised_clustering/</guid>
-      <description>In this post we want to explore the semi-supervided algorithm presented Eldad Haber in the BMS Summer School 2019: Mathematics of Deep Learning, during 19 - 30 August 2019, at the Zuse Institute Berlin. He developed an implementation in Matlab which you can find in this GitHub repository. In addition, please find the corresponding slides here.
-Prepare Notebook import numpy as np import pandas as pd import matplotlib.pyplot as plt import seaborn as sns; sns.</description>
+      <description>&lt;script src=&#34;../../rmarkdown-libs/header-attrs/header-attrs.js&#34;&gt;&lt;/script&gt;&#xA;&#xA;&#xA;&lt;p&gt;In this post we want to explore the semi-supervided algorithm presented &lt;a href=&#34;https://eldad-haber.webnode.com/&#34;&gt;Eldad Haber&lt;/a&gt; in the &lt;a href=&#34;https://www.math-berlin.de/academics/summer-schools/2019&#34;&gt;BMS Summer School 2019: Mathematics of Deep Learning&lt;/a&gt;, during 19 - 30 August 2019, at the Zuse Institute Berlin. He developed an implementation in Matlab which you can find in &lt;a href=&#34;https://github.com/eldadHaber/CompAI/&#34;&gt;this&lt;/a&gt; GitHub repository. In addition, please find the corresponding slides &lt;a href=&#34;https://github.com/eldadHaber/CompAI/blob/master/02-SemiSup.pdf&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;import numpy as np&#xA;import pandas as pd&#xA;import matplotlib.pyplot as plt&#xA;import seaborn as sns; sns.set()&#xA;&#xA;%matplotlib inline&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-sample-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Sample Data&lt;/h2&gt;&#xA;&lt;p&gt;Let us generate the sample data as 3 concentric circles:&lt;/p&gt;</description>
     </item>
-    
   </channel>
 </rss>
