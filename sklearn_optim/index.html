@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Machine Learning for Optimization: Toy Example - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Machine Learning for Optimization: Toy Example - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">8 min read</span>
+    
+
+    <h1 class="article-title">Machine Learning for Optimization: Toy Example</h1>
+
+    
+    <span class="article-date">2026-01-01</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>Based on my experience, whenever someone asks for a prediction (or forecasting) model, they actually do not need a prediction model per se. They typically want to answer causal questions or do some kind of optimization. I have covered some case studies on causal questions in previous posts (for example, <a href="https://juanitorduz.github.io/intro_causal_inference_ppl_pymc/">Introduction to Causal Inference with PPLs</a> and <a href="https://juanitorduz.github.io/causal_inference_example/">“Using Data Science for Bad Decision-Making: A Case Study”</a>).</p>
+<p>In this blog post, I want to focus on optimization. I found a little nice use case when working on adtech, where one is interested in optimizing bids to maximize the revenue (or any other target, like ROAS or lifetime value). How to set the bids? This is a huge active research area so this is by no means an exhaustive treatment. I want to focus on a small component on a recent paper: <a href="https://arxiv.org/pdf/2508.06069">“Lightweight Auto-bidding based on Traffic Prediction in Live Advertising”</a> where the authors propose a method to set the bids by optimizing on the output of a fitted forecast model. I won’t go into the paper scope, but rather focus on a self contained problem: <em>Algorithm 1 Algorithm BiCB</em>. The basic idea is as follows: In order to set bids on time intervals we can fit a forecasting model to predict the cumulative cost over the day based on time features and the current bid value <span class="math inline">\(\text{bid}_t\)</span>. To set the next bid <span class="math inline">\(\text{bid}_{t + 1}\)</span> we can compare the forecast against the desired target (say, the expected cumulative daily budget at <span class="math inline">\(t + 1\)</span>). We can adjust the under/over pacing by minimizing this difference. In other words, we want to steer achieving the target using the bids values through a <em>time machine</em> (i.e. a forecasting model) to generate counterfactuals. The paper works out this in certain level of detail, but the concrete implementation is a bit open. So here we do it by plain <em>brute force</em> (why not?). The whole idea is not to solve this concrete algorithm but to experiment on how to use machine learning methods for optimization purposes.</p>
+<p>We do not work on this specific case but work on a generic simulated example as a first iteration to simply get intuition on the techniques.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from dataclasses import dataclass
+
+import arviz as az
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.optimize import minimize
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;seed&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>We start by generating some synthetic data with two features and a target variable (the data generating process is semi-arbitrary).</p>
+<pre class="python"><code>def make_regression_data(
+    rng: np.random.Generator, n_samples: int
+) -&gt; tuple[np.ndarray, np.ndarray]:
+    x1 = rng.uniform(0, 1, size=n_samples)
+    x2 = rng.uniform(0, 1, size=n_samples)
+    y = (
+        (x1 + x2 - 0.5) ** 2
+        - x1**3
+        - 0.5
+        + np.sin(2 * np.pi * x1 * x2**2)
+        + rng.normal(0, 0.1, size=n_samples)
+    )
+    return np.c_[x1, x2], y
+
+
+x, y = make_regression_data(rng=rng, n_samples=700)</code></pre>
+<p>Let’s plot the data.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 6))
+
+norm = mcolors.Normalize(vmin=-np.max(np.abs(y)), vmax=np.max(np.abs(y)))
+sc = ax.scatter(x[:, 0], x[:, 1], c=y, cmap=&quot;coolwarm&quot;, norm=norm, edgecolors=&quot;black&quot;)
+cbar = plt.colorbar(sc, ax=ax, pad=0.02)
+cbar.set_label(&quot;y&quot;, fontsize=14)
+ax.set(xlabel=r&quot;$x_1$&quot;, ylabel=r&quot;$x_2$&quot;, title=&quot;Regression Data&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_optim_files/sklearn_optim_7_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="problem-formulation" class="section level2">
+<h2>Problem Formulation</h2>
+<p>Here is the problem we are trying to solve:</p>
+<p>Given a fixed value of <span class="math inline">\(x_2\)</span> (in the bidding example, these could be time features like hour of the day), we want to find the value of <span class="math inline">\(x_1\)</span> that minimizes the difference between the predicted value of a machine learning model (the <em>time machine</em>) and a target value (say, cumulative daily budget).</p>
+<p>Hence, we should:</p>
+<ol style="list-style-type: decimal">
+<li>Fit a machine learning model to learn <span class="math inline">\(y\)</span> as a function of <span class="math inline">\(x_1\)</span> and <span class="math inline">\(x_2\)</span>.</li>
+<li>For a given value of <span class="math inline">\(x_2\)</span>, find the value of <span class="math inline">\(x_1\)</span> that minimizes the difference between the predicted value of the model and a target value.</li>
+</ol>
+<p>Let’s do it!</p>
+</div>
+<div id="fit-ml-model" class="section level2">
+<h2>Fit ML Model</h2>
+<p>For this regression problem, we will use a great default model: the <a href="https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html">HistGradientBoostingRegressor</a>. Here we skip the hyperparameters tuning and cross-validation for simplicity.</p>
+<pre class="python"><code>model = HistGradientBoostingRegressor(random_state=seed)
+
+model.fit(x, y)</code></pre>
+<center>
+<style>#sk-container-id-1 {
+  /* Definition of color scheme common for light and dark mode */
+  --sklearn-color-text: #000;
+  --sklearn-color-text-muted: #666;
+  --sklearn-color-line: gray;
+  /* Definition of color scheme for unfitted estimators */
+  --sklearn-color-unfitted-level-0: #fff5e6;
+  --sklearn-color-unfitted-level-1: #f6e4d2;
+  --sklearn-color-unfitted-level-2: #ffe0b3;
+  --sklearn-color-unfitted-level-3: chocolate;
+  /* Definition of color scheme for fitted estimators */
+  --sklearn-color-fitted-level-0: #f0f8ff;
+  --sklearn-color-fitted-level-1: #d4ebff;
+  --sklearn-color-fitted-level-2: #b3dbfd;
+  --sklearn-color-fitted-level-3: cornflowerblue;
+
+  /* Specific color for light theme */
+  --sklearn-color-text-on-default-background: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, black)));
+  --sklearn-color-background: var(--sg-background-color, var(--theme-background, var(--jp-layout-color0, white)));
+  --sklearn-color-border-box: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, black)));
+  --sklearn-color-icon: #696969;
+
+  @media (prefers-color-scheme: dark) {
+    /* Redefinition of color scheme for dark theme */
+    --sklearn-color-text-on-default-background: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, white)));
+    --sklearn-color-background: var(--sg-background-color, var(--theme-background, var(--jp-layout-color0, #111)));
+    --sklearn-color-border-box: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, white)));
+    --sklearn-color-icon: #878787;
+  }
+}
+
+#sk-container-id-1 {
+  color: var(--sklearn-color-text);
+}
+
+#sk-container-id-1 pre {
+  padding: 0;
+}
+
+#sk-container-id-1 input.sk-hidden--visually {
+  border: 0;
+  clip: rect(1px 1px 1px 1px);
+  clip: rect(1px, 1px, 1px, 1px);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+#sk-container-id-1 div.sk-dashed-wrapped {
+  border: 1px dashed var(--sklearn-color-line);
+  margin: 0 0.4em 0.5em 0.4em;
+  box-sizing: border-box;
+  padding-bottom: 0.4em;
+  background-color: var(--sklearn-color-background);
+}
+
+#sk-container-id-1 div.sk-container {
+  /* jupyter's `normalize.less` sets `[hidden] { display: none; }`
+     but bootstrap.min.css set `[hidden] { display: none !important; }`
+     so we also need the `!important` here to be able to override the
+     default hidden behavior on the sphinx rendered scikit-learn.org.
+     See: https://github.com/scikit-learn/scikit-learn/issues/21755 */
+  display: inline-block !important;
+  position: relative;
+}
+
+#sk-container-id-1 div.sk-text-repr-fallback {
+  display: none;
+}
+
+div.sk-parallel-item,
+div.sk-serial,
+div.sk-item {
+  /* draw centered vertical line to link estimators */
+  background-image: linear-gradient(var(--sklearn-color-text-on-default-background), var(--sklearn-color-text-on-default-background));
+  background-size: 2px 100%;
+  background-repeat: no-repeat;
+  background-position: center center;
+}
+
+/* Parallel-specific style estimator block */
+
+#sk-container-id-1 div.sk-parallel-item::after {
+  content: "";
+  width: 100%;
+  border-bottom: 2px solid var(--sklearn-color-text-on-default-background);
+  flex-grow: 1;
+}
+
+#sk-container-id-1 div.sk-parallel {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background-color: var(--sklearn-color-background);
+  position: relative;
+}
+
+#sk-container-id-1 div.sk-parallel-item {
+  display: flex;
+  flex-direction: column;
+}
+
+#sk-container-id-1 div.sk-parallel-item:first-child::after {
+  align-self: flex-end;
+  width: 50%;
+}
+
+#sk-container-id-1 div.sk-parallel-item:last-child::after {
+  align-self: flex-start;
+  width: 50%;
+}
+
+#sk-container-id-1 div.sk-parallel-item:only-child::after {
+  width: 0;
+}
+
+/* Serial-specific style estimator block */
+
+#sk-container-id-1 div.sk-serial {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: var(--sklearn-color-background);
+  padding-right: 1em;
+  padding-left: 1em;
+}
+
+
+/* Toggleable style: style used for estimator/Pipeline/ColumnTransformer box that is
+clickable and can be expanded/collapsed.
+- Pipeline and ColumnTransformer use this feature and define the default style
+- Estimators will overwrite some part of the style using the `sk-estimator` class
+*/
+
+/* Pipeline and ColumnTransformer style (default) */
+
+#sk-container-id-1 div.sk-toggleable {
+  /* Default theme specific background. It is overwritten whether we have a
+  specific estimator or a Pipeline/ColumnTransformer */
+  background-color: var(--sklearn-color-background);
+}
+
+/* Toggleable label */
+#sk-container-id-1 label.sk-toggleable__label {
+  cursor: pointer;
+  display: flex;
+  width: 100%;
+  margin-bottom: 0;
+  padding: 0.5em;
+  box-sizing: border-box;
+  text-align: center;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+
+#sk-container-id-1 label.sk-toggleable__label .caption {
+  font-size: 0.6rem;
+  font-weight: lighter;
+  color: var(--sklearn-color-text-muted);
+}
+
+#sk-container-id-1 label.sk-toggleable__label-arrow:before {
+  /* Arrow on the left of the label */
+  content: "▸";
+  float: left;
+  margin-right: 0.25em;
+  color: var(--sklearn-color-icon);
+}
+
+#sk-container-id-1 label.sk-toggleable__label-arrow:hover:before {
+  color: var(--sklearn-color-text);
+}
+
+/* Toggleable content - dropdown */
+
+#sk-container-id-1 div.sk-toggleable__content {
+  max-height: 0;
+  max-width: 0;
+  overflow: hidden;
+  text-align: left;
+  /* unfitted */
+  background-color: var(--sklearn-color-unfitted-level-0);
+}
+
+#sk-container-id-1 div.sk-toggleable__content.fitted {
+  /* fitted */
+  background-color: var(--sklearn-color-fitted-level-0);
+}
+
+#sk-container-id-1 div.sk-toggleable__content pre {
+  margin: 0.2em;
+  border-radius: 0.25em;
+  color: var(--sklearn-color-text);
+  /* unfitted */
+  background-color: var(--sklearn-color-unfitted-level-0);
+}
+
+#sk-container-id-1 div.sk-toggleable__content.fitted pre {
+  /* unfitted */
+  background-color: var(--sklearn-color-fitted-level-0);
+}
+
+#sk-container-id-1 input.sk-toggleable__control:checked~div.sk-toggleable__content {
+  /* Expand drop-down */
+  max-height: 200px;
+  max-width: 100%;
+  overflow: auto;
+}
+
+#sk-container-id-1 input.sk-toggleable__control:checked~label.sk-toggleable__label-arrow:before {
+  content: "▾";
+}
+
+/* Pipeline/ColumnTransformer-specific style */
+
+#sk-container-id-1 div.sk-label input.sk-toggleable__control:checked~label.sk-toggleable__label {
+  color: var(--sklearn-color-text);
+  background-color: var(--sklearn-color-unfitted-level-2);
+}
+
+#sk-container-id-1 div.sk-label.fitted input.sk-toggleable__control:checked~label.sk-toggleable__label {
+  background-color: var(--sklearn-color-fitted-level-2);
+}
+
+/* Estimator-specific style */
+
+/* Colorize estimator box */
+#sk-container-id-1 div.sk-estimator input.sk-toggleable__control:checked~label.sk-toggleable__label {
+  /* unfitted */
+  background-color: var(--sklearn-color-unfitted-level-2);
+}
+
+#sk-container-id-1 div.sk-estimator.fitted input.sk-toggleable__control:checked~label.sk-toggleable__label {
+  /* fitted */
+  background-color: var(--sklearn-color-fitted-level-2);
+}
+
+#sk-container-id-1 div.sk-label label.sk-toggleable__label,
+#sk-container-id-1 div.sk-label label {
+  /* The background is the default theme color */
+  color: var(--sklearn-color-text-on-default-background);
+}
+
+/* On hover, darken the color of the background */
+#sk-container-id-1 div.sk-label:hover label.sk-toggleable__label {
+  color: var(--sklearn-color-text);
+  background-color: var(--sklearn-color-unfitted-level-2);
+}
+
+/* Label box, darken color on hover, fitted */
+#sk-container-id-1 div.sk-label.fitted:hover label.sk-toggleable__label.fitted {
+  color: var(--sklearn-color-text);
+  background-color: var(--sklearn-color-fitted-level-2);
+}
+
+/* Estimator label */
+
+#sk-container-id-1 div.sk-label label {
+  font-family: monospace;
+  font-weight: bold;
+  display: inline-block;
+  line-height: 1.2em;
+}
+
+#sk-container-id-1 div.sk-label-container {
+  text-align: center;
+}
+
+/* Estimator-specific */
+#sk-container-id-1 div.sk-estimator {
+  font-family: monospace;
+  border: 1px dotted var(--sklearn-color-border-box);
+  border-radius: 0.25em;
+  box-sizing: border-box;
+  margin-bottom: 0.5em;
+  /* unfitted */
+  background-color: var(--sklearn-color-unfitted-level-0);
+}
+
+#sk-container-id-1 div.sk-estimator.fitted {
+  /* fitted */
+  background-color: var(--sklearn-color-fitted-level-0);
+}
+
+/* on hover */
+#sk-container-id-1 div.sk-estimator:hover {
+  /* unfitted */
+  background-color: var(--sklearn-color-unfitted-level-2);
+}
+
+#sk-container-id-1 div.sk-estimator.fitted:hover {
+  /* fitted */
+  background-color: var(--sklearn-color-fitted-level-2);
+}
+
+/* Specification for estimator info (e.g. "i" and "?") */
+
+/* Common style for "i" and "?" */
+
+.sk-estimator-doc-link,
+a:link.sk-estimator-doc-link,
+a:visited.sk-estimator-doc-link {
+  float: right;
+  font-size: smaller;
+  line-height: 1em;
+  font-family: monospace;
+  background-color: var(--sklearn-color-background);
+  border-radius: 1em;
+  height: 1em;
+  width: 1em;
+  text-decoration: none !important;
+  margin-left: 0.5em;
+  text-align: center;
+  /* unfitted */
+  border: var(--sklearn-color-unfitted-level-1) 1pt solid;
+  color: var(--sklearn-color-unfitted-level-1);
+}
+
+.sk-estimator-doc-link.fitted,
+a:link.sk-estimator-doc-link.fitted,
+a:visited.sk-estimator-doc-link.fitted {
+  /* fitted */
+  border: var(--sklearn-color-fitted-level-1) 1pt solid;
+  color: var(--sklearn-color-fitted-level-1);
+}
+
+/* On hover */
+div.sk-estimator:hover .sk-estimator-doc-link:hover,
+.sk-estimator-doc-link:hover,
+div.sk-label-container:hover .sk-estimator-doc-link:hover,
+.sk-estimator-doc-link:hover {
+  /* unfitted */
+  background-color: var(--sklearn-color-unfitted-level-3);
+  color: var(--sklearn-color-background);
+  text-decoration: none;
+}
+
+div.sk-estimator.fitted:hover .sk-estimator-doc-link.fitted:hover,
+.sk-estimator-doc-link.fitted:hover,
+div.sk-label-container:hover .sk-estimator-doc-link.fitted:hover,
+.sk-estimator-doc-link.fitted:hover {
+  /* fitted */
+  background-color: var(--sklearn-color-fitted-level-3);
+  color: var(--sklearn-color-background);
+  text-decoration: none;
+}
+
+/* Span, style for the box shown on hovering the info icon */
+.sk-estimator-doc-link span {
+  display: none;
+  z-index: 9999;
+  position: relative;
+  font-weight: normal;
+  right: .2ex;
+  padding: .5ex;
+  margin: .5ex;
+  width: min-content;
+  min-width: 20ex;
+  max-width: 50ex;
+  color: var(--sklearn-color-text);
+  box-shadow: 2pt 2pt 4pt #999;
+  /* unfitted */
+  background: var(--sklearn-color-unfitted-level-0);
+  border: .5pt solid var(--sklearn-color-unfitted-level-3);
+}
+
+.sk-estimator-doc-link.fitted span {
+  /* fitted */
+  background: var(--sklearn-color-fitted-level-0);
+  border: var(--sklearn-color-fitted-level-3);
+}
+
+.sk-estimator-doc-link:hover span {
+  display: block;
+}
+
+/* "?"-specific style due to the `<a>` HTML tag */
+
+#sk-container-id-1 a.estimator_doc_link {
+  float: right;
+  font-size: 1rem;
+  line-height: 1em;
+  font-family: monospace;
+  background-color: var(--sklearn-color-background);
+  border-radius: 1rem;
+  height: 1rem;
+  width: 1rem;
+  text-decoration: none;
+  /* unfitted */
+  color: var(--sklearn-color-unfitted-level-1);
+  border: var(--sklearn-color-unfitted-level-1) 1pt solid;
+}
+
+#sk-container-id-1 a.estimator_doc_link.fitted {
+  /* fitted */
+  border: var(--sklearn-color-fitted-level-1) 1pt solid;
+  color: var(--sklearn-color-fitted-level-1);
+}
+
+/* On hover */
+#sk-container-id-1 a.estimator_doc_link:hover {
+  /* unfitted */
+  background-color: var(--sklearn-color-unfitted-level-3);
+  color: var(--sklearn-color-background);
+  text-decoration: none;
+}
+
+#sk-container-id-1 a.estimator_doc_link.fitted:hover {
+  /* fitted */
+  background-color: var(--sklearn-color-fitted-level-3);
+}
+</style>
+<div id="sk-container-id-1" class="sk-top-container">
+<div class="sk-text-repr-fallback">
+<pre>HistGradientBoostingRegressor(random_state=417)</pre>
+<b>In a Jupyter environment, please rerun this cell to show the HTML representation or trust the notebook. <br />On GitHub, the HTML representation is unable to render, please try loading this page with nbviewer.org.</b>
+</div>
+<div class="sk-container" hidden="">
+<div class="sk-item">
+<div class="sk-estimator fitted sk-toggleable">
+<input class="sk-toggleable__control sk-hidden--visually" id="sk-estimator-id-1" type="checkbox" checked><label for="sk-estimator-id-1" class="sk-toggleable__label fitted sk-toggleable__label-arrow">
+<div>
+<div>
+HistGradientBoostingRegressor
+</div>
+</div>
+<div>
+<a class="sk-estimator-doc-link fitted" rel="noreferrer" target="_blank" href="https://scikit-learn.org/1.6/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html">?<span>Documentation for HistGradientBoostingRegressor</span></a><span class="sk-estimator-doc-link fitted">i<span>Fitted</span></span>
+</div>
+</label>
+<div class="sk-toggleable__content fitted">
+<pre>HistGradientBoostingRegressor(random_state=417)</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</center>
+</div>
+<div id="generate-predictions" class="section level2">
+<h2>Generate Predictions</h2>
+<p>We can now generate predictions for the whole dataset.</p>
+<pre class="python"><code>y_pred = model.predict(x)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1, ncols=2, sharex=True, sharey=True, figsize=(14, 6), layout=&quot;constrained&quot;
+)
+
+sc_0 = ax[0].scatter(
+    x[:, 0], x[:, 1], c=y, cmap=&quot;coolwarm&quot;, norm=norm, edgecolors=&quot;black&quot;
+)
+
+norm = mcolors.Normalize(vmin=-np.max(np.abs(y)), vmax=np.max(np.abs(y)))
+cbar = plt.colorbar(sc_0, ax=ax, pad=0.02)
+cbar.set_label(r&quot;$y$&quot;, fontsize=14)
+
+
+ax[0].set(xlabel=r&quot;$x_1$&quot;, ylabel=r&quot;$x_2$&quot;, title=&quot;Regression Data&quot;)
+
+sc_1 = ax[1].scatter(
+    x[:, 0], x[:, 1], c=y_pred, cmap=&quot;coolwarm&quot;, norm=norm, edgecolors=&quot;black&quot;
+)
+ax[1].set(xlabel=r&quot;$x_1$&quot;, ylabel=None, title=&quot;Predicted&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_optim_files/sklearn_optim_14_0.png" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>mae = mean_absolute_error(y, y_pred)
+print(f&quot;MAE: {mae:.2f}&quot;)</code></pre>
+<pre><code>MAE: 0.06</code></pre>
+<p>Overall, the model looks good.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(7, 6))
+ax.scatter(y, y_pred)
+ax.axline(xy1=(0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.set(xlabel=&quot;True&quot;, ylabel=&quot;Predicted&quot;, title=&quot;Predicted vs True&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_optim_files/sklearn_optim_17_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="optimization-step" class="section level2">
+<h2>Optimization Step</h2>
+<p>Now that we have a model, we can use it for optimization.</p>
+<p>First, let us define the input parameters.</p>
+<pre class="python"><code>@dataclass
+class OptimizationParameters:
+    x2_fixed: float  # Fixed value of x2
+    y_target: float  # Target value
+    bounds: tuple[float, float]  # Bounds of x1
+
+    @property
+    def get_initial_guess(self) -&gt; float:
+        return (self.bounds[0] + self.bounds[1]) / 2
+
+
+optimization_parameters = OptimizationParameters(
+    x2_fixed=0.65, y_target=0.5, bounds=(0.2, 0.6)
+)</code></pre>
+<p>Now, we use the fitted model to generate predictions by freezing the value of <span class="math inline">\(x_2\)</span>.</p>
+<pre class="python"><code>def model_predict_at_x2_fixed(x1: float, x2_fixed: float) -&gt; float:
+    return model.predict(np.c_[x1, x2_fixed]).item()</code></pre>
+<p>Let’s visualize the predictions on a grid of <span class="math inline">\(x_1\)</span> values.</p>
+<pre class="python"><code># Generate a grid of x1 values
+x1_grid = np.linspace(x[:, 0].min(), x[:, 0].max(), 100)
+# Vectorize the model prediction function
+y_pred_grid = np.vectorize(model_predict_at_x2_fixed)(
+    x1_grid, optimization_parameters.x2_fixed
+)
+
+# Get the mask of the points that are close to the fixed x2 value
+# (just for visualization purposes)
+mask = np.abs(x[:, 1] - optimization_parameters.x2_fixed) &lt; 0.1
+
+fig, ax = plt.subplots(figsize=(8, 7))
+ax.scatter(
+    x[:, 0][mask],
+    y[mask],
+    c=y[mask],
+    cmap=&quot;coolwarm&quot;,
+    norm=norm,
+    edgecolors=&quot;black&quot;,
+    label=rf&quot;data points close to $x_2 = {optimization_parameters.x2_fixed}$&quot;,
+)
+ax.plot(
+    x1_grid,
+    y_pred_grid,
+    c=&quot;black&quot;,
+    linewidth=3,
+    label=r&quot;predictions on a $x_1$-grid&quot;,
+)
+ax.legend(loc=&quot;upper left&quot;, fontsize=12)
+ax.set(xlabel=r&quot;$x_1$&quot;, ylabel=r&quot;$y$&quot;, title=r&quot;$x_1$ vs $y$&quot;);</code></pre>
+<center>
+<img src="../images/sklearn_optim_files/sklearn_optim_23_0.png" style="width: 800px;"/>
+</center>
+<p>We can zoom in to the region of interest.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 7))
+ax.scatter(
+    x[:, 0][mask],
+    y[mask],
+    c=y[mask],
+    cmap=&quot;coolwarm&quot;,
+    norm=norm,
+    edgecolors=&quot;black&quot;,
+    label=rf&quot;data points close to $x_2 = {optimization_parameters.x2_fixed}$&quot;,
+)
+ax.plot(
+    x1_grid,
+    y_pred_grid,
+    c=&quot;black&quot;,
+    linewidth=3,
+    label=r&quot;predictions on a $x_1$-grid&quot;,
+)
+ax.axhline(
+    optimization_parameters.y_target,
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    linewidth=3,
+    alpha=0.7,
+    label=r&quot;target&quot;,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=r&quot;$x_1$&quot;, ylabel=r&quot;$y$&quot;, title=r&quot;$x_1$ vs $y$&quot;, xlim=(0.15, 0.65));</code></pre>
+<center>
+<img src="../images/sklearn_optim_files/sklearn_optim_25_0.png" style="width: 800px;"/>
+</center>
+<p>Now we can use <a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html"><code>scipy.optimize.minimize</code></a> to find the value of <span class="math inline">\(x_1\)</span> that minimizes the difference between the predicted value of the model and the target value.</p>
+<p>Observe that tree-based models have piecewise constant predictions, so gradient-based optimizers (default BFGS) won’t work (because the gradient is zero almost everywhere). We should use a gradient-free method like Nelder-Mead or Powell.</p>
+<pre class="python"><code># Define the function to minimize
+def function_to_minimize(x, x2_fixed, y_target):
+    # We want to minimize the difference between the predicted
+    # value and the target value.
+    return abs(model_predict_at_x2_fixed(x, x2_fixed) - y_target)
+
+
+optimization_result = minimize(
+    function_to_minimize,
+    x0=optimization_parameters.get_initial_guess,
+    args=(optimization_parameters.x2_fixed, optimization_parameters.y_target),
+    method=&quot;Powell&quot;,
+    bounds=[optimization_parameters.bounds],
+)
+
+optimization_result</code></pre>
+<pre><code> message: Optimization terminated successfully.
+ success: True
+  status: 0
+     fun: 0.004673598436508053
+       x: [ 3.528e-01]
+     nit: 2
+   direc: [[ 1.000e+00]]
+    nfev: 24</code></pre>
+<p>Finally, we can visualize the result.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(8, 7))
+ax.scatter(
+    x[:, 0][mask],
+    y[mask],
+    c=y[mask],
+    cmap=&quot;coolwarm&quot;,
+    norm=norm,
+    edgecolors=&quot;black&quot;,
+    label=rf&quot;data points close to $x_2 = {optimization_parameters.x2_fixed}$&quot;,
+)
+ax.plot(
+    x1_grid,
+    y_pred_grid,
+    c=&quot;black&quot;,
+    linewidth=3,
+    label=r&quot;predictions on a $x_1$-grid&quot;,
+)
+ax.scatter(
+    optimization_result.x,
+    optimization_result.fun + optimization_parameters.y_target,
+    c=&quot;C2&quot;,
+    marker=&quot;o&quot;,
+    edgecolors=&quot;black&quot;,
+    s=200,
+    label=r&quot;optimal $x_1$&quot;,
+)
+ax.axhline(
+    optimization_parameters.y_target,
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    alpha=0.7,
+    linewidth=3,
+    label=r&quot;target&quot;,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=r&quot;$x_1$&quot;, ylabel=r&quot;$y$&quot;, title=r&quot;$x_1$ vs $y$&quot;, xlim=(0.15, 0.65));</code></pre>
+<center>
+<img src="../images/sklearn_optim_files/sklearn_optim_29_0.png" style="width: 800px;"/>
+</center>
+<p>We can see that the optimal <span class="math inline">\(x_1\)</span> does hit the target as expected 🚀!</p>
+<p>We can explicitly plot the objective function.</p>
+<pre class="python"><code>objective_grid = np.vectorize(function_to_minimize)(
+    x1_grid, optimization_parameters.x2_fixed, optimization_parameters.y_target
+)
+
+
+fig, ax = plt.subplots()
+ax.plot(x1_grid, objective_grid, c=&quot;C0&quot;, linewidth=3, label=&quot;objective&quot;)
+ax.scatter(
+    optimization_result.x,
+    optimization_result.fun,
+    c=&quot;C2&quot;,
+    marker=&quot;o&quot;,
+    edgecolors=&quot;black&quot;,
+    s=200,
+    label=r&quot;optimal $x_1$&quot;,
+)
+ax.axhline(
+    0.0,
+    color=&quot;C2&quot;,
+    linestyle=&quot;--&quot;,
+    alpha=0.7,
+    linewidth=3,
+    label=&quot;zero objective&quot;,
+)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(
+    xlabel=r&quot;$x_1$&quot;,
+    ylabel=r&quot;$ |\text{ML}(x) - y_{target}|$&quot;,
+    title=&quot;Objective function&quot;,
+    xlim=(0.15, 0.65),
+);</code></pre>
+<center>
+<img src="../images/sklearn_optim_files/sklearn_optim_31_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="final-remarks" class="section level2">
+<h2>Final Remarks</h2>
+<p>Although this is a simple example, it shows the general idea of using machine learning models for optimization purposes. Here are some additional comments:</p>
+<ul>
+<li><p>For this model to work in practice, it has to have a <em>causal structure</em>. This is key because we do not want to make decisions solely based on the predictions of the model, which essentially models correlations and associations. See for example the blog post <a href="https://medium.com/data-science/be-careful-when-interpreting-predictive-models-in-search-of-causal-insights-e68626e664b6">“Be Careful When Interpreting Predictive Models in Search of Causal Insights”</a>. Hence, please write the DAG and ensure your counterfactual is identifiable.</p></li>
+<li><p>We are consciously using a brute force approach with this gradient-free optimization. This does not mean it is bad, but there are other alternatives. For example, in the bidding paper, in <em>Algorithm 1 Algorithm BiCB</em>, they suggest using the projected gradient descent algorithm. This approach requires taking derivatives, so there is some additional work to be done.</p></li>
+<li><p>This brute force approach might not scale well if you want to do this for millions of time series (e.g. bids). It might be that the gradient descent approach mentioned above is more suitable for this case.</p></li>
+</ul>
+<p>Besides those caveats, I found this little exercise very useful to get intuition on these methods 🙃.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+

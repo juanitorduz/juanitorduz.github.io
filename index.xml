@@ -6,8 +6,15 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 13 Dec 2025 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Thu, 01 Jan 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Machine Learning for Optimization: Toy Example</title>
+      <link>/sklearn_optim/</link>
+      <pubDate>Thu, 01 Jan 2026 00:00:00 +0000</pubDate>
+      <guid>/sklearn_optim/</guid>
+      <description>&lt;p&gt;Based on my experience, whenever someone asks for a prediction (or forecasting) model, they actually do not need a prediction model per se. They typically want to answer causal questions or do some kind of optimization. I have covered some case studies on causal questions in previous posts (for example, &lt;a href=&#34;https://juanitorduz.github.io/intro_causal_inference_ppl_pymc/&#34;&gt;Introduction to Causal Inference with PPLs&lt;/a&gt; and &lt;a href=&#34;https://juanitorduz.github.io/causal_inference_example/&#34;&gt;“Using Data Science for Bad Decision-Making: A Case Study”&lt;/a&gt;).&lt;/p&gt;&#xA;&lt;p&gt;In this blog post, I want to focus on optimization. I found a little nice use case when working on adtech, where one is interested in optimizing bids to maximize the revenue (or any other target, like ROAS or lifetime value). How to set the bids? This is a huge active research area so this is by no means an exhaustive treatment. I want to focus on a small component on a recent paper: &lt;a href=&#34;https://arxiv.org/pdf/2508.06069&#34;&gt;“Lightweight Auto-bidding based on Traffic Prediction in Live Advertising”&lt;/a&gt; where the authors propose a method to set the bids by optimizing on the output of a fitted forecast model. I won’t go into the paper scope, but rather focus on a self contained problem: &lt;em&gt;Algorithm 1 Algorithm BiCB&lt;/em&gt;. The basic idea is as follows: In order to set bids on time intervals we can fit a forecasting model to predict the cumulative cost over the day based on time features and the current bid value &lt;span class=&#34;math inline&#34;&gt;\(\text{bid}_t\)&lt;/span&gt;. To set the next bid &lt;span class=&#34;math inline&#34;&gt;\(\text{bid}_{t + 1}\)&lt;/span&gt; we can compare the forecast against the desired target (say, the expected cumulative daily budget at &lt;span class=&#34;math inline&#34;&gt;\(t + 1\)&lt;/span&gt;). We can adjust the under/over pacing by minimizing this difference. In other words, we want to steer achieving the target using the bids values through a &lt;em&gt;time machine&lt;/em&gt; (i.e. a forecasting model) to generate counterfactuals. The paper works out this in certain level of detail, but the concrete implementation is a bit open. So here we do it by plain &lt;em&gt;brute force&lt;/em&gt; (why not?). The whole idea is not to solve this concrete algorithm but to experiment on how to use machine learning methods for optimization purposes.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>CATE Estimation with Causal Effect Variational Autoencoders</title>
       <link>/cate_nn/</link>
