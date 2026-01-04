@@ -6,8 +6,15 @@
     <description>Recent content in Bayesian on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 03 Oct 2025 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Mon, 05 Jan 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/categories/bayesian/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Forecasting Hierarchical Models - Part III</title>
+      <link>/numpyro_hierarchical_forecasting_3/</link>
+      <pubDate>Mon, 05 Jan 2026 00:00:00 +0000</pubDate>
+      <guid>/numpyro_hierarchical_forecasting_3/</guid>
+      <description>&lt;p&gt;In this third notebook, I extend the hierarchical forecasting model from &lt;a href=&#34;https://juanitorduz.github.io/numpyro_hierarchical_forecasting_2/&#34;&gt;Part II&lt;/a&gt; by adding a &lt;strong&gt;neural network component&lt;/strong&gt; to the state transition function. This creates a &lt;strong&gt;Hybrid Deep State-Space Model&lt;/strong&gt; that combines probabilistic modeling with deep learning.&lt;/p&gt;&#xA;&lt;p&gt;&lt;strong&gt;Why?&lt;/strong&gt; This is a personal experiment to explore how to integrate neural networks with hierarchical models. It is not adding complexity for the sake of complexity. It is rather an exploratory exercise to see if this approach can lead to better forecasting performance.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Bayesian Vector Autoregressive Models in NumPyro</title>
       <link>/var_numpyro/</link>

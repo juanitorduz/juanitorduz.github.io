@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Forecasting Hierarchical Models - Part III - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Forecasting Hierarchical Models - Part III - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">11 min read</span>
+    
+
+    <h1 class="article-title">Forecasting Hierarchical Models - Part III</h1>
+
+    
+    <span class="article-date">2026-01-05</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this third notebook, I extend the hierarchical forecasting model from <a href="https://juanitorduz.github.io/numpyro_hierarchical_forecasting_2/">Part II</a> by adding a <strong>neural network component</strong> to the state transition function. This creates a <strong>Hybrid Deep State-Space Model</strong> that combines probabilistic modeling with deep learning.</p>
+<p><strong>Why?</strong> This is a personal experiment to explore how to integrate neural networks with hierarchical models. It is not adding complexity for the sake of complexity. It is rather an exploratory exercise to see if this approach can lead to better forecasting performance.</p>
+<p><strong>How?</strong> We use the <a href="https://flax.readthedocs.io/en/v0.8.3/experimental/nnx/index.html"><code>NNX</code></a> integration with NumPyro via the <a href="https://num.pyro.ai/en/stable/primitives.html#nnx-module"><code>nnx_module</code></a> API. I tried many alternatives exploring the neural network architecture: from modeling residuals to having a neural network instead of ad additive drift component. In the end, for this concrete example, the approach that worked the best was an additive correction inside the transition function (see details below).</p>
+<p>If you have feedback or better ideas, please let me know!</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import optax
+from flax import nnx
+from jax import random
+from jaxtyping import Array, Float
+from numpyro.contrib.control_flow import scan
+from numpyro.contrib.module import nnx_module
+from numpyro.examples.datasets import load_bart_od
+from numpyro.infer import SVI, Predictive, Trace_ELBO
+from numpyro.infer.autoguide import AutoNormal
+from numpyro.infer.reparam import LocScaleReparam
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=14)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+# %load_ext jaxtyping
+# %jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="read-data" class="section level2">
+<h2>Read Data</h2>
+<p>We load the BART dataset as in the previous examples.</p>
+<pre class="python"><code>dataset = load_bart_od()
+print(dataset.keys())
+print(dataset[&quot;counts&quot;].shape)
+print(&quot; &quot;.join(dataset[&quot;stations&quot;]))</code></pre>
+<pre><code>dict_keys([&#39;stations&#39;, &#39;start_date&#39;, &#39;counts&#39;])
+(78888, 50, 50)
+12TH 16TH 19TH 24TH ANTC ASHB BALB BAYF BERY CAST CIVC COLM COLS CONC DALY DBRK DELN DUBL EMBR FRMT FTVL GLEN HAYW LAFY LAKE MCAR MLBR MLPT MONT NBRK NCON OAKL ORIN PCTR PHIL PITT PLZA POWL RICH ROCK SANL SBRN SFIA SHAY SSAN UCTY WARM WCRK WDUB WOAK</code></pre>
+<p>In this example, we model all the rides from all stations to all other stations.</p>
+<pre class="python"><code>data = jnp.log1p(np.permute_dims(dataset[&quot;counts&quot;], (1, 2, 0)))
+T = data.shape[-2]
+print(data.shape)</code></pre>
+<pre><code>(50, 50, 78888)</code></pre>
+</div>
+<div id="train---test-split" class="section level2">
+<h2>Train - Test Split</h2>
+<p>Similarly as in the previous examples, for training purposes we will use data from 90 days before the test data.</p>
+<pre class="python"><code>T2 = data.shape[-1]  # end
+T1 = T2 - 24 * 7 * 2  # train/test split
+T0 = T1 - 24 * 90  # beginning: train on 90 days of data</code></pre>
+<pre class="python"><code>y = data[..., T0:T2]
+y_train = data[..., T0:T1]
+y_test = data[..., T1:T2]
+
+print(f&quot;y: {y.shape}&quot;)
+print(f&quot;y_train: {y_train.shape}&quot;)
+print(f&quot;y_test: {y_test.shape}&quot;)</code></pre>
+<pre><code>y: (50, 50, 2496)
+y_train: (50, 50, 2160)
+y_test: (50, 50, 336)</code></pre>
+<p>We do a simple train-test split.</p>
+<pre class="python"><code>n_stations = y_train.shape[0]
+
+time = jnp.array(range(T0, T2))
+time_train = jnp.array(range(T0, T1))
+t_max_train = time_train.size
+
+time_test = jnp.array(range(T1, T2))
+t_max_test = time_test.size
+
+covariates = jnp.zeros_like(y)
+covariates_train = jnp.zeros_like(y_train)
+covariates_test = jnp.zeros_like(y_test)
+
+assert time_train.size + time_test.size == time.size
+assert y_train.shape == (n_stations, n_stations, t_max_train)
+assert y_test.shape == (n_stations, n_stations, t_max_test)
+assert covariates.shape == y.shape
+assert covariates_train.shape == y_train.shape
+assert covariates_test.shape == y_test.shape</code></pre>
+</div>
+<div id="repeating-seasonal-features" class="section level2">
+<h2>Repeating Seasonal Features</h2>
+<p>We also need the JAX version of the <a href="https://docs.pyro.ai/en/stable/ops.html#pyro.ops.tensor_utils.periodic_repeat"><code>periodic_repeat</code></a> function.</p>
+<pre class="python"><code>def periodic_repeat_jax(tensor: Array, size: int, dim: int) -&gt; Array:
+    assert isinstance(size, int) and size &gt;= 0
+    assert isinstance(dim, int)
+    if dim &gt;= 0:
+        dim -= tensor.ndim
+
+    period = tensor.shape[dim]
+    repeats = [1] * tensor.ndim
+    repeats[dim] = (size + period - 1) // period
+    result = jnp.tile(tensor, repeats)
+
+    slices = [slice(None)] * tensor.ndim
+    slices[dim] = slice(None, size)
+
+    return result[tuple(slices)]</code></pre>
+</div>
+<div id="neural-network-definition-new-in-part-iii" class="section level2">
+<h2>Neural Network Definition (NEW in Part III)</h2>
+<p>We now define two Flax NNX modules:</p>
+<ul>
+<li><strong><code>StationEmbedding</code></strong></li>
+</ul>
+<p>Maps each station index to a learnable dense vector. This allows the NN to learn station-specific dynamics.</p>
+<ul>
+<li><strong><code>TransitionNetwork</code></strong></li>
+</ul>
+<p>A simple MLP that takes as input:</p>
+<ul>
+<li><strong>Normalized previous level</strong>: <code>tanh(level / 10)</code> to keep inputs bounded</li>
+<li><strong>Hour of day</strong>: Cyclical encoding <code>(sin, cos)</code> of hour (0-23)</li>
+<li><strong>Day of week</strong>: Cyclical encoding <code>(sin, cos)</code> of day (0-6)</li>
+<li><strong>Station embedding</strong>: Learnable vector for each station</li>
+</ul>
+<pre class="python"><code>class StationEmbedding(nnx.Module):
+    &quot;&quot;&quot;Learnable embeddings for stations.&quot;&quot;&quot;
+
+    def __init__(self, n_stations: int, embed_dim: int, rngs: nnx.Rngs):
+        self.embedding = nnx.Embed(
+            num_embeddings=n_stations, features=embed_dim, rngs=rngs
+        )
+
+    def __call__(self, station_idx: jax.Array) -&gt; jax.Array:
+        return self.embedding(station_idx)
+
+
+class TransitionNetwork(nnx.Module):
+    &quot;&quot;&quot;Neural network for the transition function correction term.&quot;&quot;&quot;
+
+    def __init__(
+        self,
+        n_stations: int,
+        embed_dim: int,
+        hidden_dims: list[int],
+        rngs: nnx.Rngs,
+    ) -&gt; None:
+        self.embed_dim = embed_dim
+        self.station_embed = StationEmbedding(n_stations, embed_dim, rngs)
+
+        # Input: level(1) + hour_sin_cos(2) + dow_sin_cos(2) + embed
+        input_dim = 1 + 2 + 2 + embed_dim
+
+        # Build MLP layers
+        self.layers = nnx.List([])
+        prev_dim = input_dim
+        for hidden_dim in hidden_dims:
+            self.layers.append(nnx.Linear(prev_dim, hidden_dim, rngs=rngs))
+            prev_dim = hidden_dim
+        self.output_layer = nnx.Linear(prev_dim, 1, rngs=rngs)
+
+    def __call__(
+        self,
+        normalized_level: jax.Array,
+        hour_of_day: float,
+        day_of_week: float,
+        station_indices: jax.Array,
+    ) -&gt; jax.Array:
+        n_stations = normalized_level.shape[0]
+
+        # Station embeddings
+        station_emb = self.station_embed(station_indices)
+
+        # Cyclical time encoding
+        hour_angle = 2 * jnp.pi * hour_of_day / 24.0
+        hour_features = jnp.broadcast_to(
+            jnp.stack([jnp.sin(hour_angle), jnp.cos(hour_angle)]), (n_stations, 2)
+        )
+        dow_angle = 2 * jnp.pi * day_of_week / 7.0
+        dow_features = jnp.broadcast_to(
+            jnp.stack([jnp.sin(dow_angle), jnp.cos(dow_angle)]), (n_stations, 2)
+        )
+
+        # Concatenate all features
+        x = jnp.concatenate(
+            [normalized_level[:, None], hour_features, dow_features, station_emb],
+            axis=-1,
+        )
+
+        for layer in self.layers:
+            x = jax.nn.relu(layer(x))
+
+        return self.output_layer(x)</code></pre>
+</div>
+<div id="initialize-neural-network" class="section level2">
+<h2>Initialize Neural Network</h2>
+<p>Following the pattern from <a href="https://juanitorduz.github.io/online_game_ate/">online_game_ate</a>, we initialize the neural network <strong>outside</strong> the model function and pass it as an argument. Inside the model, we register it with <code>nnx_module</code> so NumPyro can optimize its parameters via SVI.</p>
+<pre class="python"><code># Neural network hyperparameters
+embed_dim = 24
+hidden_dims = [4, 16, 16, 4]
+
+# Initialize random number generators for Flax
+rng_key, rng_subkey = random.split(rng_key)
+
+# Initialize the transition network
+transition_nn = TransitionNetwork(
+    n_stations=n_stations,
+    embed_dim=embed_dim,
+    hidden_dims=hidden_dims,
+    rngs=nnx.Rngs(rng_subkey),
+)</code></pre>
+</div>
+<div id="model-specification" class="section level2">
+<h2>Model Specification</h2>
+<p>The model below is <strong>identical to Part II</strong> except for the highlighted addition:</p>
+<div id="local-level-transition-the-key-difference" class="section level3">
+<h3>Local Level Transition (the key difference)</h3>
+<p>In the previous notebook, we had a simple drift term:</p>
+<p><strong>Part II:</strong></p>
+<pre class="python"><code>current_level = previous_level + drift[t]</code></pre>
+<p>Now, we have a drift term and a neural network correction term:</p>
+<p><strong>Part III (this notebook):</strong></p>
+<pre class="python"><code>current_level = previous_level + drift[t] + nn_residual_scale * nn_output[t]
+#                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#                                           NEW: Neural network correction</code></pre>
+<p>Let’s see how to implement this in the model in NumPyro.</p>
+<pre class="python"><code>def model(
+    covariates: Float[Array, &quot;n_series n_series t_max&quot;],
+    transition_nn: TransitionNetwork,
+    y: Float[Array, &quot;n_series n_series t_max&quot;] | None = None,
+) -&gt; None:
+    &quot;&quot;&quot;Hybrid Deep State-Space Model: Part II structure + neural network correction.&quot;&quot;&quot;
+    n_series, _, t_max = covariates.shape
+    # Station indices for NN embeddings
+    station_indices = jnp.arange(n_series)
+
+    # Register neural network with NumPyro
+    transition_nn = nnx_module(&quot;transition&quot;, transition_nn)
+
+    # Define the plates
+    origin_plate = numpyro.plate(&quot;origin&quot;, n_series, dim=-3)
+    destin_plate = numpyro.plate(&quot;destin&quot;, n_series, dim=-2)
+    hour_of_week_plate = numpyro.plate(&quot;hour_of_week&quot;, 24 * 7, dim=-1)
+
+    # --- Drift parameters ---
+    drift_scale = numpyro.sample(&quot;drift_scale&quot;, dist.LogNormal(loc=-20, scale=5))
+    destin_centered = numpyro.sample(&quot;destin_centered&quot;, dist.Uniform(low=0, high=1))
+
+    with (
+        destin_plate,
+        numpyro.plate(&quot;time&quot;, t_max),
+        numpyro.handlers.reparam(
+            config={&quot;drift&quot;: LocScaleReparam(centered=destin_centered)}
+        ),
+    ):
+        drift = numpyro.sample(&quot;drift&quot;, dist.Normal(loc=0, scale=drift_scale))
+
+    # --- Global NN residual scale ---
+    nn_residual_scale = numpyro.sample(
+        &quot;nn_residual_scale&quot;, dist.LogNormal(loc=-2, scale=2)
+    )
+
+    # --- Seasonal parameters ---
+    with origin_plate, hour_of_week_plate:
+        origin_seasonal = numpyro.sample(&quot;origin_seasonal&quot;, dist.Normal(loc=0, scale=5))
+
+    with destin_plate, hour_of_week_plate:
+        destin_seasonal = numpyro.sample(&quot;destin_seasonal&quot;, dist.Normal(loc=0, scale=5))
+
+    # --- Pairwise station affinity ---
+    with origin_plate, destin_plate:
+        pairwise = numpyro.sample(&quot;pairwise&quot;, dist.Normal(0, 1))
+
+    # --- Observation scales ---
+    with origin_plate:
+        origin_scale = numpyro.sample(&quot;origin_scale&quot;, dist.LogNormal(-5, 5))
+    with destin_plate:
+        destin_scale = numpyro.sample(&quot;destin_scale&quot;, dist.LogNormal(-5, 5))
+        scale = origin_scale + destin_scale
+
+    # Repeat seasonal to match time series length
+    seasonal = origin_seasonal + destin_seasonal
+    seasonal_repeat = periodic_repeat_jax(seasonal, t_max, dim=-1)
+
+    # --- Local level transition function ---
+    def transition_fn(
+        carry: Float[Array, &quot; n_series&quot;], t: int
+    ) -&gt; tuple[Float[Array, &quot; n_series&quot;], Float[Array, &quot; n_series&quot;]]:
+        # Drift term
+        previous_level = carry
+        current_drift = drift[..., t]
+
+        # Neural network correction (NEW in Part III)
+        normalized_level = jnp.tanh(previous_level / 10.0)
+        hour_of_week = t % (24 * 7)
+        hour_of_day = hour_of_week % 24
+        day_of_week = hour_of_week // 24
+
+        nn_output = transition_nn(
+            normalized_level=normalized_level,
+            hour_of_day=hour_of_day,
+            day_of_week=day_of_week,
+            station_indices=station_indices,
+        ).reshape(n_series)
+
+        # Combine: drift + NN correction
+        current_level = previous_level + current_drift + nn_residual_scale * nn_output
+        # Clip to prevent numerical overflow
+        current_level = jnp.clip(current_level, -50.0, 50.0)
+
+        return current_level, current_level
+
+    # Compute latent levels using scan
+    _, pred_levels = scan(
+        transition_fn, init=jnp.zeros((n_series,)), xs=jnp.arange(t_max)
+    )
+
+    # Reshape for broadcasting
+    pred_levels = pred_levels.transpose(1, 0)[None, :, :]
+
+    # Compute mean
+    mu = pred_levels + seasonal_repeat + pairwise
+
+    # Sample observations
+    with numpyro.handlers.condition(data={&quot;obs&quot;: y}):
+        numpyro.sample(&quot;obs&quot;, dist.Normal(loc=mu, scale=scale))</code></pre>
+<p>We can visualize the model structure. Note the new <code>transition</code> node representing the neural network parameters.</p>
+<pre class="python"><code>numpyro.render_model(
+    model=model,
+    model_kwargs={
+        &quot;covariates&quot;: covariates_train,
+        &quot;transition_nn&quot;: transition_nn,
+        &quot;y&quot;: y_train,
+    },
+    render_distributions=True,
+    render_params=True,
+)</code></pre>
+<center>
+<img src="../images/numpyro_hierarchical_forecasting_3_files/numpyro_hierarchical_forecasting_3_22_0.svg" style="width: 1000px;"/>
+</center>
+</div>
+</div>
+<div id="prior-predictive-checks" class="section level2">
+<h2>Prior Predictive Checks</h2>
+<p>As in Part II, we perform prior predictive checks. Note that we pass <code>transition_nn</code> as an argument.</p>
+<pre class="python"><code>prior_predictive = Predictive(model=model, num_samples=500, return_sites=[&quot;obs&quot;])
+
+rng_key, rng_subkey = random.split(rng_key)
+
+prior_samples = prior_predictive(
+    rng_subkey,
+    covariates_train,
+    transition_nn,
+)
+
+idata_prior = az.from_dict(
+    prior_predictive={k: v[None, ...] for k, v in prior_samples.items()},
+    coords={
+        &quot;time_train&quot;: time_train,
+        &quot;origin&quot;: dataset[&quot;stations&quot;],
+        &quot;destin&quot;: dataset[&quot;stations&quot;],
+    },
+    dims={&quot;obs&quot;: [&quot;origin&quot;, &quot;destin&quot;, &quot;time_train&quot;]},
+)</code></pre>
+<p>Let’s plot the prior predictive distribution for the first <span class="math inline">\(8\)</span> stations for the destination station <code>ANTC</code>.</p>
+<pre class="python"><code>station = &quot;ANTC&quot;
+idx = np.nonzero(dataset[&quot;stations&quot;] == station)[0].item()
+
+fig, axes = plt.subplots(
+    nrows=8, ncols=1, figsize=(15, 18), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+for i, ax in enumerate(axes):
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            time_train[time_train &gt;= T1 - 3 * (24 * 7)],
+            idata_prior[&quot;prior_predictive&quot;][&quot;obs&quot;]
+            .sel(destin=station)
+            .isel(origin=i)[:, :, np.array(time_train) &gt;= T1 - 3 * (24 * 7)]
+            .clip(min=0),
+            hdi_prob=hdi_prob,
+            color=&quot;C0&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.3 + 0.2 * j,
+                &quot;label&quot;: f&quot;{hdi_prob * 100:.0f}% HDI (prior)&quot;,
+            },
+            smooth=False,
+            ax=ax,
+        )
+
+    ax.plot(
+        time_train[time_train &gt;= T1 - 3 * (24 * 7)],
+        data[i, idx, T1 - 3 * (24 * 7) : T1],
+        &quot;black&quot;,
+        lw=1,
+        label=&quot;Truth&quot;,
+    )
+
+    ax.legend(
+        bbox_to_anchor=(1.05, 1), loc=&quot;upper left&quot;, borderaxespad=0.0, fontsize=12
+    )
+
+fig.suptitle(&quot;Prior predictive checks&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/numpyro_hierarchical_forecasting_3_files/numpyro_hierarchical_forecasting_3_26_0.png" style="width: 1000px;"/>
+</center>
+<p>Overall, the prior predictive distribution seems very reasonable.</p>
+</div>
+<div id="inference-with-svi" class="section level2">
+<h2>Inference with SVI</h2>
+<p>We fit the model using SVI, the same approach as Part II. That being said, we use a better optimization routine: a scheduler that decays the learning rate over time (and this can influence the model convergence and performance!). For more details on SVI in NumPyro, see <a href="https://juanitorduz.github.io/intro_svi/">“Introduction to Stochastic Variational Inference with NumPyro”</a>.</p>
+<pre class="python"><code>%%time
+
+num_steps = 30_000
+
+scheduler = optax.linear_onecycle_schedule(
+    transition_steps=num_steps,
+    peak_value=0.002,
+    pct_start=0.3,
+    pct_final=0.85,
+    div_factor=2,
+    final_div_factor=3,
+)
+
+optimizer = optax.chain(
+    optax.adam(learning_rate=scheduler),
+    optax.contrib.reduce_on_plateau(
+        factor=0.8,
+        patience=20,
+        accumulation_size=100,
+    ),
+)
+
+guide = AutoNormal(model)
+svi = SVI(model, guide, optimizer, loss=Trace_ELBO())
+
+
+rng_key, rng_subkey = random.split(key=rng_key)
+
+svi_result = svi.run(
+    rng_subkey,
+    num_steps,
+    covariates_train,
+    transition_nn,
+    y_train,
+)
+
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(svi_result.losses)
+ax.set(yscale=&quot;log&quot;)
+ax.set_title(&quot;ELBO Loss&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>100%|██████████| 30000/30000 [34:19&lt;00:00, 14.56it/s, init loss: 1446333056.0000, avg. loss [28501-30000]: 3582207.2500]
+
+
+CPU times: user 1h 17min 14s, sys: 18min 20s, total: 1h 35min 35s
+Wall time: 34min 28s</code></pre>
+<center>
+<img src="../images/numpyro_hierarchical_forecasting_3_files/numpyro_hierarchical_forecasting_3_29_2.png" style="width: 700px;"/>
+</center>
+<p>The ELBO loss looks good.</p>
+</div>
+<div id="posterior-predictive-checks" class="section level2">
+<h2>Posterior Predictive Checks</h2>
+<p>Now that we have learned the parameters, we can generate posterior predictive samples.</p>
+<pre class="python"><code>posterior = Predictive(
+    model=model,
+    guide=guide,
+    params=svi_result.params,
+    num_samples=200,
+    return_sites=[&quot;obs&quot;],
+)
+
+rng_key, rng_subkey = random.split(rng_key)
+
+idata_train = az.from_dict(
+    posterior_predictive={
+        k: v[None, ...]
+        for k, v in posterior(
+            rng_subkey,
+            covariates_train,
+            transition_nn,
+        ).items()
+    },
+    coords={
+        &quot;time_train&quot;: time_train,
+        &quot;origin&quot;: dataset[&quot;stations&quot;],
+        &quot;destin&quot;: dataset[&quot;stations&quot;],
+    },
+    dims={&quot;obs&quot;: [&quot;origin&quot;, &quot;destin&quot;, &quot;time_train&quot;]},
+)
+
+
+rng_key, rng_subkey = random.split(rng_key)
+
+idata_test = az.from_dict(
+    posterior_predictive={
+        k: v[None, ...]
+        for k, v in posterior(
+            rng_subkey,
+            covariates,
+            transition_nn,
+        ).items()
+    },
+    coords={
+        &quot;time&quot;: time,
+        &quot;origin&quot;: dataset[&quot;stations&quot;],
+        &quot;destin&quot;: dataset[&quot;stations&quot;],
+    },
+    dims={&quot;obs&quot;: [&quot;origin&quot;, &quot;destin&quot;, &quot;time&quot;]},
+)</code></pre>
+<p>We compute CRPS (same metric as Part II) to evaluate model performance.</p>
+<pre class="python"><code>@jax.jit
+def crps(
+    truth: Float[Array, &quot;n_series n_series t_max&quot;],
+    pred: Float[Array, &quot;n_samples n_series n_series t_max&quot;],
+    sample_weight: Float[Array, &quot; t_max&quot;] | None = None,
+) -&gt; Float[Array, &quot;&quot;]:
+    if pred.shape[1:] != (1,) * (pred.ndim - truth.ndim - 1) + truth.shape:
+        raise ValueError(
+            f&quot;&quot;&quot;Expected pred to have one extra sample dim on left.
+            Actual shapes: {pred.shape} versus {truth.shape}&quot;&quot;&quot;
+        )
+
+    absolute_error = jnp.mean(jnp.abs(pred - truth), axis=0)
+
+    num_samples = pred.shape[0]
+    if num_samples == 1:
+        return jnp.average(absolute_error, weights=sample_weight)
+
+    pred = jnp.sort(pred, axis=0)
+    diff = pred[1:] - pred[:-1]
+    weight = jnp.arange(1, num_samples) * jnp.arange(num_samples - 1, 0, -1)
+    weight = weight.reshape(weight.shape + (1,) * (diff.ndim - 1))
+
+    per_obs_crps = absolute_error - jnp.sum(diff * weight, axis=0) / num_samples**2
+    return jnp.average(per_obs_crps, weights=sample_weight)
+
+
+crps_train = crps(
+    y_train,
+    jnp.array(idata_train[&quot;posterior_predictive&quot;][&quot;obs&quot;].sel(chain=0).clip(min=0)),
+)
+
+crps_test = crps(
+    y_test,
+    jnp.array(
+        idata_test[&quot;posterior_predictive&quot;][&quot;obs&quot;]
+        .sel(chain=0)
+        .sel(time=slice(T1, T2))
+        .clip(min=0)
+    ),
+)
+
+print(f&quot;Train CRPS: {crps_train:.4f}&quot;)
+print(f&quot;Test CRPS: {crps_test:.4f}&quot;)</code></pre>
+<pre><code>Train CRPS: 0.2297
+Test CRPS: 0.2730</code></pre>
+<p>Finally, we visualize the model fit and forecast.</p>
+<pre class="python"><code>christmas_index = 78736
+
+station = &quot;ANTC&quot;
+idx = np.nonzero(dataset[&quot;stations&quot;] == station)[0].item()
+
+fig, axes = plt.subplots(
+    nrows=8, ncols=1, figsize=(15, 18), sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+for i, ax in enumerate(axes):
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            time_train[time_train &gt;= T1 - 24 * 7],
+            idata_train[&quot;posterior_predictive&quot;][&quot;obs&quot;]
+            .sel(destin=station)
+            .isel(origin=i)[:, :, np.array(time_train) &gt;= T1 - 24 * 7]
+            .clip(min=0),
+            hdi_prob=hdi_prob,
+            color=&quot;C0&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.3 + 0.2 * j,
+                &quot;label&quot;: f&quot;{hdi_prob * 100:.0f}% HDI (train)&quot;,
+            },
+            smooth=False,
+            ax=ax,
+        )
+
+        az.plot_hdi(
+            time[time &gt;= T1],
+            idata_test[&quot;posterior_predictive&quot;][&quot;obs&quot;]
+            .sel(destin=station)
+            .isel(origin=i)[:, :, np.array(time) &gt;= T1]
+            .clip(min=0),
+            hdi_prob=hdi_prob,
+            color=&quot;C1&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + 0.2 * j,
+                &quot;label&quot;: f&quot;{hdi_prob * 100:.0f}% HDI (test)&quot;,
+            },
+            smooth=False,
+            ax=ax,
+        )
+
+    ax.plot(
+        time[time &gt;= T1 - 24 * 7],
+        data[i, idx, T1 - 24 * 7 : T2],
+        &quot;black&quot;,
+        lw=1,
+        label=&quot;Truth&quot;,
+    )
+
+    ax.axvline(christmas_index, color=&quot;C2&quot;, lw=20, alpha=0.2, label=&quot;Christmas&quot;)
+
+    ax.axvline(T1, color=&quot;C3&quot;, linestyle=&quot;--&quot;, label=&quot;Train/test split&quot;)
+
+    ax.legend(
+        bbox_to_anchor=(1.05, 1), loc=&quot;upper left&quot;, borderaxespad=0.0, fontsize=12
+    )
+
+fig.suptitle(
+    f&quot;&quot;&quot;Posterior predictive checks
+
+    Train CRPS: {crps_train:.4f} | Test CRPS: {crps_test:.4f}
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/numpyro_hierarchical_forecasting_3_files/numpyro_hierarchical_forecasting_3_36_0.png" style="width: 1000px;"/>
+</center>
+<p>In this specific example, the neural network correction term is not that important. Why could this be?</p>
+<ul>
+<li>The BART dataset is very seasonal, so the seasonal patterns are explaining most of the variation.</li>
+<li>The drift term is already very flexible to capture additional patterns.</li>
+<li>We are using a simple MLP (+ and embedding). We are not using the auto-regressive structure.</li>
+</ul>
+<p>The minor improvement in the test CRPS is not worth the added complexity and could even be that the its a result of a better optimization component. Nevertheless, this is a good starting point for future experiments.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
