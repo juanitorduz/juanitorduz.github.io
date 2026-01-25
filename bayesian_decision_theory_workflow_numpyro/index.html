@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>A Bayesian Decision Theory Workflow: Port to Numpyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="A Bayesian Decision Theory Workflow: Port to Numpyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">5 min read</span>
+    
+
+    <h1 class="article-title">A Bayesian Decision Theory Workflow: Port to Numpyro</h1>
+
+    
+    <span class="article-date">2026-01-25</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook I explore the <em>Bayesian Decision Theory Workflow</em> described in the amazing blog post <a href="https://daniel-saunders-phil.github.io/imagination_machine/posts/a-bayesian-decision-theory-workflow/">A Bayesian Decision Theory Workflow</a> by <a href="https://github.com/daniel-saunders-phil">Daniel Saunders</a>. It is a great resource to understand how to use Bayesian methods for optimization problems. In the original post, Daniel explains the theory and key concepts using <a href="https://www.pymc.io/">PyMC</a> and its computational backend <a href="https://pytensor.readthedocs.io/en/latest/">PyTensor</a>. He does a remarkable job presenting powerful PyTensor features to manipulate and operate with symbolic computational graphs. I can only recommend you to read it!</p>
+<p>As part of the learning exercise, I ported the workflow to <a href="https://github.com/pyro-ppl/numpyro">NumPyro</a> and <a href="https://github.com/google/jax">JAX</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from functools import partial
+
+import arviz as az
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+from jax import random
+from jaxtyping import Array, Float, UInt
+from numpyro.handlers import condition, do, seed, trace
+from numpyro.infer import MCMC, NUTS
+from numpyro.infer.util import Predictive
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=10)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="setting-up-the-problem" class="section level2">
+<h2>Setting Up the Problem</h2>
+<p>In this example we are interested in maximizing the profit of a product as a function of its price.</p>
+<p><span class="math display">\[\begin{align*}
+    \text{profit} &amp; = (\text{price} - \text{cost}) \times \text{sales}
+    \\
+    \text{sales} &amp; = a \times \text{price}^b
+\end{align*}\]</span></p>
+<p>Here we assume a constant elasticity model for the sales as a function of the price. The elasticity is given by <span class="math inline">\(b\)</span>.</p>
+<p>Let’s code up the profit function and show the profit vs price curve for a set of fixed parameters.</p>
+<pre class="python"><code>def unit_profit(price: Float[Array, &quot; n&quot;], cost: float = 0.3) -&gt; Float[Array, &quot; n&quot;]:
+    return price - cost
+
+
+def profit(
+    price: Float[Array, &quot; n&quot;], a: float, b: float, cost: float = 0.3
+) -&gt; Float[Array, &quot; n&quot;]:
+    return unit_profit(price, cost) * a * price**b
+
+
+price = jnp.linspace(start=0.5, stop=10, num=50)
+
+a_true = 100.0
+b_true = -1.1
+
+fig, ax = plt.subplots()
+ax.plot(price, profit(price, a=a_true, b=b_true, cost=0.3))
+ax.set(title=&quot;Profit as a function of price&quot;, xlabel=&quot;price&quot;, ylabel=&quot;profit&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_4_0.png" style="width: 900px;"/>
+</center>
+<p>By eye-balling the plot, we can see that the maximum profit is achieved at a price of around <span class="math inline">\(3.0\)</span>.</p>
+<p>We can of course solve this analytically by taking the derivative of the profit function with respect to the price and setting it to zero.</p>
+<p><span class="math display">\[\begin{align*}
+    \frac{d\text{profit}}{d\text{price}} &amp; = a \times \text{price}^b + a \times b \times \text{price}^{b-1} \times (\text{price} - \text{cost}) = 0
+\end{align*}\]</span></p>
+<p>Solving for the price that maximizes the profit, we get:</p>
+<p><span class="math display">\[\begin{align*}
+    \text{price}^* = \frac{b \times \text{cost}}{1 + b}
+\end{align*}\]</span></p>
+<p>Let’s compute the optimal price for our true parameters.</p>
+<pre class="python"><code>price_optimal = (b_true * 0.3) / (1 + b_true)
+
+price_optimal</code></pre>
+<pre><code>3.299999999999997</code></pre>
+<p>This is reasonable given the plot above.</p>
+<p><strong>Remark:</strong> Note that the parameter <span class="math inline">\(a\)</span> doesn’t appear in the optimal price formula. This makes sense because <span class="math inline">\(a\)</span> is just a scaling factor for sales, so it doesn’t affect where the maximum occurs.</p>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>As we want to do inference and then optimization, we need to generate some synthetic data. We do this by simply sampling from a generative model:</p>
+<pre class="python"><code>def model(price: Float[Array, &quot; n&quot;]) -&gt; Float[Array, &quot; n&quot;]:
+    mu_a = 100.0
+    sigma_a = 40.0
+    concentration_a = (sigma_a / mu_a) ** 2
+    rate_a = mu_a / sigma_a**2
+
+    a = numpyro.sample(&quot;a&quot;, dist.Gamma(concentration=concentration_a, rate=rate_a))
+
+    b = numpyro.sample(&quot;b&quot;, dist.Normal(loc=0, scale=1))
+
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.HalfNormal(scale=1))
+
+    mu = numpyro.deterministic(&quot;mu&quot;, a * price**b)
+
+    numpyro.sample(&quot;sales&quot;, dist.Normal(loc=mu, scale=sigma))
+
+    return mu</code></pre>
+<p>Next, we simply get a sample for the sales by setting the true parameters in the model and sampling from it.</p>
+<pre class="python"><code># Generate synthetic data
+true_data = {&quot;a&quot;: a_true, &quot;b&quot;: b_true}
+rng_key, rng_subkey = random.split(rng_key)
+samples = trace(seed(do(model, true_data), rng_subkey)).get_trace(price)
+sales_obs = samples[&quot;sales&quot;][&quot;value&quot;]
+
+# Plot the synthetic sales as a function of the price
+fig, ax = plt.subplots()
+ax.scatter(price, sales_obs, label=&quot;Observed data&quot;)
+ax.plot(price, a_true * price**b_true, label=&quot;True model&quot;)
+ax.legend()
+ax.set(title=&quot;Simulated Data&quot;, xlabel=&quot;price&quot;, ylabel=&quot;sales&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_11_0.png" style="width: 900px;"/>
+</center>
+<p>We do see that the sales-price relationship is close to the true model, but of course we see the effect of the noise in the data.</p>
+</div>
+<div id="inference" class="section level2">
+<h2>Inference</h2>
+<p>Now we can use the observed data to infer the parameters of the model. We do this by conditioning the model on the observed data and then sampling from the posterior distribution.</p>
+<pre class="python"><code>conditioned_model = condition(model, {&quot;sales&quot;: sales_obs})
+
+nuts_kernel = NUTS(conditioned_model)
+mcmc = MCMC(nuts_kernel, num_warmup=1_000, num_samples=1_000, num_chains=4)
+rng_key, rng_subkey = random.split(rng_key)
+mcmc.run(rng_subkey, price)
+
+idata = az.from_numpyro(
+    mcmc,
+    coords={&quot;idx&quot;: range(len(price))},
+    dims={&quot;mu&quot;: [&quot;idx&quot;], &quot;sales&quot;: [&quot;idx&quot;]},
+)
+
+axes = az.plot_trace(
+    data=idata,
+    var_names=[&quot;a&quot;, &quot;b&quot;],
+    compact=True,
+    lines=[(&quot;a&quot;, {}, a_true), (&quot;b&quot;, {}, b_true)],
+    backend_kwargs={&quot;figsize&quot;: (10, 6), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Trace Plot&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_15_0.png" style="width: 900px;"/>
+</center>
+<p>The inferred parameters are close to the true parameters.</p>
+</div>
+<div id="utility-function" class="section level2">
+<h2>Utility Function</h2>
+<p>Now we need to use these posterior samples to compute the utility function (in this case the profit) as a function of the price. To do this in NumPyro, we can use the <a href="https://num.pyro.ai/en/stable/utilities.html#numpyro.infer.util.Predictive"><code>Predictive</code></a> utility function.</p>
+<pre class="python"><code># We are interested in the expected sales, i.e. the variable mu.
+predictive = Predictive(model, mcmc.get_samples(), return_sites=[&quot;mu&quot;])
+
+
+# We want to compute the expected sales as a function of the price.
+def predictive_mean(
+    rng_key: UInt[Array, &quot;2&quot;], price: Float[Array, &quot; 1&quot;]
+) -&gt; Float[Array, &quot;&quot;]:
+    return jnp.mean(predictive(rng_key, price)[&quot;mu&quot;])
+
+
+# We now seed and JIT the function.
+rng_key, rng_subkey = random.split(rng_key)
+predictive_mean_jit = jax.jit(partial(predictive_mean, rng_subkey))</code></pre>
+<p>We can now compute the utility function explicitly:</p>
+<pre class="python"><code>def objective(price: Float[Array, &quot; 1&quot;], cost: float = 0.3) -&gt; Float[Array, &quot;&quot;]:
+    unit_profit = price - cost
+    mu = predictive_mean_jit(price)
+    # We need to return a scalar.
+    # We add a minus sign as we will be using a minimizer.
+    return (-1 * unit_profit * mu).reshape(())
+
+
+# Let&#39;s plot the utility function.
+fig, ax = plt.subplots()
+ax.plot(price, jax.vmap(objective)(price.reshape(-1, 1)))
+ax.set(title=&quot;Utility Function&quot;, xlabel=&quot;price&quot;, ylabel=&quot;-profit&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_20_0.png" style="width: 900px;"/>
+</center>
+<p>As expected from the analytical solution, the maximum profit is achieved at a price of around <span class="math inline">\(3.0\)</span>. We want to use this utility function to find the precise optimal price.</p>
+</div>
+<div id="optimization" class="section level2">
+<h2>Optimization</h2>
+<p>We can use <a href="https://jax.readthedocs.io/en/latest/jax.scipy.html#jax.scipy.optimize.minimize"><code>jax.scipy.optimize.minimize</code></a> to find the maximum of the utility function.</p>
+<pre class="python"><code>result = jax.scipy.optimize.minimize(objective, x0=jnp.array([1.0]), method=&quot;BFGS&quot;)
+
+result.x</code></pre>
+<pre><code>Array([3.2792895], dtype=float32)</code></pre>
+<p>The optimal price is very close to our analytical solution!</p>
+<p>Finally, we can plot the utility function and the optimal price.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+ax.plot(price, jax.vmap(objective)(price.reshape(-1, 1)))
+ax.scatter(result.x, objective(result.x), color=&quot;C3&quot;, s=150)
+ax.set(title=&quot;Utility Function and Optimal Price&quot;, xlabel=&quot;price&quot;, ylabel=&quot;-profit&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_25_0.png" style="width: 900px;"/>
+</center>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+

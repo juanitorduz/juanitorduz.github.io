@@ -6,8 +6,15 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 05 Jan 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sun, 25 Jan 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>A Bayesian Decision Theory Workflow: Port to Numpyro</title>
+      <link>/bayesian_decision_theory_workflow_numpyro/</link>
+      <pubDate>Sun, 25 Jan 2026 00:00:00 +0000</pubDate>
+      <guid>/bayesian_decision_theory_workflow_numpyro/</guid>
+      <description>&lt;p&gt;In this notebook I explore the &lt;em&gt;Bayesian Decision Theory Workflow&lt;/em&gt; described in the amazing blog post &lt;a href=&#34;https://daniel-saunders-phil.github.io/imagination_machine/posts/a-bayesian-decision-theory-workflow/&#34;&gt;A Bayesian Decision Theory Workflow&lt;/a&gt; by &lt;a href=&#34;https://github.com/daniel-saunders-phil&#34;&gt;Daniel Saunders&lt;/a&gt;. It is a great resource to understand how to use Bayesian methods for optimization problems. In the original post, Daniel explains the theory and key concepts using &lt;a href=&#34;https://www.pymc.io/&#34;&gt;PyMC&lt;/a&gt; and its computational backend &lt;a href=&#34;https://pytensor.readthedocs.io/en/latest/&#34;&gt;PyTensor&lt;/a&gt;. He does a remarkable job presenting powerful PyTensor features to manipulate and operate with symbolic computational graphs. I can only recommend you to read it!&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Forecasting Hierarchical Models - Part III</title>
       <link>/numpyro_hierarchical_forecasting_3/</link>
