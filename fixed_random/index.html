@@ -359,7 +359,8 @@ ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;, title=&quot;y by x&quot;);</c
     bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
 
     p = pm.Deterministic(
-        &quot;p&quot;, pm.math.invlogit(a0 + bxy * x_data + bzy * z_data[g_data]), dims=&quot;id&quot;
+        &quot;p&quot;, pm.math.invlogit(a0 + bxy * x_data + bzy * z_data[g_data]),
+        dims=&quot;id&quot;
     )
     pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
 
@@ -417,7 +418,8 @@ fig.suptitle(&quot;Naive Model Posterior Distributions&quot;, fontsize=16);</cod
     bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
 
     p = pm.Deterministic(
-        &quot;p&quot;, pm.math.invlogit(a0[g] + bxy * x_data + bzy * z_data[g_data]), dims=&quot;id&quot;
+        &quot;p&quot;, pm.math.invlogit(a0[g_data] + bxy * x_data + bzy * z_data[g_data]),
+        dims=&quot;id&quot;
     )
     pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
 
@@ -516,7 +518,8 @@ fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
     a = abar + z * tau
 
     p = pm.Deterministic(
-        &quot;p&quot;, pm.math.invlogit(a[g] + bxy * x_data + bzy * z_data[g_data]), dims=&quot;id&quot;
+        &quot;p&quot;, pm.math.invlogit(a[g_data] + bxy * x_data + bzy * z_data[g_data]),
+        dims=&quot;id&quot;
     )
     pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
 
@@ -629,7 +632,7 @@ fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
     p = pm.Deterministic(
         &quot;p&quot;,
         pm.math.invlogit(
-            a[g] + bxy * x_data + bzy * z_data[g_data] + buy * xbar_data[g_data]
+            a[g_data] + bxy * x_data + bzy * z_data[g_data] + buy * xbar_data[g_data]
         ),
         dims=&quot;id&quot;,
     )
@@ -751,7 +754,7 @@ fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
     ax = pm.Normal(&quot;ax&quot;, mu=0, sigma=1)
     sigma = pm.Exponential(&quot;sigma&quot;, lam=1)
 
-    mu = pm.Deterministic(&quot;mu&quot;, ax + bux * ug[g])
+    mu = pm.Deterministic(&quot;mu&quot;, ax + bux * ug[g_data])
 
     pm.Normal(&quot;x_obs&quot;, mu=mu, sigma=sigma, dims=&quot;id&quot;, observed=x_obs)
 
@@ -759,7 +762,9 @@ fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
 
     p = pm.Deterministic(
         &quot;p&quot;,
-        pm.math.invlogit(a[g] + bxy * x_data + bzy * z_data[g_data] + buy * ug[g]),
+        pm.math.invlogit(
+          a[g_data] + bxy * x_data + bzy * z_data[g_data] + buy * ug[g_data]
+        ),
         dims=&quot;id&quot;,
     )
     pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
