@@ -6,8 +6,15 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 25 Jan 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Tue, 03 Feb 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Fixed and Random Effects Models: A Simulated Study</title>
+      <link>/fixed_random/</link>
+      <pubDate>Tue, 03 Feb 2026 00:00:00 +0000</pubDate>
+      <guid>/fixed_random/</guid>
+      <description>&lt;p&gt;In this notebook we reproduce the fantastic material from the video &lt;a href=&#34;https://www.youtube.com/watch?v=XNNcN8sU8us&#34;&gt;Statistical Rethinking 2026 Lecture B04 - Group-level confounding and intro to social networks&lt;/a&gt; by Richard McElreath. This is a great video to understand the difference between fixed and random effects models. It is a must watch! Here we use PyMC to fit the models and compare the results.&lt;/p&gt;&#xA;&lt;center&gt;&#xA;&lt;iframe width=&#34;800&#34; height=&#34;500&#34; src=&#34;https://www.youtube.com/embed/XNNcN8sU8us?rel=0s&#34; frameborder=&#34;0&#34; allowfullscreen&gt;&#xA;&lt;/iframe&gt;&#xA;&lt;/center&gt;&#xA;&lt;div id=&#34;prepare-notebook&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Prepare Notebook&lt;/h2&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;from typing import Any&#xA;&#xA;import arviz as az&#xA;import matplotlib.pyplot as plt&#xA;import numpy as np&#xA;import pandas as pd&#xA;import pymc as pm&#xA;import seaborn as sns&#xA;from pymc import do&#xA;&#xA;az.style.use(&amp;quot;arviz-darkgrid&amp;quot;)&#xA;plt.rcParams[&amp;quot;figure.figsize&amp;quot;] = [10, 6]&#xA;plt.rcParams[&amp;quot;figure.dpi&amp;quot;] = 100&#xA;plt.rcParams[&amp;quot;figure.facecolor&amp;quot;] = &amp;quot;white&amp;quot;&#xA;&#xA;%load_ext autoreload&#xA;%autoreload 2&#xA;%config InlineBackend.figure_format = &amp;quot;retina&amp;quot;&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;pre class=&#34;python&#34;&gt;&lt;code&gt;seed: int = 42&#xA;rng: np.random.Generator = np.random.default_rng(seed=seed)&lt;/code&gt;&lt;/pre&gt;&#xA;&lt;/div&gt;&#xA;&lt;div id=&#34;generate-data&#34; class=&#34;section level2&#34;&gt;&#xA;&lt;h2&gt;Generate Data&lt;/h2&gt;&#xA;&lt;p&gt;Here we define the generative model in PyMC.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>A Bayesian Decision Theory Workflow: Port to NumPyro</title>
       <link>/bayesian_decision_theory_workflow_numpyro/</link>

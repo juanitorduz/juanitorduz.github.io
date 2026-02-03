@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Fixed and Random Effects Models: A Simulated Study - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Fixed and Random Effects Models: A Simulated Study - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">10 min read</span>
+    
+
+    <h1 class="article-title">Fixed and Random Effects Models: A Simulated Study</h1>
+
+    
+    <span class="article-date">2026-02-03</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we reproduce the fantastic material from the video <a href="https://www.youtube.com/watch?v=XNNcN8sU8us">Statistical Rethinking 2026 Lecture B04 - Group-level confounding and intro to social networks</a> by Richard McElreath. This is a great video to understand the difference between fixed and random effects models. It is a must watch! Here we use PyMC to fit the models and compare the results.</p>
+<center>
+<iframe width="800" height="500" src="https://www.youtube.com/embed/XNNcN8sU8us?rel=0s" frameborder="0" allowfullscreen>
+</iframe>
+</center>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from typing import Any
+
+import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import seaborn as sns
+from pymc import do
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = 42
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="generate-data" class="section level2">
+<h2>Generate Data</h2>
+<p>Here we define the generative model in PyMC.</p>
+<pre class="python"><code>n_groups: int = 30
+n_id: int = 2_000
+g = rng.choice(n_groups, size=(n_id,), replace=True)
+
+coords: dict[str, Any] = {
+    &quot;group&quot;: np.arange(n_groups),
+    &quot;id&quot;: np.arange(n_id),
+}
+
+with pm.Model(coords=coords) as generative_model:
+    a0 = pm.Normal(&quot;a0&quot;, mu=0, sigma=1)
+    bzy = pm.Normal(&quot;bzy&quot;, mu=0, sigma=1)
+    bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
+    ug = pm.Normal(&quot;ug&quot;, mu=0, sigma=1.5, dims=&quot;group&quot;)
+    x = pm.Normal(&quot;x&quot;, mu=ug[g], sigma=1, dims=&quot;id&quot;)
+    z = pm.Normal(&quot;z&quot;, mu=0, sigma=1, dims=&quot;group&quot;)
+    p = pm.Deterministic(
+        &quot;p&quot;, pm.math.invlogit(a0 + bxy * x + ug[g] + bzy * z[g]), dims=&quot;id&quot;
+    )
+    pm.Bernoulli(&quot;y&quot;, p, dims=&quot;id&quot;)
+
+
+pm.model_to_graphviz(generative_model)</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_5_0.svg" style="width: 700px;"/>
+</center>
+<p>We can now set specific values for the parameters and generate a sample that we will use as <em>observed</em> data.</p>
+<pre class="python"><code>true_params = {&quot;a0&quot;: -2, &quot;bzy&quot;: 1.0, &quot;bxy&quot;: 0.0}
+
+generative_model_do = do(generative_model, true_params)
+
+pm.model_to_graphviz(generative_model_do)</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_7_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>with generative_model_do:
+    idata_obs = pm.sample_prior_predictive(draws=1, random_seed=rng)</code></pre>
+<pre><code>Sampling: [ug, x, y, z]</code></pre>
+<pre class="python"><code>ug_obs = idata_obs[&quot;prior&quot;][&quot;ug&quot;].sel(chain=0, draw=0).to_numpy()
+z_obs = idata_obs[&quot;prior&quot;][&quot;z&quot;].sel(chain=0, draw=0).to_numpy()
+x_obs = idata_obs[&quot;prior&quot;][&quot;x&quot;].sel(chain=0, draw=0).to_numpy()
+y_obs = idata_obs[&quot;prior&quot;][&quot;y&quot;].sel(chain=0, draw=0).to_numpy()
+
+assert ug_obs.shape == (n_groups,)
+assert z_obs.shape == (n_groups,)
+assert x_obs.shape == (n_id,)
+assert y_obs.shape == (n_id,)
+
+data_df = pd.DataFrame(
+    {&quot;group&quot;: g, &quot;x&quot;: x_obs, &quot;y&quot;: y_obs, &quot;z&quot;: z_obs[g], &quot;ug&quot;: ug_obs[g]}
+)
+
+data_df.head()</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+group
+</th>
+<th>
+x
+</th>
+<th>
+y
+</th>
+<th>
+z
+</th>
+<th>
+ug
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+2
+</td>
+<td>
+-1.636772
+</td>
+<td>
+0
+</td>
+<td>
+-0.784611
+</td>
+<td>
+-0.262631
+</td>
+</tr>
+<tr>
+<th>
+1
+</th>
+<td>
+23
+</td>
+<td>
+-0.630586
+</td>
+<td>
+0
+</td>
+<td>
+0.432475
+</td>
+<td>
+-0.856320
+</td>
+</tr>
+<tr>
+<th>
+2
+</th>
+<td>
+19
+</td>
+<td>
+0.632257
+</td>
+<td>
+1
+</td>
+<td>
+-0.802185
+</td>
+<td>
+-0.376058
+</td>
+</tr>
+<tr>
+<th>
+3
+</th>
+<td>
+13
+</td>
+<td>
+-4.794478
+</td>
+<td>
+0
+</td>
+<td>
+0.472600
+</td>
+<td>
+-3.984009
+</td>
+</tr>
+<tr>
+<th>
+4
+</th>
+<td>
+12
+</td>
+<td>
+1.006184
+</td>
+<td>
+0
+</td>
+<td>
+0.196072
+</td>
+<td>
+0.005123
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="exploratory-data-analysis" class="section level2">
+<h2>Exploratory Data Analysis</h2>
+<p>Let’s look into the data and reproduce the plots from the video. First, we look at the group counts.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+data_df.value_counts(&quot;group&quot;).sort_index().plot.bar(ax=ax)
+ax.set(xlabel=&quot;group&quot;, ylabel=&quot;count&quot;, title=&quot;Group Counts&quot;);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_11_0.png" style="width: 900px;"/>
+</center>
+<p>We see that each group has a different number of observations.</p>
+<p>Next we plot the relationship between the group and the variable of interest <span class="math inline">\(x\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data_df, x=&quot;group&quot;, y=&quot;x&quot;, ax=ax)
+ax.set(xlabel=&quot;group&quot;, ylabel=&quot;x&quot;, title=&quot;x by Group&quot;);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_13_0.png" style="width: 900px;"/>
+</center>
+<p>We clearly see that the mean of <span class="math inline">\(x\)</span> is different for each group.</p>
+<p>Now we plot the relationship between <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+sns.scatterplot(data=data_df, x=&quot;x&quot;, y=&quot;y&quot;, ax=ax)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;y&quot;, title=&quot;y by x&quot;);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_15_0.png" style="width: 900px;"/>
+</center>
+<p>It seems that there is a relationship between <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span> (the higher <span class="math inline">\(x\)</span> the higher <span class="math inline">\(y\)</span>). However, as the true value of <span class="math inline">\(b_{xy}\)</span> is <span class="math inline">\(0\)</span>, we know this is just due to the group-level confounding.</p>
+<p>Now we are ready to fit all the models from the video.</p>
+</div>
+<div id="naive-model" class="section level2">
+<h2>Naive Model</h2>
+<p>First we fit the naive model where we simply ignore the group-level confounding.</p>
+<pre class="python"><code>with pm.Model(coords=coords) as naive_model:
+    x_data = pm.Data(&quot;x_data&quot;, x_obs, dims=&quot;id&quot;)
+    y_data = pm.Data(&quot;y_data&quot;, y_obs, dims=&quot;id&quot;)
+    g_data = pm.Data(&quot;g_data&quot;, g, dims=&quot;id&quot;)
+    z_data = pm.Data(&quot;z_data&quot;, z_obs, dims=&quot;group&quot;)
+
+    a0 = pm.Normal(&quot;a0&quot;, mu=0, sigma=1)
+    bzy = pm.Normal(&quot;bzy&quot;, mu=0, sigma=1)
+    bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
+
+    p = pm.Deterministic(
+        &quot;p&quot;, pm.math.invlogit(a0 + bxy * x_data + bzy * z_data[g_data]), dims=&quot;id&quot;
+    )
+    pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
+
+pm.model_to_graphviz(naive_model)</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_19_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>with naive_model:
+    idata_naive = pm.sample(
+        tune=1_000,
+        draws=1_000,
+        chains=4,
+        cores=4,
+        nuts_sampler=&quot;nutpie&quot;,
+        random_seed=rng,
+    )
+
+    pm.compute_log_likelihood(idata_naive)</code></pre>
+<p>Let’s look at the posterior distributions of the parameters.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 5),
+    sharex=False,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_naive,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax,
+)
+fig.suptitle(&quot;Naive Model Posterior Distributions&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_22_0.png" style="width: 900px;"/>
+</center>
+<p>As expected, the posterior distribution of <span class="math inline">\(b_{xy}\)</span> does not include the true value of <span class="math inline">\(0\)</span>. The other parameter, <span class="math inline">\(b_{zy}\)</span>, is estimated with a high uncertainty.</p>
+</div>
+<div id="fixed-effects-model" class="section level2">
+<h2>Fixed Effects Model</h2>
+<p>Now we fit the fixed effects model where we control for the group-level confounding by including the group-level intercepts as parameters (no hierarchical structure).</p>
+<pre class="python"><code>with pm.Model(coords=coords) as fixed_effects_model:
+    x_data = pm.Data(&quot;x_data&quot;, x_obs, dims=&quot;id&quot;)
+    y_data = pm.Data(&quot;y_data&quot;, y_obs, dims=&quot;id&quot;)
+    g_data = pm.Data(&quot;g_data&quot;, g, dims=&quot;id&quot;)
+    z_data = pm.Data(&quot;z_data&quot;, z_obs, dims=&quot;group&quot;)
+
+    a0 = pm.Normal(&quot;a0&quot;, mu=0, sigma=10, dims=&quot;group&quot;)
+    bzy = pm.Normal(&quot;bzy&quot;, mu=0, sigma=1)
+    bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
+
+    p = pm.Deterministic(
+        &quot;p&quot;, pm.math.invlogit(a0[g] + bxy * x_data + bzy * z_data[g_data]), dims=&quot;id&quot;
+    )
+    pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
+
+pm.model_to_graphviz(fixed_effects_model)</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_25_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>with fixed_effects_model:
+    idata_fixed_effects = pm.sample(
+        tune=1_000,
+        draws=1_000,
+        chains=4,
+        cores=4,
+        nuts_sampler=&quot;nutpie&quot;,
+        random_seed=rng,
+    )
+
+    pm.compute_log_likelihood(idata_fixed_effects)</code></pre>
+<p>Let’s look at the posterior distributions of the parameters of the fixed effects model.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 5),
+    sharex=False,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_fixed_effects,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax,
+)
+fig.suptitle(&quot;Fixed Effects Model Posterior Distributions&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_28_0.png" style="width: 900px;"/>
+</center>
+<p>This model is able to estimate the true value of <span class="math inline">\(b_{xy}\)</span> and <span class="math inline">\(b_{zy}\)</span>. We can compare the naive and fixed effects models parameter estimates:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=2,
+    figsize=(12, 8),
+    sharex=&quot;col&quot;,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_naive,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[0],
+)
+
+az.plot_posterior(
+    idata_fixed_effects,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[1],
+)
+
+ax[0, 0].set(ylabel=&quot;Naive Model&quot;)
+ax[1, 0].set(ylabel=&quot;Fixed Effects Model&quot;)
+
+fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_30_0.png" style="width: 900px;"/>
+</center>
+<p>Observe that the uncertainty of <span class="math inline">\(b_{zy}\)</span> is higher in the fixed effects model. The reason is because the intercepts and the group-level <span class="math inline">\(z\)</span> terms are not identifiable (there are many ways to sum up two numbers to get the same group-level intercept).</p>
+</div>
+<div id="multilevel-model" class="section level2">
+<h2>Multilevel Model</h2>
+<p>Now we fit a multilevel model where we control for the group-level confounding by including the group-level intercepts as parameters and a hierarchical structure. We use a non-centered parameterization to improve the sampling efficiency.</p>
+<pre class="python"><code>with pm.Model(coords=coords) as multilevel_model:
+    x_data = pm.Data(&quot;x_data&quot;, x_obs, dims=&quot;id&quot;)
+    y_data = pm.Data(&quot;y_data&quot;, y_obs, dims=&quot;id&quot;)
+    g_data = pm.Data(&quot;g_data&quot;, g, dims=&quot;id&quot;)
+    z_data = pm.Data(&quot;z_data&quot;, z_obs, dims=&quot;group&quot;)
+
+    bzy = pm.Normal(&quot;bzy&quot;, mu=0, sigma=1)
+    bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
+    abar = pm.Normal(&quot;abar&quot;, mu=0, sigma=1)
+    tau = pm.Exponential(&quot;tau&quot;, lam=1)
+    z = pm.Normal(&quot;z&quot;, mu=abar, sigma=1, dims=&quot;group&quot;)
+
+    a = abar + z * tau
+
+    p = pm.Deterministic(
+        &quot;p&quot;, pm.math.invlogit(a[g] + bxy * x_data + bzy * z_data[g_data]), dims=&quot;id&quot;
+    )
+    pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
+
+pm.model_to_graphviz(multilevel_model)</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_33_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>with multilevel_model:
+    idata_multilevel = pm.sample(
+        tune=1_000,
+        draws=1_000,
+        chains=4,
+        cores=4,
+        nuts_sampler=&quot;nutpie&quot;,
+        random_seed=rng,
+    )
+
+    pm.compute_log_likelihood(idata_multilevel)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 5),
+    sharex=False,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_multilevel,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax,
+)
+fig.suptitle(&quot;Multilevel Model Posterior Distributions&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_35_0.png" style="width: 900px;"/>
+</center>
+<p>In this case, the multilevel model is not able to estimate the true value of <span class="math inline">\(b_{xy}\)</span>. The reason is that it is not really factoring out the group-level confounding through the mean. Still, for this model, <span class="math inline">\(b_{zy}\)</span> is correctly estimated with narrower uncertainty as compared to the fixed effects model:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=3,
+    ncols=2,
+    figsize=(12, 10),
+    sharex=&quot;col&quot;,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_naive,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[0],
+)
+
+az.plot_posterior(
+    idata_fixed_effects,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[1],
+)
+
+az.plot_posterior(
+    idata_multilevel,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[2],
+)
+
+ax[0, 0].set(ylabel=&quot;Naive Model&quot;)
+ax[1, 0].set(ylabel=&quot;Fixed Effects Model&quot;)
+ax[2, 0].set(ylabel=&quot;Multilevel Model&quot;)
+
+fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_37_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="mundlak-model" class="section level2">
+<h2>Mundlak Model</h2>
+<p>This is a cool trick! The idea is to explicitly add the group-level mean of <span class="math inline">\(x\)</span> as a predictor as a proxy for the unmeasured group-level confounder. We keep the (non-centered) multilevel model structure.</p>
+<pre class="python"><code>xbar_obs = data_df.groupby(&quot;group&quot;)[&quot;x&quot;].mean().to_numpy()</code></pre>
+<pre class="python"><code>with pm.Model(coords=coords) as mundlak_model:
+    x_data = pm.Data(&quot;x_data&quot;, x_obs, dims=&quot;id&quot;)
+    y_data = pm.Data(&quot;y_data&quot;, y_obs, dims=&quot;id&quot;)
+    g_data = pm.Data(&quot;g_data&quot;, g, dims=&quot;id&quot;)
+    z_data = pm.Data(&quot;z_data&quot;, z_obs, dims=&quot;group&quot;)
+    xbar_data = pm.Data(&quot;xbar_data&quot;, xbar_obs, dims=&quot;group&quot;)
+
+    bzy = pm.Normal(&quot;bzy&quot;, mu=0, sigma=1)
+    bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
+    buy = pm.Normal(&quot;buy&quot;, mu=0, sigma=1)
+    abar = pm.Normal(&quot;abar&quot;, mu=0, sigma=1)
+    tau = pm.Exponential(&quot;tau&quot;, lam=1)
+    z = pm.Normal(&quot;z&quot;, mu=abar, sigma=1, dims=&quot;group&quot;)
+
+    a = abar + z * tau
+
+    p = pm.Deterministic(
+        &quot;p&quot;,
+        pm.math.invlogit(
+            a[g] + bxy * x_data + bzy * z_data[g_data] + buy * xbar_data[g_data]
+        ),
+        dims=&quot;id&quot;,
+    )
+    pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
+
+pm.model_to_graphviz(mundlak_model)</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_40_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>with mundlak_model:
+    idata_mundlak = pm.sample(
+        tune=1_000,
+        draws=1_000,
+        chains=4,
+        cores=4,
+        nuts_sampler=&quot;nutpie&quot;,
+        random_seed=rng,
+    )
+
+    pm.compute_log_likelihood(idata_mundlak)</code></pre>
+<p>This model is able to estimate the true value of <span class="math inline">\(b_{xy}\)</span> and <span class="math inline">\(b_{zy}\)</span> with narrower uncertainty for <span class="math inline">\(b_{zy}\)</span> as compared to the fixed effects model.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 5),
+    sharex=False,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_mundlak,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax,
+)
+fig.suptitle(&quot;Mundlak Model Posterior Distributions&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_43_0.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=4,
+    ncols=2,
+    figsize=(12, 12),
+    sharex=&quot;col&quot;,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_naive,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[0],
+)
+
+az.plot_posterior(
+    idata_fixed_effects,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[1],
+)
+
+az.plot_posterior(
+    idata_multilevel,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[2],
+)
+
+az.plot_posterior(
+    idata_mundlak,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[3],
+)
+
+ax[0, 0].set(ylabel=&quot;Naive Model&quot;)
+ax[1, 0].set(ylabel=&quot;Fixed Effects Model&quot;)
+ax[2, 0].set(ylabel=&quot;Multilevel Model&quot;)
+ax[3, 0].set(ylabel=&quot;Mundlak Model&quot;)
+fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_44_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="mundlak-latent-model" class="section level2">
+<h2>Mundlak Latent Model</h2>
+<p>Finally, we make the trick above more <em>Bayesian</em> by adding a latent variable and an additional likelihood for <span class="math inline">\(x\)</span>. This is very similar to the approach taken in the example notebook <a href="https://juanitorduz.github.io/online_game_ate/">“Causal Effect Estimation with Variational Inference and Latent Confounders”</a>.</p>
+<pre class="python"><code>with pm.Model(coords=coords) as mundlak_latent_model:
+    x_data = pm.Data(&quot;x_data&quot;, x_obs, dims=&quot;id&quot;)
+    y_data = pm.Data(&quot;y_data&quot;, y_obs, dims=&quot;id&quot;)
+    g_data = pm.Data(&quot;g_data&quot;, g, dims=&quot;id&quot;)
+    z_data = pm.Data(&quot;z_data&quot;, z_obs, dims=&quot;group&quot;)
+
+    bzy = pm.Normal(&quot;bzy&quot;, mu=0, sigma=1)
+    bxy = pm.Normal(&quot;bxy&quot;, mu=0, sigma=1)
+    buy = pm.Normal(&quot;buy&quot;, mu=0, sigma=1)
+    bux = pm.Normal(&quot;bux&quot;, mu=0, sigma=1)
+    abar = pm.Normal(&quot;abar&quot;, mu=0, sigma=1)
+    tau = pm.Exponential(&quot;tau&quot;, lam=1)
+    z = pm.Normal(&quot;z&quot;, mu=abar, sigma=1, dims=&quot;group&quot;)
+    ug = pm.Normal(&quot;u&quot;, mu=0, sigma=1, dims=&quot;group&quot;)
+    ax = pm.Normal(&quot;ax&quot;, mu=0, sigma=1)
+    sigma = pm.Exponential(&quot;sigma&quot;, lam=1)
+
+    mu = pm.Deterministic(&quot;mu&quot;, ax + bux * ug[g])
+
+    pm.Normal(&quot;x_obs&quot;, mu=mu, sigma=sigma, dims=&quot;id&quot;, observed=x_obs)
+
+    a = abar + z * tau
+
+    p = pm.Deterministic(
+        &quot;p&quot;,
+        pm.math.invlogit(a[g] + bxy * x_data + bzy * z_data[g_data] + buy * ug[g]),
+        dims=&quot;id&quot;,
+    )
+    pm.Bernoulli(&quot;y_obs&quot;, p, dims=&quot;id&quot;, observed=y_data)
+
+
+pm.model_to_graphviz(mundlak_latent_model)</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_46_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>with mundlak_latent_model:
+    idata_mundlak_latent = pm.sample(
+        tune=1_000,
+        draws=1_000,
+        chains=4,
+        cores=4,
+        nuts_sampler=&quot;nutpie&quot;,
+        random_seed=rng,
+    )
+
+    pm.compute_log_likelihood(idata_mundlak_latent, var_names=[&quot;y_obs&quot;])</code></pre>
+<p>We get similar results as the Mundlak model.</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 5),
+    sharex=False,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_mundlak_latent,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax,
+)
+fig.suptitle(&quot;Mundlak Latent Model Posterior Distributions&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_49_0.png" style="width: 900px;"/>
+</center>
+<p>Let’s compare all the models:</p>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=5,
+    ncols=2,
+    figsize=(12, 16),
+    sharex=&quot;col&quot;,
+    sharey=False,
+    layout=&quot;constrained&quot;,
+)
+
+az.plot_posterior(
+    idata_naive,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[0],
+)
+
+az.plot_posterior(
+    idata_fixed_effects,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[1],
+)
+
+az.plot_posterior(
+    idata_multilevel,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[2],
+)
+
+az.plot_posterior(
+    idata_mundlak,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[3],
+)
+
+az.plot_posterior(
+    idata_mundlak_latent,
+    var_names=[&quot;bxy&quot;, &quot;bzy&quot;],
+    ref_val={
+        &quot;bxy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bxy&quot;]}],
+        &quot;bzy&quot;: [{&quot;ref_val&quot;: true_params[&quot;bzy&quot;]}],
+    },
+    ax=ax[4],
+)
+
+ax[0, 0].set(ylabel=&quot;Naive Model&quot;)
+ax[1, 0].set(ylabel=&quot;Fixed Effects Model&quot;)
+ax[2, 0].set(ylabel=&quot;Multilevel Model&quot;)
+ax[3, 0].set(ylabel=&quot;Mundlak Model&quot;)
+ax[4, 0].set(ylabel=&quot;Mundlak Latent Model&quot;)
+
+fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_51_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="model-comparison" class="section level2">
+<h2>Model Comparison</h2>
+<p>We can also have a more compact visualization of the parameter estimates:</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 10), nrows=2, ncols=1)
+
+az.plot_forest(
+    data=[
+        idata_naive,
+        idata_fixed_effects,
+        idata_multilevel,
+        idata_mundlak,
+        idata_mundlak_latent,
+    ],
+    model_names=[&quot;Naive&quot;, &quot;Fixed Effects&quot;, &quot;Multilevel&quot;, &quot;Mundlak&quot;, &quot;Mundlak Latent&quot;],
+    var_names=[&quot;bxy&quot;],
+    combined=True,
+    ax=ax[0],
+)
+
+ax[0].axvline(x=true_params[&quot;bxy&quot;], color=&quot;k&quot;, linestyle=&quot;--&quot;)
+
+ax[0].get_legend().set_loc(&quot;lower right&quot;)
+ax[0].set_title(&quot;bxy&quot;, fontsize=16)
+
+az.plot_forest(
+    data=[
+        idata_naive,
+        idata_fixed_effects,
+        idata_multilevel,
+        idata_mundlak,
+        idata_mundlak_latent,
+    ],
+    model_names=[
+        &quot;Naive&quot;,
+        &quot;Fixed Effects&quot;,
+        &quot;Multilevel&quot;,
+        &quot;Mundlak&quot;,
+        &quot;Mundlak Latent&quot;,
+    ],
+    var_names=[&quot;bzy&quot;],
+    combined=True,
+    ax=ax[1],
+)
+
+ax[1].axvline(x=true_params[&quot;bzy&quot;], color=&quot;k&quot;, linestyle=&quot;--&quot;)
+
+ax[1].get_legend().set_loc(&quot;lower left&quot;)
+ax[1].set_title(&quot;bzy&quot;, fontsize=16)
+
+fig.suptitle(&quot;Model Comparison&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_54_0.png" style="width: 900px;"/>
+</center>
+<p>Finally, we can compare the models using the LOO information criterion:</p>
+<pre class="python"><code>comp_df = az.compare(
+    {
+        &quot;Naive&quot;: idata_naive,
+        &quot;Fixed Effects&quot;: idata_fixed_effects,
+        &quot;Multilevel&quot;: idata_multilevel,
+        &quot;Mundlak&quot;: idata_mundlak,
+        &quot;Mundlak Latent&quot;: idata_mundlak_latent,
+    },
+    ic=&quot;loo&quot;,
+)
+
+az.plot_compare(comp_df, figsize=(10, 5));</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_56_1.png" style="width: 900px;"/>
+</center>
+<p>We see that the Mundlak latent model is the best model according to the LOO information criterion (but is very close to the Mundlak model).</p>
+<p>This was a great learning experience! Thank you Richard McElreath!</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
