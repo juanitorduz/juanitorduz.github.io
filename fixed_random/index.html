@@ -94,6 +94,26 @@
 <iframe width="800" height="500" src="https://www.youtube.com/embed/XNNcN8sU8us?rel=0s" frameborder="0" allowfullscreen>
 </iframe>
 </center>
+<div id="the-problem" class="section level2">
+<h2>The Problem</h2>
+<p>We work out a simple example of group-level confounding. The DAG we are going to use is the following:</p>
+<pre class="python"><code>import graphviz as gr
+
+g = gr.Digraph()
+g.node(name=&quot;Z&quot;, label=&quot;Z&quot;)
+g.node(name=&quot;G&quot;, label=&quot;G&quot;, color=&quot;lightgray&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;X&quot;, label=&quot;X&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;Y&quot;, label=&quot;Y&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+g.edge(tail_name=&quot;X&quot;, head_name=&quot;Y&quot;)
+g.edge(tail_name=&quot;Z&quot;, head_name=&quot;Y&quot;)
+g.edge(tail_name=&quot;G&quot;, head_name=&quot;X&quot;)
+g.edge(tail_name=&quot;G&quot;, head_name=&quot;Y&quot;)
+g</code></pre>
+<center>
+<img src="../images/fixed_random_files/fixed_random_2_0.svg" style="width: 400px;"/>
+</center>
+<p>We are interested in the relationship between <span class="math inline">\(X\)</span> and <span class="math inline">\(Y\)</span>.</p>
+</div>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>from typing import Any
@@ -119,7 +139,7 @@ rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
 </div>
 <div id="generate-data" class="section level2">
 <h2>Generate Data</h2>
-<p>Here we define the generative model in PyMC.</p>
+<p>Here we define the generative model in PyMC following the causal graph above.</p>
 <pre class="python"><code>n_groups: int = 30
 n_id: int = 2_000
 g = rng.choice(n_groups, size=(n_id,), replace=True)
