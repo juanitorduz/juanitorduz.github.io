@@ -6,8 +6,15 @@
     <description>Recent content in Python, Pymc, Causal_inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 03 Feb 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sun, 22 Feb 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/tags/python-pymc-causal_inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>In-Sample \(R^2\) is Not a Good Metric for Decision Making</title>
+      <link>/no_r2/</link>
+      <pubDate>Sun, 22 Feb 2026 00:00:00 +0000</pubDate>
+      <guid>/no_r2/</guid>
+      <description>&lt;p&gt;In many years of professional data science, I have seen many senior decision makers choose models based on in-sample &lt;span class=&#34;math inline&#34;&gt;\(R^2\)&lt;/span&gt; — the more the better. Many of them would not even tolerate a model with an &lt;span class=&#34;math inline&#34;&gt;\(R^2\)&lt;/span&gt; lower than &lt;span class=&#34;math inline&#34;&gt;\(0.8\)&lt;/span&gt;. These decision makers are making decisions based on hyper inflated &lt;span class=&#34;math inline&#34;&gt;\(R^2\)&lt;/span&gt; models of the orders of millions of dollars (think about marketing spend). Here is a hard pill to swallow: &lt;strong&gt;for optimization and decision making, good causal models are not necessarily the ones with the highest &lt;span class=&#34;math inline&#34;&gt;\(R^2\)&lt;/span&gt;&lt;/strong&gt;. People working on causal inference are very aware about this, but it is sad that this is not common knowledge across various industries. Motivated by my previous blog post on a related topic, &lt;a href=&#34;https://juanitorduz.github.io/causal_inference_example/&#34;&gt;“Using Data Science for Bad Decision-Making: A Case Study”&lt;/a&gt;, here is yet another simulation to illustrate this point. I hope this can be used by data scientists to influence decision makers to make better decisions from statistical models.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Fixed and Random Effects Models: A Simulated Study</title>
       <link>/fixed_random/</link>
