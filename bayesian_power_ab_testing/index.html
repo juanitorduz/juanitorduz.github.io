@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Bayesian Power Analysis for A/B Testing - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Bayesian Power Analysis for A/B Testing - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">12 min read</span>
+    
+
+    <h1 class="article-title">Bayesian Power Analysis for A/B Testing</h1>
+
+    
+    <span class="article-date">2026-03-05</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This notebook implements a simulation-based <strong>Bayesian power analysis</strong> for conversion-rate A/B tests and compares it against the classical frequentist
+two-proportion z-test. We follow the Kruschke HDI+ROPE framework from <a href="https://link.springer.com/content/pdf/10.3758/s13423-016-1221-4.pdf"><em>The Bayesian New Statistics</em></a> (Section “Planning for precision and other goals: Better done Bayesian”), in the same way as in the introductory example: <a href="https://juanitorduz.github.io/power_sample_size_exclude_null/">Introduction to Bayesian Power Analysis: Exclude a Null Value</a>. The process is as follows:</p>
+<ol style="list-style-type: decimal">
+<li>Generate synthetic A/B test data across a grid of sample sizes and
+true relative lifts <span class="math inline">\(\omega\)</span> (distributions).</li>
+<li>For each cell, fit a Bayesian model via MCMC and compute the <span class="math inline">\(95\%\)</span> HDI of
+the <code>relative_lift</code> posterior.</li>
+<li>Power = fraction of simulations where the <span class="math inline">\(95\%\)</span> HDI falls entirely outside a
+Region of Practical Equivalence (ROPE).</li>
+</ol>
+<p>We compare <strong>three prior specifications</strong> motivated by <a href="https://juanitorduz.github.io/prior_predictive_ab_testing/">Prior Predictive Modeling in Bayesian AB Testing</a> (see also <a href="https://www.geteppo.com/blog/the-bet-test-problems-in-bayesian-ab-test-analysis">The Bet Test</a>):</p>
+<table style="width:100%;">
+<colgroup>
+<col width="12%" />
+<col width="24%" />
+<col width="38%" />
+<col width="24%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Model</th>
+<th>Control prior</th>
+<th>Treatment / Lift prior</th>
+<th>Key property</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Non-informative</strong></td>
+<td><span class="math inline">\(\text{Uniform}(0,1)\)</span></td>
+<td><span class="math inline">\(\text{Uniform}(0,1)\)</span></td>
+<td>Flat, no domain knowledge</td>
+</tr>
+<tr class="even">
+<td><strong>Informative</strong></td>
+<td><span class="math inline">\(\text{Beta}(15,600)\)</span></td>
+<td><span class="math inline">\(\text{Beta}(15,600)\)</span> (independent)</td>
+<td>Marginals informed, joint is too wide</td>
+</tr>
+<tr class="odd">
+<td><strong>Correlated</strong></td>
+<td><span class="math inline">\(\text{Beta}(15,600)\)</span></td>
+<td>via <span class="math inline">\(\text{Normal}(0,0.1)\)</span> on lift</td>
+<td>Joint is tight around the diagonal</td>
+</tr>
+</tbody>
+</table>
+<p>We show that the correlated model requires more samples for the same power (lower true-positive rate), but this comes with a concrete benefit: <strong>fewer false positives</strong>. We quantify this tradeoff by looking into the false positive rate (FPR) vs sample size**: the <span class="math inline">\(\omega=0\)</span> slice of the power curves.</p>
+<p>A similar approach is used in the <a href="https://easystats.github.io/bayestestR/articles/region_of_practical_equivalence.html">easystats/bayestestR</a> package.</p>
+<p><strong>Remark:</strong> This is related to the blog post by <a href="https://dpananos.github.io/">Demetri Pananos, Ph.D</a>, where he derives explicit analytic expressions:</p>
+<ul>
+<li><a href="https://dpananos.github.io/posts/2026-02-20-time/">How Long To Run an A/B Test as a Bayesian</a></li>
+<li><a href="https://dpananos.github.io/posts/2026-02-24-opt-impact/">Optimal Experiment Sample Sizes for Bayesian A/B Tests</a></li>
+</ul>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from collections.abc import Callable
+
+import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import numpy.typing as npt
+import preliz as pz
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+import xarray as xr
+from matplotlib.ticker import FuncFormatter, PercentFormatter
+from pydantic import BaseModel, ConfigDict, Field
+from statsmodels.stats.power import NormalIndPower
+from statsmodels.stats.proportion import proportion_effectsize
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = 42
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="power-analysis-configuration" class="section level2">
+<h2>Power Analysis Configuration</h2>
+<p>Let’s start by scoping the problem in view of an hypothetical A/B test. Let us assume the following historical conversion rate distribution:</p>
+<pre class="python"><code>historical_conversions_dist = pm.Beta.dist(alpha=15, beta=600)
+
+historical_conversions = pm.draw(
+    historical_conversions_dist, draws=1_000, random_seed=rng
+)
+
+fig, ax = plt.subplots()
+az.plot_dist(historical_conversions, fill_kwargs={&quot;alpha&quot;: 0.5}, ax=ax)
+ax.axvline(
+    historical_conversions.mean(),
+    color=&quot;C0&quot;,
+    linestyle=&quot;--&quot;,
+    alpha=0.8,
+    label=f&quot;mean = {historical_conversions.mean():.2%}&quot;,
+)
+ax.legend()
+ax.xaxis.set_major_formatter(PercentFormatter(1.0, decimals=1))
+
+ax.set(xlabel=&quot;Conversion Rate&quot;, ylabel=&quot;Density&quot;)
+ax.set_title(&quot;Historical Conversion Rate Distribution&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_5_0.png" style="width: 800px;"/>
+</center>
+<p>We now specify the power analysis configuration. We are interested in the effect of a new feature on the conversion rate, and we want to detect a relative lift of at least <span class="math inline">\(25\%\)</span> (or <span class="math inline">\(0.25\)</span>) with power <span class="math inline">\(80\%\)</span> at <span class="math inline">\(\alpha=0.05\)</span>. We use a ROPE of <span class="math inline">\(\pm 5\%\)</span> from the historical mean.</p>
+<pre class="python"><code>class PowerAnalysisConfig(BaseModel):
+    relative_lifts: npt.NDArray = Field(..., description=&quot;Relative lifts to test.&quot;)
+    sample_sizes: npt.NDArray = Field(..., description=&quot;Sample sizes to test.&quot;)
+    n_simulations: int = Field(..., description=&quot;Number of simulations.&quot;)
+    rope: tuple[float, float] = Field(
+        ...,
+        description=&quot;&quot;&quot;
+        Region of practical equivalence.
+        That is, the range of effect sizes that are considered negligible.
+        &quot;&quot;&quot;,
+    )
+    hdi_prob: float = Field(..., description=&quot;HDI probability&quot;)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+rope_bound = historical_conversions.mean() * 0.05
+
+power_analysis_config = PowerAnalysisConfig(
+    relative_lifts=np.linspace(-0.25, 0.25, 5),
+    sample_sizes=np.linspace(100, 80_000, 9, dtype=int),
+    n_simulations=700,
+    hdi_prob=0.95,
+    rope=(-rope_bound, rope_bound),
+)</code></pre>
+<p>We visualize the prior distribution of the relative lift against the sequence of sample sizes distribitions:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for relative_lift in power_analysis_config.relative_lifts:
+    pz.Normal(mu=relative_lift, sigma=0.01).plot_pdf(ax=ax)
+
+pz.Normal(mu=0, sigma=0.1).plot_pdf(color=&quot;black&quot;, ax=ax)
+
+ax.set_title(&quot;Effect Size Distributions&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_9_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="data-generating-model" class="section level2">
+<h2>Data-Generating Model</h2>
+<p>We build a single vectorised PyMC model that generates synthetic A/B test data for all <span class="math inline">\((n, \omega, \text{simulation})\)</span> combinations in one forward pass via <code>pm.sample_prior_predictive</code>. The data-generating process uses the <strong>correlated</strong> parameterisation: a shared <code>Beta(15, 600)</code> control rate with the lift drawn from <span class="math inline">\(\text{Normal}(\omega, 0.01)\)</span>.</p>
+<pre class="python"><code>def generating_model_factory(
+    power_analysis_config: PowerAnalysisConfig, rng: np.random.Generator
+) -&gt; tuple[az.InferenceData, pm.Model]:
+    coords = {
+        &quot;sample_size&quot;: power_analysis_config.sample_sizes,
+        &quot;omega&quot;: power_analysis_config.relative_lifts,
+        &quot;simulation&quot;: range(power_analysis_config.n_simulations),
+    }
+
+    with pm.Model(coords=coords) as model:
+        sample_sizes_ = pm.Data(
+            &quot;sample_sizes&quot;,
+            power_analysis_config.sample_sizes,
+            dims=(&quot;sample_size&quot;,),
+        )
+        sample_sizes_expanded = pt.expand_dims(
+            pt.as_tensor_variable(sample_sizes_), axis=[1, 2]
+        )
+        omegas_ = pm.Data(
+            &quot;omegas&quot;, power_analysis_config.relative_lifts, dims=(&quot;omega&quot;,)
+        )
+        omegas_expanded = pt.expand_dims(pt.as_tensor_variable(omegas_), axis=[0, 2])
+        relative_lift = pm.Normal(
+            &quot;relative_lift&quot;,
+            mu=omegas_expanded,
+            sigma=0.01,
+            dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+        )
+
+        conversion_rate_control = pm.Beta(
+            &quot;conversion_rate_control&quot;,
+            alpha=15,
+            beta=600,
+            dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+        )
+
+        conversion_rate_treatment = pm.Deterministic(
+            &quot;conversion_rate_treatment&quot;,
+            conversion_rate_control * (1 + relative_lift),
+            dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+        )
+
+        pm.Binomial(
+            &quot;n_control&quot;,
+            n=sample_sizes_expanded,
+            p=conversion_rate_control,
+            dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+        )
+
+        pm.Binomial(
+            &quot;n_treatment&quot;,
+            n=sample_sizes_expanded,
+            p=conversion_rate_treatment,
+            dims=(&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;),
+        )
+
+        idata = pm.sample_prior_predictive(samples=1, random_seed=rng)
+
+    return idata, model
+
+
+generating_model_idata, data_generating_model = generating_model_factory(
+    power_analysis_config=power_analysis_config, rng=rng
+)
+
+pm.model_to_graphviz(data_generating_model)</code></pre>
+<pre><code>Sampling: [conversion_rate_control, n_control, n_treatment, relative_lift]</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_11_1.svg" style="width: 700px;"/>
+</center>
+<p>We now sample the prior predictive to extract the control and treatment data:</p>
+<pre class="python"><code>data_control = generating_model_idata[&quot;prior&quot;][&quot;n_control&quot;].sel(chain=0, draw=0)
+data_treatment = generating_model_idata[&quot;prior&quot;][&quot;n_treatment&quot;].sel(chain=0, draw=0)</code></pre>
+</div>
+<div id="inference-model-factory" class="section level2">
+<h2>Inference Model Factory</h2>
+<p>Next, we implement a single factory for the three models from the previous post:
+<a href="https://juanitorduz.github.io/prior_predictive_ab_testing/">Prior Predictive Modeling in Bayesian AB Testing</a>.</p>
+<ul>
+<li><strong>Non-informative</strong>: <code>Uniform(0,1)</code> on both conversion rates, <code>relative_lift</code> derived.</li>
+<li><strong>Informative</strong>: <code>Beta(15,600)</code> independently on both rates, <code>relative_lift</code> derived.</li>
+<li><strong>Correlated</strong>: <code>Beta(15,600)</code> on control, <code>Normal(0,0.1)</code> on <code>relative_lift</code>, treatment derived.</li>
+</ul>
+<pre class="python"><code>Dims = tuple[str, ...]
+
+
+def _non_informative_priors(
+    dims: Dims,
+) -&gt; tuple[pt.TensorVariable, pt.TensorVariable]:
+    conversion_rate_control = pm.Uniform(
+        &quot;conversion_rate_control&quot;,
+        lower=0,
+        upper=1,
+        dims=dims,
+    )
+    conversion_rate_treatment = pm.Uniform(
+        &quot;conversion_rate_treatment&quot;,
+        lower=0,
+        upper=1,
+        dims=dims,
+    )
+    pm.Deterministic(
+        &quot;relative_lift&quot;,
+        conversion_rate_treatment / conversion_rate_control - 1,
+        dims=dims,
+    )
+    return conversion_rate_control, conversion_rate_treatment
+
+
+def _informative_priors(
+    dims: Dims,
+) -&gt; tuple[pt.TensorVariable, pt.TensorVariable]:
+    conversion_rate_control = pm.Beta(
+        &quot;conversion_rate_control&quot;,
+        alpha=15,
+        beta=600,
+        dims=dims,
+    )
+    conversion_rate_treatment = pm.Beta(
+        &quot;conversion_rate_treatment&quot;,
+        alpha=15,
+        beta=600,
+        dims=dims,
+    )
+    pm.Deterministic(
+        &quot;relative_lift&quot;,
+        conversion_rate_treatment / conversion_rate_control - 1,
+        dims=dims,
+    )
+    return conversion_rate_control, conversion_rate_treatment
+
+
+def _correlated_priors(
+    dims: Dims,
+) -&gt; tuple[pt.TensorVariable, pt.TensorVariable]:
+    conversion_rate_control = pm.Beta(
+        &quot;conversion_rate_control&quot;,
+        alpha=15,
+        beta=600,
+        dims=dims,
+    )
+    relative_lift = pm.Normal(
+        &quot;relative_lift&quot;,
+        mu=0,
+        sigma=0.1,
+        dims=dims,
+    )
+    conversion_rate_treatment = pm.Deterministic(
+        &quot;conversion_rate_treatment&quot;,
+        conversion_rate_control * (1 + relative_lift),
+        dims=dims,
+    )
+    return conversion_rate_control, conversion_rate_treatment
+
+
+class ModelType(BaseModel):
+    name: str = Field(..., description=&quot;Name of the model.&quot;)
+    prior_fn: Callable[[Dims], tuple[pt.TensorVariable, pt.TensorVariable]] = Field(
+        ..., description=&quot;Prior function.&quot;
+    )
+    model: pm.Model | None = Field(default=None, description=&quot;PyMC model.&quot;)
+    idata: az.InferenceData | None = Field(default=None, description=&quot;Inference data.&quot;)
+    power_results: xr.DataArray | None = Field(
+        default=None, description=&quot;Power results.&quot;
+    )
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+def inference_model_factory(
+    prior_fn: Callable[[Dims], tuple[pt.TensorVariable, pt.TensorVariable]],
+    power_analysis_config: PowerAnalysisConfig,
+    data_control: xr.DataArray,
+    data_treatment: xr.DataArray,
+) -&gt; pm.Model:
+    coords = {
+        &quot;sample_size&quot;: power_analysis_config.sample_sizes,
+        &quot;omega&quot;: power_analysis_config.relative_lifts,
+        &quot;simulation&quot;: range(power_analysis_config.n_simulations),
+    }
+    dims = (&quot;sample_size&quot;, &quot;omega&quot;, &quot;simulation&quot;)
+
+    with pm.Model(coords=coords) as model:
+        sample_sizes_ = pm.Data(
+            &quot;sample_sizes&quot;,
+            power_analysis_config.sample_sizes,
+            dims=(&quot;sample_size&quot;,),
+        )
+        data_control_ = pm.Data(&quot;data_control&quot;, data_control, dims=dims)
+        data_treatment_ = pm.Data(&quot;data_treatment&quot;, data_treatment, dims=dims)
+        sample_sizes_expanded = pt.expand_dims(
+            pt.as_tensor_variable(sample_sizes_), axis=[1, 2]
+        )
+
+        conversion_rate_control, conversion_rate_treatment = prior_fn(dims)
+
+        pm.Binomial(
+            &quot;n_control&quot;,
+            n=sample_sizes_expanded,
+            p=conversion_rate_control,
+            observed=data_control_,
+            dims=dims,
+        )
+        pm.Binomial(
+            &quot;n_treatment&quot;,
+            n=sample_sizes_expanded,
+            p=conversion_rate_treatment,
+            observed=data_treatment_,
+            dims=dims,
+        )
+
+    return model</code></pre>
+<p>Let’s instantiate the three models objects:</p>
+<pre class="python"><code>model_types: list[ModelType] = [
+    ModelType(
+        name=&quot;non_informative&quot;,
+        prior_fn=_non_informative_priors,
+    ),
+    ModelType(
+        name=&quot;informative&quot;,
+        prior_fn=_informative_priors,
+    ),
+    ModelType(
+        name=&quot;correlated&quot;,
+        prior_fn=_correlated_priors,
+    ),
+]
+
+
+for model_type in model_types:
+    model_type.model = inference_model_factory(
+        model_type.prior_fn,
+        power_analysis_config,
+        data_control,
+        data_treatment,
+    )</code></pre>
+<p>Let’s visualize the models structures:</p>
+<pre class="python"><code># Non-informative
+pm.model_to_graphviz(model_types[0].model)</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_19_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code># Informative
+pm.model_to_graphviz(model_types[1].model)</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_20_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code># Correlated
+pm.model_to_graphviz(model_types[2].model)</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_21_0.svg" style="width: 700px;"/>
+</center>
+</div>
+<div id="mcmc-sampling" class="section level2">
+<h2>MCMC Sampling</h2>
+<p>We sample the posterior with NUTS via <a href="https://github.com/pymc-devs/nutpie"><code>nutpie</code></a> for each model.</p>
+<pre class="python"><code>%%time
+
+for model_type in model_types:
+    with model_type.model:
+        model_type.idata = pm.sample(
+            tune=500,
+            draws=100,
+            chains=14,
+            cores=14,
+            nuts_sampler=&quot;nutpie&quot;,
+            compile_kwargs={&quot;gradient_backend&quot;: &quot;jax&quot;},
+            random_seed=rng,
+        )</code></pre>
+<pre><code>CPU times: user 2h 18min 24s, sys: 1min 31s, total: 2h 19min 56s
+Wall time: 14min 10s</code></pre>
+</div>
+<div id="convergence-diagnostics" class="section level2">
+<h2>Convergence Diagnostics</h2>
+<p>Let’s look into the energy diagnostics (as we did not see any divergences during sampling):</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=len(model_types),
+    ncols=1,
+    figsize=(10, 12),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for ax, model_type in zip(axes, model_types, strict=True):
+    az.plot_energy(model_type.idata, bfmi=True, ax=ax)
+    ax.set_title(model_type.name)
+    ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5), fontsize=10)
+
+fig.suptitle(&quot;Energy Diagnostics&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_25_0.png" style="width: 800px;"/>
+</center>
+<p>Every model has Bayesian Fraction of Missing Information (BFMI) close to <span class="math inline">\(1\)</span>, so we are good to go.</p>
+<p>We can also check the R-hats of the posterior samples:</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=len(model_types),
+    ncols=1,
+    figsize=(10, 12),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for ax, model_type in zip(axes, model_types, strict=True):
+    rhats = az.rhat(
+        model_type.idata[&quot;posterior&quot;],
+        var_names=[
+            &quot;conversion_rate_control&quot;,
+            &quot;conversion_rate_treatment&quot;,
+            &quot;relative_lift&quot;,
+        ],
+    )
+
+    sns.ecdfplot(rhats.to_dataframe(), ax=ax)
+    ax.set_title(model_type.name)
+
+ax.set(xlabel=&quot;R-hat&quot;)
+
+fig.suptitle(&quot;R-hats&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_28_1.png" style="width: 800px;"/>
+</center>
+<p>They are look withing a reasonable range close to <span class="math inline">\(1\)</span>.</p>
+</div>
+<div id="bayesian-power-curves" class="section level2">
+<h2>Bayesian Power Curves</h2>
+<p>We now compute the power for each model by computing the fraction of simulations where the <span class="math inline">\(95\%\)</span> HDI of the relative lift falls entirely outside the ROPE.</p>
+<pre class="python"><code>def compute_bayesian_power(
+    idata: az.InferenceData,
+    power_analysis_config: PowerAnalysisConfig,
+) -&gt; xr.DataArray:
+    hdi = az.hdi(
+        idata[&quot;posterior&quot;][&quot;relative_lift&quot;], hdi_prob=power_analysis_config.hdi_prob
+    )[&quot;relative_lift&quot;]
+    condition_1 = hdi.sel(hdi=&quot;lower&quot;) &gt; power_analysis_config.rope[1]
+    condition_2 = hdi.sel(hdi=&quot;higher&quot;) &lt; power_analysis_config.rope[0]
+    return (condition_1 | condition_2).mean(dim=&quot;simulation&quot;)
+
+
+for model_type in model_types:
+    model_type.power_results = compute_bayesian_power(
+        model_type.idata, power_analysis_config
+    )</code></pre>
+<p>Now we can plot the power curves for all three models as a function of the sample size:</p>
+<pre class="python"><code>palette = sns.color_palette(
+    &quot;Spectral&quot;, n_colors=len(power_analysis_config.relative_lifts)
+)
+
+fig, axes = plt.subplots(
+    nrows=len(model_types),
+    ncols=1,
+    figsize=(10, 12),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for ax, model_type in zip(axes, model_types, strict=True):
+    df = (
+        model_type.power_results.to_dataframe(name=&quot;power&quot;)
+        .reset_index(drop=False)
+        .assign(omega=lambda x: x[&quot;omega&quot;].astype(&quot;str&quot;))
+    )
+
+    sns.lineplot(
+        data=df,
+        x=&quot;sample_size&quot;,
+        y=&quot;power&quot;,
+        hue=&quot;omega&quot;,
+        marker=&quot;o&quot;,
+        markeredgecolor=&quot;black&quot;,
+        markersize=8,
+        linewidth=3,
+        palette=palette,
+        ax=ax,
+    )
+    ax.axhline(0.8, color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.8)
+
+    ax.legend(
+        loc=&quot;center left&quot;,
+        bbox_to_anchor=(1, 0.5),
+        fontsize=16,
+        title=r&quot;$\omega$ (lift)&quot;,
+        title_fontsize=16,
+    )
+
+    ax.set(
+        title=model_type.name,
+        xlabel=&quot;sample size&quot;,
+        ylabel=&quot;power&quot;,
+    )
+
+
+ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f&quot;{x / 1000:,.0f}&quot; + &quot;K&quot;))
+
+fig.suptitle(
+    &quot;Bayesian Power Analysis (HDI + ROPE)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.03,
+);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_33_0.png" style="width: 800px;"/>
+</center>
+<div id="findings-impact-of-prior-choice-on-power" class="section level3">
+<h3>Findings: Impact of Prior Choice on Power</h3>
+<p>The three-panel plot reveals a clear ordering:</p>
+<ul>
+<li><strong>Non-informative</strong> (Uniform) reaches the highest power. With flat priors the posterior is driven mostly by data.</li>
+<li><strong>Informative</strong> (independent <code>Beta(15,600)</code>) is slightly below, but still very close to the non-informative model.</li>
+<li><strong>Correlated</strong> (<code>Normal(0, 0.1)</code> on lift) is the most conservative. Its prior concentrates 95% of mass within <span class="math inline">\(|\omega| &lt; 0.2\)</span>. For true effects beyond that range, the prior is in strong conflict with the data, producing substantial posterior shrinkage and low power. This is <em>by design</em>: the model is sceptical of large lifts, consistent with Twyman’s law (“Any figure that looks interesting or different is usually wrong”).</li>
+</ul>
+<p><strong>Remark.</strong> Observe there is a clear asymmetry in power: negative <span class="math inline">\(\omega\)</span> values (lower treatment rate) consistently show higher power than positive ones of the same magnitude. This is because lower proportions have smaller Binomial variance <span class="math inline">\(p(1-p)\)</span>, making each observation more informative about the relative lift Intuitively: when the treatment reduces conversion (negative <span class="math inline">\(\omega\)</span>), you’re pushing <span class="math inline">\(p_{\text{treatment}}\)</span> closer to zero where each observation is very informative (almost everyone doesn’t convert, deviations are easy to spot). When the treatment increases conversion (positive <span class="math inline">\(\omega\)</span>), <span class="math inline">\(p_{\text{treatment}}\)</span> moves toward the noisier middle range. This asymmetry gets more dramatic for lower baselines and larger <span class="math inline">\(|\omega|\)</span>. For a <span class="math inline">\(50\%\)</span> baseline it would essentially vanish, since <span class="math inline">\(p(1-p)\)</span> is nearly flat around <span class="math inline">\(p = 0.5\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+p_range = np.linspace(0, 1, 100)
+ax.plot(p_range, p_range * (1 - p_range))
+ax.set(xlabel=&quot;p&quot;, ylabel=&quot;variance&quot;)
+ax.set_title(&quot;Variance of a binomial distribution&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_36_0.png" style="width: 800px;"/>
+</center>
+</div>
+</div>
+<div id="frequentist-power-analysis-two-proportion-z-test" class="section level2">
+<h2>Frequentist Power Analysis (Two-Proportion Z-Test)</h2>
+<p>For comparison, we compute the analytical power of a classical two-proportion z-test (using Cohen’s <span class="math inline">\(h\)</span> effect size) at <span class="math inline">\(\alpha = 0.05\)</span>. This serves as a well-understood benchmark: it assumes no prior information and tests whether the observed proportions differ from each other. We use the <a href="https://www.statsmodels.org/"><code>statsmodels</code></a> implementation of the power analysis via <a href="https://www.statsmodels.org/stable/generated/statsmodels.stats.power.NormalIndPower.html"><code>NormalIndPower</code></a>.</p>
+<pre class="python"><code>def compute_frequentist_power(
+    power_analysis_config: PowerAnalysisConfig,
+    p_control: float,
+    alpha: float = 0.05,
+) -&gt; xr.DataArray:
+    omegas = power_analysis_config.relative_lifts
+    power_solver = NormalIndPower()
+    sample_sizes = power_analysis_config.sample_sizes
+    power_grid = np.zeros((len(sample_sizes), len(omegas)))
+
+    for j, omega in enumerate(omegas):
+        p_treatment = p_control * (1 + omega)
+        if p_treatment &lt;= 0 or p_treatment &gt;= 1 or np.isclose(omega, 0):
+            power_grid[:, j] = alpha if np.isclose(omega, 0) else np.nan
+            continue
+        h = proportion_effectsize(p_treatment, p_control)
+        for i, sample_size in enumerate(sample_sizes):
+            power_grid[i, j] = power_solver.solve_power(
+                effect_size=h,
+                nobs1=sample_size,
+                power=None,  # This is the value we want to solve for!
+                alpha=alpha,
+                ratio=1,
+                alternative=&quot;two-sided&quot;,
+            )
+
+    return xr.DataArray(
+        power_grid,
+        dims=(&quot;sample_size&quot;, &quot;omega&quot;),
+        coords={&quot;sample_size&quot;: sample_sizes, &quot;omega&quot;: omegas},
+    )
+
+
+p_control = 15 / (15 + 600)
+
+freq_power = compute_frequentist_power(
+    power_analysis_config=power_analysis_config,
+    p_control=p_control,
+)</code></pre>
+<p>Let’s plot the power curves for the frequentist model:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+df_freq = (
+    freq_power.to_dataframe(name=&quot;power&quot;)
+    .reset_index(drop=False)
+    .assign(omega=lambda x: x[&quot;omega&quot;].astype(&quot;str&quot;))
+)
+sns.lineplot(
+    data=df_freq,
+    x=&quot;sample_size&quot;,
+    y=&quot;power&quot;,
+    hue=&quot;omega&quot;,
+    marker=&quot;o&quot;,
+    markeredgecolor=&quot;black&quot;,
+    markersize=8,
+    linewidth=3,
+    palette=palette,
+    ax=ax,
+)
+
+ax.axhline(0.8, color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.8)
+ax.legend(
+    loc=&quot;center left&quot;,
+    bbox_to_anchor=(1, 0.5),
+    fontsize=16,
+    title=r&quot;$\omega$ (lift)&quot;,
+    title_fontsize=16,
+)
+ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f&quot;{x / 1000:,.0f}&quot; + &quot;K&quot;))
+ax.set(xlabel=&quot;sample size&quot;, ylabel=&quot;power&quot;)
+ax.set_title(
+    &quot;Power Analysis (Frequentist Two-Proportion Z-Test)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_40_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="comparison" class="section level2">
+<h2>Comparison</h2>
+<p>Now we can compare all four approaches on the same sample-size range.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=2,
+    ncols=2,
+    figsize=(15, 10),
+    sharey=True,
+    sharex=True,
+    layout=&quot;constrained&quot;,
+)
+plot_specs: list[tuple[str, xr.DataArray]] = [
+    (&quot;Frequentist (Z-Test)&quot;, freq_power),
+    *[(model_type.name, model_type.power_results) for model_type in model_types],
+]
+
+for ax, (title, power_data) in zip(axes.flat, plot_specs, strict=True):
+    df = (
+        power_data.to_dataframe(name=&quot;power&quot;)
+        .reset_index(drop=False)
+        .assign(omega=lambda x: x[&quot;omega&quot;].astype(&quot;str&quot;))
+    )
+    sns.lineplot(
+        data=df,
+        x=&quot;sample_size&quot;,
+        y=&quot;power&quot;,
+        hue=&quot;omega&quot;,
+        marker=&quot;o&quot;,
+        markeredgecolor=&quot;black&quot;,
+        markersize=5,
+        linewidth=2,
+        palette=palette,
+        ax=ax,
+    )
+    ax.axhline(0.8, color=&quot;black&quot;, linestyle=&quot;--&quot;, alpha=0.8)
+    ax.get_legend().remove()
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f&quot;{x / 1000:,.0f}&quot; + &quot;K&quot;))
+    ax.set(xlabel=&quot;sample size&quot;, ylabel=&quot;power&quot;)
+    ax.set_title(title, fontsize=16, fontweight=&quot;bold&quot;)
+
+handles, labels = axes.flat[-1].get_legend_handles_labels()
+rounded_labels = [f&quot;{float(label):.3f}&quot; for label in labels]
+fig.legend(
+    handles,
+    rounded_labels,
+    loc=&quot;center right&quot;,
+    bbox_to_anchor=(1.12, 0.5),
+    fontsize=16,
+    title=r&quot;$\omega$ (lift)&quot;,
+    title_fontsize=16,
+)
+
+fig.suptitle(
+    &quot;Power Analysis Comparison (Bayesian vs Frequentist)&quot;,
+    fontsize=20,
+    fontweight=&quot;bold&quot;,
+    y=1.05,
+);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_42_0.png" style="width: 1000px;"/>
+</center>
+<p>We see that the frequentist model is very similar to the non-informative Bayesian model.</p>
+<div id="quantifying-the-conservativeness-benefit" class="section level3">
+<h3>Quantifying the “Conservativeness” Benefit</h3>
+<p>The correlated model requires more samples for the same power (lower true-positive rate), but this comes with a concrete benefit: <strong>fewer false positives</strong>. We quantify this tradeoff by looking into the false positive rate (FPR) vs sample size: the <span class="math inline">\(\omega=0\)</span> slice of the power curves.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 6))
+
+fpr_by_n: dict[str, xr.DataArray] = {}
+
+for i, model_type in enumerate(model_types):
+    fpr = model_type.power_results.sel(omega=0.0)
+    fpr_by_n[model_type.name] = fpr
+    ax.plot(
+        power_analysis_config.sample_sizes,
+        fpr.values,
+        color=f&quot;C{i}&quot;,
+        marker=&quot;o&quot;,
+        markeredgecolor=&quot;black&quot;,
+        linewidth=2,
+        label=model_type.name,
+    )
+
+ax.axhline(0.05, color=&quot;black&quot;, linestyle=&quot;:&quot;, alpha=0.6, label=r&quot;$\alpha = 0.05$&quot;)
+ax.set(
+    xlabel=&quot;Sample Size (per group)&quot;,
+    ylabel=&quot;False Positive Rate&quot;,
+)
+ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f&quot;{x / 1000:,.0f}&quot; + &quot;K&quot;))
+ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
+ax.legend()
+ax.set_title(
+    &quot;False Positive Rate at $\\omega=0$ (No True Effect)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/bayesian_power_ab_testing_files/bayesian_power_ab_testing_45_1.png" style="width: 800px;"/>
+</center>
+<p>We clearly see that the correlated model much lower FPR than the other models. This is especially important when the sample size is relatively small.</p>
+</div>
+</div>
+<div id="key-takeaways" class="section level2">
+<h2>Key Takeaways</h2>
+<ol style="list-style-type: decimal">
+<li><p><strong>Prior choice dominates Bayesian power.</strong> The correlated model’s tight <code>Normal(0, 0.1)</code> prior on relative lift provides strong regularisation, but requires substantially larger samples to detect eal effects, especially when <span class="math inline">\(|\omega| &gt; 0.2\)</span>.</p></li>
+<li><p><strong>Non-informative Bayesian <span class="math inline">\(\approx\)</span> Frequentist.</strong> With flat priors and a narrow ROPE, the HDI+ROPE criterion reduces to a significance test: both give <span class="math inline">\(\sim 5\%\)</span> false-positive rates and nearly identical power curves.</p></li>
+<li><p><strong>Independent informative priors are a trap.</strong> The <code>Beta(15, 600)</code> model constrains each marginal conversion rate realistically, but the <em>joint</em> prior on relative lift remains too wide, leading to the “bet test” failure described in the <a href="https://www.geteppo.com/blog/the-bet-test-problems-in-bayesian-ab-test-analysis">Eppo blog post</a>.</p></li>
+<li><p><strong>Practical recommendation.</strong> Use the correlated parameterisation for production A/B testing (it prevents Twyman’s-law false discoveries), but plan experiments with the understanding that you need larger samples to achieve the same power as a naive frequentist analysis.</p></li>
+</ol>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+

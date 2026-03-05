@@ -6,8 +6,15 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 22 Feb 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Thu, 05 Mar 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Bayesian Power Analysis for A/B Testing</title>
+      <link>/bayesian_power_ab_testing/</link>
+      <pubDate>Thu, 05 Mar 2026 00:00:00 +0000</pubDate>
+      <guid>/bayesian_power_ab_testing/</guid>
+      <description>&lt;p&gt;This notebook implements a simulation-based &lt;strong&gt;Bayesian power analysis&lt;/strong&gt; for conversion-rate A/B tests and compares it against the classical frequentist&#xA;two-proportion z-test. We follow the Kruschke HDI+ROPE framework from &lt;a href=&#34;https://link.springer.com/content/pdf/10.3758/s13423-016-1221-4.pdf&#34;&gt;&lt;em&gt;The Bayesian New Statistics&lt;/em&gt;&lt;/a&gt; (Section “Planning for precision and other goals: Better done Bayesian”), in the same way as in the introductory example: &lt;a href=&#34;https://juanitorduz.github.io/power_sample_size_exclude_null/&#34;&gt;Introduction to Bayesian Power Analysis: Exclude a Null Value&lt;/a&gt;. The process is as follows:&lt;/p&gt;&#xA;&lt;ol style=&#34;list-style-type: decimal&#34;&gt;&#xA;&lt;li&gt;Generate synthetic A/B test data across a grid of sample sizes and&#xA;true relative lifts &lt;span class=&#34;math inline&#34;&gt;\(\omega\)&lt;/span&gt; (distributions).&lt;/li&gt;&#xA;&lt;li&gt;For each cell, fit a Bayesian model via MCMC and compute the &lt;span class=&#34;math inline&#34;&gt;\(95\%\)&lt;/span&gt; HDI of&#xA;the &lt;code&gt;relative_lift&lt;/code&gt; posterior.&lt;/li&gt;&#xA;&lt;li&gt;Power = fraction of simulations where the &lt;span class=&#34;math inline&#34;&gt;\(95\%\)&lt;/span&gt; HDI falls entirely outside a&#xA;Region of Practical Equivalence (ROPE).&lt;/li&gt;&#xA;&lt;/ol&gt;&#xA;&lt;p&gt;We compare &lt;strong&gt;three prior specifications&lt;/strong&gt; motivated by &lt;a href=&#34;https://juanitorduz.github.io/prior_predictive_ab_testing/&#34;&gt;Prior Predictive Modeling in Bayesian AB Testing&lt;/a&gt; (see also &lt;a href=&#34;https://www.geteppo.com/blog/the-bet-test-problems-in-bayesian-ab-test-analysis&#34;&gt;The Bet Test&lt;/a&gt;):&lt;/p&gt;</description>
+    </item>
     <item>
       <title>In-Sample \(R^2\) is Not a Good Metric for Decision Making</title>
       <link>/no_r2/</link>
