@@ -123,9 +123,9 @@ plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
 <h2>Generate Synthetic Forecast</h2>
 <p>We sample <span class="math inline">\(n = 50\)</span> ground-truth observations <span class="math inline">\(y_{\text{true}}\)</span> from a standard normal distribution. We then generate synthetic forecasts as follow:</p>
 <p><span class="math display">\[
-y_{\text{pred}} =  y_{\text{true}} + \mu + \sigma \varepsilon, \quad \varepsilon \sim \text{Normal}(0, 1)
+y_{\text{pred}} =  y_{\text{true}} + \mu + \sigma \varepsilon, \quad \varepsilon \sim \text{Normal}(0, 0.1)
 \]</span></p>
-<p>The values of <span class="math inline">\(\mu\)</span> and <span class="math inline">\(\sigma\)</span> are sampled from a grid of <span class="math inline">\(k = 21\)</span> location shifts <span class="math inline">\(\mu \in [-10, 10]\)</span> and scale values <span class="math inline">\(\sigma \in [0.1, 10]\)</span>. For each <span class="math inline">\((\mu, \sigma)\)</span> pair we generate <span class="math inline">\(1\,000\)</span> posterior-like draws per observation, yielding a 5-dimensional <code>xarray.DataArray</code> with dimensions <code>(chain, draw, n, sigma, mu)</code>.</p>
+<p>The values of <span class="math inline">\(\mu\)</span> and <span class="math inline">\(\sigma\)</span> are sampled from a grid of <span class="math inline">\(k = 21\)</span> location shifts <span class="math inline">\(\mu \in [-10, 10]\)</span> and scale values <span class="math inline">\(\sigma \in [0, 120]\)</span>. For each <span class="math inline">\((\mu, \sigma)\)</span> pair we generate <span class="math inline">\(1\,000\)</span> posterior-like draws per observation, yielding a 5-dimensional <code>xarray.DataArray</code> with dimensions <code>(chain, draw, n, sigma, mu)</code>.</p>
 <pre class="python"><code># random seed
 seed: int = 42
 rng: np.random.Generator = np.random.default_rng(seed=seed)
@@ -139,9 +139,9 @@ draws = 1_000
 k = 21
 # location shifts
 mus = np.linspace(-10, 10, k)
-sigmas = np.linspace(0.1, 10, k)
+sigmas = np.linspace(1, 120, k)
 # noise
-noise = rng.normal(0, 1, size=(1, draws, n))
+noise = rng.normal(0, 0.1, size=(1, draws, n))
 # scale
 sigma = sigmas[np.newaxis, np.newaxis, :] * noise[..., np.newaxis]
 # predictions
@@ -218,6 +218,7 @@ fig.suptitle(
 <center>
 <img src="../images/crps_files/crps_8_0.png" style="width: 900px;"/>
 </center>
+<p>Observe that the CRPS penalizes the narrow/wide spread and the large bias more than the MAE.</p>
 <p>Next, we average predictions over <span class="math inline">\(\sigma\)</span> and draws to isolate the effect of the location shift <span class="math inline">\(\mu\)</span>. As <span class="math inline">\(|\mu|\)</span> grows, the mean predictions shift away from the diagonal, visualizing pure bias.</p>
 <pre class="python"><code>y_pred.sel(mu=0).mean(dim=(&quot;chain&quot;, &quot;draw&quot;, &quot;sigma&quot;))
 
