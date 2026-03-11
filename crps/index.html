@@ -198,7 +198,7 @@ def _plot_hdi(y_true, _y_pred, mu, sigma, ax):
     ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;)
     ax.legend(loc=&quot;upper left&quot;)
     ax.set_title(
-        f&quot;mu={mu:.1f}, sigma={sigma:.1f}, CRPS={crps_value:.2f}, MAE={mae_value:.2f}&quot;
+        f&quot;mu={mu:.1f}, sigma={sigma:.1f}\nCRPS={crps_value:.2f}, MAE={mae_value:.2f}&quot;
     )
 
 
@@ -333,6 +333,10 @@ fig.suptitle(&quot;Metrics as a function of mu and sigma&quot;, fontsize=18, fon
 <div id="conclusion" class="section level2">
 <h2>Conclusion</h2>
 <p>This simple experiment highlights why the CRPS is a strictly more informative metric than the MAE for evaluating probabilistic forecasts. While the MAE only captures location error (bias), the CRPS simultaneously rewards <strong>calibration</strong> and <strong>sharpness</strong>, penalizing predictions whose spread is either too wide or too narrow for the observed data.</p>
+<p><strong>Remark:</strong> <a href="https://www.linkedin.com/in/simon-hirsch/">Simon Hirsch</a> pointed out the following fact:</p>
+<blockquote>
+<p><em>What is also visible from your plot: for correct location, the CRPS favors too low scale (sigma) over too high scale. There are differences in behavior across scores, e.g. the log-score it is the other way round, even though both are proper scores. There is a recent nice paper about it: <a href="https://arxiv.org/abs/2505.00937">“Asymmetric Penalties Underlie Proper Loss Functions in Probabilistic Forecasting”</a></em>.</p>
+</blockquote>
 </div>
 
     </div>
