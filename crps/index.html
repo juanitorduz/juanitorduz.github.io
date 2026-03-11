@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Intuition behind CRPS - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Intuition behind CRPS - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">7 min read</span>
+    
+
+    <h1 class="article-title">Intuition behind CRPS</h1>
+
+    
+    <span class="article-date">2026-03-11</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In many forecasting applications, probabilistic methods have become a standard tool. The reason is that predicting the point forecast is not enough for decision-making. The predicted uncertainty provides valuable information that can be used to make better decisions, such as risk management or inventory control. How to evaluate the performance of probabilistic forecasts? A naive approach is to collapse the output of the probabilistic model into a single point forecast (say, using the mean) and then use the standard metrics for point forecasts. A better alternative is to use the <strong>Continuous Ranked Probability Score (CRPS)</strong>. This metric is a generalization of the mean absolute error (MAE) to the probabilistic setting. It is computed as the integral of the squared difference between the cumulative distribution function (CDF) of the predicted distribution <span class="math inline">\(F\)</span> and the empirical CDF of the observation <span class="math inline">\(y\)</span>:</p>
+<p><span class="math display">\[\text{CRPS}(F, y) = \int_{-\infty}^{+\infty} \left( F(x) - \mathbb{1}(x \geq y) \right)^2 \, dx\]</span></p>
+<p>Intuitively, the CRPS measures the “distance” between the predicted distribution and the observed value by comparing their CDFs at every point on the real line. The step function <span class="math inline">\(\mathbb{1}(x \geq y)\)</span> acts as the CDF of a point mass at <span class="math inline">\(y\)</span>. When the predicted distribution is concentrated around the true value with appropriate spread, this integral is small; when the distribution is biased or overconfident/underconfident, the area between the two CDFs grows. In the special case where <span class="math inline">\(F\)</span> itself is a point mass at some predicted value <span class="math inline">\(\hat{y}\)</span>, the CRPS reduces to <span class="math inline">\(|y - \hat{y}|\)</span>, recovering the absolute error. This makes the CRPS directly comparable in scale to the MAE.</p>
+<p>This property highlights a key advantage of the CRPS over a naive “collapse-then-evaluate” strategy: the CRPS simultaneously rewards <strong>calibration</strong> (the predicted uncertainty matches the true data-generating spread) and <strong>sharpness</strong> (the predicted distribution is as tight as possible while remaining calibrated). In contrast, collapsing to the mean and computing the MAE completely discards information about the predicted spread: a narrow and a wide distribution centered at the same point receive the same MAE, but different CRPS values.</p>
+<p>In this notebook, we illustrate this difference by generating synthetic predictions where the error is drawn from normal distributions with varying location (<span class="math inline">\(\mu\)</span>) and scale (<span class="math inline">\(\sigma\)</span>) parameters, and then comparing the CRPS and MAE on a grid. Through this example, we get a better intuition of the relationship between the CRPS and MAE and how the CRPS encodes the size of the error.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+import xarray as xr
+from pymc_marketing.metrics import crps
+from sklearn.metrics import mean_absolute_error as mae
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre><code>/Users/juanitorduz/Documents/website_projects/.pixi/envs/default/lib/python3.13/site-packages/sympy/external/gmpy.py:139: UserWarning: gmpy2 version is too old to use (2.0.0 or newer required)
+  gmpy = import_module(&#39;gmpy2&#39;, min_module_version=_GMPY2_MIN_VERSION,
+/Users/juanitorduz/Documents/website_projects/.pixi/envs/default/lib/python3.13/site-packages/pymc_marketing/pytensor_utils.py:34: FutureWarning: `pytensor.graph.basic.ancestors` was moved to `pytensor.graph.traversal.ancestors`. Calling it from the old location will fail in a future release.
+  from pytensor.graph.basic import ancestors</code></pre>
+</div>
+<div id="generate-synthetic-forecast" class="section level2">
+<h2>Generate Synthetic Forecast</h2>
+<p>We sample <span class="math inline">\(n = 50\)</span> ground-truth observations <span class="math inline">\(y_{\text{true}}\)</span> from a standard normal distribution. We then generate synthetic forecasts as follow:</p>
+<p><span class="math display">\[
+y_{\text{pred}} =  y_{\text{true}} + \mu + \sigma \varepsilon, \quad \varepsilon \sim \text{Normal}(0, 1)
+\]</span></p>
+<p>The values of <span class="math inline">\(\mu\)</span> and <span class="math inline">\(\sigma\)</span> are sampled from a grid of <span class="math inline">\(k = 21\)</span> location shifts <span class="math inline">\(\mu \in [-10, 10]\)</span> and scale values <span class="math inline">\(\sigma \in [0.1, 10]\)</span>. For each <span class="math inline">\((\mu, \sigma)\)</span> pair we generate <span class="math inline">\(1\,000\)</span> posterior-like draws per observation, yielding a 5-dimensional <code>xarray.DataArray</code> with dimensions <code>(chain, draw, n, sigma, mu)</code>.</p>
+<pre class="python"><code># random seed
+seed: int = 42
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+# number of observations
+n = 50
+# true values
+y_true = rng.normal(0, 1, size=n)
+# number of draws
+draws = 1_000
+# number of grid points
+k = 21
+# location shifts
+mus = np.linspace(-10, 10, k)
+sigmas = np.linspace(0.1, 10, k)
+# noise
+noise = rng.normal(0, 1, size=(1, draws, n))
+# scale
+sigma = sigmas[np.newaxis, np.newaxis, :] * noise[..., np.newaxis]
+# predictions
+y_pred_array = (
+    y_true[np.newaxis, np.newaxis, :, np.newaxis, np.newaxis]
+    + mus[np.newaxis, np.newaxis, np.newaxis, np.newaxis, :]
+    + sigma[..., np.newaxis]
+)
+# predictions as xarray.DataArray
+y_pred = xr.DataArray(
+    y_pred_array,
+    coords=([0], np.arange(draws), np.arange(n), sigmas, mus),
+    dims=[&quot;chain&quot;, &quot;draw&quot;, &quot;n&quot;, &quot;sigma&quot;, &quot;mu&quot;],
+)</code></pre>
+</div>
+<div id="visualize-forecast" class="section level2">
+<h2>Visualize Forecast</h2>
+<p>We plot predicted-vs-observed values with HDI (Highest Density Interval) bands for the four corner combinations of the <span class="math inline">\((\mu, \sigma)\)</span> grid.This illustrates the extreme cases: small bias with tight spread, small bias with wide spread, large bias with tight spread, and large bias with wide spread. The dashed diagonal line marks perfect calibration (<span class="math inline">\(y_{\text{pred}} = y_{\text{true}}\)</span>). We also compute the CRPS and MAE for each <span class="math inline">\((\mu, \sigma)\)</span> pair.</p>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=2,
+    ncols=2,
+    figsize=(12, 10),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+
+def _plot_hdi(y_true, _y_pred, mu, sigma, ax):
+    for i, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            y_true,
+            _y_pred,
+            color=&quot;C0&quot;,
+            hdi_prob=hdi_prob,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + i * 0.2,
+                &quot;label&quot;: f&quot;{hdi_prob:.0%} HDI&quot;,
+            },
+            ax=ax,
+        )
+
+    sns.lineplot(
+        x=y_true,
+        y=_y_pred.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+        color=&quot;C0&quot;,
+        label=&quot;mean forecast&quot;,
+        linewidth=3,
+        ax=ax,
+    )
+
+    crps_value = crps(y_true, _y_pred.sel(chain=0))
+    mae_value = mae(y_true, _y_pred.mean(dim=(&quot;chain&quot;, &quot;draw&quot;)))
+    ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+    ax.legend(loc=&quot;upper left&quot;)
+    ax.set_title(
+        f&quot;mu={mu:.1f}, sigma={sigma:.1f}, CRPS={crps_value:.2f}, MAE={mae_value:.2f}&quot;
+    )
+
+
+combinations = [
+    (mus[10], sigmas[0]),
+    (mus[10], sigmas[-1]),
+    (mus[-1], sigmas[0]),
+    (mus[-1], sigmas[-1]),
+]
+
+for ax, (mu, sigma) in zip(axes.flatten(), combinations, strict=True):
+    _plot_hdi(y_true, y_pred.sel(mu=mu, sigma=sigma), mu, sigma, ax)
+
+fig.suptitle(
+    &quot;Predicted-vs-observed values with HDI bands&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/crps_files/crps_8_0.png" style="width: 900px;"/>
+</center>
+<p>Next, we average predictions over <span class="math inline">\(\sigma\)</span> and draws to isolate the effect of the location shift <span class="math inline">\(\mu\)</span>. As <span class="math inline">\(|\mu|\)</span> grows, the mean predictions shift away from the diagonal, visualizing pure bias.</p>
+<pre class="python"><code>y_pred.sel(mu=0).mean(dim=(&quot;chain&quot;, &quot;draw&quot;, &quot;sigma&quot;))
+
+cmap = plt.get_cmap(&quot;coolwarm_r&quot;, k)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+sc = None
+for mu in mus:
+    _y_pred_mean = y_pred.sel(mu=mu).mean(dim=(&quot;chain&quot;, &quot;draw&quot;, &quot;sigma&quot;))
+    sc = ax.scatter(
+        y_true,
+        _y_pred_mean,
+        edgecolor=&quot;black&quot;,
+        label=f&quot;mu={mu:.2f}&quot;,
+        c=[mu] * len(y_true),
+        vmin=mus[0],
+        vmax=mus[-1],
+        cmap=cmap,
+    )
+
+cbar = plt.colorbar(sc, ax=ax, orientation=&quot;vertical&quot;, label=&quot;mu&quot;)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.set_title(
+    r&quot;Forecasted mean vs observed values as a function of $\mu$&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/crps_files/crps_10_0.png" style="width: 900px;"/>
+</center>
+<p>Similarly, we average over <span class="math inline">\(\mu\)</span> and draws to isolate the effect of the scale parameter <span class="math inline">\(\sigma\)</span>. The mean predictions cluster near the diagonal regardless of <span class="math inline">\(\sigma\)</span>, showing that collapsing the predictive distribution to its mean erases all information about the predicted spread.</p>
+<pre class="python"><code>y_pred.sel(mu=0).mean(dim=(&quot;chain&quot;, &quot;draw&quot;, &quot;sigma&quot;))
+
+cmap = plt.get_cmap(&quot;viridis_r&quot;, k)
+
+fig, ax = plt.subplots(figsize=(9, 7))
+
+sc = None
+for sigma in sigmas:
+    _y_pred_mean = y_pred.sel(sigma=sigma).mean(dim=(&quot;chain&quot;, &quot;draw&quot;, &quot;mu&quot;))
+    sc = ax.scatter(
+        y_true,
+        _y_pred_mean,
+        label=f&quot;sigma={sigma:.2f}&quot;,
+        c=[sigma] * len(y_true),
+        vmin=sigmas[0],
+        vmax=sigmas[-1],
+        cmap=cmap,
+    )
+
+cbar = plt.colorbar(sc, ax=ax, orientation=&quot;vertical&quot;, label=&quot;mu&quot;)
+ax.axline((0, 0), slope=1, color=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.set_title(
+    r&quot;Forecasted mean vs observed values as a function of $\sigma$&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/crps_files/crps_12_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="crps-vs-mae-comparison" class="section level2">
+<h2>CRPS vs MAE Comparison</h2>
+<p>We now compute the CRPS and MAE for every <span class="math inline">\((\mu, \sigma)\)</span> pair and display them as side-by-side heatmaps. This is the central result of the notebook: it reveals how each metric responds to changes in bias and spread.</p>
+<pre class="python"><code>crps_values = np.empty((len(mus), len(sigmas)))
+maes_values = np.empty((len(mus), len(sigmas)))
+
+for i, sigma in enumerate(sigmas):
+    for j, mu in enumerate(mus):
+        _y_pred = y_pred.sel(chain=0, sigma=sigma, mu=mu)
+        crps_values[i, j] = crps(y_true, _y_pred)
+        maes_values[i, j] = mae(y_true, _y_pred.mean(dim=(&quot;draw&quot;)))
+
+fig, ax = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(15, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+sns.heatmap(
+    crps_values,
+    cmap=&quot;viridis_r&quot;,
+    annot=True,
+    fmt=&quot;.1f&quot;,
+    xticklabels=[f&quot;{mu:.1f}&quot; for mu in mus],
+    yticklabels=[f&quot;{sigma:.1f}&quot; for sigma in sigmas],
+    ax=ax[0],
+)
+ax[0].set(title=&quot;CRPS&quot;, xlabel=&quot;mu&quot;, ylabel=&quot;sigma&quot;)
+
+sns.heatmap(
+    maes_values,
+    cmap=&quot;viridis_r&quot;,
+    annot=True,
+    fmt=&quot;.1f&quot;,
+    xticklabels=[f&quot;{mu:.1f}&quot; for mu in mus],
+    yticklabels=[f&quot;{sigma:.1f}&quot; for sigma in sigmas],
+    ax=ax[1],
+)
+ax[1].set(title=&quot;MAE&quot;, xlabel=&quot;mu&quot;)
+
+fig.suptitle(&quot;Metrics as a function of mu and sigma&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/crps_files/crps_14_0.png" style="width: 1000px;"/>
+</center>
+<p>The heatmaps confirm the key observation: the MAE varies only along the <span class="math inline">\(\mu\)</span> axis (bias) and is almost constant along <span class="math inline">\(\sigma\)</span> (since we are averaging over draws), because collapsing to the mean discards spread information. The CRPS, in contrast, varies along both axes: it penalizes bias <em>and</em> spread, with a clear optimum near <span class="math inline">\((\mu = 0,\; \sigma \approx 1)\)</span>.</p>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>This simple experiment highlights why the CRPS is a strictly more informative metric than the MAE for evaluating probabilistic forecasts. While the MAE only captures location error (bias), the CRPS simultaneously rewards <strong>calibration</strong> and <strong>sharpness</strong>, penalizing predictions whose spread is either too wide or too narrow for the observed data.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+

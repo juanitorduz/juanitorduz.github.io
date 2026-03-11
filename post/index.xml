@@ -6,8 +6,15 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 05 Mar 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Wed, 11 Mar 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Intuition behind CRPS</title>
+      <link>/crps/</link>
+      <pubDate>Wed, 11 Mar 2026 00:00:00 +0000</pubDate>
+      <guid>/crps/</guid>
+      <description>&lt;p&gt;In many forecasting applications, probabilistic methods have become a standard tool. The reason is that predicting the point forecast is not enough for decision-making. The predicted uncertainty provides valuable information that can be used to make better decisions, such as risk management or inventory control. How to evaluate the performance of probabilistic forecasts? A naive approach is to collapse the output of the probabilistic model into a single point forecast (say, using the mean) and then use the standard metrics for point forecasts. A better alternative is to use the &lt;strong&gt;Continuous Ranked Probability Score (CRPS)&lt;/strong&gt;. This metric is a generalization of the mean absolute error (MAE) to the probabilistic setting. It is computed as the integral of the squared difference between the cumulative distribution function (CDF) of the predicted distribution &lt;span class=&#34;math inline&#34;&gt;\(F\)&lt;/span&gt; and the empirical CDF of the observation &lt;span class=&#34;math inline&#34;&gt;\(y\)&lt;/span&gt;:&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Bayesian Power Analysis for A/B Testing</title>
       <link>/bayesian_power_ab_testing/</link>
