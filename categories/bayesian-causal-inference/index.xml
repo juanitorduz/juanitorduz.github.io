@@ -6,8 +6,15 @@
     <description>Recent content in Bayesian, Causal Inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Tue, 17 Mar 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 11 Apr 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>The Frugal Parameterization for Bayesian Causal Inference in PyMC</title>
+      <link>/frugal_parametrization_pymc/</link>
+      <pubDate>Sat, 11 Apr 2026 00:00:00 +0000</pubDate>
+      <guid>/frugal_parametrization_pymc/</guid>
+      <description>&lt;p&gt;In this notebook we provide an introduction to the frugal parameterization for Bayesian causal inference, developed in the paper &lt;a href=&#34;https://academic.oup.com/jrsssb/article/86/3/535/7177899&#34;&gt;“Parameterizing and simulating from causal models”, (Evans &amp;amp; Didelez, 2024)&lt;/a&gt;. We illustrate the concepts with a simple example using synthetic data and an explicit &lt;a href=&#34;https://www.pymc.io/&#34;&gt;&lt;code&gt;PyMC&lt;/code&gt;&lt;/a&gt; implementation.&lt;/p&gt;&#xA;&lt;p&gt;The authors of the frugal parameterization (Evans &amp;amp; Didelez, 2024) have implemented an &lt;a href=&#34;https://www.r-project.org/&#34;&gt;&lt;code&gt;R&lt;/code&gt;&lt;/a&gt; package called &lt;a href=&#34;https://github.com/rje42/causl&#34;&gt;&lt;code&gt;causl&lt;/code&gt;&lt;/a&gt; that allows you to specify, simulate from and fit causal models using the frugal parameterization.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Mediation Analysis and (In)Direct Effects with PyMC</title>
       <link>/mediation/</link>

@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>The Frugal Parameterization for Bayesian Causal Inference in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="The Frugal Parameterization for Bayesian Causal Inference in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">23 min read</span>
+    
+
+    <h1 class="article-title">The Frugal Parameterization for Bayesian Causal Inference in PyMC</h1>
+
+    
+    <span class="article-date">2026-04-11</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook we provide an introduction to the frugal parameterization for Bayesian causal inference, developed in the paper <a href="https://academic.oup.com/jrsssb/article/86/3/535/7177899">“Parameterizing and simulating from causal models”, (Evans &amp; Didelez, 2024)</a>. We illustrate the concepts with a simple example using synthetic data and an explicit <a href="https://www.pymc.io/"><code>PyMC</code></a> implementation.</p>
+<p>The authors of the frugal parameterization (Evans &amp; Didelez, 2024) have implemented an <a href="https://www.r-project.org/"><code>R</code></a> package called <a href="https://github.com/rje42/causl"><code>causl</code></a> that allows you to specify, simulate from and fit causal models using the frugal parameterization.</p>
+<div id="motivation" class="section level2">
+<h2>Motivation</h2>
+<p>Bayesian causal inference typically proceeds as follows:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Specify a full generative model</strong> for the joint distribution of treatment, outcome, and confounders using conditional distributions.</li>
+<li><strong>Fit the model</strong> using MCMC or variational inference.</li>
+<li><strong>Derive the causal estimand</strong> (e.g., the Average Treatment Effect) as a function of the posterior over model parameters.</li>
+</ol>
+<p>For example, consider a simple setting with a confounder <span class="math inline">\(Z\)</span>, a binary treatment <span class="math inline">\(X\)</span>, and a continuous outcome <span class="math inline">\(Y\)</span>. The causal graph is:</p>
+<pre class="python"><code>import graphviz as gr
+
+g = gr.Digraph(comment=&quot;Causal Graph&quot;)
+
+g.node(&quot;Z&quot;, &quot;Z (Confounder)&quot;)
+g.node(&quot;X&quot;, &quot;X (Treatment)&quot;)
+g.node(&quot;Y&quot;, &quot;Y (Outcome)&quot;)
+
+g.edge(&quot;Z&quot;, &quot;X&quot;)
+g.edge(&quot;Z&quot;, &quot;Y&quot;)
+g.edge(&quot;X&quot;, &quot;Y&quot;)
+
+g</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_2_0.svg" style="width: 400px;"/>
+</center>
+<p>The standard Bayesian model would be:</p>
+<p><span class="math display">\[
+Z \sim \text{Normal}(0, 1)
+\]</span>
+<span class="math display">\[
+X \mid Z \sim \text{Bernoulli}\!\left(\text{logit}^{-1}(\alpha_0 + \alpha_1 Z)\right)
+\]</span>
+<span class="math display">\[
+Y \mid X, Z \sim \text{Normal}(\beta_0 + \beta_1 X + \beta_2 Z, \, \sigma^2)
+\]</span></p>
+<p>The <strong>Average Treatment Effect</strong> (ATE) is:</p>
+<p><span class="math display">\[
+\text{ATE} = \mathbb{E}[Y \mid \text{do}(X=1)] - \mathbb{E}[Y \mid \text{do}(X=0)]
+\]</span></p>
+<p>In this linear model, the ATE happens to equal <span class="math inline">\(\beta_1\)</span>. But this is a <strong>coincidence of the linear specification</strong>. In general, with non-linear models, interactions, or non-Gaussian outcomes, the ATE is a complex function of all model parameters.</p>
+<p>This creates three practical problems:</p>
+<p><strong>Problem 1: You can’t put a prior directly on the causal effect.</strong> Your priors go on regression coefficients (<span class="math inline">\(\beta_0, \beta_1, \beta_2\)</span>), not on the quantity you actually care about. If a domain expert says <em>“we believe this treatment reduces the outcome by 10–20%”</em>, translating that into priors on regression coefficients is awkward and indirect, especially in non-linear models.</p>
+<p><strong>Problem 2: Simulation with known causal effects is difficult.</strong> If you want to generate synthetic data where the <em>true</em> ATE has a specific value (for benchmarking, power analysis, or sensitivity analysis), you can’t just set it. You have to reverse-engineer which conditional parameters would produce the desired marginal causal effect. As Havercroft &amp; Didelez (2012) showed, this is surprisingly hard even in seemingly simple longitudinal settings.</p>
+<p><strong>Problem 3: Likelihood-based inference on marginal causal quantities is indirect.</strong> The causal estimand is a marginal quantity of the <em>interventional</em> distribution, but the data comes from the <em>observational</em> distribution. You fit the full conditional model and then post-process the posterior. This is inefficient and can be numerically unstable.</p>
+</div>
+<div id="the-frugal-parameterization" class="section level2">
+<h2>The Frugal Parameterization</h2>
+<div id="core-idea" class="section level3">
+<h3>Core idea</h3>
+<p>Evans &amp; Didelez (2024) propose to <strong>flip the parameterization</strong>: instead of starting with conditional distributions and deriving the causal effect, start with the causal effect and build the rest of the joint distribution around it.</p>
+<p>The joint observational distribution <span class="math inline">\(P(Z, X, Y)\)</span> is decomposed into three <strong>variation-independent</strong> components:</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Component</th>
+<th>What it represents</th>
+<th>What you specify</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>(a) “The past”</strong></td>
+<td><span class="math inline">\(P(Z, X)\)</span></td>
+<td>Confounder distribution + propensity model</td>
+</tr>
+<tr class="even">
+<td><strong>(b) Causal margin</strong></td>
+<td><span class="math inline">\(P^*(Y \mid \text{do}(X))\)</span></td>
+<td>Interventional outcome distribution</td>
+</tr>
+<tr class="odd">
+<td><strong>(c) Dependence</strong></td>
+<td>Association between <span class="math inline">\(Y\)</span> and <span class="math inline">\(Z\)</span> beyond <span class="math inline">\(X\)</span></td>
+<td>Copula or odds ratio</td>
+</tr>
+</tbody>
+</table>
+<p>(Evans &amp; Didelez call component (b) the <em>causal kernel</em> <span class="math inline">\(p^*_{Y \mid X}\)</span>; we use “causal margin” as a shorthand throughout this post, but it is the same object, a conditional distribution of <span class="math inline">\(Y\)</span> given a value of <span class="math inline">\(X\)</span> set by intervention.)</p>
+<p>The term <strong>“frugal”</strong> refers to the fact that this parameterization uses exactly the parameters needed, no more, no less, with the causal quantity of interest at the center.
+More precisely, following Definition 2.1 in Evans &amp; Didelez (2024), a parameterization of the joint distribution <span class="math inline">\(P(Z, X, Y)\)</span> is <em>frugal</em> with respect to the causal kernel <span class="math inline">\(P^*(Y \mid X)\)</span> if it consists of three components</p>
+<ol style="list-style-type: decimal">
+<li>A parameterization of the past <span class="math inline">\(P(Z, X)\)</span></li>
+<li>The interventional kernel <span class="math inline">\(P^*(Y \mid X)\)</span></li>
+<li>A conditional association measure <span class="math inline">\(\varphi^*_{YZ \mid X}\)</span></li>
+</ol>
+<p>that are jointly sufficient to determine the full observational distribution and are <strong>variation independent</strong> (we will explain what this means below) of each other. There is nothing redundant (each component controls a distinct aspect of the joint distribution) and nothing missing (the three together fully determine <span class="math inline">\(P(Z, X, Y)\)</span>).</p>
+<p>In the standard parameterization, causal and non-causal information is tangled: <span class="math inline">\(\beta_1\)</span> encodes the causal effect, but <span class="math inline">\(\beta_2\)</span> and <span class="math inline">\(\sigma\)</span> jointly encode both the confounding structure and the residual variation in a way that is not separable. The frugal parameterization disentangles these by placing the causal effect <span class="math inline">\(\delta\)</span> in its own component (b), the confounding association <span class="math inline">\(\rho\)</span> in component (c), and the treatment assignment mechanism in component (a).</p>
+</div>
+<div id="why-variation-independent" class="section level3">
+<h3>Why “variation independent”?</h3>
+<p><strong>Variation independence</strong> means that the parameter space of the full model is the Cartesian product of the parameter spaces of the three components. In other words, any value of the causal effect <span class="math inline">\(\delta\)</span> is compatible with any value of the copula correlation <span class="math inline">\(\rho\)</span> and any values of the propensity parameters <span class="math inline">\((\alpha_0, \alpha_1)\)</span>. No choice of one component restricts the feasible values of the others.</p>
+<p>To see why this is non-trivial, consider the standard parameterization. The standard parameters <span class="math inline">\((\alpha_0, \alpha_1, \beta_0, \beta_1, \beta_2, \sigma)\)</span> <em>are</em> themselves variation independent among each other, so the issue is not internal to that set. The issue shows up when you try to place the causal/dependence quantities alongside them as joint free parameters. Suppose you fix the observational pair <span class="math inline">\(\sigma = 1\)</span> and <span class="math inline">\(\beta_2 = 0.7\)</span>. Then, as we derive below, the implied causal quantities are completely pinned down by <span class="math inline">\(\sigma_c = \sqrt{\sigma^2 + \beta_2^2} \approx 1.22\)</span> and <span class="math inline">\(\rho = \beta_2 / \sigma_c \approx 0.573\)</span>. So once you’ve specified <span class="math inline">\((\sigma, \beta_2)\)</span> in the standard parameterization, you have <em>no remaining freedom</em> to choose the causal standard deviation or the copula correlation, they are determined, not free parameters. In the frugal parameterization, the roles are reversed: <span class="math inline">\((\sigma_c, \rho)\)</span> are the primitive free parameters that you can vary independently, and <span class="math inline">\((\sigma, \beta_2)\)</span> are derived quantities computed from them. You can pick one set or the other as primitives, but you cannot treat both sets as jointly free, and that asymmetry is exactly what variation independence of the frugal components buys you.</p>
+<p><strong>The Bayesian consequence.</strong> Because the parameter spaces factor as a Cartesian product, a product prior <span class="math inline">\(p(\theta_{\text{past}}) \times p(\theta_{\text{causal}}) \times p(\theta_{\text{dependence}})\)</span> is always a valid joint prior, there are no hidden constraints that could make certain prior combinations inadmissible. The discussion contribution of Steiner &amp; Steel (2024) emphasizes exactly this Bayesian consequence: you can put an informative prior on the causal effect <span class="math inline">\(\delta\)</span> (e.g., from a pilot experiment) without that prior implicitly constraining the propensity model or the dependence structure, and vice versa.</p>
+</div>
+<div id="background-what-is-a-copula" class="section level3">
+<h3>Background: What is a copula?</h3>
+<p>When building a joint distribution of two (or more) random variables, you need to specify two things: (a) the <em>marginal</em> distributions (what each variable looks like on its own) and (b) the <em>dependence structure</em> (how they co-vary). A <strong>copula</strong> is a mathematical device that handles (b) separately from (a), letting you mix and match different marginals with different dependence structures.</p>
+<p><strong>Sklar’s theorem</strong> (1959) makes this precise: any joint distribution <span class="math inline">\(F(y, z)\)</span> of continuous random variables can be written as</p>
+<p><span class="math display">\[
+F(y, z) = C\!\left(F_Y(y), \, F_Z(z)\right)
+\]</span></p>
+<p>where <span class="math inline">\(F_Y\)</span> and <span class="math inline">\(F_Z\)</span> are the marginal CDFs and <span class="math inline">\(C: [0,1]^2 \to [0,1]\)</span> is a copula function. Conversely, for <em>any</em> choice of marginals <span class="math inline">\(F_Y, F_Z\)</span> and <em>any</em> copula <span class="math inline">\(C\)</span>, this formula produces a valid joint distribution. The copula <span class="math inline">\(C\)</span> captures <em>all</em> of the dependence structure, completely separated from the marginals.</p>
+<p><strong>The Gaussian copula</strong> is constructed as follows: (i) transform each variable to its uniform quantile via the probability integral transform: <span class="math inline">\(u = F_Y(y)\)</span>, <span class="math inline">\(v = F_Z(z)\)</span>; (ii) map these uniforms to standard normals: <span class="math inline">\(\tilde{y} = \Phi^{-1}(u)\)</span>, <span class="math inline">\(\tilde{z} = \Phi^{-1}(v)\)</span>; (iii) model the dependence between <span class="math inline">\(\tilde{y}\)</span> and <span class="math inline">\(\tilde{z}\)</span> as a bivariate normal with correlation <span class="math inline">\(\rho\)</span>. When the marginals are themselves Gaussian, steps (i)–(ii) reduce to standardization, and the Gaussian copula with correlation <span class="math inline">\(\rho\)</span> produces a bivariate normal. This is why, in the Gaussian-Gaussian case used later in this post to illustrate these concepts, the joint interventional distribution of <span class="math inline">\((Y^*, Z)\)</span> is simply a bivariate normal.</p>
+<p><strong>Code References:</strong> The <code>PyMC</code> documentation has a detailed tutorial on copulas: <a href="https://www.pymc.io/projects/examples/en/latest/howto/copula-estimation.html">Bayesian copula estimation: Describing correlated joint distributions</a>. For a more visual introduction, see Thomas Wiecki’s blog post <a href="https://twiecki.io/blog/2018/05/03/copulas/">An intuitive, visual guide to copulas</a>.</p>
+<p><strong>Why copulas matter for the frugal parameterization:</strong> In the frugal decomposition, the dependence component (c) needs to “couple” the interventional outcome <span class="math inline">\(Y^*\)</span> with the confounder <span class="math inline">\(Z\)</span> while keeping the causal margin (b) and the past (a) untouched. The copula is the natural tool for this: you can specify the causal margin <span class="math inline">\(P^*(Y \mid \text{do}(X))\)</span> and the confounder distribution <span class="math inline">\(P(Z)\)</span> as marginals, then use a copula to model their dependence, all independently. Under mild regularity (positive conditionals and smooth, regular parameterizations), Proposition 2.5 in Evans &amp; Didelez (2024) confirms that the triple (marginals <span class="math inline">\(P_{Z,X}\)</span>, interventional kernel <span class="math inline">\(P^*_{Y \mid X}\)</span>, conditional copula <span class="math inline">\(C_{YZ \mid X}\)</span>) is a frugal parameterization.</p>
+</div>
+<div id="the-gaussian-copula-case" class="section level3">
+<h3>The Gaussian copula case</h3>
+<p>For continuous outcomes with Gaussian margins, the dependence component (c) can be parameterized using a <strong>Gaussian copula</strong> with correlation parameter <span class="math inline">\(\rho\)</span>.</p>
+<p>Concretely, let:</p>
+<ul>
+<li><span class="math inline">\(\mu(x) = \mu_0 + \delta \cdot x\)</span> be the mean of <span class="math inline">\(Y\)</span> under intervention <span class="math inline">\(\text{do}(X=x)\)</span></li>
+<li><span class="math inline">\(\sigma_c\)</span> be the standard deviation of <span class="math inline">\(Y\)</span> under intervention</li>
+<li><span class="math inline">\(\rho\)</span> be the Gaussian copula correlation between <span class="math inline">\(Y\)</span> and <span class="math inline">\(Z\)</span> given <span class="math inline">\(X\)</span></li>
+</ul>
+<p>Because both margins are Gaussian here, <span class="math inline">\(\rho\)</span> coincides with the ordinary Pearson correlation of <span class="math inline">\((Y^*, Z) \mid \text{do}(X=x)\)</span>, there is no separate “copula <span class="math inline">\(\rho\)</span>” and “Pearson <span class="math inline">\(\rho\)</span>” to keep track of, they are the same number.</p>
+<p>Then the <strong>observational</strong> conditional distribution <span class="math inline">\(Y \mid X, Z\)</span> has a closed-form expression:</p>
+<p><span class="math display">\[
+Y \mid X=x, Z=z \;\sim\; \text{Normal}\!\left(
+  \underbrace{(\mu_0 + \delta \cdot x)}_{\text{causal margin mean}}
+  + \underbrace{\rho \cdot \sigma_c \cdot z}_{\text{copula adjustment}},
+  \;\; \sigma_c^2 (1 - \rho^2)
+\right)
+\]</span></p>
+<p>where we have assumed <span class="math inline">\(Z\)</span> is standardized (<span class="math inline">\(\mu_Z = 0, \sigma_Z = 1\)</span>).</p>
+<p><strong>Key observation:</strong> The parameter <span class="math inline">\(\delta\)</span> is the ATE. It is now a <em>direct</em> model parameter, not a derived quantity. We can put a prior on it: <span class="math inline">\(\delta \sim \text{Normal}(0, 4)\)</span> (weakly-informative, i.e. standard deviation <span class="math inline">\(2\)</span>) or <span class="math inline">\(\delta \sim \text{Normal}(0.5, 0.01)\)</span> (informative, standard deviation <span class="math inline">\(0.1\)</span>, from a pilot experiment).</p>
+<p>The copula correlation <span class="math inline">\(\rho\)</span> absorbs the confounding association between <span class="math inline">\(Z\)</span> and <span class="math inline">\(Y\)</span> that is <em>not</em> mediated by the treatment <span class="math inline">\(X\)</span>. It plays the role that <span class="math inline">\(\beta_2\)</span> plays in the standard regression, but it is parameterized in terms of the copula rather than a regression coefficient.</p>
+<p>After this theoretical discussion, we now implement both parameterizations in PyMC and compare them on synthetic data.</p>
+</div>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from typing import NamedTuple
+
+import arviz as az
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pytensor.tensor as pt
+import seaborn as sns
+from pymc import do
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;frugal_parameterization_pymc&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+<p>We generate data from a simple causal model:</p>
+<ul>
+<li>A confounder <span class="math inline">\(Z \sim \text{Normal}(0, 1)\)</span></li>
+<li>A treatment <span class="math inline">\(X \mid Z \sim \text{Bernoulli}(\text{logit}^{-1}(-0.5 + 0.8 Z))\)</span></li>
+<li>An outcome <span class="math inline">\(Y \mid X, Z \sim \text{Normal}(1.0 + 0.5 X + 0.7 Z, \, 1)\)</span></li>
+</ul>
+<p>The <strong>true ATE</strong> is <span class="math inline">\(\delta = 0.5\)</span>.</p>
+<pre class="python"><code>class SimParams(NamedTuple):
+    &quot;&quot;&quot;Simulation parameters for the causal model.&quot;&quot;&quot;
+
+    n_obs: int
+    alpha_0: float
+    alpha_1: float
+    beta_0: float
+    beta_1: float
+    beta_2: float
+    sigma_y: float
+
+    @property
+    def true_ate(self) -&gt; float:
+        return self.beta_1
+
+
+sim_params = SimParams(
+    n_obs=500,
+    alpha_0=-0.5,
+    alpha_1=0.8,
+    beta_0=1.0,
+    beta_1=0.5,
+    beta_2=0.7,
+    sigma_y=1.0,
+)</code></pre>
+<p>We now generate the synthetic data from a generative model.</p>
+<pre class="python"><code>coords = {&quot;obs_idx&quot;: np.arange(sim_params.n_obs)}
+
+with pm.Model(coords=coords) as generative_model:
+    _z = pm.Normal(&quot;z&quot;, 0, 1, dims=&quot;obs_idx&quot;)
+
+    _a0 = pm.Normal(&quot;a0&quot;, 0, 1)
+    _a1 = pm.Normal(&quot;a1&quot;, 0, 1)
+    _b0 = pm.Normal(&quot;b0&quot;, 0, 1)
+    _b1 = pm.Normal(&quot;b1&quot;, 0, 1)
+    _b2 = pm.Normal(&quot;b2&quot;, 0, 1)
+    _sigma_y = pm.HalfNormal(&quot;sigma_y&quot;, 1)
+
+    _x = pm.Bernoulli(&quot;x&quot;, p=pm.math.invlogit(_a0 + _a1 * _z), dims=&quot;obs_idx&quot;)
+
+    _mu_y = _b0 + _b1 * _x + _b2 * _z
+    pm.Normal(&quot;y&quot;, mu=_mu_y, sigma=_sigma_y, dims=&quot;obs_idx&quot;)
+
+pm.model_to_graphviz(generative_model)</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_12_0.svg" style="width: 800px;"/>
+</center>
+<p>We condition the generative model on the true parameters:</p>
+<pre class="python"><code>conditioned_generative_model = do(
+    generative_model,
+    {
+        &quot;a0&quot;: sim_params.alpha_0,
+        &quot;a1&quot;: sim_params.alpha_1,
+        &quot;b0&quot;: sim_params.beta_0,
+        &quot;b1&quot;: sim_params.beta_1,
+        &quot;b2&quot;: sim_params.beta_2,
+        &quot;sigma_y&quot;: sim_params.sigma_y,
+    },
+)
+
+pm.model_to_graphviz(conditioned_generative_model)</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_14_0.svg" style="width: 800px;"/>
+</center>
+<p>We now sample the prior predictive distribution to extract one sample which will be our synthetic dataset.</p>
+<pre class="python"><code>with conditioned_generative_model:
+    prior_samples = pm.sample_prior_predictive(draws=1, random_seed=rng)
+
+z_obs = prior_samples[&quot;prior&quot;][&quot;z&quot;].sel(chain=0, draw=0).to_numpy()
+x_obs = prior_samples[&quot;prior&quot;][&quot;x&quot;].sel(chain=0, draw=0).to_numpy()
+y_obs = prior_samples[&quot;prior&quot;][&quot;y&quot;].sel(chain=0, draw=0).to_numpy()</code></pre>
+<pre><code>Sampling: [x, y, z]</code></pre>
+<p>Let’s visualize the observed data:</p>
+<pre class="python"><code>g = sns.pairplot(
+    pd.DataFrame(
+        {
+            &quot;z&quot;: z_obs,
+            &quot;x&quot;: x_obs,
+            &quot;y&quot;: y_obs,
+        }
+    ),
+    hue=&quot;x&quot;,
+    height=3,
+    aspect=1.5,
+)
+g.figure.suptitle(&quot;Observed Data&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_18_1.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="standard-parameterization" class="section level2">
+<h2>Standard parameterization</h2>
+<p>This is the conventional Bayesian regression approach. We specify the full conditional model and put priors on the regression coefficients.</p>
+<pre class="python"><code>with pm.Model(coords=coords) as standard_model:
+    a0 = pm.Normal(&quot;a0&quot;, 0, 2)
+    a1 = pm.Normal(&quot;a1&quot;, 0, 2)
+    b0 = pm.Normal(&quot;b0&quot;, 0, 2)
+    b1 = pm.Normal(&quot;b1&quot;, 0, 2)  # ATE = b1 (only in the linear case!)
+    b2 = pm.Normal(&quot;b2&quot;, 0, 2)
+    sigma = pm.HalfNormal(&quot;sigma&quot;, 2)
+
+    x_hat = pm.Bernoulli(
+        &quot;x_hat&quot;, p=pm.math.invlogit(a0 + a1 * z_obs), observed=x_obs, dims=&quot;obs_idx&quot;
+    )
+
+    mu_y = pm.Deterministic(&quot;mu_y&quot;, b0 + b1 * x_hat + b2 * z_obs, dims=&quot;obs_idx&quot;)
+    pm.Normal(&quot;y_hat&quot;, mu=mu_y, sigma=sigma, observed=y_obs, dims=&quot;obs_idx&quot;)
+
+
+pm.model_to_graphviz(standard_model)</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_20_0.svg" style="width: 700px;"/>
+</center>
+<pre class="python"><code>sampler_kwargs = {
+    &quot;draws&quot;: 2_000,
+    &quot;tune&quot;: 1_500,
+    &quot;chains&quot;: 4,
+    &quot;random_seed&quot;: rng,
+}
+
+with standard_model:
+    idata_standard = pm.sample(**sampler_kwargs)</code></pre>
+<pre class="python"><code>az.summary(idata_standard, var_names=[&quot;b0&quot;, &quot;b1&quot;, &quot;b2&quot;, &quot;sigma&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+b0
+</th>
+<td>
+0.976
+</td>
+<td>
+0.058
+</td>
+<td>
+0.864
+</td>
+<td>
+1.084
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6693.0
+</td>
+<td>
+6151.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b1
+</th>
+<td>
+0.497
+</td>
+<td>
+0.099
+</td>
+<td>
+0.312
+</td>
+<td>
+0.685
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6608.0
+</td>
+<td>
+6280.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+b2
+</th>
+<td>
+0.736
+</td>
+<td>
+0.048
+</td>
+<td>
+0.645
+</td>
+<td>
+0.824
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7628.0
+</td>
+<td>
+6023.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma
+</th>
+<td>
+0.996
+</td>
+<td>
+0.032
+</td>
+<td>
+0.935
+</td>
+<td>
+1.054
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7671.0
+</td>
+<td>
+5794.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>In the standard model, the ATE posterior is simply the posterior of <code>b1</code>. Note that this only works because the model is linear. In a non-linear model, we need to use custom transformations of the posterior parameters, see for example: <a href="https://juanitorduz.github.io/causal_inference_logistic/">ATE Estimation with Logistic Regression</a>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(idata_standard, var_names=[&quot;b1&quot;], ref_val=sim_params.true_ate, ax=ax)
+ax.set(xlabel=&quot;ate&quot;)
+ax.set_title(
+    &quot;Estimated ATE - Standard Parameterization&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_24_0.png" style="width: 800px;"/>
+</center>
+<p>We recover the true ATE around <span class="math inline">\(0.5\)</span>.</p>
+</div>
+<div id="frugal-parameterization" class="section level2">
+<h2>Frugal parameterization</h2>
+<p>Now we implement the frugal parameterization. The model has three blocks:</p>
+<ol style="list-style-type: decimal">
+<li><strong>The past</strong> <span class="math inline">\(P(Z, X)\)</span>: same propensity model as before.</li>
+<li><strong>Causal margin</strong> <span class="math inline">\(P^*(Y \mid \text{do}(X))\)</span>: parameterized by <span class="math inline">\(\mu_0\)</span>
+(baseline outcome), <span class="math inline">\(\delta\)</span> (ATE), and <span class="math inline">\(\sigma_c\)</span> (causal SD).</li>
+<li><strong>Dependence</strong>: Gaussian copula correlation <span class="math inline">\(\rho\)</span> between <span class="math inline">\(Y\)</span> and <span class="math inline">\(Z\)</span>.</li>
+</ol>
+<p>The observational likelihood is:</p>
+<p><span class="math display">\[
+Y \mid X=x, Z=z \sim \text{Normal}\!\left(
+  (\mu_0 + \delta x) + \rho \sigma_c z, \;\;
+  \sigma_c^2 (1 - \rho^2)
+\right)
+\]</span></p>
+<pre class="python"><code>with pm.Model(coords=coords) as frugal_model:
+    # --- (a) The past: propensity model P(X|Z) ---
+    a0 = pm.Normal(&quot;a0&quot;, 0, 2)
+    a1 = pm.Normal(&quot;a1&quot;, 0, 2)
+    x_hat = pm.Bernoulli(
+        &quot;x_hat&quot;, p=pm.math.invlogit(a0 + a1 * z_obs), observed=x_obs, dims=&quot;obs_idx&quot;
+    )
+
+    # --- (b) Causal margin: P*(Y | do(X)) ---
+    mu0 = pm.Normal(&quot;mu0&quot;, 0, 2)  # E[Y | do(X=0)]
+    delta = pm.Normal(&quot;delta&quot;, 0, 2)  # ATE (direct parameter!)
+    sigma_causal = pm.HalfNormal(&quot;sigma_causal&quot;, 2)
+
+    # --- (c) Dependence: Gaussian copula ---
+    # bounded away from +/-1 for numerical stability of sqrt(1 - rho**2)
+    rho = pm.Uniform(&quot;rho&quot;, -0.95, 0.95)
+
+    b2 = pm.Deterministic(&quot;b2&quot;, rho * sigma_causal)
+
+    # --- Observational likelihood ---
+    mu_y_frugal = pm.Deterministic(
+        &quot;mu_y_frugal&quot;, mu0 + delta * x_hat + rho * sigma_causal * z_obs, dims=&quot;obs_idx&quot;
+    )
+    sigma_y_frugal = pm.Deterministic(
+        &quot;sigma_y_frugal&quot;,
+        sigma_causal * pt.sqrt(1 - rho**2),
+    )
+
+    pm.Normal(
+        &quot;y_hat&quot;, mu=mu_y_frugal, sigma=sigma_y_frugal, observed=y_obs, dims=&quot;obs_idx&quot;
+    )
+
+pm.model_to_graphviz(frugal_model)</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_27_0.svg" style="width: 800px;"/>
+</center>
+<pre class="python"><code>with frugal_model:
+    idata_frugal = pm.sample(**sampler_kwargs)</code></pre>
+<pre class="python"><code>az.summary(idata_frugal, var_names=[&quot;mu0&quot;, &quot;delta&quot;, &quot;sigma_causal&quot;, &quot;rho&quot;])</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+mu0
+</th>
+<td>
+0.975
+</td>
+<td>
+0.059
+</td>
+<td>
+0.869
+</td>
+<td>
+1.090
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6742.0
+</td>
+<td>
+6685.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+delta
+</th>
+<td>
+0.498
+</td>
+<td>
+0.098
+</td>
+<td>
+0.318
+</td>
+<td>
+0.684
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6280.0
+</td>
+<td>
+6069.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+sigma_causal
+</th>
+<td>
+1.238
+</td>
+<td>
+0.037
+</td>
+<td>
+1.167
+</td>
+<td>
+1.304
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+8196.0
+</td>
+<td>
+6925.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+rho
+</th>
+<td>
+0.593
+</td>
+<td>
+0.027
+</td>
+<td>
+0.542
+</td>
+<td>
+0.642
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+7042.0
+</td>
+<td>
+6269.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>We now plot the posterior of the ATE based on the frugal parameterization.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(idata_frugal, var_names=[&quot;delta&quot;], ref_val=sim_params.true_ate, ax=ax)
+ax.set(xlabel=&quot;ate&quot;)
+ax.set_title(&quot;Estimated ATE - Frugal Parameterization&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_31_0.png" style="width: 800px;"/>
+</center>
+<p>It also recovers the true ATE around <span class="math inline">\(0.5\)</span>.</p>
+</div>
+<div id="comparison" class="section level2">
+<h2>Comparison</h2>
+<p>In this linear Gaussian case, the two parameterizations should give essentially the same posterior for the ATE. The point is not that frugal is <em>better</em> here, but that it opens the door to things you can’t easily do with the standard approach.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    [idata_standard, idata_frugal],
+    model_names=[&quot;Standard&quot;, &quot;Frugal&quot;],
+    var_names=[&quot;b1&quot;, &quot;delta&quot;],
+    combined=True,
+    figsize=(7, 5),
+)
+ax.axvline(sim_params.true_ate, color=&quot;black&quot;, linestyle=&quot;--&quot;, lw=2)
+ax.set_title(&quot;Posterior ATE: Standard vs Frugal&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_34_0.png" style="width: 800px;"/>
+</center>
+<p>The two posteriors essentially match, as expected in this linear Gaussian case.</p>
+</div>
+<div id="the-payoff-informative-priors-on-the-causal-effect" class="section level2">
+<h2>The Payoff: Informative Priors on the Causal Effect</h2>
+<p>The real advantage of the frugal parameterization becomes clear when you have <strong>prior knowledge about the causal effect itself</strong>, which is extremely common in practice.</p>
+<div id="scenario-combining-experimental-and-observational-evidence" class="section level3">
+<h3>Scenario: combining experimental and observational evidence</h3>
+<p>Imagine you are a data scientist at a company that has:</p>
+<ol style="list-style-type: decimal">
+<li><strong>A small experiment</strong> (e.g., a geo-lift test, a pilot RCT, an A/B test) that gives a noisy estimate of the causal effect: <span class="math inline">\(\hat{\delta} \approx 0.5 \pm 0.1\)</span>.</li>
+<li><strong>A large observational dataset</strong> where the treatment was deployed non-randomly and confounding is present.</li>
+</ol>
+<p>You want to combine these two sources of information. With the frugal parameterization, this is trivial: put the experimental result as an informative prior on <span class="math inline">\(\delta\)</span>.</p>
+<p>With the standard parameterization, you would need to translate “<span class="math inline">\(\delta \approx 0.5 \pm 0.1\)</span>” into priors on regression coefficients, which is not straightforward, especially if the model is <strong>non-linear</strong>.</p>
+<p>Let’s compare a weakly informative prior <span class="math inline">\(\delta \sim \text{Normal}(0, 4)\)</span> (standard deviation <span class="math inline">\(2\)</span>) against an informative prior <span class="math inline">\(\delta \sim \text{Normal}(0.5, 0.01)\)</span> (standard deviation <span class="math inline">\(0.1\)</span>) in the frugal model.</p>
+<pre class="python"><code>with pm.Model(coords=coords) as frugal_informative:
+    # (a) The past
+    a0 = pm.Normal(&quot;a0&quot;, 0, 2)
+    a1 = pm.Normal(&quot;a1&quot;, 0, 2)
+    x_hat = pm.Bernoulli(
+        &quot;x_hat&quot;, p=pm.math.invlogit(a0 + a1 * z_obs), observed=x_obs, dims=&quot;obs_idx&quot;
+    )
+
+    # (b) Causal margin with INFORMATIVE prior on ATE
+    mu0 = pm.Normal(&quot;mu0&quot;, 0, 2)  # E[Y | do(X=0)]
+    delta = pm.Normal(&quot;delta&quot;, 0.5, 0.1)  # &lt;-- from a pilot experiment
+    sigma_causal = pm.HalfNormal(&quot;sigma_causal&quot;, 2)
+
+    # --- (c) Dependence: Gaussian copula ---
+    # bounded away from +/-1 for numerical stability of sqrt(1 - rho**2)
+    rho = pm.Uniform(&quot;rho&quot;, -0.95, 0.95)
+
+    b2 = pm.Deterministic(&quot;b2&quot;, rho * sigma_causal)
+
+    # --- Observational likelihood ---
+    mu_y_frugal = pm.Deterministic(
+        &quot;mu_y_frugal&quot;, mu0 + delta * x_hat + rho * sigma_causal * z_obs, dims=&quot;obs_idx&quot;
+    )
+    sigma_y_frugal = pm.Deterministic(
+        &quot;sigma_y_frugal&quot;,
+        sigma_causal * pt.sqrt(1 - rho**2),
+    )
+
+    pm.Normal(
+        &quot;y_hat&quot;, mu=mu_y_frugal, sigma=sigma_y_frugal, observed=y_obs, dims=&quot;obs_idx&quot;
+    )
+
+pm.model_to_graphviz(frugal_informative)</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_37_0.svg" style="width: 800px;"/>
+</center>
+<pre class="python"><code>with frugal_informative:
+    idata_informative = pm.sample_prior_predictive(draws=1_000, random_seed=rng)
+    idata_informative.extend(pm.sample(**sampler_kwargs))</code></pre>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    [
+        idata_standard.rename({&quot;b1&quot;: &quot;ate&quot;}),
+        idata_frugal.rename({&quot;delta&quot;: &quot;ate&quot;}),
+        idata_informative.rename({&quot;delta&quot;: &quot;ate&quot;}),
+    ],
+    model_names=[&quot;Standard&quot;, &quot;Frugal&quot;, &quot;Frugal (informative)&quot;],
+    var_names=[&quot;ate&quot;],
+    combined=True,
+    figsize=(8, 5),
+)
+ax.axvline(sim_params.true_ate, color=&quot;black&quot;, linestyle=&quot;--&quot;, lw=2)
+ax.set_title(
+    &quot;Posterior ATE\nStandard vs Frugal vs Frugal (informative)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+    y=1.05,
+);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_39_0.png" style="width: 800px;"/>
+</center>
+<p>The informative prior sharpens the posterior by increasing the precision of the posterior estimate. This is the Bayesian machinery doing exactly what it should: combining prior knowledge (from the experiment) with new evidence (from the observational data).</p>
+<pre class="python"><code>axes = az.plot_dist_comparison(
+    data=idata_informative, var_names=[&quot;delta&quot;], figsize=(10, 6)
+)
+
+fig = plt.gcf()
+fig.suptitle(
+    &quot;Prior vs Posterior ATE - Informative Prior&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_41_0.png" style="width: 800px;"/>
+</center>
+<p>Note that the posterior is <em>not</em> just the prior, the data genuinely updates it.</p>
+</div>
+</div>
+<div id="inspecting-the-copula-dependence-parameter" class="section level2">
+<h2>Inspecting the Copula Dependence Parameter</h2>
+<p>The copula correlation <span class="math inline">\(\rho\)</span> captures the association between <span class="math inline">\(Y\)</span> and <span class="math inline">\(Z\)</span> in the interventional world. More precisely, <span class="math inline">\(\rho\)</span> is the Pearson correlation between <span class="math inline">\(Y^*\)</span> and <span class="math inline">\(Z\)</span> <em>conditional on</em> <span class="math inline">\(\text{do}(X=x)\)</span>, i.e., the correlation inside the bivariate normal we constructed in Step 1 of the derivation in Appendix. Because the construction is homoscedastic in <span class="math inline">\(x\)</span>, this correlation is the same for every value of <span class="math inline">\(x\)</span>, so it is an unambiguous, single scalar that summarizes the <span class="math inline">\(Y\)</span>–<span class="math inline">\(Z\)</span> dependence under intervention. Let’s plot its posterior:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(idata_frugal, var_names=[&quot;rho&quot;], ax=ax)
+ax.set(xlabel=r&quot;$\rho$&quot;)
+ax.set_title(
+    r&quot;Posterior of $\rho$ - Copula Dependence Parameter&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_44_0.png" style="width: 800px;"/>
+</center>
+<p>This posterior does not overlap zero, meaning that the confounder <span class="math inline">\(Z\)</span> is associated with the outcome <span class="math inline">\(Y\)</span> even after removing the effect of <span class="math inline">\(X\)</span>.</p>
+<p>In the standard model, this role is played by the regression coefficient <span class="math inline">\(\beta_2\)</span>, but <span class="math inline">\(\rho\)</span> and <span class="math inline">\(\beta_2\)</span> encode the same information differently:</p>
+<ul>
+<li><span class="math inline">\(\beta_2 = \rho \cdot \sigma_c\)</span> gives the <em>unstandardized</em> effect of <span class="math inline">\(Z\)</span> on <span class="math inline">\(Y\)</span> (in the units of <span class="math inline">\(Y\)</span> per unit of <span class="math inline">\(Z\)</span>).</li>
+<li><span class="math inline">\(\rho\)</span> gives the <em>standardized</em> (correlation-scale) effect, which is unit-free. This makes it easier to set priors on <span class="math inline">\(\rho\)</span> across different datasets and scales.</li>
+</ul>
+<p><strong>Interpreting <span class="math inline">\(\rho\)</span> in practice:</strong></p>
+<ul>
+<li><span class="math inline">\(\rho = 0\)</span> means <span class="math inline">\(Z\)</span> has no direct association with <span class="math inline">\(Y\)</span> beyond its effect through <span class="math inline">\(X\)</span>. There is no confounding of the <span class="math inline">\(X \to Y\)</span> relationship by <span class="math inline">\(Z\)</span>.</li>
+<li><span class="math inline">\(|\rho|\)</span> close to <span class="math inline">\(1\)</span> means <span class="math inline">\(Z\)</span> almost perfectly predicts <span class="math inline">\(Y\)</span> even after removing <span class="math inline">\(X\)</span>’s effect: strong confounding.</li>
+<li><span class="math inline">\(\rho^2\)</span> gives the fraction of the interventional variance of <span class="math inline">\(Y\)</span> explained by <span class="math inline">\(Z\)</span>. For example, <span class="math inline">\(\rho = 0.3\)</span> means the confounder explains about <span class="math inline">\(9\%\)</span> (<span class="math inline">\(= 0.3^2\)</span>) of the interventional variance.</li>
+</ul>
+<p>Let’s verify that the frugal model’s implied confounder effect (<span class="math inline">\(\rho \cdot \sigma_c\)</span>) is consistent with the standard model’s <span class="math inline">\(\beta_2\)</span>.</p>
+<pre class="python"><code>ax, *_ = az.plot_forest(
+    [idata_standard, idata_frugal],
+    model_names=[&quot;Standard&quot;, &quot;Frugal&quot;],
+    var_names=[&quot;b2&quot;],
+    combined=True,
+    figsize=(7, 5),
+)
+ax.axvline(
+    sim_params.beta_2,
+    color=&quot;black&quot;,
+    linestyle=&quot;--&quot;,
+    lw=2,
+    label=f&quot;True beta_2 = {sim_params.beta_2}&quot;,
+)
+ax.set(
+    xlabel=&quot;Confounder effect on Y&quot;,
+)
+ax.set_title(
+    r&quot;$\beta_2$ (standard) vs $\rho \cdot \sigma_c$ (frugal)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/frugal_parameterization_pymc_files/frugal_parameterization_pymc_47_0.png" style="width: 800px;"/>
+</center>
+<p>The forest plot confirms that the frugal model’s implied confounder effect (<span class="math inline">\(\rho \cdot \sigma_c\)</span>, stored as the deterministic variable <code>b2</code>) matches the standard model’s <span class="math inline">\(\beta_2\)</span>: they are equivalent reparameterizations in the linear Gaussian case.</p>
+</div>
+<div id="limitations-and-extensions" class="section level2">
+<h2>Limitations and Extensions</h2>
+<p>This notebook covers the <strong>simplest possible case</strong>: continuous Gaussian outcome, binary treatment, a single confounder, and a Gaussian copula. The Evans &amp; Didelez framework is much more general:</p>
+<ul>
+<li><p><strong>Discrete outcomes:</strong> Use odds ratios instead of copulas for the dependence component, in the discrete case, the frugal parameterization maps naturally onto a log-linear model.</p></li>
+<li><p><strong>Non-Gaussian outcomes:</strong> Use different copula families (Clayton, Frank, Gumbel, vine copulas) and/or different marginal distributions.</p></li>
+<li><p><strong>Continuous treatments:</strong> The ATE generalizes to a dose-response curve. The causal margin becomes <span class="math inline">\(P^*(Y \mid \text{do}(X=x))\)</span> for continuous <span class="math inline">\(x\)</span>.</p></li>
+<li><p><strong>Multiple confounders:</strong> The copula extends to higher dimensions via vine copulas (pair-copula constructions), as discussed above, though parameterization becomes more complex.</p></li>
+</ul>
+<p><strong>References:</strong></p>
+<ul>
+<li>Evans, R.J. &amp; Didelez, V. (2024). <em>Parameterizing and simulating from causal models.</em> Journal of the Royal Statistical Society Series B, 86(3), 535–568. <a href="https://doi.org/10.1093/jrsssb/qkad058">DOI</a></li>
+<li>Steiner, G. &amp; Steel, M.F.J. (2024). Discussion contribution to Evans &amp; Didelez. JRSS-B, 86(3), 580–582.</li>
+<li>Evans, R.J. (2023). <code>causl</code>: R package for specifying, simulating from and fitting causal models. <a href="https://github.com/rje42/causl">GitHub</a></li>
+<li>Pearl, J. (2009). <em>Causality: Models, Reasoning, and Inference.</em> 2nd ed. Cambridge University Press.</li>
+<li>Havercroft, W.G. &amp; Didelez, V. (2012). Simulating from marginal structural models with time-dependent confounding. <em>Statistics in Medicine</em>, 31(30), 4190–4206.</li>
+<li>Sklar, A. (1959). Fonctions de répartition à n dimensions et leurs marges. <em>Publications de l’Institut de Statistique de l’Université de Paris</em>, 8, 229–231.</li>
+<li>Wikipedia. <em>Copula (statistics).</em> <a href="https://en.wikipedia.org/wiki/Copula_(statistics)">https://en.wikipedia.org/wiki/Copula_(statistics)</a></li>
+</ul>
+</div>
+<div id="summary" class="section level2">
+<h2>Summary</h2>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Standard</th>
+<th>Frugal</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>ATE is…</strong></td>
+<td>a derived quantity</td>
+<td>a direct parameter</td>
+</tr>
+<tr class="even">
+<td><strong>Priors on ATE</strong></td>
+<td>indirect (via regression coefficients)</td>
+<td>direct</td>
+</tr>
+<tr class="odd">
+<td><strong>Simulation with known ATE</strong></td>
+<td>hard (reverse-engineer conditionals)</td>
+<td>easy (set <span class="math inline">\(\delta\)</span>)</td>
+</tr>
+<tr class="even">
+<td><strong>Dependence structure</strong></td>
+<td>regression coefficients</td>
+<td>copula</td>
+</tr>
+<tr class="odd">
+<td><strong>ATE as a free primitive parameter</strong></td>
+<td>No (derived)</td>
+<td>Yes</td>
+</tr>
+<tr class="even">
+<td><strong>Independent priors on causal vs. nuisance</strong></td>
+<td>Hard in general</td>
+<td>Built in</td>
+</tr>
+<tr class="odd">
+<td><strong>Non-linear models</strong></td>
+<td>ATE is a complex function of parameters</td>
+<td>ATE is still <span class="math inline">\(\delta\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>The frugal parameterization does not give you a <em>better</em> answer in the linear
+Gaussian case, it gives you a <em>better language</em> for expressing your assumptions
+and incorporating prior knowledge about causal effects. The payoff grows with
+model complexity.</p>
+<hr />
+</div>
+<div id="appendix-deriving-the-observational-likelihood" class="section level2">
+<h2>Appendix: Deriving the observational likelihood</h2>
+<p>For readers who want to understand <em>why</em> the conditional distribution has the form above, here is a step-by-step derivation that makes the construction explicit.</p>
+<p><strong>Step 1: Constructing the interventional joint distribution.</strong></p>
+<p>We have two marginal distributions in the interventional world (where <span class="math inline">\(X\)</span> is set by intervention <span class="math inline">\(\text{do}(X=x)\)</span>):</p>
+<ul>
+<li>The interventional outcome: <span class="math inline">\(Y^* \sim \text{Normal}(\mu(x), \, \sigma_c^2)\)</span> where <span class="math inline">\(\mu(x) = \mu_0 + \delta \cdot x\)</span>.</li>
+<li>The confounder: <span class="math inline">\(Z \sim \text{Normal}(0, 1)\)</span> (unchanged by the intervention, since <span class="math inline">\(Z\)</span> is a cause of <span class="math inline">\(X\)</span>, not a consequence).</li>
+</ul>
+<p>These are the marginals. To form a <em>joint</em> distribution of <span class="math inline">\((Y^*, Z)\)</span>, we need a dependence structure. This is exactly what the Gaussian copula provides: it couples the two marginals using a single correlation parameter <span class="math inline">\(\rho\)</span>. Because both marginals are Gaussian, the Gaussian copula produces a bivariate normal (see the copula primer above):</p>
+<p><span class="math display">\[
+\begin{pmatrix} Y^* \\ Z \end{pmatrix} \sim
+\text{MultivariateNormal}\!\left(
+  \begin{pmatrix} \mu(x) \\ 0 \end{pmatrix},
+  \begin{pmatrix} \sigma_c^2 &amp; \rho \sigma_c \\ \rho \sigma_c &amp; 1 \end{pmatrix}
+\right)
+\]</span></p>
+<p>Note that this is a <em>construction</em>, not a derivation from data. We are <em>building</em> the joint distribution from its three frugal components: the confounder distribution, the interventional outcome margin, and the copula dependence parameter <span class="math inline">\(\rho\)</span>.</p>
+<p><strong>Step 2: Conditioning on the confounder.</strong></p>
+<p>From the standard multivariate normal conditioning formula, the conditional distribution of <span class="math inline">\(Y^*\)</span> given <span class="math inline">\(Z = z\)</span> under intervention <span class="math inline">\(\text{do}(X=x)\)</span> is:</p>
+<p><span class="math display">\[
+Y^* \mid Z=z \;\sim\; \text{Normal}\!\left(
+  \mu(x) + \rho \sigma_c \cdot z, \;\; \sigma_c^2(1 - \rho^2)
+\right)
+\]</span></p>
+<p>The mean shifts by <span class="math inline">\(\rho \sigma_c \cdot z\)</span> (the copula-induced association with the confounder), and the variance shrinks by a factor <span class="math inline">\((1 - \rho^2)\)</span> (the variance explained by <span class="math inline">\(Z\)</span> is removed).</p>
+<p><strong>Step 3: The identification step: from interventional to observational.</strong></p>
+<p>This is the crucial step that connects the interventional world (where we <em>set</em> <span class="math inline">\(X\)</span>) to the observational world (where <span class="math inline">\(X\)</span> is determined by the confounder <span class="math inline">\(Z\)</span> through the propensity model).</p>
+<p>Under <strong>no unmeasured confounding</strong> given <span class="math inline">\(Z\)</span> (i.e., <span class="math inline">\(Z\)</span> blocks all back-door paths from <span class="math inline">\(X\)</span> to <span class="math inline">\(Y\)</span>), the interventional and observational conditionals of <span class="math inline">\(Y\)</span> given <span class="math inline">\(X\)</span> and <span class="math inline">\(Z\)</span> coincide:</p>
+<p><span class="math display">\[
+P(Y \mid \text{do}(X=x), Z=z) = P(Y \mid X=x, Z=z)
+\]</span></p>
+<p>In words: once we condition on the confounder <span class="math inline">\(Z\)</span>, the remaining variation in <span class="math inline">\(X\)</span> is as-good-as-random, because conditioning on <span class="math inline">\(Z\)</span> “blocks” the confounding path <span class="math inline">\(Y \leftarrow Z \rightarrow X\)</span>. Writing the left-hand side in the <span class="math inline">\(Y^*\)</span> notation we have been using for the interventional outcome, this is <span class="math inline">\(P(Y^* \mid Z=z) = P(Y \mid X=x, Z=z)\)</span> under <span class="math inline">\(\text{do}(X=x)\)</span>.</p>
+<p>Marginalizing both sides over <span class="math inline">\(Z\)</span> recovers the familiar <strong>back-door adjustment formula</strong> (Pearl, 2009):</p>
+<p><span class="math display">\[
+P(Y \mid \text{do}(X=x)) = \int P(Y \mid X=x, Z=z) \, P(Z=z) \, dz
+\]</span></p>
+<p><strong>Remark: cognate distributions.</strong> Evans &amp; Didelez (2024) generalize this identification step through the concept of <em>cognate distributions</em>: conditional distributions of the form</p>
+<p><span class="math display">\[P^*_{Y \mid X}(y \mid x) = \int P_{Y \mid ZX}(y \mid z, x) \, w(z \mid x) \, dz\]</span></p>
+<p>for different weight functions <span class="math inline">\(w\)</span>. The back-door adjustment above uses <span class="math inline">\(w(z \mid x) = P(Z = z)\)</span> (the marginal of <span class="math inline">\(Z\)</span>), but other weight functions yield other causal estimands, for example, <span class="math inline">\(w(z \mid x) = P(Z = z \mid X = 1)\)</span> gives the effect of treatment on the treated. Under regularity assumptions (their A2–A3), Theorem 3.1 in the paper shows that a parameterization <span class="math inline">\((\theta_{ZX},\, \theta_{Y \mid X},\, \varphi_{YZ \mid X})\)</span> is frugal with respect to the observational kernel <span class="math inline">\(p_{Y \mid X}\)</span> if and only if the analogous parameterization <span class="math inline">\((\theta_{ZX},\, \theta^*_{Y \mid X},\, \varphi^*_{YZ \mid X})\)</span> is frugal with respect to the cognate kernel <span class="math inline">\(p^*_{Y \mid X}\)</span>. That equivalence is what lets the framework move cleanly between different causal estimands.</p>
+<p>Therefore, the distribution derived in Step 2 is exactly the <strong>observational likelihood</strong> we need for Bayesian inference:</p>
+<p><span class="math display">\[
+Y \mid X=x, Z=z \;\sim\; \text{Normal}\!\left(
+  (\mu_0 + \delta \cdot x) + \rho \sigma_c \cdot z, \;\;
+  \sigma_c^2 (1 - \rho^2)
+\right)
+\]</span></p>
+<p><strong>Step 4: The role of the propensity score.</strong></p>
+<p>Notice that the propensity model <span class="math inline">\(P(X \mid Z)\)</span> does not appear in the outcome likelihood above, it enters the model separately through the Bernoulli distribution for <span class="math inline">\(X\)</span>. This is not a coincidence: it is a direct consequence of the variation independence of the frugal components. The propensity parameters <span class="math inline">\((\alpha_0, \alpha_1)\)</span> and the causal/dependence parameters <span class="math inline">\((\delta, \sigma_c, \rho)\)</span> live in separate, non-overlapping parts of the model, so we can specify priors on them independently.</p>
+<p><strong>Step 5: Connection to the standard parameterization.</strong></p>
+<p>We can now make the equivalence between the two parameterizations explicit. Matching coefficients between the frugal likelihood <span class="math inline">\(Y \mid X, Z \sim \text{Normal}((\mu_0 + \delta x) + \rho \sigma_c z, \; \sigma_c^2(1 - \rho^2))\)</span> and the standard regression <span class="math inline">\(Y \mid X, Z \sim \text{Normal}(\beta_0 + \beta_1 x + \beta_2 z, \; \sigma^2)\)</span>:</p>
+<p><em>Forward mapping</em> (frugal <span class="math inline">\(\to\)</span> standard):</p>
+<p><span class="math display">\[
+\beta_0 = \mu_0, \quad \beta_1 = \delta, \quad \beta_2 = \rho \sigma_c, \quad \sigma = \sigma_c \sqrt{1 - \rho^2}
+\]</span></p>
+<p><em>Inverse mapping</em> (standard <span class="math inline">\(\to\)</span> frugal):</p>
+<p><span class="math display">\[
+\delta = \beta_1, \quad \sigma_c = \sqrt{\sigma^2 + \beta_2^2}, \quad \rho = \frac{\beta_2}{\sqrt{\sigma^2 + \beta_2^2}}
+\]</span></p>
+<p>All of these closed forms assume the standardization <span class="math inline">\(\operatorname{Var}(Z) = 1\)</span> used throughout the post. With a general <span class="math inline">\(\operatorname{Var}(Z) = \sigma_z^2\)</span>, the formulas carry an extra factor of <span class="math inline">\(\sigma_z\)</span>: <span class="math inline">\(\beta_2 = \rho \sigma_c / \sigma_z\)</span> and <span class="math inline">\(\sigma_c^2 = \sigma^2 + \beta_2^2 \sigma_z^2\)</span>.</p>
+<p>The inverse mapping reveals an important insight: the causal standard deviation <span class="math inline">\(\sigma_c = \sqrt{\sigma^2 + \beta_2^2}\)</span> is always <em>larger</em> than the residual standard deviation <span class="math inline">\(\sigma\)</span> (unless <span class="math inline">\(\beta_2 = 0\)</span>, i.e., no confounding). The two quantities live in different “worlds”: <span class="math inline">\(\sigma_c^2 = \operatorname{Var}(Y^* \mid \text{do}(X = x))\)</span> is the <em>marginal</em> variance of the outcome under intervention (averaging over <span class="math inline">\(Z\)</span>), while <span class="math inline">\(\sigma^2 = \operatorname{Var}(Y \mid X = x, Z = z)\)</span> is the <em>conditional</em> residual variance in the observational world (already conditioning on <span class="math inline">\(Z\)</span>). The causal margin averages over the confounder while the observational residual conditions on it, so the causal margin necessarily picks up the additional variability <span class="math inline">\(\beta_2^2 \cdot \operatorname{Var}(Z)\)</span> contributed by <span class="math inline">\(Z\)</span>.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
