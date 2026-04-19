@@ -6,8 +6,15 @@
     <description>Recent content in Python, Numpyro, Forecasting on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Mon, 05 Jan 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sun, 19 Apr 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Exponential Smoothing with NumPyro: State Space Form</title>
+      <link>/exponential_smoothing_numpyro_ssm/</link>
+      <pubDate>Sun, 19 Apr 2026 00:00:00 +0000</pubDate>
+      <guid>/exponential_smoothing_numpyro_ssm/</guid>
+      <description>&lt;p&gt;In the blog post &lt;a href=&#34;https://juanitorduz.github.io/exponential_smoothing_numpyro/&#34;&gt;“Notes on Exponential Smoothing with NumPyro”&lt;/a&gt; we implemented the damped Holt-Winters model in the &lt;strong&gt;component form&lt;/strong&gt; of &lt;a href=&#34;https://otexts.com/fpp3/holt-winters.html&#34;&gt;Hyndman &amp;amp; Athanasopoulos, &lt;em&gt;FPP3&lt;/em&gt;, §8.3&lt;/a&gt;. A very nice observation was raised by &lt;a href=&#34;https://github.com/theorashid&#34;&gt;&lt;span class=&#34;citation&#34;&gt;@theorashid&lt;/span&gt;&lt;/a&gt; in &lt;a href=&#34;https://github.com/juanitorduz/website_projects/issues/193&#34;&gt;issue #193&lt;/a&gt;:&#xA;&lt;em&gt;when we forecast with the component-form model the credible intervals barely widen across the horizon&lt;/em&gt;. The reason is subtle but important. Quoting the issue:&lt;/p&gt;&#xA;&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;The models are written in component form, as in Hyndman 8.3. However, when we fitted this model, we found the error bars didn’t increase as much as expected. My explanation for this is that the variance from &lt;code&gt;pred&lt;/code&gt; is the same around each data point. And this variance isn’t pushed forward to form a cone in the same way an autoregressive model does. The increasing error we see I think is entirely from the variability in the coefficients.&lt;/em&gt;&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Forecasting Hierarchical Models - Part III</title>
       <link>/numpyro_hierarchical_forecasting_3/</link>
@@ -56,6 +63,13 @@
       <pubDate>Tue, 01 Oct 2024 00:00:00 +0000</pubDate>
       <guid>/numpyro_forecasting-univariate/</guid>
       <description>&lt;p&gt;In this notebooks we port the &lt;a href=&#34;https://github.com/pyro-ppl/pyro&#34;&gt;&lt;code&gt;Pyro&lt;/code&gt;&lt;/a&gt; forecasting example &lt;a href=&#34;https://pyro.ai/examples/forecasting_i.html&#34;&gt;Forecasting I: univariate, heavy tailed&lt;/a&gt; to &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;&lt;code&gt;NumPyro&lt;/code&gt;&lt;/a&gt;. The forecasting module in Pyro is fantastic as it provides an easy interface to develop custom forecasting models. It has also many helpful utility functions to generate features and for model evaluation. The purpose of this translation is to dig deeper into the some forecasting components and to show that translating Pyro code to NumPyro is not that hard, even though there are come caveats.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Hierarchical Exponential Smoothing Model</title>
+      <link>/hierarchical_exponential_smoothing/</link>
+      <pubDate>Fri, 07 Jun 2024 00:00:00 +0000</pubDate>
+      <guid>/hierarchical_exponential_smoothing/</guid>
+      <description>&lt;p&gt;In this blog post, we experiment with a hierarchical exponential smoothing forecasting model, extending the ideas from the univariate case presented in the blog post &lt;a href=&#34;https://juanitorduz.github.io/exponential_smoothing_numpyro/&#34;&gt;“Notes on Exponential Smoothing with NumPyro”&lt;/a&gt;. We use &lt;a href=&#34;https://github.com/pyro-ppl/numpyro&#34;&gt;NumPyro&lt;/a&gt; and compare the NUTS and SVI results. For such a purpose, we use &lt;strong&gt;Continuous Ranked Probability Score&lt;/strong&gt; (&lt;a href=&#34;https://towardsdatascience.com/crps-a-scoring-function-for-bayesian-machine-learning-models-dd55a7a337a8&#34;&gt;CRPS&lt;/a&gt;). We also compare these forecasts with univariate statistical models like Holt-Winters, AutoETS and Seasonal Naive from the great &lt;a href=&#34;https://nixtlaverse.nixtla.io/statsforecast/index.html&#34;&gt;Statsforecast&lt;/a&gt; package. These baseline models are, in general, hard to beat!&lt;/p&gt;</description>
     </item>
     <item>
       <title>Zero-Inflated TSB Model</title>

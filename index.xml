@@ -6,8 +6,15 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 11 Apr 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sun, 19 Apr 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Exponential Smoothing with NumPyro: State Space Form</title>
+      <link>/exponential_smoothing_numpyro_ssm/</link>
+      <pubDate>Sun, 19 Apr 2026 00:00:00 +0000</pubDate>
+      <guid>/exponential_smoothing_numpyro_ssm/</guid>
+      <description>&lt;p&gt;In the blog post &lt;a href=&#34;https://juanitorduz.github.io/exponential_smoothing_numpyro/&#34;&gt;“Notes on Exponential Smoothing with NumPyro”&lt;/a&gt; we implemented the damped Holt-Winters model in the &lt;strong&gt;component form&lt;/strong&gt; of &lt;a href=&#34;https://otexts.com/fpp3/holt-winters.html&#34;&gt;Hyndman &amp;amp; Athanasopoulos, &lt;em&gt;FPP3&lt;/em&gt;, §8.3&lt;/a&gt;. A very nice observation was raised by &lt;a href=&#34;https://github.com/theorashid&#34;&gt;&lt;span class=&#34;citation&#34;&gt;@theorashid&lt;/span&gt;&lt;/a&gt; in &lt;a href=&#34;https://github.com/juanitorduz/website_projects/issues/193&#34;&gt;issue #193&lt;/a&gt;:&#xA;&lt;em&gt;when we forecast with the component-form model the credible intervals barely widen across the horizon&lt;/em&gt;. The reason is subtle but important. Quoting the issue:&lt;/p&gt;&#xA;&lt;blockquote&gt;&#xA;&lt;p&gt;&lt;em&gt;The models are written in component form, as in Hyndman 8.3. However, when we fitted this model, we found the error bars didn’t increase as much as expected. My explanation for this is that the variance from &lt;code&gt;pred&lt;/code&gt; is the same around each data point. And this variance isn’t pushed forward to form a cone in the same way an autoregressive model does. The increasing error we see I think is entirely from the variability in the coefficients.&lt;/em&gt;&lt;/p&gt;</description>
+    </item>
     <item>
       <title>The Frugal Parameterization for Bayesian Causal Inference in PyMC</title>
       <link>/frugal_parametrization_pymc/</link>

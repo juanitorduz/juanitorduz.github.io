@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Exponential Smoothing with NumPyro: State Space Form - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Exponential Smoothing with NumPyro: State Space Form - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">13 min read</span>
+    
+
+    <h1 class="article-title">Exponential Smoothing with NumPyro: State Space Form</h1>
+
+    
+    <span class="article-date">2026-04-19</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In the blog post <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">“Notes on Exponential Smoothing with NumPyro”</a> we implemented the damped Holt-Winters model in the <strong>component form</strong> of <a href="https://otexts.com/fpp3/holt-winters.html">Hyndman &amp; Athanasopoulos, <em>FPP3</em>, §8.3</a>. A very nice observation was raised by <a href="https://github.com/theorashid"><span class="citation">@theorashid</span></a> in <a href="https://github.com/juanitorduz/website_projects/issues/193">issue #193</a>:
+<em>when we forecast with the component-form model the credible intervals barely widen across the horizon</em>. The reason is subtle but important. Quoting the issue:</p>
+<blockquote>
+<p><em>The models are written in component form, as in Hyndman 8.3. However, when we fitted this model, we found the error bars didn’t increase as much as expected. My explanation for this is that the variance from <code>pred</code> is the same around each data point. And this variance isn’t pushed forward to form a cone in the same way an autoregressive model does. The increasing error we see I think is entirely from the variability in the coefficients.</em></p>
+<p><em>We rewrote the model from component form into state space form, which is introduced in 8.5. It looks like the component form is just a “smoothing formula”, whereas this state space form is a proper stochastic process that gets more uncertain over the forecast horizon. Anyway, when I fitted it, the uncertainty intervals grew and looked better than before.</em></p>
+</blockquote>
+<p>This notebook addresses that point: we re-implement the damped Holt-Winters model using the <strong>innovations state-space</strong> (a.k.a. single-source-of-error, SSOE) representation of <a href="https://otexts.com/fpp3/ets.html">FPP3 §8.5</a>, specifically the <code>ETS(A, A_d, A)</code> model: additive error, additive damped trend, additive seasonality. The same random innovation <span class="math inline">\(\varepsilon_t\)</span> drives both the observation equation and the state transitions, so during forecasting (when <code>pred</code> is sampled rather than observed) the sampled innovation feeds back into the level, trend and seasonal states and the forecast uncertainty grows naturally over the horizon.</p>
+<div id="what-changes-versus-the-component-form-post" class="section level3">
+<h3>What changes versus the component-form post</h3>
+<p>Concretely, compared to the <a href="https://juanitorduz.github.io/exponential_smoothing_numpyro/">original implementation</a> the SSOE reformulation boils down to a handful of localised changes, all inside the model function, everything outside it (synthetic data, train-test split, inference helpers, ArviZ integration, plot style) stays the same:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Unified transition function.</strong> In the original post the state updates inside <code>transition_fn</code> were written in the component form and driven by the <em>observed</em> <span class="math inline">\(y_t\)</span> (via terms like <span class="math inline">\(\alpha \, (y_t - s_{t-m})\)</span>). Here they are rewritten around a single <strong>innovation</strong> <code>error = pred - mu</code>, the level, trend and seasonal equations are all updated by the <em>same</em> <code>error</code>. That is the operational meaning of the “single source of error” in the remark above.</li>
+<li><strong>No <code>jnp.where(t &lt; t_max, ...)</code> branching.</strong> The component-form model needed to “freeze” the state updates during forecasting (because feeding the sampled <code>pred</code> back through the component-form updates would double-count the emission noise). In the SSOE form training and forecasting use the <em>exact same</em> recursion, the only difference is whether <code>pred</code> is conditioned on data or sampled from <span class="math inline">\(\text{Normal}(\mu_t, \sigma)\)</span>, so the branch disappears. Thid is a much transparent implementation.</li>
+<li><strong>No explicit <span class="math inline">\(\phi_h = \phi + \phi^2 + \cdots + \phi^h\)</span> sum.</strong> The original post computed this multi-step damping factor inside a <code>fori_loop</code> at forecast time. Here the geometric decay emerges naturally from iterating <span class="math inline">\(b_t = \phi \, b_{t-1} + \beta \, \varepsilon_t\)</span> inside <code>scan</code>, so the explicit loop is gone.</li>
+<li><strong>Reverse-mode autodiff.</strong> Because there is no <code>fori_loop</code> we no longer need <code>forward_mode_differentiation=True</code> in <code>NUTS</code>, the default (reverse-mode) path, which is the faster and canonical one in NumPyro, now works.</li>
+<li><strong>Slightly retuned priors.</strong> We keep the <em>shape</em> of the priors but tighten a few of them (Beta(5, 5) on the smoothing parameters, data-anchored <span class="math inline">\(l_0\)</span>, a realistic-scale <span class="math inline">\(b_0\)</span>, a tighter noise scale). This is a sampling-geometry fix, not a modelling change — see the model-definition section below for the full rationale.</li>
+</ol>
+<p>Changes (1) and (2) together are what makes the forecast uncertainty grow naturally over the horizon. Once every state equation is driven by the same sampled innovation <span class="math inline">\(\varepsilon_t\)</span>, iterating the recursion during forecasting propagates that innovation into <span class="math inline">\(l_t\)</span>, <span class="math inline">\(b_t\)</span>, <span class="math inline">\(s_t\)</span>, and the posterior predictive fans out into a proper cone. This is precisely the behaviour the component-form implementation was missing.</p>
+<p><strong>Thanks</strong> to <a href="https://github.com/theorashid"><span class="citation">@theorashid</span></a> for the great feedback! 🙌</p>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from collections.abc import Callable
+
+import arviz as az
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpyro
+import numpyro.distributions as dist
+import preliz as pz
+from jax import Array, random
+from numpyro.contrib.control_flow import scan
+from numpyro.infer import MCMC, NUTS, Predictive
+from pydantic import BaseModel, Field
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [12, 7]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+numpyro.set_host_device_count(n=4)
+
+rng_key = random.PRNGKey(seed=42)
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="generate-synthetic-data" class="section level2">
+<h2>Generate Synthetic Data</h2>
+<p>We use the same synthetic series as in the original post so that the two sets of forecasts can be compared directly: a cosine seasonal component plus a logarithmic trend, with additive Gaussian noise.</p>
+<pre class="python"><code>n_seasons = 15
+t = jnp.linspace(start=0, stop=n_seasons + 1, num=(n_seasons + 1) * n_seasons)
+rng_key, rng_subkey = random.split(key=rng_key)
+y = jnp.cos(2 * jnp.pi * t) + jnp.log(t + 1) + 0.2 * random.normal(rng_subkey, t.shape)
+
+fig, ax = plt.subplots()
+ax.plot(t, y)
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data&quot;);</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_ssm_files/exponential_smoothing_numpyro_ssm_4_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="train---test-split" class="section level2">
+<h2>Train - Test Split</h2>
+<pre class="python"><code>n = y.size
+
+prop_train = 0.8
+n_train = round(prop_train * n)
+
+y_train = y[:n_train]
+t_train = t[:n_train]
+
+y_test = y[n_train:]
+t_test = t[n_train:]
+
+fig, ax = plt.subplots()
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(xlabel=&quot;time&quot;, ylabel=&quot;y&quot;, title=&quot;Time Series Data Split&quot;);</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_ssm_files/exponential_smoothing_numpyro_ssm_6_0.png" style="width: 1000px;"/>
+</center>
+</div>
+<div id="from-component-form-to-state-space-form" class="section level2">
+<h2>From Component Form to State Space Form</h2>
+<p>For quick reference, the damped Holt-Winters model in <strong>component form</strong> (as in the original post) is</p>
+<p><span class="math display">\[\begin{align*}
+\hat{y}_{t+h|t} = &amp; \: l_t + \phi_h b_t + s_{t + h - m(k + 1)} \\
+l_t = &amp; \: \alpha(y_t - s_{t - m}) + (1 - \alpha)(l_{t-1} + \phi b_{t-1}) \\
+b_t = &amp; \:  \beta^*(l_t - l_{t-1}) + (1 - \beta^*)\phi b_{t-1} \\
+s_t = &amp; \:  \gamma(y_t - l_{t-1} - \phi b_{t-1}) + (1 - \gamma)s_{t-m}
+\end{align*}\]</span></p>
+<p>with <span class="math inline">\(\phi_h = \phi + \phi^2 + \cdots + \phi^h\)</span>. The state updates are driven by the <em>observed</em> <span class="math inline">\(y_t\)</span>, which is fine for training but means the forecast distribution collapses to the (deterministic) recursion <code>mu</code> plus a single emission noise term. The emission noise is never fed back into <span class="math inline">\(l_t\)</span>, <span class="math inline">\(b_t\)</span> or <span class="math inline">\(s_t\)</span>, so the forecast bands stay narrow.</p>
+<p>The <strong>innovations state space</strong> (or SSOE) form of the same model, <code>ETS(A, A_d, A)</code>, is the <em>Gaussian linear state space</em> system</p>
+<p><span class="math display">\[\begin{align*}
+y_t &amp;= l_{t-1} + \phi b_{t-1} + s_{t-m} + \varepsilon_t, \quad \varepsilon_t \sim \text{Normal}(0, \sigma) \\
+l_t &amp;= l_{t-1} + \phi b_{t-1} + \alpha \, \varepsilon_t \\
+b_t &amp;= \phi b_{t-1} + \beta \, \varepsilon_t \\
+s_t &amp;= s_{t-m} + \gamma \, \varepsilon_t
+\end{align*}\]</span></p>
+<p>The <em>same</em> <span class="math inline">\(\varepsilon_t\)</span> appears in every equation that is the “single source of error”. Two consequences matter for us:</p>
+<ol style="list-style-type: decimal">
+<li>During training we condition <code>pred = y[t]</code>, so the innovation <span class="math inline">\(\varepsilon_t = y_t - \mu_t\)</span> is exactly the one-step-ahead forecast error, and the state updates reduce to the familiar Kalman-style corrections.</li>
+<li>During forecasting <code>pred</code> is <em>sampled</em> from <span class="math inline">\(\text{Normal}(\mu_t, \sigma)\)</span>; the sampled <span class="math inline">\(\varepsilon_t\)</span> then propagates into <span class="math inline">\(l_t\)</span>, <span class="math inline">\(b_t\)</span>, <span class="math inline">\(s_t\)</span> and drives the next step’s <span class="math inline">\(\mu\)</span>. The forecast distribution therefore fans out into a proper cone — precisely what we want.</li>
+</ol>
+<p>A small reparameterisation note: <span class="math inline">\(\beta^\ast\)</span> is the component-form trend smoothing (line 114), and <span class="math inline">\(\gamma^\ast = \gamma / (1 - \alpha)\)</span> is the <span class="math inline">\([0, 1]\)</span>-rescaling of the component-form seasonal smoothing (line 115, which carries the FPP3 admissibility constraint <span class="math inline">\(0 \le \gamma \le 1 - \alpha\)</span>). Both live on <span class="math inline">\([0, 1]\)</span> and map to the state-space coefficients via
+<span class="math display">\[
+\beta = \beta^\ast \, \alpha, \qquad \gamma = \gamma^\ast \, (1 - \alpha),
+\]</span>
+so the priors are directly comparable with those in the original post. See <a href="https://otexts.com/fpp3/ets.html#etsaan-holts-linear-method-with-additive-errors">FPP3 §8.5</a> for the derivation.</p>
+<p><strong>Remark:</strong> note that in the SSOE form we do <strong>not</strong> need the explicit <span class="math inline">\(\phi_h = \phi + \phi^2 + \cdots + \phi^h\)</span> sum — and therefore no <code>fori_loop</code> and no <code>forward_mode_differentiation=True</code>. The geometric damping of the trend emerges naturally from iterating the transition <span class="math inline">\(b_t = \phi b_{t-1} + \beta \, \varepsilon_t\)</span> inside <code>scan</code>.</p>
+</div>
+<div id="damped-holt-winters-state-space-model" class="section level2">
+<h2>Damped Holt-Winters State Space Model</h2>
+<p>The structural change versus the component-form implementation is entirely inside <code>transition_fn</code>. We do tighten a few of the priors, though, not because the original priors are “wrong”, but because the SSOE posterior has a very different <em>geometry</em> and the <span class="math inline">\(\text{Beta}(2, 2)\)</span> / <span class="math inline">\(\text{Normal}(0, 1)\)</span> / <span class="math inline">\(\text{HalfNormal}(1)\)</span> priors of the original post place NUTS in high-curvature regions that produce divergences. The refinements below are aimed at sampling geometry only:</p>
+<ul>
+<li><p><strong>Smoothing parameters <span class="math inline">\(\alpha\)</span>, <span class="math inline">\(\beta^\ast\)</span>, <span class="math inline">\(\gamma^\ast\)</span>: <span class="math inline">\(\text{Beta}(2, 2) \to \text{Beta}(5, 5)\)</span>.</strong> The mode stays at <span class="math inline">\(0.5\)</span> but the density at the boundaries goes from vanishing <strong>linearly</strong> (<span class="math inline">\(\text{Beta}(2, 2)\)</span>, density <span class="math inline">\(\propto x(1-x)\)</span>) to vanishing like <span class="math inline">\(x^4\)</span> (<span class="math inline">\(\text{Beta}(5, 5)\)</span>, density <span class="math inline">\(\propto x^4(1-x)^4\)</span>), i.e. essentially flat near <span class="math inline">\(0\)</span> and <span class="math inline">\(1\)</span>. This matters because the SSOE reparameterisation <span class="math inline">\(\beta = \alpha \, \beta^\ast\)</span>, <span class="math inline">\(\gamma = (1 - \alpha) \, \gamma^\ast\)</span> creates <em>funnels</em> at <span class="math inline">\(\alpha = 0\)</span> and <span class="math inline">\(\alpha = 1\)</span>: as <span class="math inline">\(\alpha \to 0\)</span> the trend coefficient <span class="math inline">\(\beta\)</span> collapses and <span class="math inline">\(\beta^\ast\)</span> becomes locally unidentifiable (flat likelihood, non-zero prior gradient); symmetrically at <span class="math inline">\(\alpha \to 1\)</span> for <span class="math inline">\(\gamma^\ast\)</span>. With <span class="math inline">\(\text{Beta}(2, 2)\)</span> priors the sampler happily walks into those corners and diverges; <span class="math inline">\(\text{Beta}(5, 5)\)</span> simply keeps it away.</p></li>
+<li><p><strong>Initial level <span class="math inline">\(l_0\)</span>: <span class="math inline">\(\text{Normal}(0, 1) \to \text{Normal}(y_0, 1)\)</span>.</strong> Anchoring on the first observation means the warmup does not have to walk <span class="math inline">\(l_0\)</span> across the data scale before the smoothing parameters can be identified. The variance is unchanged — the prior is still weakly informative.</p></li>
+<li><p><strong>Initial trend <span class="math inline">\(b_0\)</span>: <span class="math inline">\(\text{Normal}(0.5, 1) \to \text{Normal}(0, 0.1)\)</span>.</strong> The original prior was oddly centred at <span class="math inline">\(0.5\)</span> and was much wider than any realistic one-step trend. With <span class="math inline">\(\phi\)</span> small, <span class="math inline">\(b_0\)</span> is only identified through the first few observations and the wide prior creates a long weakly-identified direction in the posterior.</p></li>
+<li><p><strong>Noise <span class="math inline">\(\sigma\)</span>: <span class="math inline">\(\text{HalfNormal}(1) \to \text{HalfNormal}(0.5)\)</span>.</strong> Still comfortably above the true noise scale of the synthetic data (<span class="math inline">\(\approx 0.2\)</span>), but tighter — this breaks the <span class="math inline">\(\sigma\)</span>–<span class="math inline">\(\alpha\)</span> correlation (large <span class="math inline">\(\alpha\)</span> + small <span class="math inline">\(\sigma\)</span> and small <span class="math inline">\(\alpha\)</span> + large <span class="math inline">\(\sigma\)</span> give similar likelihoods) that the original wide prior left loose.</p></li>
+<li><p><strong>Damping <span class="math inline">\(\phi \sim \text{Beta}(2, 5)\)</span></strong> and the seasonal initials <span class="math inline">\(\text{Normal}(0, 1)\)</span> are left unchanged — the trace of the original SSOE fit shows both are already well identified.</p></li>
+</ul>
+<p>Lets visualize the difference between the two priors:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+pz.Beta(2, 2).plot_pdf(ax=ax)
+pz.Beta(2, 5).plot_pdf(ax=ax)
+pz.Beta(5, 5).plot_pdf(ax=ax)
+ax.set(xlabel=&quot;x&quot;, ylabel=&quot;density&quot;, title=&quot;Beta Distribution Comparison&quot;);</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_ssm_files/exponential_smoothing_numpyro_ssm_10_1.png" style="width: 1000px;"/>
+</center>
+<p>We now implement the SSOE form:</p>
+<pre class="python"><code>def damped_holt_winters_ssm_model(y: Array, n_seasons: int, future: int = 0) -&gt; None:
+    # Get time series length
+    t_max = y.shape[0]
+
+    # --- Priors ---
+
+    ## Level
+    level_smoothing = numpyro.sample(&quot;level_smoothing&quot;, dist.Beta(5, 5))
+    level_init = numpyro.sample(&quot;level_init&quot;, dist.Normal(y[0], 1))
+
+    ## Trend (component-form beta*; in SSOE form beta = beta* * alpha)
+    trend_smoothing = numpyro.sample(&quot;trend_smoothing&quot;, dist.Beta(5, 5))
+    trend_init = numpyro.sample(&quot;trend_init&quot;, dist.Normal(0, 0.1))
+
+    ## Seasonality (gamma* is the [0,1]-rescaling of component-form gamma
+    # in SSOE form gamma = gamma* * (1 - alpha))
+    seasonality_smoothing = numpyro.sample(&quot;seasonality_smoothing&quot;, dist.Beta(5, 5))
+    adj_seasonality_smoothing = seasonality_smoothing * (1 - level_smoothing)
+
+    ## Damping
+    phi = numpyro.sample(&quot;phi&quot;, dist.Beta(2, 5))
+
+    with numpyro.plate(&quot;n_seasons&quot;, n_seasons):
+        seasonality_init = numpyro.sample(&quot;seasonality_init&quot;, dist.Normal(0, 1))
+
+    ## Noise
+    noise = numpyro.sample(&quot;noise&quot;, dist.HalfNormal(0.5))
+
+    # --- Transition Function ---
+
+    def transition_fn(carry, t):
+        previous_level, previous_trend, previous_seasonality = carry
+
+        # Observation equation: y_t = l_{t-1} + φ b_{t-1} + s_{t-m} + ε_t
+        mu = previous_level + phi * previous_trend + previous_seasonality[0]
+
+        pred = numpyro.sample(&quot;pred&quot;, dist.Normal(loc=mu, scale=noise))
+
+        # SSOE innovation. During training pred is conditioned on y[t] so
+        # error = y[t] - mu is the one-step-ahead forecast error. During
+        # forecasting pred is sampled from N(mu, noise) so error ~ N(0, noise)
+        # and propagates through the state updates below.
+        error = pred - mu
+
+        # State updates (innovations form)
+        level = previous_level + phi * previous_trend + level_smoothing * error
+        trend = phi * previous_trend + trend_smoothing * level_smoothing * error
+        new_season = previous_seasonality[0] + adj_seasonality_smoothing * error
+
+        # Rotate the seasonal buffer so that index 0 always holds s_{t-m}.
+        seasonality = jnp.concatenate(
+            [previous_seasonality[1:], new_season[None]], axis=0
+        )
+
+        return (level, trend, seasonality), pred
+
+    # --- Run Scan ---
+
+    with numpyro.handlers.condition(data={&quot;pred&quot;: y}):
+        _, preds = scan(
+            transition_fn,
+            (level_init, trend_init, seasonality_init),
+            jnp.arange(t_max + future),
+        )
+
+    # --- Forecast ---
+    if future &gt; 0:
+        numpyro.deterministic(&quot;y_forecast&quot;, preds[-future:])</code></pre>
+</div>
+<div id="inference" class="section level2">
+<h2>Inference</h2>
+<p>We reuse the same helper functions as the original post.</p>
+<pre class="python"><code>class InferenceParams(BaseModel):
+    num_warmup: int = Field(2_000, ge=1)
+    num_samples: int = Field(2_000, ge=1)
+    num_chains: int = Field(4, ge=1)
+
+
+def run_inference(
+    rng_key: Array,
+    model: Callable,
+    args: InferenceParams,
+    *model_args,
+    **nuts_kwargs,
+) -&gt; MCMC:
+    sampler = NUTS(model, **nuts_kwargs)
+    mcmc = MCMC(
+        sampler=sampler,
+        num_warmup=args.num_warmup,
+        num_samples=args.num_samples,
+        num_chains=args.num_chains,
+    )
+    mcmc.run(rng_key, *model_args)
+    return mcmc</code></pre>
+<pre class="python"><code>inference_params = InferenceParams()
+rng_key, rng_subkey = random.split(key=rng_key)
+damped_holt_winters_ssm_mcmc = run_inference(
+    rng_subkey,
+    damped_holt_winters_ssm_model,
+    inference_params,
+    y_train,
+    n_seasons,
+    target_accept_prob=0.8,
+)</code></pre>
+<p>Let’s look at the summary:</p>
+<pre class="python"><code>damped_holt_winters_ssm_idata = az.from_numpyro(posterior=damped_holt_winters_ssm_mcmc)
+
+az.summary(data=damped_holt_winters_ssm_idata)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+level_init
+</th>
+<td>
+0.286
+</td>
+<td>
+0.285
+</td>
+<td>
+-0.254
+</td>
+<td>
+0.817
+</td>
+<td>
+0.011
+</td>
+<td>
+0.005
+</td>
+<td>
+734.0
+</td>
+<td>
+2066.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+level_smoothing
+</th>
+<td>
+0.230
+</td>
+<td>
+0.045
+</td>
+<td>
+0.149
+</td>
+<td>
+0.314
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3401.0
+</td>
+<td>
+3606.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+noise
+</th>
+<td>
+0.233
+</td>
+<td>
+0.013
+</td>
+<td>
+0.209
+</td>
+<td>
+0.257
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+3595.0
+</td>
+<td>
+4465.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+phi
+</th>
+<td>
+0.260
+</td>
+<td>
+0.156
+</td>
+<td>
+0.014
+</td>
+<td>
+0.545
+</td>
+<td>
+0.003
+</td>
+<td>
+0.002
+</td>
+<td>
+3305.0
+</td>
+<td>
+3308.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[0]
+</th>
+<td>
+0.857
+</td>
+<td>
+0.272
+</td>
+<td>
+0.354
+</td>
+<td>
+1.377
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+688.0
+</td>
+<td>
+1824.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[1]
+</th>
+<td>
+0.766
+</td>
+<td>
+0.272
+</td>
+<td>
+0.246
+</td>
+<td>
+1.273
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+694.0
+</td>
+<td>
+1982.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[2]
+</th>
+<td>
+0.488
+</td>
+<td>
+0.273
+</td>
+<td>
+-0.021
+</td>
+<td>
+0.999
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+730.0
+</td>
+<td>
+1837.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[3]
+</th>
+<td>
+0.092
+</td>
+<td>
+0.272
+</td>
+<td>
+-0.404
+</td>
+<td>
+0.612
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+754.0
+</td>
+<td>
+1986.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[4]
+</th>
+<td>
+-0.325
+</td>
+<td>
+0.272
+</td>
+<td>
+-0.839
+</td>
+<td>
+0.173
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+697.0
+</td>
+<td>
+1772.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[5]
+</th>
+<td>
+-0.718
+</td>
+<td>
+0.272
+</td>
+<td>
+-1.217
+</td>
+<td>
+-0.201
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+719.0
+</td>
+<td>
+1765.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[6]
+</th>
+<td>
+-0.808
+</td>
+<td>
+0.270
+</td>
+<td>
+-1.315
+</td>
+<td>
+-0.311
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+695.0
+</td>
+<td>
+1919.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[7]
+</th>
+<td>
+-1.111
+</td>
+<td>
+0.272
+</td>
+<td>
+-1.627
+</td>
+<td>
+-0.596
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+691.0
+</td>
+<td>
+1623.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[8]
+</th>
+<td>
+-0.903
+</td>
+<td>
+0.271
+</td>
+<td>
+-1.426
+</td>
+<td>
+-0.409
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+679.0
+</td>
+<td>
+1865.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[9]
+</th>
+<td>
+-0.819
+</td>
+<td>
+0.272
+</td>
+<td>
+-1.324
+</td>
+<td>
+-0.303
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+693.0
+</td>
+<td>
+2041.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[10]
+</th>
+<td>
+-0.429
+</td>
+<td>
+0.273
+</td>
+<td>
+-0.947
+</td>
+<td>
+0.077
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+707.0
+</td>
+<td>
+1615.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[11]
+</th>
+<td>
+-0.015
+</td>
+<td>
+0.273
+</td>
+<td>
+-0.526
+</td>
+<td>
+0.483
+</td>
+<td>
+0.011
+</td>
+<td>
+0.005
+</td>
+<td>
+671.0
+</td>
+<td>
+1755.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[12]
+</th>
+<td>
+0.432
+</td>
+<td>
+0.272
+</td>
+<td>
+-0.078
+</td>
+<td>
+0.950
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+713.0
+</td>
+<td>
+1963.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[13]
+</th>
+<td>
+0.715
+</td>
+<td>
+0.270
+</td>
+<td>
+0.220
+</td>
+<td>
+1.229
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+697.0
+</td>
+<td>
+1674.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_init[14]
+</th>
+<td>
+0.932
+</td>
+<td>
+0.273
+</td>
+<td>
+0.437
+</td>
+<td>
+1.453
+</td>
+<td>
+0.010
+</td>
+<td>
+0.005
+</td>
+<td>
+701.0
+</td>
+<td>
+1680.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+seasonality_smoothing
+</th>
+<td>
+0.242
+</td>
+<td>
+0.076
+</td>
+<td>
+0.113
+</td>
+<td>
+0.391
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+2708.0
+</td>
+<td>
+3865.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trend_init
+</th>
+<td>
+-0.003
+</td>
+<td>
+0.098
+</td>
+<td>
+-0.184
+</td>
+<td>
+0.184
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+3961.0
+</td>
+<td>
+4659.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+trend_smoothing
+</th>
+<td>
+0.478
+</td>
+<td>
+0.149
+</td>
+<td>
+0.204
+</td>
+<td>
+0.752
+</td>
+<td>
+0.002
+</td>
+<td>
+0.001
+</td>
+<td>
+4276.0
+</td>
+<td>
+4973.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>print(
+    f&quot;&quot;&quot;Divergences: {
+        damped_holt_winters_ssm_idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()
+    }&quot;&quot;&quot;
+)</code></pre>
+<pre><code>Divergences: 0</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    data=damped_holt_winters_ssm_idata,
+    compact=True,
+    kind=&quot;rank_bars&quot;,
+    backend_kwargs={&quot;figsize&quot;: (12, 12), &quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Damped Holt-Winters (State Space) Trace&quot;, fontsize=16);</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_ssm_files/exponential_smoothing_numpyro_ssm_19_0.png" style="width: 1000px;"/>
+</center>
+<p>Everything looks good. We can now continue with the forecast,</p>
+</div>
+<div id="forecast" class="section level2">
+<h2>Forecast</h2>
+<p>We use the same helper function as in the original post:</p>
+<pre class="python"><code>def forecast(
+    rng_key: Array, model: Callable, samples: dict[str, Array], *model_args
+) -&gt; dict[str, Array]:
+    predictive = Predictive(
+        model=model,
+        posterior_samples=samples,
+        return_sites=[&quot;y_forecast&quot;],
+    )
+    return predictive(rng_key, *model_args)</code></pre>
+<p>We now generate the posterior predictive samples for the forecast period:</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(key=rng_key)
+damped_holt_winters_ssm_forecast = forecast(
+    rng_subkey,
+    damped_holt_winters_ssm_model,
+    damped_holt_winters_ssm_mcmc.get_samples(),
+    y_train,
+    n_seasons,
+    y_test.size,
+)
+
+damped_holt_winters_ssm_posterior_predictive = az.from_numpyro(
+    posterior_predictive=damped_holt_winters_ssm_forecast,
+    coords={&quot;t&quot;: t_test},
+    dims={&quot;y_forecast&quot;: [&quot;t&quot;]},
+)
+
+
+fig, ax = plt.subplots()
+az.plot_hdi(
+    x=t_test,
+    y=damped_holt_winters_ssm_posterior_predictive[&quot;posterior_predictive&quot;][
+        &quot;y_forecast&quot;
+    ],
+    hdi_prob=0.94,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.2, &quot;label&quot;: r&quot;$94\%$ HDI&quot;},
+    ax=ax,
+)
+az.plot_hdi(
+    x=t_test,
+    y=damped_holt_winters_ssm_posterior_predictive[&quot;posterior_predictive&quot;][
+        &quot;y_forecast&quot;
+    ],
+    hdi_prob=0.50,
+    color=&quot;C2&quot;,
+    fill_kwargs={&quot;alpha&quot;: 0.5, &quot;label&quot;: r&quot;$50\%$ HDI&quot;},
+    ax=ax,
+)
+ax.plot(
+    t_test,
+    damped_holt_winters_ssm_posterior_predictive[&quot;posterior_predictive&quot;][
+        &quot;y_forecast&quot;
+    ].mean(dim=(&quot;chain&quot;, &quot;draw&quot;)),
+    color=&quot;C2&quot;,
+    label=&quot;mean forecast&quot;,
+)
+ax.plot(t_train, y_train, color=&quot;C0&quot;, label=&quot;train&quot;)
+ax.plot(t_test, y_test, color=&quot;C1&quot;, label=&quot;test&quot;)
+ax.axvline(x=t_train[-1], c=&quot;black&quot;, linestyle=&quot;--&quot;)
+ax.legend()
+ax.set(
+    xlabel=&quot;time&quot;,
+    ylabel=&quot;y&quot;,
+    title=&quot;Damped Holt Winters Model Forecast (State Space Form)&quot;,
+);</code></pre>
+<center>
+<img src="../images/exponential_smoothing_numpyro_ssm_files/exponential_smoothing_numpyro_ssm_24_0.png" style="width: 1000px;"/>
+</center>
+<p>Compared to the component-form plot in the original post, the <span class="math inline">\(94\%\)</span> and <span class="math inline">\(50\%\)</span> HDIs now visibly fan out across the forecast horizon. The sampled innovation <span class="math inline">\(\varepsilon_t\)</span> at each step feeds back into the level, trend and seasonal states, and the accumulated uncertainty produces a proper forecast cone. This is exactly the behaviour we should expect from a stochastic state space model, and it is what the component form was missing.</p>
+<p>Two small caveats worth keeping in mind:</p>
+<ul>
+<li>The SSOE form assumes that the observation noise and the state-transition innovation are <strong>the same</strong> random variable. As noted in <a href="https://otexts.com/fpp3/ets.html#other-ets-models">FPP3 §8.5</a>, this is a fairly strong assumption, but it is the canonical one for the ETS family and gives the model a nice likelihood-based interpretation.</li>
+<li>We kept the component-form prior on the trend smoothing (<span class="math inline">\(\beta^\ast\)</span>) and scaled it by <span class="math inline">\(\alpha\)</span> at use time, because <span class="math inline">\(\beta^\ast\)</span> has a clean interpretation on <span class="math inline">\([0, 1]\)</span>. This is not essential, a direct prior on the SSOE coefficient <span class="math inline">\(\beta\)</span> would also work.</li>
+</ul>
+<p>Thanks again to <a href="https://github.com/theorashid"><span class="citation">@theorashid</span></a> for <a href="https://github.com/juanitorduz/website_projects/issues/193">issue #193</a>!</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
