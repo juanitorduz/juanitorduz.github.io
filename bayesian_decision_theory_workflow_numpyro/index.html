@@ -76,7 +76,7 @@
 
   <article class="article">
     
-    <span class="article-duration">5 min read</span>
+    <span class="article-duration">6 min read</span>
     
 
     <h1 class="article-title">A Bayesian Decision Theory Workflow: Port to NumPyro</h1>
@@ -90,7 +90,7 @@
 
 
 <p>In this notebook I explore the <em>Bayesian Decision Theory Workflow</em> described in the amazing blog post <a href="https://daniel-saunders-phil.github.io/imagination_machine/posts/a-bayesian-decision-theory-workflow/">A Bayesian Decision Theory Workflow</a> by <a href="https://github.com/daniel-saunders-phil">Daniel Saunders</a>. It is a great resource to understand how to use Bayesian methods for optimization problems. In the original post, Daniel explains the theory and key concepts using <a href="https://www.pymc.io/">PyMC</a> and its computational backend <a href="https://pytensor.readthedocs.io/en/latest/">PyTensor</a>. He does a remarkable job presenting powerful PyTensor features to manipulate and operate with symbolic computational graphs. I can only recommend you to read it!</p>
-<p>As part of the learning exercise, I ported the workflow to <a href="https://github.com/pyro-ppl/numpyro">NumPyro</a> and <a href="https://github.com/google/jax">JAX</a>.</p>
+<p>As part of the learning exercise, I ported the workflow to <a href="https://github.com/pyro-ppl/numpyro">Numpyro</a> and <a href="https://github.com/google/jax">JAX</a>.</p>
 <div id="prepare-notebook" class="section level2">
 <h2>Prepare Notebook</h2>
 <pre class="python"><code>from functools import partial
@@ -216,9 +216,8 @@ ax.set(title=&quot;Simulated Data&quot;, xlabel=&quot;price&quot;, ylabel=&quot;
 nuts_kernel = NUTS(conditioned_model)
 mcmc = MCMC(nuts_kernel, num_warmup=1_000, num_samples=1_000, num_chains=4)
 rng_key, rng_subkey = random.split(rng_key)
-mcmc.run(rng_subkey, price)
-
-idata = az.from_numpyro(
+mcmc.run(rng_subkey, price)</code></pre>
+<pre class="python"><code>idata = az.from_numpyro(
     mcmc,
     coords={&quot;idx&quot;: range(len(price))},
     dims={&quot;mu&quot;: [&quot;idx&quot;], &quot;sales&quot;: [&quot;idx&quot;]},
@@ -243,51 +242,64 @@ plt.gcf().suptitle(&quot;Trace Plot&quot;);</code></pre>
 <pre class="python"><code># We are interested in the expected sales, i.e. the variable mu.
 predictive = Predictive(model, mcmc.get_samples(), return_sites=[&quot;mu&quot;])
 
-
-# We want to compute the expected sales as a function of the price.
-def predictive_mean(
+# Predict sales as a function of the price.
+# Return all the posterior samples.
+def predictive_mu(
     rng_key: UInt[Array, &quot;2&quot;], price: Float[Array, &quot; 1&quot;]
-) -&gt; Float[Array, &quot;&quot;]:
-    return jnp.mean(predictive(rng_key, price)[&quot;mu&quot;])
-
+) -&gt; Float[Array, &quot;samples 1&quot;]:
+    return predictive(rng_key, price)[&quot;mu&quot;]
 
 # We now seed and JIT the function.
 rng_key, rng_subkey = random.split(rng_key)
-predictive_mean_jit = jax.jit(partial(predictive_mean, rng_subkey))</code></pre>
-<p>We can now compute the utility function explicitly:</p>
-<pre class="python"><code>def objective(price: Float[Array, &quot; 1&quot;], cost: float = 0.3) -&gt; Float[Array, &quot;&quot;]:
+predictive_jit = jax.jit(partial(predictive_mu, rng_subkey))</code></pre>
+<p>We can now compute the utility function(s) explicitly:</p>
+<pre class="python"><code>def objective(
+    price: Float[Array, &quot; 1&quot;], cost: float = 0.3
+) -&gt; Float[Array, &quot;samples 1&quot;]:
     unit_profit = price - cost
-    mu = predictive_mean_jit(price)
-    # We need to return a scalar.
+    mu = predictive_jit(price)
     # We add a minus sign as we will be using a minimizer.
-    return (-1 * unit_profit * mu).reshape(())
+    return -1 * unit_profit * mu
 
 
-# Let&#39;s plot the utility function.
+# Let&#39;s plot the utility function(s).
+plot_profit = jax.vmap(objective)(price.reshape(-1, 1))
 fig, ax = plt.subplots()
-ax.plot(price, jax.vmap(objective)(price.reshape(-1, 1)))
-ax.set(title=&quot;Utility Function&quot;, xlabel=&quot;price&quot;, ylabel=&quot;-profit&quot;);</code></pre>
+# Plot 1_000 lines
+for i in range(1_000):
+    ax.plot(price, plot_profit[:, i, :], color=&quot;C0&quot;, alpha=0.1)
+ax.set(title=&quot;Utility Function(s)&quot;, xlabel=&quot;price&quot;, ylabel=&quot;-profit&quot;);</code></pre>
 <center>
 <img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_20_0.png" style="width: 900px;"/>
 </center>
-<p>As expected from the analytical solution, the maximum profit is achieved at a price of around <span class="math inline">\(3.0\)</span>. We want to use this utility function to find the precise optimal price.</p>
+<p>As expected from the analytical solution, the maximum profit is achieved at a price of around <span class="math inline">\(3.0\)</span>. We want to use this utility function(s) to find the precise optimal price. For that purpose, we need to take the expectation of the utility functions to get a scalar value.</p>
+<pre class="python"><code>def expected_objective(
+    price: Float[Array, &quot; 1&quot;], cost: float = 0.3
+) -&gt; Float[Array, &quot;&quot;]:
+    return jnp.mean(objective(price, cost)).reshape(())</code></pre>
 </div>
 <div id="optimization" class="section level2">
 <h2>Optimization</h2>
 <p>We can use <a href="https://jax.readthedocs.io/en/latest/jax.scipy.html#jax.scipy.optimize.minimize"><code>jax.scipy.optimize.minimize</code></a> to find the maximum of the utility function.</p>
-<pre class="python"><code>result = jax.scipy.optimize.minimize(objective, x0=jnp.array([1.0]), method=&quot;BFGS&quot;)
+<pre class="python"><code>result = jax.scipy.optimize.minimize(
+    expected_objective, x0=jnp.array([1.0]), method=&quot;BFGS&quot;
+)
 
 result.x</code></pre>
-<pre><code>Array([3.2792895], dtype=float32)</code></pre>
+<pre><code>Array([3.279405], dtype=float32)</code></pre>
 <p>The optimal price is very close to our analytical solution!</p>
-<p>Finally, we can plot the utility function and the optimal price.</p>
-<pre class="python"><code>fig, ax = plt.subplots()
-ax.plot(price, jax.vmap(objective)(price.reshape(-1, 1)))
-ax.scatter(result.x, objective(result.x), color=&quot;C3&quot;, s=150)
-ax.set(title=&quot;Utility Function and Optimal Price&quot;, xlabel=&quot;price&quot;, ylabel=&quot;-profit&quot;);</code></pre>
+<p>Finally, we can plot the utility function(s) and the optimal price.</p>
+<pre class="python"><code>plot_profit = jax.vmap(objective)(price.reshape(-1, 1))
+fig, ax = plt.subplots()
+# Plot 1_000 lines
+for i in range(1_000):
+    ax.plot(price, plot_profit[:, i, :], color=&quot;C0&quot;, alpha=0.1)
+ax.scatter(result.x, expected_objective(result.x), color=&quot;C3&quot;, s=150)
+ax.set(title=&quot;Utility Function(s) and Optimal Price&quot;, xlabel=&quot;price&quot;, ylabel=&quot;-profit&quot;);</code></pre>
 <center>
-<img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_25_0.png" style="width: 900px;"/>
+<img src="../images/bayesian_decision_theory_workflow_numpyro_files/bayesian_decision_theory_workflow_numpyro_26_0.png" style="width: 900px;"/>
 </center>
+<p><strong>Acknowledgements:</strong> I want to thank <a href="https://github.com/hstorm">Dr. Hugo Storm</a> for suggestions on improving the first version of this notebook.</p>
 </div>
 
     </div>
