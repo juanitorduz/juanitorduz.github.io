@@ -1,0 +1,3479 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Ads, ROAS and Budgets: Interpreting and Communicating Statistical Models - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Ads, ROAS and Budgets: Interpreting and Communicating Statistical Models - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">39 min read</span>
+    
+
+    <h1 class="article-title">Ads, ROAS and Budgets: Interpreting and Communicating Statistical Models</h1>
+
+    
+    <span class="article-date">2026-05-27</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>In this notebook, we work out an example of how to interpret and communicate statistical models. We follow the ideas and techniques from the amazing book <a href="https://marginaleffects.com/">“Model to Meaning: How to Interpret Statistical Models with marginaleffects for R and Python”</a>. This exposition is by no means exhaustive, but it should give you a good starting point. For more details, check the book!</p>
+<div id="motivating-example-ads-roas-and-budgets" class="section level2">
+<h2>Motivating Example: Ads, ROAS and Budgets</h2>
+<p>The following example is motivated by real applications in the ad-tech industry. We keep it simple, as we are not interested in a detailed statistical model, but rather in the interpretation and communication of the model results:</p>
+<p>An ad platform offers advertising services to stores (say, to promote their products). It charges its stores per click and reports back ROAS (return on ad spend). The business strategy is that these stores are paying to get <em>incremental orders</em>. Stores keep spending while ROAS makes the campaigns worth it; when it doesn’t, they pause for a month(s). The ad platform wants to predict next month’s budget from this month’s signals: ROAS, where the store is in its life-cycle, and the time of year. Their analytics team has seen that these factors help explain whether a store stays engaged and keeps investing. One main question is the relationship between ROAS and budget. ROAS larger than one is good for the stores. Less than one simply means that the campaign is not profitable. One could wonder if the bidding algorithm should just push high ROAS on the marketplace to make it healthy and profitable. Nevertheless, the ad platform has seen that very high ROAS often leads to a drop in the following month’s budget. The reason is simple: as the stores have a fixed daily production capacity, they can just serve a limited number of orders. Hence, we expect a non-linear relationship between ROAS and next month’s budget.</p>
+<p>For this example, we generate synthetic data to mimic the mechanism described above. We generate a panel dataset for <span class="math inline">\(100\)</span> stores. We’ll fit three models of increasing flexibility on the same panel (a Gaussian linear baseline, a Hurdle-Gamma GLM with a linear ROAS coefficient, and a Hurdle-Gamma GLM with a Gaussian process on ROAS) to better understand the relationship between ROAS and next month’s budget. We will do this using <a href="https://bambinos.github.io/bambi/"><code>bambi</code></a> to specify the models and the <a href="https://marginaleffects.com/"><code>marginaleffects</code></a> framework to interpret the results. We will also show how these two packages are integrated through the <a href="https://bambinos.github.io/bambi/notebooks/#tools-to-interpret-model-outputs"><code>interpret</code></a> module in <a href="https://bambinos.github.io/bambi/"><code>bambi</code></a>.</p>
+<p><strong>Warning:</strong> This is an oversimplified example. We are ignoring cannibalization, other drivers and a more complex causal structure. In practice, this problem is much harder.</p>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>from typing import NamedTuple
+
+import arviz as az
+import bambi as bmb
+import graphviz as gr
+import matplotlib.pyplot as plt
+import numpy as np
+import polars as pl
+import preliz as pz
+from marginaleffects.datagrid import datagrid
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<pre class="python"><code>seed: int = sum(map(ord, &quot;marginaleffects&quot;))
+rng: np.random.Generator = np.random.default_rng(seed=seed)</code></pre>
+</div>
+<div id="data-generation-process" class="section level2">
+<h2>Data Generation Process</h2>
+<p>For this specific example, we consider the following (simple) causal DAG:</p>
+<pre class="python"><code>g = gr.Digraph()
+g.node(name=&quot;seasonality&quot;, label=&quot;seasonality&quot;, color=&quot;lightgray&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;roas&quot;, label=&quot;roas&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;cohort_age&quot;, label=&quot;cohort_age&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;)
+g.node(name=&quot;budget_next&quot;, label=&quot;budget_next&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+g.edge(tail_name=&quot;seasonality&quot;, head_name=&quot;budget_next&quot;)
+g.edge(tail_name=&quot;cohort_age&quot;, head_name=&quot;budget_next&quot;)
+g.edge(tail_name=&quot;roas&quot;, head_name=&quot;budget_next&quot;)
+g</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/causal_dag.svg" style="width: 800px;"/>
+</center>
+<p>Let’s proceed with generating the data. As budgets are positive, we model them through a gamma distribution. On the log scale, next month’s expected budget is simulated as follows:</p>
+<p><span class="math display">\[
+\log \mu_{t+1} \;=\; \beta_0 \;+\; \text{season}(\text{month}_t) \;+\; \gamma \cdot \text{cohort_age}_t \;+\; \beta(\text{roas}_t) \cdot g(\text{month}_t, \text{cohort_age}_t) \cdot \text{roas}_t
+\]</span></p>
+<ul>
+<li>The first terms are the intercept, a seasonal effect, and a cohort effect. These are classical additive terms.</li>
+<li>The interesting piece is <span class="math inline">\(\beta(\text{roas})\)</span>: a coefficient that varies with ROAS itself. Below <span class="math inline">\(\text{ROAS}=1\)</span> stores are losing money, so the marginal effect of ROAS on next month’s budget is negative; in the sweet spot between 1 and 4 each extra unit of ROAS pulls more budget in; past <span class="math inline">\(\text{ROAS}=4\)</span> stores hit inventory or capacity ceilings and the effect saturates.</li>
+<li>The term <span class="math inline">\(g(\text{month}_t, \text{cohort_age}_t)\)</span> is just a funky interaction term that we use to generate some additional non-linearity.</li>
+</ul>
+<div id="a-smooth-betatextroas-by-construction" class="section level3">
+<h3>A smooth <span class="math inline">\(\beta(\text{roas})\)</span> by construction</h3>
+<p>We build <span class="math inline">\(\beta\)</span> as a product of two analytic pieces (a smooth rise and a smooth saturation window), so the function is <span class="math inline">\(C^{\infty}\)</span> everywhere with no joining knots.</p>
+<pre class="python"><code>def beta_roas(roas: np.ndarray) -&gt; np.ndarray:
+    rise = -0.5 + 1.0 / (1.0 + np.exp(-3.0 * (roas - 1.0)))
+    saturation = 1.0 / (1.0 + np.exp(0.6 * (roas - 4.0)))
+    return rise * saturation
+
+
+def f_roas(roas: np.ndarray) -&gt; np.ndarray:
+    return beta_roas(roas) * roas</code></pre>
+<p>Let’s visualize the <span class="math inline">\(\beta(\text{roas})\)</span> function and the product <span class="math inline">\(\beta(\text{roas}) \cdot \text{roas}\)</span>:</p>
+<pre class="python"><code>roas_grid = np.linspace(0.0, 10.0, 100)
+
+beta_roas_grid = beta_roas(roas_grid)
+f_roas_grid = f_roas(roas_grid)
+
+fig, axes = plt.subplots(
+    nrows=1,
+    ncols=2,
+    figsize=(12, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+axes[0].plot(roas_grid, beta_roas_grid, color=&quot;C0&quot;)
+axes[0].axhline(0.0, color=&quot;black&quot;, linewidth=0.8)
+axes[0].set(
+    title=r&quot;$\beta(\mathrm{roas})$: the varying coefficient&quot;,
+    xlabel=&quot;roas&quot;,
+    ylabel=r&quot;$\beta$&quot;,
+)
+
+axes[1].plot(roas_grid, f_roas_grid, color=&quot;C1&quot;)
+axes[1].axhline(0.0, color=&quot;black&quot;, linewidth=0.8)
+axes[1].set(
+    title=r&quot;$\beta(\mathrm{roas}) \cdot \mathrm{roas}$: contribution to $\log \mu$&quot;,
+    xlabel=&quot;roas&quot;,
+)
+fig.suptitle(&quot;Ground truth ROAS effect&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_10_0.png" style="width: 800px;"/>
+</center>
+<p>Negative for low ROAS, rising through zero around break-even, peaking in the sweet spot, then pulled back toward zero as the platform saturates. This is the curve we’ll later try to recover from a Gaussian process.</p>
+</div>
+<div id="generating-the-panel-data" class="section level3">
+<h3>Generating the Panel Data</h3>
+<p>We consider <span class="math inline">\(100\)</span> stores observed for <span class="math inline">\(24\)</span> months. Each store has its own cohort start (so cohort age varies across the panel) and its own ROAS process.</p>
+<p><strong>Remark:</strong> The lag matters! Each row pairs <strong>this month’s signals</strong> with <strong>next month’s budget</strong>, the leading indicators a store could act on. When a store is inactive in a given month (no spend), it has no ROAS to report; that’s encoded as <code>NaN</code>, and rows whose lagged ROAS is <code>NaN</code> are dropped at modeling time.</p>
+<p><strong>Remark:</strong> We could have added variation across stores: fixed or random effects. We do not do it here to keep things simple. However, in real use cases, we should model the heterogeneity across stores.</p>
+<pre class="python"><code>class DGPParams(NamedTuple):
+    &quot;&quot;&quot;Parameters of the synthetic data-generating process.
+
+    Attributes
+    ----------
+    n_stores
+        Number of stores in the panel.
+    n_months
+        Number of months observed per store.
+    intercept
+        Baseline contribution to $\\log \\mu$ (response mean on the log scale).
+    cohort_slope
+        Per-month slope on $\\log \\mu$ for cohort age; older stores drift down.
+    gamma_sigma
+        Relative noise scale for the Gamma response (coefficient of variation).
+        Per-row standard deviation is $\\sigma = \\text{gamma\\_sigma} \\cdot \\mu$,
+        so shape $= 1 / \\text{gamma\\_sigma}^2$ is constant across rows. The default
+        $1/\\sqrt{8}$ matches the original `gamma_shape = 8` parameterization.
+    inactive_base_prob
+        Per-month baseline probability that a store has no spend at all (the
+        zero point-mass in the response).
+    inactive_summer_bonus
+        Extra inactivity probability layered on top of the baseline in July
+        and August (a seasonal dip in active stores).
+    &quot;&quot;&quot;
+
+    n_stores: int = 100
+    n_months: int = 24
+    intercept: float = 0.5
+    cohort_slope: float = -0.02
+    gamma_sigma: float = 1.0 / np.sqrt(8.0)
+    inactive_base_prob: float = 0.05
+    inactive_summer_bonus: float = 0.10
+
+
+class DGP:
+    def __init__(self, rng: np.random.Generator) -&gt; None:
+        self.rng = rng
+
+    @staticmethod
+    def season(month_of_year: np.ndarray) -&gt; np.ndarray:
+        return 0.4 * np.sin(2 * np.pi * month_of_year / 12) + 0.2 * np.cos(
+            4 * np.pi * month_of_year / 12
+        )
+
+    @staticmethod
+    def true_mu(
+        roas: np.ndarray,
+        cohort_age: np.ndarray,
+        month_of_year: np.ndarray,
+        params: &quot;DGPParams&quot;,
+    ) -&gt; np.ndarray:
+        &quot;&quot;&quot;Ground-truth Gamma-conditional mean budget at the given predictor values.
+
+        Inputs may be scalars or arrays, including the (n_stores, n_months)
+        panel arrays used during simulation. NumPy broadcasting handles both
+        cases.
+        &quot;&quot;&quot;
+        season_term = DGP.season(np.asarray(month_of_year, dtype=float))
+        roas_term = (
+            f_roas(np.asarray(roas, dtype=float))
+            * (1.0 + 1.0 / (1.0 + cohort_age))
+            * (1.0 + 0.5 * season_term)
+        )
+        log_mu = (
+            params.intercept
+            + season_term
+            + params.cohort_slope * cohort_age
+            + roas_term
+        )
+        return np.exp(log_mu)
+
+    def _simulate_features(
+        self, params: DGPParams
+    ) -&gt; tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        store_ids = np.arange(params.n_stores)
+        store_starts = self.rng.integers(low=-12, high=1, size=params.n_stores)
+        store_log_roas_mean = self.rng.normal(
+            loc=np.log(2.5), scale=0.4, size=params.n_stores
+        )
+
+        log_roas = np.empty(shape=(params.n_stores, params.n_months))
+        log_roas[:, 0] = store_log_roas_mean + self.rng.normal(
+            scale=0.3, size=params.n_stores
+        )
+        for t in range(1, params.n_months):
+            log_roas[:, t] = (
+                0.6 * log_roas[:, t - 1]
+                + 0.4 * store_log_roas_mean
+                + self.rng.normal(scale=0.3, size=params.n_stores)
+            )
+        roas = np.clip(np.exp(log_roas), 0.0, 8.0)
+
+        month_idx = np.broadcast_to(
+            np.arange(params.n_months), (params.n_stores, params.n_months)
+        )
+        month_of_year = (month_idx % 12) + 1
+        cohort_age = month_idx - store_starts[:, None]
+
+        inactive_prob = params.inactive_base_prob + params.inactive_summer_bonus * (
+            np.isin(month_of_year, [7, 8])
+        ).astype(float)
+        inactive = (
+            self.rng.uniform(size=(params.n_stores, params.n_months)) &lt; inactive_prob
+        )
+
+        return roas, month_of_year, cohort_age, store_ids, inactive
+
+    def _draw_response(
+        self,
+        roas: np.ndarray,
+        month_of_year: np.ndarray,
+        cohort_age: np.ndarray,
+        inactive: np.ndarray,
+        params: DGPParams,
+    ) -&gt; tuple[np.ndarray, np.ndarray]:
+        mu_next = self.true_mu(
+            roas=roas[:, :-1],
+            cohort_age=cohort_age[:, :-1],
+            month_of_year=month_of_year[:, :-1],
+            params=params,
+        )
+        sigma_next = params.gamma_sigma
+
+        shape = mu_next**2 / sigma_next**2
+        scale = sigma_next**2 / mu_next
+
+        budget_pos = self.rng.gamma(
+            shape=shape,
+            scale=scale,
+        )
+        inactive_next = inactive[:, 1:]
+        budget_next = np.where(inactive_next, 0.0, budget_pos)
+        return budget_next, inactive_next
+
+    def _build_panel(
+        self,
+        store_ids: np.ndarray,
+        roas: np.ndarray,
+        month_of_year: np.ndarray,
+        cohort_age: np.ndarray,
+        inactive: np.ndarray,
+        budget_next: np.ndarray,
+        inactive_next: np.ndarray,
+        params: DGPParams,
+    ) -&gt; pl.DataFrame:
+        roas_observed = np.where(inactive, np.nan, roas)
+        n_pred = params.n_months - 1
+        return pl.DataFrame(
+            {
+                &quot;store_id&quot;: np.repeat(store_ids, n_pred),
+                &quot;predictor_month_idx&quot;: np.tile(np.arange(n_pred), params.n_stores),
+                &quot;month_of_year&quot;: month_of_year[:, :-1].ravel(),
+                &quot;cohort_age&quot;: cohort_age[:, :-1].ravel(),
+                &quot;roas&quot;: roas_observed[:, :-1].ravel(),
+                &quot;budget_next&quot;: budget_next.ravel(),
+                &quot;inactive_next&quot;: inactive_next.ravel(),
+            }
+        )
+
+    def run(self, params: DGPParams) -&gt; pl.DataFrame:
+        roas, month_of_year, cohort_age, store_ids, inactive = self._simulate_features(
+            params
+        )
+        budget_next, inactive_next = self._draw_response(
+            roas, month_of_year, cohort_age, inactive, params
+        )
+        return self._build_panel(
+            store_ids,
+            roas,
+            month_of_year,
+            cohort_age,
+            inactive,
+            budget_next,
+            inactive_next,
+            params,
+        )
+
+
+params = DGPParams()
+panel = DGP(rng=rng).run(params)
+
+panel.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 7)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+store_id
+</th>
+<th>
+predictor_month_idx
+</th>
+<th>
+month_of_year
+</th>
+<th>
+cohort_age
+</th>
+<th>
+roas
+</th>
+<th>
+budget_next
+</th>
+<th>
+inactive_next
+</th>
+</tr>
+<tr>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+bool
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+0
+</td>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+9
+</td>
+<td>
+3.837695
+</td>
+<td>
+7.053046
+</td>
+<td>
+false
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+1
+</td>
+<td>
+2
+</td>
+<td>
+10
+</td>
+<td>
+2.518261
+</td>
+<td>
+5.239541
+</td>
+<td>
+false
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+2
+</td>
+<td>
+3
+</td>
+<td>
+11
+</td>
+<td>
+2.659978
+</td>
+<td>
+4.747273
+</td>
+<td>
+false
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+3
+</td>
+<td>
+4
+</td>
+<td>
+12
+</td>
+<td>
+3.115095
+</td>
+<td>
+5.135168
+</td>
+<td>
+false
+</td>
+</tr>
+<tr>
+<td>
+0
+</td>
+<td>
+4
+</td>
+<td>
+5
+</td>
+<td>
+13
+</td>
+<td>
+2.326126
+</td>
+<td>
+4.932751
+</td>
+<td>
+false
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+</div>
+<div id="exploratory-data-analysis" class="section level2">
+<h2>Exploratory Data Analysis</h2>
+<p>Before fitting any model, let’s look at the panel and check the structure we put in is actually visible. Let’s start by taking twelve random stores over time, each store’s monthly budget; the model regresses each point on the <em>prior</em> month’s predictors. Watch for seasonal humps and the occasional zero month.</p>
+<pre class="python"><code>n_random_stores = 12
+
+sample_ids = rng.choice(
+    panel[&quot;store_id&quot;].unique().to_numpy(), size=n_random_stores, replace=False
+)
+
+fig, axes = plt.subplots(
+    nrows=3,
+    ncols=4,
+    figsize=(12, 7),
+    sharex=True,
+    sharey=True,
+    layout=&quot;constrained&quot;,
+)
+
+for ax, sid in zip(axes.flat, sample_ids, strict=True):
+    sub = panel.filter(pl.col(&quot;store_id&quot;).eq(pl.lit(sid))).sort(&quot;predictor_month_idx&quot;)
+    ax.plot(
+        sub[&quot;predictor_month_idx&quot;].to_numpy(),
+        sub[&quot;budget_next&quot;].to_numpy(),
+        color=&quot;black&quot;,
+    )
+    ax.set(title=f&quot;store {sid}&quot;, xlabel=&quot;predictor month index&quot;)
+fig.suptitle(
+    &quot;Next-month booked budget for twelve random stores&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_15_0.png" style="width: 900px;"/>
+</center>
+<p>We now plot the histograms for next month’s budget and ROAS.</p>
+<pre class="python"><code>fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 4), layout=&quot;constrained&quot;)
+axes[0].hist(panel[&quot;budget_next&quot;].to_numpy(), bins=40, color=&quot;C0&quot;)
+axes[0].set(xlabel=&quot;budget_next (active months)&quot;)
+axes[1].hist(
+    panel.filter(pl.col(&quot;roas&quot;).is_not_nan())[&quot;roas&quot;].to_numpy(), bins=40, color=&quot;C1&quot;
+)
+axes[1].set(xlabel=&quot;roas (predictor month)&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_17_0.png" style="width: 800px;"/>
+</center>
+<p>Let’s visualize their relationship via a scatter plot.</p>
+<pre class="python"><code>roas_bins = np.linspace(0, 8, 21)
+bin_centers = 0.5 * (roas_bins[:-1] + roas_bins[1:])
+scatter_df = panel.filter(pl.col(&quot;roas&quot;).is_not_nan())
+roas_arr = scatter_df[&quot;roas&quot;].to_numpy()
+budget_arr = scatter_df[&quot;budget_next&quot;].to_numpy()
+bin_idx = np.digitize(roas_arr, roas_bins) - 1
+bin_idx = np.clip(bin_idx, 0, len(bin_centers) - 1)
+medians = np.array(
+    [
+        np.median(budget_arr[bin_idx == i]) if np.any(bin_idx == i) else np.nan
+        for i in range(len(bin_centers))
+    ]
+)
+
+fig, ax = plt.subplots()
+ax.scatter(roas_arr, budget_arr, alpha=0.15, s=10)
+ax.plot(bin_centers, medians, color=&quot;C3&quot;, linewidth=2, label=&quot;binned median&quot;)
+ax.legend()
+ax.set(
+    xlabel=&quot;roas (predictor month)&quot;,
+    ylabel=&quot;budget_next&quot;,
+)
+ax.set_title(&quot;Next-month budget vs this-month&#39;s ROAS&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_19_0.png" style="width: 900px;"/>
+</center>
+<p>The non-linear shape is visible to the eye: budget rises with ROAS, levels off past ROAS≈4. That’s the signal we want the model to pick up.</p>
+<p>Next, we look into the distribution of the response (next month’s budget) by month. Yearly seasonality should be visible by month.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 5))
+month_groups = [
+    panel.filter(pl.col(&quot;month_of_year&quot;).eq(pl.lit(m)))[&quot;budget_next&quot;].to_numpy()
+    for m in range(1, 13)
+]
+ax.boxplot(month_groups, tick_labels=list(range(1, 13)), showfliers=False)
+ax.set(
+    xlabel=&quot;predictor month of year&quot;,
+    ylabel=&quot;budget_next&quot;,
+)
+ax.set_title(
+    &quot;Next-month budget by this-month&#39;s month-of-year&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_22_0.png" style="width: 900px;"/>
+</center>
+<p>Cohort age vs budget: a mild downward drift as stores get older.</p>
+<pre class="python"><code>cohort_summary = (
+    panel.group_by(&quot;cohort_age&quot;)
+    .agg(pl.col(&quot;budget_next&quot;).mean().alias(&quot;mean_budget&quot;))
+    .sort(&quot;cohort_age&quot;)
+)
+
+fig, ax = plt.subplots()
+ax.scatter(
+    panel[&quot;cohort_age&quot;].to_numpy(),
+    panel[&quot;budget_next&quot;].to_numpy(),
+    alpha=0.2,
+    s=10,
+)
+ax.plot(
+    cohort_summary[&quot;cohort_age&quot;].to_numpy(),
+    cohort_summary[&quot;mean_budget&quot;].to_numpy(),
+    marker=&quot;o&quot;,
+    color=&quot;C1&quot;,
+    linewidth=2,
+    label=&quot;binned mean&quot;,
+)
+ax.legend()
+ax.set(
+    xlabel=&quot;cohort age (months)&quot;,
+    ylabel=&quot;budget_next&quot;,
+)
+ax.set_title(&quot;Cohort-age trend in next-month budget&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_24_0.png" style="width: 900px;"/>
+</center>
+</div>
+<div id="baseline-1-linear-gaussian-identity-link" class="section level2">
+<h2>Baseline 1: linear Gaussian (identity link)</h2>
+<p>We start with the simplest thing that could work: a plain linear regression on the three predictors, Gaussian noise, identity link.</p>
+<p><span class="math display">\[\begin{align*}
+y_i &amp; \sim \text{Normal}(\mu_i, \sigma^2),\\
+\mu_i &amp; = \beta_0 + \beta_{\text{age}} \, \text{cohort_age}_i + \sum_{m=2}^{12} \beta_m \, \mathbb{1}[\text{month}_i = m] + \beta_{\text{roas}} \, \text{roas}_i
+\end{align*}\]</span></p>
+<pre class="python"><code># Dataframe for fitting the Bambi models
+model_df = panel.filter(
+    pl.col(&quot;roas&quot;).is_not_nan()
+).select(  # Only rows with observed lagged ROAS
+    [
+        &quot;budget_next&quot;,
+        &quot;roas&quot;,
+        &quot;cohort_age&quot;,
+        &quot;month_of_year&quot;,
+    ]
+)
+
+formula_lm = bmb.Formula(&quot;budget_next ~ 1 + cohort_age + C(month_of_year) + roas&quot;)
+
+priors_lm = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=2.0),
+    &quot;cohort_age&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=1.0),
+    &quot;C(month_of_year)&quot;: bmb.Prior(&quot;ZeroSumNormal&quot;, sigma=1.0),
+    &quot;roas&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=2.0),
+    &quot;sigma&quot;: bmb.Prior(&quot;HalfNormal&quot;, sigma=5.0),
+}
+
+model_lm = bmb.Model(
+    formula=formula_lm,
+    data=model_df.to_pandas(),
+    family=&quot;gaussian&quot;,
+    link=&quot;identity&quot;,
+    priors=priors_lm,
+)
+model_lm.build()
+
+model_lm</code></pre>
+<pre><code>       Formula: budget_next ~ 1 + cohort_age + C(month_of_year) + roas
+        Family: gaussian
+          Link: mu = identity
+  Observations: 2169
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 2.0)
+            cohort_age ~ Normal(mu: 0.0, sigma: 1.0)
+            C(month_of_year) ~ ZeroSumNormal(sigma: 1.0)
+            roas ~ Normal(mu: 0.0, sigma: 2.0)
+        
+        Auxiliary parameters
+            sigma ~ HalfNormal(sigma: 5.0)</code></pre>
+<div id="prior-predictive" class="section level3">
+<h3>Prior Predictive</h3>
+<p>Let’s start by looking at the prior predictive distribution.</p>
+<pre class="python"><code>idata_prior_lm = model_lm.prior_predictive(draws=1_000, random_seed=rng)
+
+fig, ax = plt.subplots()
+az.plot_ppc(idata_prior_lm, group=&quot;prior&quot;, observed=True, ax=ax)
+ax.set_title(&quot;Linear Regression: Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<pre><code>Sampling: [C(month_of_year), Intercept, budget_next, cohort_age, roas, sigma]</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_28_1.png" style="width: 800px;"/>
+</center>
+<p>Overall, the prior predictive looks reasonable. Still, we see a conceptual problem with our model: we are allowing negative values for <code>budget_next</code>, which we know is non-negative. We will tackle this issue in the next model iteration below.</p>
+</div>
+<div id="model-fit" class="section level3">
+<h3>Model Fit</h3>
+<p>We now fit the model to the data.</p>
+<pre class="python"><code>idata_lm = model_lm.fit(
+    draws=1_000,
+    tune=1_000,
+    chains=4,
+    target_accept=0.8,
+    inference_method=&quot;numpyro&quot;,
+    random_seed=rng,
+    idata_kwargs={&quot;log_likelihood&quot;: True},
+)</code></pre>
+</div>
+<div id="diagnostics" class="section level3">
+<h3>Diagnostics</h3>
+<p>Let’s look now at the model diagnostics.</p>
+<pre class="python"><code># Number of divergences
+idata_lm[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>axes = az.plot_trace(
+    idata_lm,
+    var_names=[
+        &quot;Intercept&quot;,
+        &quot;cohort_age&quot;,
+        &quot;C(month_of_year)&quot;,
+        &quot;roas&quot;,
+        &quot;sigma&quot;,
+    ],
+    compact=True,
+    figsize=(12, 9),
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+
+plt.gcf().suptitle(&quot;Linear Regression: Traceplot&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_34_0.png" style="width: 900px;"/>
+</center>
+<p>We do not see any divergences and the traceplots look good. Let’s look now at the posterior predictive distribution.</p>
+<pre class="python"><code>model_lm.predict(idata_lm, kind=&quot;response&quot;, inplace=True)
+
+fig, ax = plt.subplots()
+az.plot_ppc(idata_lm, num_pp_samples=1_000, ax=ax)
+ax.set_title(&quot;Linear Regression: Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_36_0.png" style="width: 800px;"/>
+</center>
+<p>Besides the negative values, the posterior predictive distribution shows another issue: we are not capturing the large amount of zeros. We will also tackle this issue in the next model iteration below.</p>
+</div>
+<div id="roas-effect-on-next-months-budget" class="section level3">
+<h3>ROAS Effect on Next Month’s Budget</h3>
+<p>We are now interested in inspecting the inferred relationship between ROAS and next month’s budget from this baseline linear model. In this case, because the model is linear and there is no link function, we can simply extract this information from the regression coefficient.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(idata_lm, var_names=&quot;roas&quot;, ax=ax)
+ax.set_title(
+    &quot;Linear Regression: ROAS Regression Coefficient&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_39_0.png" style="width: 800px;"/>
+</center>
+<p>We can interpret this as follows: an increase of one unit in ROAS is associated with an increase of <span class="math inline">\(0.23\)</span> units in next month’s budget, while holding the rest of the features constant. Note that, by design, this holds true regardless of the ROAS level. This goes against what we have seen in the exploratory data analysis above.</p>
+<p>An alternative way to communicate this result is to study the posterior over a grid of values <span class="math inline">\(\mathbb{E}[Y \mid \text{grid}]\)</span>. The idea is to explicitly show how varying ROAS affects the response. This method is described in detail in the book <a href="https://marginaleffects.com/">“Model to Meaning: How to Interpret Statistical Models with marginaleffects for R and Python”</a>.</p>
+<p>We need to start by defining individual grids for each feature:</p>
+<pre class="python"><code>roas_grid = np.linspace(0.0, panel[&quot;roas&quot;].max(), 20)
+month_of_year_grid = np.arange(1, 13)
+cohort_age_grid = np.arange(panel[&quot;cohort_age&quot;].min(), panel[&quot;cohort_age&quot;].max(), 1)
+
+cohort_age_default = np.mean(cohort_age_grid).round()
+month_of_year_default = np.mean(month_of_year_grid).round()</code></pre>
+<p>To generate predictions for this model we need to specify <strong>all values</strong> for the input features. In this case: <code>roas</code>, <code>cohort_age</code> and <code>month_of_year</code>. This is where the thinking happens! Which type of information we want to convey? This question should define the grid structure. For example, to simply showcase how next month’s budget varies with ROAS, we can use the <code>roas_grid</code> above and the mean values for the other features. We can use the <code>datagrid</code> function from the <code>marginaleffects</code> package to do this very easily.</p>
+<pre class="python"><code>roas_datagrid = datagrid(
+    roas=roas_grid,
+    cohort_age=cohort_age_default,
+    month_of_year=month_of_year_default,
+    newdata=model_df,
+)
+
+roas_datagrid.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 4)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+budget_next
+</th>
+<th>
+roas
+</th>
+<th>
+cohort_age
+</th>
+<th>
+month_of_year
+</th>
+</tr>
+<tr>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+2.891686
+</td>
+<td>
+0.0
+</td>
+<td>
+16.0
+</td>
+<td>
+6.0
+</td>
+</tr>
+<tr>
+<td>
+2.891686
+</td>
+<td>
+0.421053
+</td>
+<td>
+16.0
+</td>
+<td>
+6.0
+</td>
+</tr>
+<tr>
+<td>
+2.891686
+</td>
+<td>
+0.842105
+</td>
+<td>
+16.0
+</td>
+<td>
+6.0
+</td>
+</tr>
+<tr>
+<td>
+2.891686
+</td>
+<td>
+1.263158
+</td>
+<td>
+16.0
+</td>
+<td>
+6.0
+</td>
+</tr>
+<tr>
+<td>
+2.891686
+</td>
+<td>
+1.684211
+</td>
+<td>
+16.0
+</td>
+<td>
+6.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Next, we define a helper function to generate posterior samples of the response mean over a grid.</p>
+<pre class="python"><code>def predict_mu(model: bmb.Model, idata, grid_pl: pl.DataFrame) -&gt; np.ndarray:
+    new_idata = model.predict(
+        idata, data=grid_pl.to_pandas(), kind=&quot;response_params&quot;, inplace=False
+    )
+    return new_idata[&quot;posterior&quot;][&quot;mu&quot;]</code></pre>
+<p>We are ready to generate predictions over the grid to visualize the relationship between ROAS and next month’s budget.</p>
+<pre class="python"><code>idata_lm_mu_grid = predict_mu(model_lm, idata_lm, roas_datagrid)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        roas_grid,
+        idata_lm_mu_grid,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Linear Regression: ROAS Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_48_0.png" style="width: 800px;"/>
+</center>
+<p>We see that the slope of this posterior predictive line is exactly <span class="math inline">\(0.23\)</span>, the same value we got from the regression coefficient.</p>
+<p>We can generalize this idea by considering more granular grids. For instance, we could evaluate the ROAS effect split by cohort age.</p>
+<pre class="python"><code>cohort_roas_grids = {
+    x: datagrid(
+        roas=roas_grid,
+        cohort_age=x,
+        month_of_year=np.mean(month_of_year_grid).round(),
+        newdata=model_df,
+    )
+    for x in cohort_age_grid[::6]
+}
+
+fig, ax = plt.subplots()
+
+for i, (cohort_age, grid_roas) in enumerate(cohort_roas_grids.items()):
+    idata_lm_mu_grid = predict_mu(model_lm, idata_lm, grid_roas)
+
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            roas_grid,
+            idata_lm_mu_grid,
+            hdi_prob=hdi_prob,
+            color=f&quot;C{i}&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + 0.2 * j,
+                &quot;label&quot;: f&quot;cohort_age={cohort_age} {hdi_prob: .0%} CI&quot;,
+            },
+            ax=ax,
+        )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Linear Regression
+    ROAS Effect on Next Month&#39;s Budget split by Cohort Age
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_51_0.png" style="width: 800px;"/>
+</center>
+<p>We see that the ROAS effect, as the slope of the lines, is the same across all cohort ages. The only difference is the intercept, which varies with cohort age: the older the cohort the lower the estimated budget.</p>
+<p>We can do something similar for the month of year.</p>
+<pre class="python"><code>month_roas_grids = {
+    x: datagrid(
+        roas=roas_grid,
+        cohort_age=np.mean(cohort_age_grid),
+        month_of_year=x,
+        newdata=model_df,
+    )
+    for x in month_of_year_grid[::2]
+}
+
+fig, ax = plt.subplots()
+
+for i, (month_of_year, grid_roas) in enumerate(month_roas_grids.items()):
+    idata_lm_mu_grid = predict_mu(model_lm, idata_lm, grid_roas)
+
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            roas_grid,
+            idata_lm_mu_grid,
+            hdi_prob=hdi_prob,
+            color=f&quot;C{i}&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + 0.2 * j,
+                &quot;label&quot;: f&quot;month_of_year={month_of_year} {hdi_prob: .0%} CI&quot;,
+            },
+            ax=ax,
+        )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(xlabel=&quot;roas&quot;, ylabel=&quot;expected budget next month&quot;)
+ax.set_title(
+    &quot;&quot;&quot;Linear Regression
+    ROAS Effect on Next Month&#39;s Budget split by Month of Year
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_54_0.png" style="width: 800px;"/>
+</center>
+<p>We see that the ROAS effect is the same across all months of year. However, the intercept varies with the month of year. This variation is non-linear: the intercept for month <span class="math inline">\(11\)</span> is in between the intercepts for month <span class="math inline">\(1\)</span> and month <span class="math inline">\(9\)</span>.</p>
+<p>Besides comparing predictions across grids, we can also compare them via differences or ratios. For example, let’s compute the difference between the ROAS grid predictions for month <span class="math inline">\(3\)</span> and month <span class="math inline">\(9\)</span>.</p>
+<pre class="python"><code>month_of_year_0 = 3
+month_of_year_1 = 9
+
+_diff = predict_mu(model_lm, idata_lm, month_roas_grids[month_of_year_0]) - predict_mu(
+    model_lm, idata_lm, month_roas_grids[month_of_year_1]
+)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        roas_grid,
+        _diff,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(
+    &quot;&quot;&quot;Linear Regression
+    Difference between ROAS Effect on Next Month&#39;s Budget
+    for Month $3$ and Month $9$
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_57_0.png" style="width: 800px;"/>
+</center>
+<p>It is not surprising that the difference is constant across ROAS. This is just because of the linearity of the model. As a matter of fact this constant value is nothing other than the difference between the regression coefficients for month <span class="math inline">\(3\)</span> and month <span class="math inline">\(9\)</span>:</p>
+<pre class="python"><code>month_of_year_beta_0 = (
+    idata_lm[&quot;posterior&quot;][&quot;C(month_of_year)&quot;]
+    .sel({&quot;C(month_of_year)_dim&quot;: np.array([month_of_year_0], dtype=&quot;&lt;U2&quot;)})
+    .squeeze()
+)
+
+month_of_year_beta_1 = (
+    idata_lm[&quot;posterior&quot;][&quot;C(month_of_year)&quot;]
+    .sel({&quot;C(month_of_year)_dim&quot;: np.array([month_of_year_1], dtype=&quot;&lt;U2&quot;)})
+    .squeeze()
+)
+
+fig, ax = plt.subplots()
+az.plot_posterior(month_of_year_beta_0 - month_of_year_beta_1, ax=ax)
+ax.set(xlabel=r&quot;$\beta_{month=3} - \beta_{month=9}$&quot;)
+ax.set_title(
+    &quot;&quot;&quot;Linear Regression
+    Difference between ROAS Effect on Next Month&#39;s Budget
+    for Month $3$ and Month $9$
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_59_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="cohort-age-effect-on-next-months-budget" class="section level3">
+<h3>Cohort Age Effect on Next Month’s Budget</h3>
+<p>We can do a similar analysis for the cohort age feature.</p>
+<pre class="python"><code># We do not explicitly need to set the ROAS values.
+# By default, the `datagrid` function will use the mean.
+cohort_age_datagrid = datagrid(
+    cohort_age=cohort_age_grid,
+    month_of_year=np.mean(month_of_year_grid).round(),
+    newdata=model_df,
+)
+
+idata_lm_mu_cohort_age_grid = predict_mu(model_lm, idata_lm, cohort_age_datagrid)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        cohort_age_grid,
+        idata_lm_mu_cohort_age_grid,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(
+    &quot;&quot;&quot;Linear Regression
+    Cohort Age Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_61_0.png" style="width: 800px;"/>
+</center>
+<p>Again, this is not surprising given the regression coefficient is negative (see trace plot above).</p>
+</div>
+<div id="month-of-year-effect-on-next-months-budget" class="section level3">
+<h3>Month of Year Effect on Next Month’s Budget</h3>
+<p>Lastly, let’s do the same for the month of year feature. As this is a categorical variable, we use a forest plot to visualize the effect.</p>
+<pre class="python"><code>month_of_year_datagrid = datagrid(
+    cohort_age=np.mean(cohort_age_grid).round(),
+    month_of_year=month_of_year_grid,
+    newdata=model_df,
+)
+
+idata_lm_mu_month_of_year_grid = predict_mu(model_lm, idata_lm, month_of_year_datagrid)
+
+ax, *_ = az.plot_forest(idata_lm_mu_month_of_year_grid, combined=True, figsize=(8, 6))
+ax.set_title(
+    &quot;&quot;&quot;Linear Regression
+    Month of Year Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_64_0.png" style="width: 800px;"/>
+</center>
+<p>Here are some observations on this result:</p>
+<ul>
+<li>Observe the HDI for month <span class="math inline">\(1\)</span> (index <span class="math inline">\(0\)</span>, i.e. January) is much narrower than the other months. This is also reflected in the ROAS effect plot above, when we split by month of year.</li>
+<li>All of these effects are centered around zero. The reason for this is because we are using a <a href="https://www.pymc.io/projects/docs/en/5.24.1/api/distributions/generated/pymc.ZeroSumNormal.html"><code>ZeroSumNormal</code></a> distribution for this categorical variable. This means the sum of the coefficients is zero.</li>
+</ul>
+</div>
+<div id="the-same-answers-via-bambis-interpret-module" class="section level3">
+<h3>The same answers via Bambi’s <code>interpret</code> module</h3>
+<p>Everything above we built by hand: a <code>datagrid</code>, a <code>predict_mu</code> pass through the posterior, and an ArviZ summary. Seeing that mechanic once is worth it because it makes explicit what a marginal-effects plot actually is. Fortunately, Bambi ships an <a href="https://bambinos.github.io/bambi/notebooks/#tools-to-interpret-model-outputs"><code>interpret</code> module</a> that packages the very same recipe behind three primitives: <code>predictions</code> (“what does the model predict over this grid?”), <code>comparisons</code> (“how does the prediction change from A to B?”), and <code>slopes</code> (“what is the local derivative?”). Each one takes a <code>conditional</code> dictionary in place of the polars grid we wrote by hand: the first key becomes the horizontal axis, a second key becomes the color grouping, and a third becomes the panel. Covariates we leave out are held at their mean (numeric) or mode (categorical), exactly like the defaults we chose above. The plotting helpers <code>plot_predictions</code>, <code>plot_comparisons</code>, and <code>plot_slopes</code> draw a single <span class="math inline">\(94\%\)</span> HDI band where the custom plots layered a <span class="math inline">\(94\%\)</span> and a <span class="math inline">\(50\%\)</span> band, but the underlying numbers are identical: same posterior <code>idata_lm</code>, same grid, same <span class="math inline">\(\mu\)</span>.</p>
+<p>We introduce the module here on the linear baseline and reuse it for the next two models. Let’s reproduce each plot from this section in turn, starting with the ROAS effect.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+bmb.interpret.plot_predictions(
+    model_lm,
+    idata_lm,
+    conditional={
+        &quot;roas&quot;: roas_grid,
+        &quot;cohort_age&quot;: cohort_age_default,
+        &quot;month_of_year&quot;: month_of_year_default,
+    },
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret: ROAS Effect on Next Month&#39;s Budget&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_67_0.png" style="width: 800px;"/>
+</center>
+<p>Splitting the ROAS effect by cohort age is just a second key in <code>conditional</code>, which Bambi maps to the color grouping. Compare this with the by-hand version above that stacked the HDI bands.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+bmb.interpret.plot_predictions(
+    model_lm,
+    idata_lm,
+    conditional={
+        &quot;roas&quot;: roas_grid,
+        &quot;cohort_age&quot;: list(cohort_age_grid[::6]),
+        &quot;month_of_year&quot;: month_of_year_default,
+    },
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret: ROAS Effect split by Cohort Age&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_69_0.png" style="width: 800px;"/>
+</center>
+<p>The same idea split by month of year:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+bmb.interpret.plot_predictions(
+    model_lm,
+    idata_lm,
+    conditional={
+        &quot;roas&quot;: roas_grid,
+        &quot;month_of_year&quot;: list(month_of_year_grid[::2]),
+        &quot;cohort_age&quot;: cohort_age_default,
+    },
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret: ROAS Effect split by Month of Year&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_71_0.png" style="width: 800px;"/>
+</center>
+<p>The month-<span class="math inline">\(3\)</span> versus month-<span class="math inline">\(9\)</span> contrast is a <code>comparisons</code> call: <code>contrast</code> names the variable and the two levels to difference (ordered low then high, so <code>[9, 3]</code> yields month-<span class="math inline">\(3\)</span> minus month-<span class="math inline">\(9\)</span>), while <code>conditional</code> sets the grid over which we evaluate the difference. As before, the difference is constant in ROAS because the model is linear.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+bmb.interpret.plot_comparisons(
+    model_lm,
+    idata_lm,
+    contrast={&quot;month_of_year&quot;: [month_of_year_1, month_of_year_0]},
+    conditional={&quot;roas&quot;: roas_grid, &quot;cohort_age&quot;: cohort_age_default},
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret: Month 3 vs Month 9 ROAS Effect Difference&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_73_0.png" style="width: 800px;"/>
+</center>
+<p>The cohort-age effect: now <code>cohort_age</code> is the horizontal axis and ROAS, left unspecified, is held at its mean.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+bmb.interpret.plot_predictions(
+    model_lm,
+    idata_lm,
+    conditional={
+        &quot;cohort_age&quot;: cohort_age_grid,
+        &quot;month_of_year&quot;: month_of_year_default,
+    },
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret: Cohort Age Effect on Next Month&#39;s Budget&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<pre><code>Default computed for unspecified variable: roas</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_75_1.png" style="width: 800px;"/>
+</center>
+<p>And the month-of-year effect. Because <code>month_of_year</code> enters the formula through <code>C(...)</code>, Bambi treats it as categorical and draws a point with an interval per level, the same information carried by the forest plot above.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+bmb.interpret.plot_predictions(
+    model_lm,
+    idata_lm,
+    conditional={
+        &quot;month_of_year&quot;: month_of_year_grid,
+        &quot;cohort_age&quot;: cohort_age_default,
+    },
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret: Month of Year Effect on Next Month&#39;s Budget&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<pre><code>Default computed for unspecified variable: roas</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_77_1.png" style="width: 800px;"/>
+</center>
+<p>Finally the third primitive, <code>slopes</code>, which we skipped in the by-hand tour. It returns the local derivative <span class="math inline">\(\partial \mu / \partial \text{roas}\)</span>. For a linear identity-link model this derivative is constant and equal to the ROAS regression coefficient we read off the trace plot, so the table below reports a single number that matches that posterior mean.</p>
+<pre class="python"><code>bmb.interpret.slopes(
+    model_lm,
+    idata_lm,
+    wrt=&quot;roas&quot;,
+    conditional={
+        &quot;cohort_age&quot;: cohort_age_default,
+        &quot;month_of_year&quot;: month_of_year_default,
+    },
+)</code></pre>
+<pre><code>Default computed for wrt variable: roas</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+term
+</th>
+<th>
+estimate_type
+</th>
+<th>
+value
+</th>
+<th>
+cohort_age
+</th>
+<th>
+month_of_year
+</th>
+<th>
+estimate
+</th>
+<th>
+lower_3.0%
+</th>
+<th>
+upper_97.0%
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+0
+</th>
+<td>
+roas
+</td>
+<td>
+dydx
+</td>
+<td>
+(2.9794, 2.9795)
+</td>
+<td>
+16.0
+</td>
+<td>
+6.0
+</td>
+<td>
+0.226888
+</td>
+<td>
+0.1865
+</td>
+<td>
+0.264585
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>Same shapes, same intervals, a handful of lines instead of dozens. The by-hand <code>datagrid</code> plus <code>predict_mu</code> recipe stays the tool to reach for when a question does not map onto a built-in primitive; for everything that does, <code>interpret</code> is the faster path, and we lean on it for the next two models.</p>
+</div>
+</div>
+<div id="baseline-2-hurdle-gamma-with-a-linear-roas-coefficient" class="section level2">
+<h2>Baseline 2: Hurdle Gamma with a linear ROAS coefficient</h2>
+<p>In this second model we address a key fact: the budgets can not be negative! Hence, we use a likelihood family that has support on the positive real line: a Gamma distribution. Moreover, we have seen we have a lot of zeros coming from stores that are not active next month. To account for this we actually use a Hurdle Gamma distribution. The idea is to have a way to estimate these zeros while still using a likelihood family that has support on the positive real line. For these <em>generalized linear models</em>, we need a link function to map the regression-like outcomes to the support of the likelihood family. In this case we use the log link function. The log link turns the linear coefficient into a <em>multiplicative</em> effect: <code>exp(linear)</code> is monotone, so we get a curve rather than a line.</p>
+<p>By default Bambi drives the Gamma mean via the formula and keeps the zero-inflation probability <span class="math inline">\(\psi\)</span> as a single scalar; that is the form we use here. Bambi also supports a multi-formula if we want different drivers per component, but for this use-case the activity gate is well captured by a single scalar (we could always iterate).</p>
+<p><span class="math display">\[\begin{align*}
+y_i  &amp;\sim \text{HurdleGamma}(\psi, \mu_i, \alpha) \\
+
+\log \mu_i &amp; = \beta_0 + \beta_{\text{age}} \, \text{cohort_age}_i + \sum_{m} \beta_m \, \mathbb{1}[\text{month}_i = m] + \beta_{\text{roas}} \, \text{roas}_i
+\end{align*}\]</span></p>
+<p>Here <span class="math inline">\(\psi\)</span> is the (scalar) probability that a store is active next month and <span class="math inline">\(\mu_i\)</span> is the Gamma-conditional mean budget given activity.</p>
+<pre class="python"><code>formula_hgl = bmb.Formula(
+    &quot;budget_next ~ 1 + cohort_age + C(month_of_year) + roas&quot;,
+)</code></pre>
+<div id="priors" class="section level3">
+<h3>Priors</h3>
+<p>A few short notes on each choice. The priors are tied to the data scale rather than left at Bambi’s defaults so the sampler does not have to discover the right magnitudes on its own.</p>
+<ul>
+<li><code>Intercept ~ Normal(0, 0.5)</code>: on the log scale the DGP intercept is around <span class="math inline">\(0.5\)</span>, so the prior is centered near the right order of magnitude and gently regularizes.</li>
+<li><code>cohort_age ~ Normal(0, 0.1)</code>: <code>cohort_age</code> is unscaled with range roughly <span class="math inline">\(-12\)</span> to <span class="math inline">\(23\)</span>, so a <span class="math inline">\(1\sigma\)</span> swing of <span class="math inline">\(0.1\)</span> still allows log-<span class="math inline">\(\mu\)</span> moves of <span class="math inline">\(\pm 3.5\)</span> across the panel without being absurd.</li>
+<li><code>C(month_of_year) ~ ZeroSumNormal(sigma=1)</code>: matches the linear-Gaussian baseline. The sum-to-zero contrast keeps the monthly effects identified against the intercept and reads cleanly in the forest plot.</li>
+<li><code>roas ~ Normal(0, 1.0)</code>: ROAS spans <span class="math inline">\(0\)</span> to <span class="math inline">\(8\)</span> and the true effect on log-<span class="math inline">\(\mu\)</span> stays roughly within <span class="math inline">\(\pm 1\)</span>, so a unit prior on the multiplicative slope is wide but reasonable.</li>
+<li><code>alpha ~ HalfNormal(sigma=1.0)</code>: Gamma shape; tight enough to avoid extreme dispersion without pinning it.</li>
+<li><span class="math inline">\(\psi\)</span> is left at Bambi’s default <code>Beta(2, 2)</code> scalar prior; we have plenty of data on the activity gate.</li>
+</ul>
+<pre class="python"><code>priors_hgl = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=0.5),
+    &quot;cohort_age&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=0.1),
+    &quot;C(month_of_year)&quot;: bmb.Prior(&quot;ZeroSumNormal&quot;, sigma=1),
+    &quot;roas&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=1.0),
+    &quot;alpha&quot;: bmb.Prior(&quot;HalfNormal&quot;, sigma=0.1),
+}
+
+model_hgl = bmb.Model(
+    formula=formula_hgl,
+    data=model_df.to_pandas(),
+    family=&quot;hurdle_gamma&quot;,
+    link=&quot;log&quot;,
+    priors=priors_hgl,
+)
+model_hgl.build()
+model_hgl</code></pre>
+<pre><code>       Formula: budget_next ~ 1 + cohort_age + C(month_of_year) + roas
+        Family: hurdle_gamma
+          Link: mu = log
+  Observations: 2169
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 0.5)
+            cohort_age ~ Normal(mu: 0.0, sigma: 0.1)
+            C(month_of_year) ~ ZeroSumNormal(sigma: 1.0)
+            roas ~ Normal(mu: 0.0, sigma: 1.0)
+        
+        Auxiliary parameters
+            alpha ~ HalfNormal(sigma: 0.1)
+            psi ~ Beta(alpha: 2.0, beta: 2.0)</code></pre>
+</div>
+<div id="prior-predictive-1" class="section level3">
+<h3>Prior Predictive</h3>
+<pre class="python"><code>idata_prior_hgl = model_hgl.prior_predictive(draws=1_000, random_seed=rng)</code></pre>
+<pre><code>Sampling: [C(month_of_year), Intercept, alpha, budget_next, cohort_age, psi, roas]</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 5))
+az.plot_ppc(idata_prior_hgl, group=&quot;prior&quot;, kind=&quot;cumulative&quot;, ax=ax)
+ax.set(xlim=(0, 20))
+ax.set_title(
+    &quot;Hurdle Gamma (linear ROAS): Prior Predictive&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_87_0.png" style="width: 800px;"/>
+</center>
+<p>This prior predictive has some very large values. However, most of the mass lies in the expected range of the data.</p>
+</div>
+<div id="model-fit-1" class="section level3">
+<h3>Model Fit</h3>
+<pre class="python"><code>idata_hgl = model_hgl.fit(
+    draws=1_000,
+    tune=1_000,
+    chains=4,
+    target_accept=0.8,
+    inference_method=&quot;numpyro&quot;,
+    random_seed=rng,
+    idata_kwargs={&quot;log_likelihood&quot;: True},
+)</code></pre>
+</div>
+<div id="diagnostics-1" class="section level3">
+<h3>Diagnostics</h3>
+<pre class="python"><code># Number of divergences
+idata_hgl[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>az.summary(
+    idata_hgl,
+    var_names=[
+        &quot;Intercept&quot;,
+        &quot;cohort_age&quot;,
+        &quot;C(month_of_year)&quot;,
+        &quot;roas&quot;,
+        &quot;alpha&quot;,
+        &quot;psi&quot;,
+    ],
+    filter_vars=&quot;like&quot;,
+)</code></pre>
+<center>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+C(month_of_year)[2]
+</th>
+<td>
+0.378
+</td>
+<td>
+0.046
+</td>
+<td>
+0.291
+</td>
+<td>
+0.462
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7976.0
+</td>
+<td>
+3190.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[3]
+</th>
+<td>
+0.286
+</td>
+<td>
+0.045
+</td>
+<td>
+0.205
+</td>
+<td>
+0.373
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7837.0
+</td>
+<td>
+3069.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[4]
+</th>
+<td>
+0.359
+</td>
+<td>
+0.045
+</td>
+<td>
+0.276
+</td>
+<td>
+0.448
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6453.0
+</td>
+<td>
+3217.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[5]
+</th>
+<td>
+0.436
+</td>
+<td>
+0.045
+</td>
+<td>
+0.357
+</td>
+<td>
+0.523
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7855.0
+</td>
+<td>
+3324.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[6]
+</th>
+<td>
+0.316
+</td>
+<td>
+0.046
+</td>
+<td>
+0.230
+</td>
+<td>
+0.406
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6459.0
+</td>
+<td>
+3110.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[7]
+</th>
+<td>
+-0.113
+</td>
+<td>
+0.047
+</td>
+<td>
+-0.198
+</td>
+<td>
+-0.023
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6673.0
+</td>
+<td>
+3088.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[8]
+</th>
+<td>
+-0.595
+</td>
+<td>
+0.046
+</td>
+<td>
+-0.676
+</td>
+<td>
+-0.505
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6520.0
+</td>
+<td>
+2849.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[9]
+</th>
+<td>
+-0.804
+</td>
+<td>
+0.046
+</td>
+<td>
+-0.891
+</td>
+<td>
+-0.719
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+7275.0
+</td>
+<td>
+3080.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[10]
+</th>
+<td>
+-0.561
+</td>
+<td>
+0.046
+</td>
+<td>
+-0.652
+</td>
+<td>
+-0.479
+</td>
+<td>
+0.000
+</td>
+<td>
+0.001
+</td>
+<td>
+8483.0
+</td>
+<td>
+3062.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[11]
+</th>
+<td>
+-0.059
+</td>
+<td>
+0.043
+</td>
+<td>
+-0.141
+</td>
+<td>
+0.021
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6591.0
+</td>
+<td>
+3080.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[12]
+</th>
+<td>
+0.357
+</td>
+<td>
+0.064
+</td>
+<td>
+0.240
+</td>
+<td>
+0.480
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+3733.0
+</td>
+<td>
+3158.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+1.257
+</td>
+<td>
+0.047
+</td>
+<td>
+1.168
+</td>
+<td>
+1.344
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+5345.0
+</td>
+<td>
+3841.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+2.589
+</td>
+<td>
+0.062
+</td>
+<td>
+2.479
+</td>
+<td>
+2.710
+</td>
+<td>
+0.001
+</td>
+<td>
+0.001
+</td>
+<td>
+6265.0
+</td>
+<td>
+2877.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+cohort_age
+</th>
+<td>
+-0.034
+</td>
+<td>
+0.002
+</td>
+<td>
+-0.038
+</td>
+<td>
+-0.031
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4396.0
+</td>
+<td>
+3478.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+psi
+</th>
+<td>
+0.941
+</td>
+<td>
+0.005
+</td>
+<td>
+0.932
+</td>
+<td>
+0.951
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6385.0
+</td>
+<td>
+3089.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+roas
+</th>
+<td>
+0.104
+</td>
+<td>
+0.011
+</td>
+<td>
+0.084
+</td>
+<td>
+0.123
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6780.0
+</td>
+<td>
+3036.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>axes = az.plot_trace(
+    idata_hgl,
+    var_names=[
+        &quot;Intercept&quot;,
+        &quot;cohort_age&quot;,
+        &quot;roas&quot;,
+        &quot;C(month_of_year)&quot;,
+        &quot;alpha&quot;,
+        &quot;psi&quot;,
+    ],
+    compact=True,
+    figsize=(12, 9),
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(
+    &quot;Hurdle Gamma (linear ROAS): Traceplot&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_94_0.png" style="width: 900px;"/>
+</center>
+<p>Overall, we get a good fit and no divergences.</p>
+<pre class="python"><code>model_hgl.predict(idata_hgl, kind=&quot;response&quot;, inplace=True)
+
+fig, ax = plt.subplots(figsize=(10, 5))
+az.plot_ppc(idata_hgl, ax=ax)
+ax.set_title(
+    &quot;Hurdle Gamma (linear ROAS): Posterior Predictive&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_96_0.png" style="width: 800px;"/>
+</center>
+<p>This posterior predictive is better than the linear baseline. However, it still does not really match the data.</p>
+</div>
+<div id="roas-effect-on-next-months-budget-1" class="section level3">
+<h3>ROAS Effect on Next Month’s Budget</h3>
+<p>Let’s start with the ROAS coefficient posterior. Because the link is logarithmic, this is now a <em>multiplicative</em> effect on <span class="math inline">\(\mu\)</span>: a one-unit ROAS increase multiplies next month’s budget by <span class="math inline">\(\exp(\beta_{\text{roas}})\)</span>.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(idata_hgl, var_names=&quot;roas&quot;, ax=ax)
+ax.set_title(
+    &quot;Hurdle Gamma (linear ROAS): ROAS Regression Coefficient&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_99_0.png" style="width: 800px;"/>
+</center>
+<p>Let’s look at the exponential of the ROAS coefficient posterior.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+az.plot_posterior(np.exp(idata_hgl[&quot;posterior&quot;][&quot;roas&quot;]), var_names=&quot;roas&quot;, ax=ax)
+ax.set_title(
+    &quot;Hurdle Gamma (linear ROAS)\nExponential of ROAS Regression Coefficient&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_101_0.png" style="width: 800px;"/>
+</center>
+<p>Most of these transformed posterior samples are larger than one, so the model implies a positive relationship between ROAS and next month’s budget. However, this is hard to interpret and to communicate to stakeholders. Even if we take the exponential, the ROAS effect is not linear.</p>
+<p>Instead of trying to interpret the coefficients directly (or any transformation), we can simply follow the same recipe as in the linear baseline; we just swap the model in <code>predict_mu</code>. Plots show the Gamma-conditional mean <span class="math inline">\(\mu\)</span> (expected budget given the store is active next month).</p>
+<p>We keep the by-hand <code>datagrid</code> plus <code>predict_mu</code> plots as the explanatory thread for this model too, but each of them could be reproduced in a single line with the Bambi <code>interpret</code> module introduced on the linear baseline, simply by pointing <code>plot_predictions</code> and <code>comparisons</code> at <code>model_hgl</code>. Let’s start by the simpler ROAS to budget relationship.</p>
+<pre class="python"><code>idata_hgl_mu_grid = predict_mu(model_hgl, idata_hgl, roas_datagrid)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        roas_grid,
+        idata_hgl_mu_grid,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma (linear ROAS): ROAS Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_104_0.png" style="width: 800px;"/>
+</center>
+<p>This plot shows that the model implies a stronger growth strength at higher ROAS levels. This is just the multiplicative nature of the model (via the log-link function).</p>
+<p>Splitting by cohort age now produces curves that are <em>parallel on the log scale</em> but fan out on the response scale: this is the visible signature of the log link. In the linear baseline the same plot was just a shifted line.</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for i, (cohort_age, grid_roas) in enumerate(cohort_roas_grids.items()):
+    idata_hgl_mu_grid_i = predict_mu(model_hgl, idata_hgl, grid_roas)
+
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            roas_grid,
+            idata_hgl_mu_grid_i,
+            hdi_prob=hdi_prob,
+            color=f&quot;C{i}&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + 0.2 * j,
+                &quot;label&quot;: f&quot;cohort_age={cohort_age} {hdi_prob: .0%} CI&quot;,
+            },
+            ax=ax,
+        )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma (linear ROAS)
+    ROAS Effect on Next Month&#39;s Budget split by Cohort Age
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_107_0.png" style="width: 800px;"/>
+</center>
+<p>Same story split by month of year:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for i, (month_of_year, grid_roas) in enumerate(month_roas_grids.items()):
+    idata_hgl_mu_grid_i = predict_mu(model_hgl, idata_hgl, grid_roas)
+
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            roas_grid,
+            idata_hgl_mu_grid_i,
+            hdi_prob=hdi_prob,
+            color=f&quot;C{i}&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + 0.2 * j,
+                &quot;label&quot;: f&quot;month_of_year={month_of_year} {hdi_prob: .0%} CI&quot;,
+            },
+            ax=ax,
+        )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(xlabel=&quot;roas&quot;, ylabel=&quot;expected budget next month&quot;)
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma (linear ROAS)
+    ROAS Effect on Next Month&#39;s Budget split by Month of Year
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_109_0.png" style="width: 800px;"/>
+</center>
+<p>Now the month-3 vs month-9 contrast on the response scale. Unlike the linear baseline (where the contrast was a constant), here the gap <em>grows with ROAS</em> because the seasonal contrast acts multiplicatively after the log link.</p>
+<pre class="python"><code>_diff_hgl = predict_mu(
+    model_hgl, idata_hgl, month_roas_grids[month_of_year_0]
+) - predict_mu(model_hgl, idata_hgl, month_roas_grids[month_of_year_1])
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        roas_grid,
+        _diff_hgl,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma (linear ROAS)
+    Difference between ROAS Effect on Next Month&#39;s Budget
+    for Month $3$ and Month $9$
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_111_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="cohort-age-effect-on-next-months-budget-1" class="section level3">
+<h3>Cohort Age Effect on Next Month’s Budget</h3>
+<p>As expected from the results above, we get a non-linear decay in the budget growth as a function of cohort age.</p>
+<pre class="python"><code>idata_hgl_mu_cohort_age_grid = predict_mu(model_hgl, idata_hgl, cohort_age_datagrid)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        cohort_age_grid,
+        idata_hgl_mu_cohort_age_grid,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma (linear ROAS)
+    Cohort Age Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_113_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="month-of-year-effect-on-next-months-budget-1" class="section level3">
+<h3>Month of Year Effect on Next Month’s Budget</h3>
+<p>Similar non-linearity in the month of year effect.</p>
+<pre class="python"><code>idata_hgl_mu_month_of_year_grid = predict_mu(
+    model_hgl, idata_hgl, month_of_year_datagrid
+)
+
+ax, *_ = az.plot_forest(idata_hgl_mu_month_of_year_grid, combined=True, figsize=(8, 6))
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma (linear ROAS)
+    Month of Year Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_115_0.png" style="width: 800px;"/>
+</center>
+<p>The seasonal pattern is now expressed as multiplicative shifts on the budget scale. We’ve extracted everything the <em>linear</em> hurdle-Gamma model can offer; the shape of the ROAS effect is still wrong. Model 3 fixes that by replacing the linear ROAS term with a Gaussian-process basis.</p>
+</div>
+</div>
+<div id="model-3-hurdle-gamma-hsgp-on-roas" class="section level2">
+<h2>Model 3: Hurdle Gamma + HSGP on ROAS</h2>
+<p>Coming back to the nature of the problem, we expect the ROAS to next month’s budget relationship (regression coefficient) to vary as a function of the ROAS. Not simply because of the log-link function. We want to allow a more flexible mechanism. Hence, we keep the hurdle-Gamma likelihood from baseline 2, with the same scalar <span class="math inline">\(\psi\)</span>, and replace the linear <code>roas</code> term with a Hilbert-space Gaussian-process basis (for an introduction to this topic see <a href="https://juanitorduz.github.io/hsgp_intro/">“A Conceptual and Practical Introduction to Hilbert Space GPs Approximation Methods”</a>). The GP lets the data shape the curve: no linearity, no polynomial form, no knot locations to pick.</p>
+<p><span class="math display">\[\begin{align*}
+y_i &amp; \sim \text{HurdleGamma}(\psi, \mu_i, \alpha) \\
+
+\log \mu_i &amp; = \beta_0 + \beta_{\text{age}} \, \text{cohort_age}_i + \sum_{m} \beta_m \, \mathbb{1}[\text{month}_i = m] + f(\text{roas}_i) \\
+
+f &amp; \sim \text{HSGP}(m, c)
+\end{align*}\]</span></p>
+<div id="priors-1" class="section level3">
+<h3>Priors</h3>
+<p>The HSGP introduces two new hyperparameters: <span class="math inline">\(\sigma\)</span> (GP amplitude) and <span class="math inline">\(\ell\)</span> (length scale). Bambi’s defaults (<code>Exponential(1)</code> for <span class="math inline">\(\sigma\)</span> and <code>InverseGamma(3, 2)</code> for <span class="math inline">\(\ell\)</span>, the latter peaking around <span class="math inline">\(\ell \approx 0.5\)</span>) push the sampler toward very wiggly functions on our <span class="math inline">\([0, 8]\)</span> ROAS span and produce a funnel between <span class="math inline">\((\sigma, \ell)\)</span> and the basis weights. That funnel is the main source of divergences. We calibrate both hyperpriors to the data domain.</p>
+<ul>
+<li><span class="math inline">\(\sigma \sim \text{HalfNormal}(0.5)\)</span>: prior mean <span class="math inline">\(\approx 0.4\)</span>. The ground-truth GP contribution to <span class="math inline">\(\log \mu\)</span> stays roughly within <span class="math inline">\([-0.4, 1.2]\)</span>, so amplitude <span class="math inline">\(\sim 0.4\)</span> is the right order of magnitude. The Gaussian upper tail is much less aggressive than <code>Exponential(1)</code>.</li>
+<li><span class="math inline">\(\ell \sim \text{InverseGamma}(5, 10)\)</span>: mode <span class="math inline">\(\approx 1.67\)</span>, mean <span class="math inline">\(= 2.5\)</span>. Strong mass on length scales <span class="math inline">\(1\)</span> to <span class="math inline">\(4\)</span>. With ROAS spanning <span class="math inline">\(8\)</span> units we expect roughly one peak and one plateau, which corresponds to a length scale of order <span class="math inline">\(2\)</span>.</li>
+<li><span class="math inline">\(\text{HSGP_M} = 20\)</span>, <span class="math inline">\(\text{HSGP_C} = 1.5\)</span>: <span class="math inline">\(20\)</span> basis functions are plenty for a smooth function with the chosen length-scale prior; fewer high-frequency weights means a shorter funnel between the hyperparameters and the weight vector. <span class="math inline">\(c = 1.5\)</span> widens the synthetic boundary so the basis covers the data domain comfortably.</li>
+<li><code>Intercept</code>, <code>cohort_age</code>, <code>C(month_of_year)</code>, <code>alpha</code>: same priors and same reasoning as in baseline 2.</li>
+<li><code>target_accept = 0.95</code>: held fixed. The prior calibration above, not a tighter step size, is what tames the divergences.</li>
+</ul>
+<pre class="python"><code># HSGP Parameters
+HSGP_M = 20
+HSGP_C = 1.5
+HSGP_COV = &quot;Matern52&quot;
+HSGP_CENTERED = True
+
+formula = bmb.Formula(
+    f&quot;budget_next ~ 1 + cohort_age + C(month_of_year) + hsgp(roas, m={HSGP_M}, c={HSGP_C}, cov=&#39;{HSGP_COV}&#39;, centered={HSGP_CENTERED})&quot;,
+)</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(
+    nrows=2,
+    ncols=1,
+    figsize=(10, 7),
+    sharex=False,
+    sharey=False,
+    constrained_layout=True,
+)
+
+pz.InverseGamma(5, 10).plot_pdf(ax=ax[0])
+ax[0].set(title=&quot;Length Scale Prior&quot;)
+pz.HalfNormal(0.5).plot_pdf(ax=ax[1])
+ax[1].set(title=&quot;Amplitude Prior&quot;)
+fig.suptitle(&quot;Prior Distributions HSGP&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_120_0.png" style="width: 900px;"/>
+</center>
+<pre class="python"><code>hsgp_term = (
+    f&quot;hsgp(roas, m={HSGP_M}, c={HSGP_C}, cov=&#39;{HSGP_COV}&#39;, centered={HSGP_CENTERED})&quot;
+)
+hsgp_cov_priors = {
+    &quot;sigma&quot;: bmb.Prior(&quot;HalfNormal&quot;, sigma=0.5),
+    &quot;ell&quot;: bmb.Prior(&quot;InverseGamma&quot;, alpha=5, beta=10),
+}
+priors = {
+    &quot;Intercept&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=0.5),
+    &quot;cohort_age&quot;: bmb.Prior(&quot;Normal&quot;, mu=0.0, sigma=0.1),
+    &quot;C(month_of_year)&quot;: bmb.Prior(&quot;ZeroSumNormal&quot;, sigma=1),
+    hsgp_term: hsgp_cov_priors,
+    &quot;alpha&quot;: bmb.Prior(&quot;HalfNormal&quot;, sigma=1.0),
+}
+
+model = bmb.Model(
+    formula=formula,
+    data=model_df.to_pandas(),
+    family=&quot;hurdle_gamma&quot;,
+    link=&quot;log&quot;,
+    priors=priors,
+)
+model.build()
+model</code></pre>
+<pre><code>       Formula: budget_next ~ 1 + cohort_age + C(month_of_year) + hsgp(roas, m=20, c=1.5, cov=&#39;Matern52&#39;, centered=True)
+        Family: hurdle_gamma
+          Link: mu = log
+  Observations: 2169
+        Priors: 
+    target = mu
+        Common-level effects
+            Intercept ~ Normal(mu: 0.0, sigma: 0.5)
+            cohort_age ~ Normal(mu: 0.0, sigma: 0.1)
+            C(month_of_year) ~ ZeroSumNormal(sigma: 1.0)
+        
+        HSGP contributions
+            hsgp(roas, m=20, c=1.5, cov=&#39;Matern52&#39;, centered=True)
+                cov: Matern52
+                sigma ~ HalfNormal(sigma: 0.5)
+                ell ~ InverseGamma(alpha: 5.0, beta: 10.0)
+        
+        Auxiliary parameters
+            alpha ~ HalfNormal(sigma: 1.0)
+            psi ~ Beta(alpha: 2.0, beta: 2.0)</code></pre>
+</div>
+<div id="prior-predictive-2" class="section level3">
+<h3>Prior Predictive</h3>
+<p>Are the implied budgets in a sensible order of magnitude before the data is touched?</p>
+<pre class="python"><code>idata_prior = model.prior_predictive(draws=1_000, random_seed=rng)</code></pre>
+<pre><code>Sampling: [C(month_of_year), Intercept, alpha, budget_next, cohort_age, hsgp(roas, m=20, c=1.5, cov=&#39;Matern52&#39;, centered=True)_ell, hsgp(roas, m=20, c=1.5, cov=&#39;Matern52&#39;, centered=True)_sigma, hsgp(roas, m=20, c=1.5, cov=&#39;Matern52&#39;, centered=True)_weights, psi]</code></pre>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(10, 5))
+az.plot_ppc(idata_prior, group=&quot;prior&quot;, kind=&quot;cumulative&quot;, ax=ax)
+ax.set(xlim=(0, 20))
+ax.set_title(&quot;Hurdle Gamma + HSGP: Prior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_124_0.png" style="width: 800px;"/>
+</center>
+<p>This looks very similar to the Hurdle Gamma + Linear ROAS prior predictive from before.</p>
+</div>
+<div id="model-fit-2" class="section level3">
+<h3>Model Fit</h3>
+<pre class="python"><code>idata = model.fit(
+    draws=1_000,
+    tune=1_000,
+    chains=4,
+    target_accept=0.95,
+    inference_method=&quot;numpyro&quot;,
+    random_seed=rng,
+    idata_kwargs={&quot;log_likelihood&quot;: True},
+)</code></pre>
+</div>
+<div id="diagnostics-2" class="section level3">
+<h3>Diagnostics</h3>
+<pre class="python"><code># Number of divergences
+idata[&quot;sample_stats&quot;][&quot;diverging&quot;].sum().item()</code></pre>
+<pre><code>0</code></pre>
+<pre class="python"><code>az.summary(
+    idata,
+    var_names=[
+        &quot;Intercept&quot;,
+        &quot;cohort_age&quot;,
+        &quot;C(month_of_year)&quot;,
+        f&quot;{hsgp_term}_ell&quot;,
+        f&quot;{hsgp_term}_sigma&quot;,
+        &quot;alpha&quot;,
+        &quot;psi&quot;,
+    ],
+    filter_vars=&quot;like&quot;,
+)</code></pre>
+<centrer>
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi_3%
+</th>
+<th>
+hdi_97%
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+C(month_of_year)[2]
+</th>
+<td>
+0.354
+</td>
+<td>
+0.022
+</td>
+<td>
+0.315
+</td>
+<td>
+0.395
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5349.0
+</td>
+<td>
+3246.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[3]
+</th>
+<td>
+0.289
+</td>
+<td>
+0.022
+</td>
+<td>
+0.250
+</td>
+<td>
+0.330
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6271.0
+</td>
+<td>
+2621.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[4]
+</th>
+<td>
+0.355
+</td>
+<td>
+0.022
+</td>
+<td>
+0.315
+</td>
+<td>
+0.397
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5474.0
+</td>
+<td>
+3218.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[5]
+</th>
+<td>
+0.444
+</td>
+<td>
+0.022
+</td>
+<td>
+0.404
+</td>
+<td>
+0.484
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5593.0
+</td>
+<td>
+2922.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[6]
+</th>
+<td>
+0.310
+</td>
+<td>
+0.022
+</td>
+<td>
+0.267
+</td>
+<td>
+0.350
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4925.0
+</td>
+<td>
+2847.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[7]
+</th>
+<td>
+-0.118
+</td>
+<td>
+0.023
+</td>
+<td>
+-0.163
+</td>
+<td>
+-0.076
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5649.0
+</td>
+<td>
+2954.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[8]
+</th>
+<td>
+-0.565
+</td>
+<td>
+0.022
+</td>
+<td>
+-0.607
+</td>
+<td>
+-0.523
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5539.0
+</td>
+<td>
+3076.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[9]
+</th>
+<td>
+-0.789
+</td>
+<td>
+0.021
+</td>
+<td>
+-0.830
+</td>
+<td>
+-0.749
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+6031.0
+</td>
+<td>
+2659.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[10]
+</th>
+<td>
+-0.533
+</td>
+<td>
+0.022
+</td>
+<td>
+-0.576
+</td>
+<td>
+-0.493
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4975.0
+</td>
+<td>
+2829.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[11]
+</th>
+<td>
+-0.087
+</td>
+<td>
+0.023
+</td>
+<td>
+-0.129
+</td>
+<td>
+-0.044
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+5497.0
+</td>
+<td>
+3021.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+C(month_of_year)[12]
+</th>
+<td>
+0.340
+</td>
+<td>
+0.031
+</td>
+<td>
+0.283
+</td>
+<td>
+0.398
+</td>
+<td>
+0.001
+</td>
+<td>
+0.000
+</td>
+<td>
+3216.0
+</td>
+<td>
+2718.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+Intercept
+</th>
+<td>
+1.048
+</td>
+<td>
+0.300
+</td>
+<td>
+0.445
+</td>
+<td>
+1.561
+</td>
+<td>
+0.007
+</td>
+<td>
+0.005
+</td>
+<td>
+2186.0
+</td>
+<td>
+2515.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+alpha
+</th>
+<td>
+11.364
+</td>
+<td>
+0.336
+</td>
+<td>
+10.720
+</td>
+<td>
+11.956
+</td>
+<td>
+0.005
+</td>
+<td>
+0.005
+</td>
+<td>
+5136.0
+</td>
+<td>
+2994.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+cohort_age
+</th>
+<td>
+-0.031
+</td>
+<td>
+0.001
+</td>
+<td>
+-0.033
+</td>
+<td>
+-0.029
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4187.0
+</td>
+<td>
+2778.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+hsgp(roas, m=20, c=1.5, cov=‘Matern52’, centered=True)_ell
+</th>
+<td>
+1.765
+</td>
+<td>
+0.403
+</td>
+<td>
+1.101
+</td>
+<td>
+2.546
+</td>
+<td>
+0.011
+</td>
+<td>
+0.007
+</td>
+<td>
+1380.0
+</td>
+<td>
+2342.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+hsgp(roas, m=20, c=1.5, cov=‘Matern52’, centered=True)_sigma
+</th>
+<td>
+0.581
+</td>
+<td>
+0.199
+</td>
+<td>
+0.272
+</td>
+<td>
+0.950
+</td>
+<td>
+0.005
+</td>
+<td>
+0.004
+</td>
+<td>
+2049.0
+</td>
+<td>
+2233.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+<tr>
+<th>
+psi
+</th>
+<td>
+0.942
+</td>
+<td>
+0.005
+</td>
+<td>
+0.932
+</td>
+<td>
+0.951
+</td>
+<td>
+0.000
+</td>
+<td>
+0.000
+</td>
+<td>
+4734.0
+</td>
+<td>
+2989.0
+</td>
+<td>
+1.0
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>az.plot_trace(
+    idata,
+    var_names=[
+        &quot;Intercept&quot;,
+        &quot;cohort_age&quot;,
+        &quot;C(month_of_year)&quot;,
+        f&quot;{hsgp_term}_sigma&quot;,
+        f&quot;{hsgp_term}_ell&quot;,
+        &quot;alpha&quot;,
+        &quot;psi&quot;,
+    ],
+    compact=True,
+    figsize=(12, 9),
+    backend_kwargs={&quot;layout&quot;: &quot;constrained&quot;},
+)
+plt.gcf().suptitle(&quot;Hurdle Gamma + HSGP: Traceplot&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_131_0.png" style="width: 900px;"/>
+</center>
+<p>The model samples well and we do not see divergences.</p>
+<pre class="python"><code>model.predict(idata, kind=&quot;response&quot;, inplace=True)
+
+fig, ax = plt.subplots(figsize=(10, 5))
+az.plot_ppc(idata, ax=ax)
+ax.set(xlim=(0, np.quantile(model_df[&quot;budget_next&quot;], 0.99) * 2))
+ax.set_title(
+    &quot;Hurdle Gamma + HSGP: Posterior Predictive&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_133_0.png" style="width: 800px;"/>
+</center>
+<p>This posterior predictive is much better than the other baseline models.</p>
+</div>
+<div id="roas-effect-on-next-months-budget-2" class="section level3">
+<h3>ROAS Effect on Next Month’s Budget</h3>
+<p>Same recipe as in the previous models; we just swap the model in <code>predict_mu</code>. There is no single ROAS coefficient to inspect anymore: the HSGP basis weights have no individual meaning, so we go straight to grid-based predictions.</p>
+<pre class="python"><code>idata_mu_grid = predict_mu(model, idata, roas_datagrid)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        roas_grid,
+        idata_mu_grid,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma + HSGP: ROAS Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_136_0.png" style="width: 800px;"/>
+</center>
+<p>This model extracts the ROAS effect on next month’s budget with a flexible non-linear curve. The results match what we expected from the problem context: the higher the ROAS, the higher next month’s budget until a point: after a value of approximately <span class="math inline">\(4\)</span> the budget does not grow anymore and starts to decrease.</p>
+<p>Next, we split by cohort age:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for i, (cohort_age, grid_roas) in enumerate(cohort_roas_grids.items()):
+    idata_hsgp_mu_grid_i = predict_mu(model, idata, grid_roas)
+
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            roas_grid,
+            idata_hsgp_mu_grid_i,
+            hdi_prob=hdi_prob,
+            color=f&quot;C{i}&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + 0.2 * j,
+                &quot;label&quot;: f&quot;cohort_age={cohort_age} {hdi_prob: .0%} CI&quot;,
+            },
+            ax=ax,
+        )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma + HSGP
+    ROAS Effect on Next Month&#39;s Budget split by Cohort Age
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_139_0.png" style="width: 800px;"/>
+</center>
+<p>We see the same general shape, but the curves’ amplitude changes with cohort age. The older the cohort, the less sensitive to ROAS changes.</p>
+<p>We do an analogous split by month of year:</p>
+<pre class="python"><code>fig, ax = plt.subplots()
+
+for i, (month_of_year, grid_roas) in enumerate(month_roas_grids.items()):
+    idata_hsgp_mu_grid_i = predict_mu(model, idata, grid_roas)
+
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            roas_grid,
+            idata_hsgp_mu_grid_i,
+            hdi_prob=hdi_prob,
+            color=f&quot;C{i}&quot;,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.2 + 0.2 * j,
+                &quot;label&quot;: f&quot;month_of_year={month_of_year} {hdi_prob: .0%} CI&quot;,
+            },
+            ax=ax,
+        )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(xlabel=&quot;roas&quot;, ylabel=&quot;expected budget next month&quot;)
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma + HSGP
+    ROAS Effect on Next Month&#39;s Budget split by Month of Year
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_142_0.png" style="width: 800px;"/>
+</center>
+<p>Now, we look at the contrast between month-<span class="math inline">\(3\)</span> and month-<span class="math inline">\(9\)</span>. The shape now reflects the curved <span class="math inline">\(\log \mu\)</span> pushed through the exponential link: the difference is non-constant even though the GP is on ROAS alone, because the multiplicative seasonal shift compounds with the GP’s curvature.</p>
+<pre class="python"><code>_diff_hsgp = predict_mu(model, idata, month_roas_grids[month_of_year_0]) - predict_mu(
+    model, idata, month_roas_grids[month_of_year_1]
+)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        roas_grid,
+        _diff_hsgp,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma + HSGP
+    Difference between ROAS Effect on Next Month&#39;s Budget
+    for Month $3$ and Month $9$
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_144_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="cohort-age-effect-on-next-months-budget-2" class="section level3">
+<h3>Cohort Age Effect on Next Month’s Budget</h3>
+<p>This plot does not change much from the previous model. It is just mildy shifted upwards.</p>
+<pre class="python"><code>idata_hsgp_mu_cohort_age_grid = predict_mu(model, idata, cohort_age_datagrid)
+
+fig, ax = plt.subplots()
+
+for j, hdi_prob in enumerate([0.94, 0.5]):
+    az.plot_hdi(
+        cohort_age_grid,
+        idata_hsgp_mu_cohort_age_grid,
+        hdi_prob=hdi_prob,
+        color=&quot;C0&quot;,
+        fill_kwargs={
+            &quot;alpha&quot;: 0.2 + 0.2 * j,
+            &quot;label&quot;: f&quot;{hdi_prob: .0%} CI&quot;,
+        },
+        ax=ax,
+    )
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma + HSGP
+    Cohort Age Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_146_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="month-of-year-effect-on-next-months-budget-2" class="section level3">
+<h3>Month of Year Effect on Next Month’s Budget</h3>
+<p>The month of year effect is also similar to the previous model.</p>
+<pre class="python"><code>idata_hsgp_mu_month_of_year_grid = predict_mu(model, idata, month_of_year_datagrid)
+
+ax, *_ = az.plot_forest(idata_hsgp_mu_month_of_year_grid, combined=True, figsize=(8, 6))
+ax.set_title(
+    &quot;&quot;&quot;Hurdle Gamma + HSGP
+    Month of Year Effect on Next Month&#39;s Budget
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_148_0.png" style="width: 800px;"/>
+</center>
+</div>
+<div id="the-same-answers-via-bambis-interpret-module-1" class="section level3">
+<h3>The same answers via Bambi’s <code>interpret</code> module</h3>
+<p>We introduced this module on the linear baseline, so here we simply point it at the HSGP model. The same <code>plot_predictions</code> and <code>comparisons</code> calls now trace the recovered non-linear ROAS curve with no extra work.</p>
+<pre class="python"><code>fig, ax = plt.subplots(figsize=(12, 6))
+bmb.interpret.plot_predictions(
+    model,
+    idata,
+    conditional={
+        &quot;roas&quot;: roas_grid,
+        &quot;cohort_age&quot;: cohort_age_default,
+        &quot;month_of_year&quot;: month_of_year_default,
+    },
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret.plot_predictions: ROAS effect&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_150_0.png" style="width: 800px;"/>
+</center>
+<pre class="python"><code>fig, ax = plt.subplots()
+bmb.interpret.plot_predictions(
+    model,
+    idata,
+    conditional={
+        &quot;roas&quot;: roas_grid,
+        &quot;cohort_age&quot;: list(cohort_age_grid[::6]),
+        &quot;month_of_year&quot;: month_of_year_default,
+    },
+    ax=ax,
+)
+ax.set_title(
+    &quot;bmb.interpret: ROAS Effect split by Cohort Age&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_151_0.png" style="width: 800px;"/>
+</center>
+<p>We get the exact same results!</p>
+</div>
+</div>
+<div id="model-comparison" class="section level2">
+<h2>Model Comparison</h2>
+<p>In this final section, we compare the three models. We do this across two dimensions:
+1. Out-of-sample generalization, via leave-one-out cross validation (LOO).
+2. Curve recovery: how close are the three recovered ROAS effects to the ground truth on the response scale.</p>
+<div id="leave-one-out-cross-validation" class="section level3">
+<h3>Leave-one-out cross-validation</h3>
+<p>Higher <code>elpd_loo</code> is better. <code>elpd_diff</code> is the gap to the top-ranked model on the same scale, and <code>dse</code> is the standard error of that gap: differences smaller than <span class="math inline">\(\sim 2\)</span> <code>dse</code> are not strongly distinguished.</p>
+<pre class="python"><code>compare_df = az.compare(
+    {
+        &quot;linear_gaussian&quot;: idata_lm,
+        &quot;hgamma_linear&quot;: idata_hgl,
+        &quot;hgamma_hsgp&quot;: idata,
+    },
+    ic=&quot;loo&quot;,
+)
+az.plot_compare(compare_df, insample_dev=False);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_156_0.png" style="width: 800px;"/>
+</center>
+<p>The hurdle-Gamma + HSGP model is the best model, followed by the linear hurdle-Gamma model. The linear Gaussian model is the worst performing model.</p>
+</div>
+<div id="recovered-roas-curves-vs-ground-truth" class="section level3">
+<h3>Recovered ROAS curves vs ground truth</h3>
+<p>LOO ranks models by likelihood. The complementary check is to see, <em>on the response scale</em>, how close each model’s ROAS effect is to the ground-truth curve from the DGP.</p>
+<pre class="python"><code>truth_budget_default = DGP.true_mu(
+    roas=roas_grid,
+    cohort_age=cohort_age_default,
+    month_of_year=month_of_year_default,
+    params=params,
+)
+
+recovered_curves = {
+    &quot;linear_gaussian&quot;: (predict_mu(model_lm, idata_lm, roas_datagrid), &quot;C0&quot;),
+    &quot;hgamma_linear&quot;: (predict_mu(model_hgl, idata_hgl, roas_datagrid), &quot;C1&quot;),
+    &quot;hgamma_hsgp&quot;: (predict_mu(model, idata, roas_datagrid), &quot;C2&quot;),
+}
+
+fig, ax = plt.subplots()
+
+for name, (mu_grid, color) in recovered_curves.items():
+    for j, hdi_prob in enumerate([0.94, 0.5]):
+        az.plot_hdi(
+            roas_grid,
+            mu_grid,
+            hdi_prob=hdi_prob,
+            color=color,
+            fill_kwargs={
+                &quot;alpha&quot;: 0.15 + 0.2 * j,
+                &quot;label&quot;: f&quot;{name} {hdi_prob: .0%} CI&quot;,
+            },
+            ax=ax,
+        )
+ax.plot(
+    roas_grid, truth_budget_default, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;ground truth&quot;
+)
+ax.legend(loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=&quot;expected budget next month&quot;,
+)
+ax.set_title(
+    &quot;&quot;&quot;Recovered ROAS Effect across Models
+    (other features held constant at their mean)
+    &quot;&quot;&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_159_0.png" style="width: 900px;"/>
+</center>
+<p>We clearly see the Hurdle-Gamma + HSGP model is very close to the ground truth.</p>
+</div>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>We worked through three models of increasing flexibility on the same ad-tech panel. Each modeling choice bought us one thing:</p>
+<ul>
+<li><strong>Linear Gaussian</strong> gave us a single regression coefficient for ROAS but the wrong likelihood (allowed negative budgets, missed the zero mass) and the wrong shape (a line where the truth has a peak and a saturation).</li>
+<li><strong>Hurdle Gamma with a linear ROAS coefficient</strong> fixed the likelihood: non-negative response, an explicit zero point-mass through <span class="math inline">\(\psi\)</span>, and a log link that turned the coefficient into a multiplicative effect. The shape was still monotone, missing the peak and the saturation.</li>
+<li><strong>Hurdle Gamma with an HSGP on ROAS</strong> kept the right likelihood and let the data shape the curve. The recovered <span class="math inline">\(\mathbb{E}[\text{budget}_{t+1} \mid \text{roas}_t]\)</span> tracked the true non-linearity, and the LOO comparison ranked it on top.</li>
+</ul>
+<p>Across all three models the <em>interpretation recipe</em> was identical: build a reference grid with <code>datagrid</code>, push it through the posterior with <code>predict_mu</code>, summarize on the response scale. This is the <code>marginaleffects</code> mental model: <strong>predictions</strong> (“what does the model say here?”), <strong>comparisons</strong> (“what changes from A to B?”), and <strong>slopes</strong> (“what is <span class="math inline">\(\partial \hat{Y} / \partial X\)</span> here?”, which we met through <code>bmb.interpret.slopes</code> on the linear baseline rather than by hand, but is the same recipe with a finite-difference twist). Raw coefficients answer the wrong question once you leave identity-link land; data-grid summaries answer the right one.</p>
+<p>For more depth see the book <a href="https://marginaleffects.com/">“Model to Meaning”</a> and the <a href="https://bambinos.github.io/bambi/notebooks/#tools-to-interpret-model-outputs">Bambi <code>interpret</code> module</a>, which ships a one-liner version of every plot we built by hand.</p>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
