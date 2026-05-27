@@ -3328,6 +3328,47 @@ ax.set_title(
 <img src="../images/ads_roas_interpret_files/ads_roas_interpret_151_0.png" style="width: 800px;"/>
 </center>
 <p>We get the exact same results!</p>
+<p>We can also compute the derivative of the ROAS effect with respect to ROAS. That is, the <code>slopes</code> in the previous plot:</p>
+<pre class="python"><code>slopes_df = bmb.interpret.slopes(
+    model,
+    idata,
+    wrt={&quot;roas&quot;: roas_grid},
+    conditional={
+        &quot;cohort_age&quot;: cohort_age_default,
+        &quot;month_of_year&quot;: month_of_year_default,
+    },
+)
+
+slopes_df[&quot;roas&quot;] = slopes_df[&quot;value&quot;].str[0]
+
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.plot(slopes_df[&quot;roas&quot;], slopes_df[&quot;estimate&quot;], color=&quot;C0&quot;)
+ax.fill_between(
+    slopes_df[&quot;roas&quot;],
+    slopes_df[&quot;lower_3.0%&quot;],
+    slopes_df[&quot;upper_97.0%&quot;],
+    color=&quot;C0&quot;,
+    alpha=0.3,
+)
+ax.axhline(0, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=1)
+ax.set(
+    xlabel=&quot;roas&quot;,
+    ylabel=r&quot;$\partial\,\mathrm{budget\_next}\,/\,\partial\,\mathrm{roas}$&quot;,
+)
+ax.set_title(
+    &quot;bmb.interpret.slopes: marginal effect of ROAS&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/ads_roas_interpret_files/ads_roas_interpret_158_0.png" style="width: 800px;"/>
+</center>
+<p>Here we get important information:</p>
+<ul>
+<li>From a ROAS values close to zero, the ROAS effect is negative.</li>
+<li>ROAS values close to <span class="math inline">\(1.5\)</span> have the largest sensitivity to ROAS changes (steeper slope).</li>
+<li>We get a maximum ROAS effect of about <span class="math inline">\(3.5\)</span> and then the effect decreases (negative slope).</li>
+</ul>
 </div>
 </div>
 <div id="model-comparison" class="section level2">
