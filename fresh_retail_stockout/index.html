@@ -89,7 +89,7 @@
       
 
 
-<p>This example is part of the <a href="https://juanitorduz.github.io/numpyro_forecast/">NumPyro Forecast</a> documentation, see <a href="https://juanitorduz.github.io/numpyro_forecast/docs/examples/fresh_retail_stockout.html">here</a></p>
+<p>This example is part of the <a href="https://juanitorduz.github.io/numpyro_forecast/">NumPyro Forecast</a> documentation, see <a href="https://juanitorduz.github.io/numpyro_forecast/docs/examples/fresh_retail_stockout.html">here</a>.</p>
 <hr />
 <p>The <a href="https://huggingface.co/datasets/Dingdong-Inc/FreshRetailNet-50K">FreshRetailNet-50K</a> dataset (<a href="https://arxiv.org/abs/2505.16319">Yang et al., 2025</a>) contains <span class="math inline">\(50{,}000\)</span> daily store-product demand series from fresh retail operations: <span class="math inline">\(90\)</span> days per series, with hourly sales, hourly stockout labels, and promotion, discount, and calendar covariates. The native stockout labels make it a great public benchmark for a classic operational problem: observed sales are a <em>censored</em> version of demand, because a store cannot sell what is not on the shelf.</p>
 <p>We model this with a <strong>multiplicative availability factor</strong>: expected sales factor into a demand component and an availability component. A forecasting model describes what demand would be with the product fully in stock, and a multiplicative factor, a function of the day’s recorded availability with parameters learned from the data, scales that demand down when it was not. In this example the two components are:</p>
