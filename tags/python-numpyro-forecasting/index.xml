@@ -6,8 +6,15 @@
     <description>Recent content in Python, Numpyro, Forecasting on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 19 Apr 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sun, 12 Jul 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Forecasting Retail Demand Under Stockouts</title>
+      <link>/fresh_retail_stockout/</link>
+      <pubDate>Sun, 12 Jul 2026 00:00:00 +0000</pubDate>
+      <guid>/fresh_retail_stockout/</guid>
+      <description>&lt;p&gt;This example is part of the &lt;a href=&#34;https://juanitorduz.github.io/numpyro_forecast/&#34;&gt;NumPyro Forecast&lt;/a&gt; documentation, see &lt;a href=&#34;https://juanitorduz.github.io/numpyro_forecast/docs/examples/fresh_retail_stockout.html&#34;&gt;here&lt;/a&gt;&lt;/p&gt;&#xA;&lt;hr /&gt;&#xA;&lt;p&gt;The &lt;a href=&#34;https://huggingface.co/datasets/Dingdong-Inc/FreshRetailNet-50K&#34;&gt;FreshRetailNet-50K&lt;/a&gt; dataset (&lt;a href=&#34;https://arxiv.org/abs/2505.16319&#34;&gt;Yang et al., 2025&lt;/a&gt;) contains &lt;span class=&#34;math inline&#34;&gt;\(50{,}000\)&lt;/span&gt; daily store-product demand series from fresh retail operations: &lt;span class=&#34;math inline&#34;&gt;\(90\)&lt;/span&gt; days per series, with hourly sales, hourly stockout labels, and promotion, discount, and calendar covariates. The native stockout labels make it a great public benchmark for a classic operational problem: observed sales are a &lt;em&gt;censored&lt;/em&gt; version of demand, because a store cannot sell what is not on the shelf.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Exponential Smoothing with NumPyro: State Space Form</title>
       <link>/exponential_smoothing_numpyro_ssm/</link>
