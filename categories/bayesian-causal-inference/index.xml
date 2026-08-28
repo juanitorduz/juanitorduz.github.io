@@ -6,8 +6,15 @@
     <description>Recent content in Bayesian, Causal Inference on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sat, 11 Apr 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 29 Aug 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/categories/bayesian-causal-inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Structural Causal Models with PathMC</title>
+      <link>/intro_pathmc/</link>
+      <pubDate>Sat, 29 Aug 2026 00:00:00 +0000</pubDate>
+      <guid>/intro_pathmc/</guid>
+      <description>&lt;p&gt;In this notebook we implement some of the ideas of the previous blog post &lt;a href=&#34;https://juanitorduz.github.io/intro_causal_inference_ppl_pymc/&#34;&gt;“Introduction to Causal Inference with PPLs”&lt;/a&gt; using &lt;a href=&#34;https://pathmc.pymc-labs.com/&#34;&gt;PathMC&lt;/a&gt;, a package for structural causal models with Bayesian estimation and interventional simulation via a concise Domain-Specific Language (DSL).&lt;/p&gt;&#xA;&lt;p&gt;In the &lt;a href=&#34;https://juanitorduz.github.io/intro_causal_inference_ppl_pymc/&#34;&gt;previous post&lt;/a&gt; we built a structural causal model for the Lalonde job-training dataset by hand in PyMC, and estimated the average treatment effect (ATE) with the &lt;code&gt;do&lt;/code&gt; operator. Writing the model by hand shows you every prior, every link, and exactly where the intervention removes an edge. It is also repetitive. The treatment equation, the outcome equation, the data containers, and the &lt;code&gt;do&lt;/code&gt;-surgery all follow mechanically from the DAG.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>The Frugal Parameterization for Bayesian Causal Inference in PyMC</title>
       <link>/frugal_parametrization_pymc/</link>
