@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Python, Pymc, Mrp on Dr. Juan Camilo Orduz</title>
+    <link>/tags/python-pymc-mrp/</link>
+    <description>Recent content in Python, Pymc, Mrp on Dr. Juan Camilo Orduz</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 06 Sep 2026 00:00:00 +0000</lastBuildDate>
+    <atom:link href="/tags/python-pymc-mrp/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Multilevel Regression and Poststratification (MRP) in PyMC</title>
+      <link>/mrp_pymc/</link>
+      <pubDate>Sun, 06 Sep 2026 00:00:00 +0000</pubDate>
+      <guid>/mrp_pymc/</guid>
+      <description>&lt;p&gt;On many occasions, I read about Multilevel Regression and Poststratification (MRP) in the context of survey analysis (see for example &lt;a href=&#34;https://bambinos.github.io/bambi/notebooks/mister_p.html&#34;&gt;Multilevel Regression and Post-stratification in Bambi&lt;/a&gt;). It kind of makes sense, because the method is used to combine survey data with a census, and survey data is often biased. However, it was unclear for me how the results of the MRP model depended on the type of census used. In particular, I was unsure about the requirements on the census data and its relation to the target variable. In this notebook, I finally explore this method in detail, following the advice of the &lt;a href=&#34;https://avehtari.github.io/Bayesian-Workflow/&#34;&gt;Bayesian Workflow&lt;/a&gt; book: explicitly generating synthetic data, fitting the model, checking parameter recovery and trying to break the method. In addition, I describe how the MRP method is related to the g-formula of causal inference (a connection I found while discussing this with Claude). I also express the poststratification step in the language of marginal effects, using the &lt;code&gt;datagrid&lt;/code&gt; function of the &lt;a href=&#34;https://marginaleffects.com/&#34;&gt;marginaleffects&lt;/a&gt; package.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

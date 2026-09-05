@@ -1,0 +1,2215 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Multilevel Regression and Poststratification (MRP) in PyMC - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Multilevel Regression and Poststratification (MRP) in PyMC - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">35 min read</span>
+    
+
+    <h1 class="article-title">Multilevel Regression and Poststratification (MRP) in PyMC</h1>
+
+    
+    <span class="article-date">2026-09-06</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>On many occasions, I read about Multilevel Regression and Poststratification (MRP) in the context of survey analysis (see for example <a href="https://bambinos.github.io/bambi/notebooks/mister_p.html">Multilevel Regression and Post-stratification in Bambi</a>). It kind of makes sense, because the method is used to combine survey data with a census, and survey data is often biased. However, it was unclear for me how the results of the MRP model depended on the type of census used. In particular, I was unsure about the requirements on the census data and its relation to the target variable. In this notebook, I finally explore this method in detail, following the advice of the <a href="https://avehtari.github.io/Bayesian-Workflow/">Bayesian Workflow</a> book: explicitly generating synthetic data, fitting the model, checking parameter recovery and trying to break the method. In addition, I describe how the MRP method is related to the g-formula of causal inference (a connection I found while discussing this with Claude). I also express the poststratification step in the language of marginal effects, using the <code>datagrid</code> function of the <a href="https://marginaleffects.com/">marginaleffects</a> package.</p>
+<div id="motivation" class="section level3">
+<h3>Motivation</h3>
+<p>A survey rarely looks like the population it is supposed to describe. Young people answer online polls more often than old people, and loyal customers answer satisfaction surveys more often than unhappy ones. If we take the sample mean, we measure the sample, not the population. Multilevel Regression and Poststratification (MRP) is a two-step method to get from one to the other.</p>
+</div>
+<div id="the-method-tldr" class="section level3">
+<h3>The Method (tl;dr)</h3>
+<p>The idea is to split the question in two.</p>
+<ul>
+<li><p>First, we ask what each <em>type</em> of person answers: we fit a model that predicts the outcome from demographics and geography. Many cells of this cross-classification have few respondents or none, so we fit the model hierarchically and let small cells borrow strength from the rest.</p></li>
+<li><p>Second, we ask how many people of each type there are in the population. We take these counts from a census and average the model predictions with the counts as weights. The survey informs the first step and the census informs the second.</p></li>
+</ul>
+</div>
+<div id="simulated-example" class="section level3">
+<h3>Simulated Example</h3>
+<p>The canonical demonstration of MRP is the 2012 Xbox poll (<a href="https://sites.stat.columbia.edu/gelman/research/published/forecasting-with-nonrepresentative-polls.pdf">Wang, Rothschild, Goel and Gelman, 2015</a>). The respondents were mostly young men, and the poststratified estimates still tracked the election results at the state level. This motivates our synthetic example: we simulate a population and a survey. We model a simple binary variable (“yes” or “no”), indicating the preference for a candidate. We also simulate covariates: age group, ethnicity and state of residence. For each state of residence, we simulate the vote share of a candidate in the previous election. We then generate the survey data by drawing respondents from the population, with a probability that depends on the cell they are in, that is, the stratum defined by state, age group and ethnicity.</p>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<pre class="python"><code>import itertools
+
+import arviz as az
+import graphviz as gr
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import numpy as np
+import polars as pl
+import pymc as pm
+import pymc.dims as pmd
+import xarray as xr
+from marginaleffects import datagrid
+
+seed: int = 42
+rng: np.random.Generator = np.random.default_rng(seed=seed)
+
+HDI_PROB = 0.94
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+az.rcParams[&quot;stats.ci_kind&quot;] = &quot;hdi&quot;
+az.rcParams[&quot;stats.ci_prob&quot;] = HDI_PROB
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+</div>
+<div id="the-problem-and-the-estimand" class="section level2">
+<h2>The Problem and the Estimand</h2>
+<p>Consider a population of <span class="math inline">\(N\)</span> people. We want to know the share of them that would answer “yes” to a question, for example whether they support a candidate. We describe each person by a small set of discrete covariates <span class="math inline">\(X\)</span>, here age group, ethnicity and state of residence. The cross-classification of these covariates partitions the population into <span class="math inline">\(J\)</span> cells. Cell <span class="math inline">\(j\)</span> contains <span class="math inline">\(N_j\)</span> people, so <span class="math inline">\(\sum_{j=1}^{J} N_j = N\)</span>. We know the counts <span class="math inline">\(N_j\)</span> from a census.</p>
+<p>Let <span class="math inline">\(y \in \{0, 1\}\)</span> be the answer of a person. The mean answer inside cell <span class="math inline">\(j\)</span> is</p>
+<p><span class="math display">\[\theta_j = \text{E}[y \mid X = x_j],\]</span></p>
+<p>where <span class="math inline">\(x_j\)</span> denotes the covariate values that define cell <span class="math inline">\(j\)</span>. The quantity we want, the population share, is the count-weighted average of the cell means:</p>
+<p><span class="math display">\[\theta = \frac{\sum_{j=1}^{J} N_j \, \theta_j}{\sum_{j=1}^{J} N_j}.\]</span></p>
+<p>We never observe the whole population. We observe a survey with <span class="math inline">\(n\)</span> respondents, with <span class="math inline">\(n_j\)</span> of them in cell <span class="math inline">\(j\)</span> and <span class="math inline">\(y_j\)</span> of those answering “yes”. The problem is that the probability to respond depends on the cell. In our example young people respond much more often than old people, so the sample has too many young respondents.</p>
+<p>The sample mean is</p>
+<p><span class="math display">\[\bar{y} = \frac{\sum_{j=1}^{J} y_j}{n} = \sum_{j : n_j &gt; 0} \frac{n_j}{n} \, \frac{y_j}{n_j},\]</span></p>
+<p>which weights the observed cell means <span class="math inline">\(y_j / n_j\)</span> by the <em>sample</em> shares <span class="math inline">\(n_j / n\)</span>. The target <span class="math inline">\(\theta\)</span> weights the cell means by the <em>population</em> shares <span class="math inline">\(N_j / N\)</span>. When the two sets of shares differ, <span class="math inline">\(\bar{y}\)</span> is biased, and more respondents do not help.</p>
+<p>The fix follows from the two formulas. We need an estimate of every cell mean <span class="math inline">\(\theta_j\)</span>, also for cells with <span class="math inline">\(n_j\)</span> close to zero, and then we need to average those estimates with the known weights <span class="math inline">\(N_j / N\)</span>. MRP does exactly this: the <em>multilevel regression</em> provides the <span class="math inline">\(\theta_j\)</span>, and the <em>poststratification</em> provides the average. The survey tells us how each type of person answers. The census tells us how many people of each type there are.</p>
+</div>
+<div id="the-mrp-assumption-as-a-causal-dag" class="section level2">
+<h2>The MRP Assumption as a Causal DAG</h2>
+<p>When is it valid to combine the survey and the census in this way? We answer with a causal DAG. Let <span class="math inline">\(I \in \{0, 1\}\)</span> be the response indicator: <span class="math inline">\(I = 1\)</span> if the person is in the survey. All our data is conditional on <span class="math inline">\(I = 1\)</span>. We draw a conditioned node as a box.</p>
+<pre class="python"><code>dag = gr.Digraph()
+
+dag.node(&quot;X&quot;, label=&quot;X\n(age, ethnicity, state)&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+dag.node(&quot;Y&quot;, label=&quot;Y\n(answer)&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+dag.node(
+    &quot;I&quot;, label=&quot;I = 1\n(responded)&quot;, shape=&quot;box&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;
+)
+
+dag.edge(&quot;X&quot;, &quot;I&quot;)
+dag.edge(&quot;X&quot;, &quot;Y&quot;)
+
+dag</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_5_0.svg" style="width: 450px;"/>
+</center>
+<p>In this graph <span class="math inline">\(X\)</span> is a common cause of the response and of the answer. Once <span class="math inline">\(X\)</span> is in the model, conditioning on <span class="math inline">\(I = 1\)</span> opens no path into <span class="math inline">\(Y\)</span>, because <span class="math inline">\(X\)</span> blocks the only route. The assumption is</p>
+<p><span class="math display">\[Y \perp I \mid X,\]</span></p>
+<p>together with a positivity condition: every cell with <span class="math inline">\(N_j &gt; 0\)</span> must have a positive probability to be observed, <span class="math inline">\(\text{P}(I = 1 \mid X = x_j) &gt; 0\)</span>. Under these two conditions the response mechanism can depend on <span class="math inline">\(X\)</span> as strongly as it wants. An unrepresentative sample is not the problem. A sample that is unrepresentative <em>in ways not captured by <span class="math inline">\(X\)</span></em> is the problem. There are two ways this happens.</p>
+<div id="failure-mode-1-the-answer-drives-the-response" class="section level3">
+<h3>Failure mode 1: the answer drives the response</h3>
+<p>People who would answer “yes” respond more often than people who would answer “no”. The arrow <span class="math inline">\(Y \to I\)</span> creates a dependence between <span class="math inline">\(Y\)</span> and <span class="math inline">\(I\)</span> inside every cell. No poststratification frame can fix this, because the bias lives within the cells. This is non-ignorable non-response, and it needs a model of the response mechanism, not a bigger census table.</p>
+<pre class="python"><code>dag = gr.Digraph()
+
+dag.node(&quot;X&quot;, label=&quot;X\n(age, ethnicity, state)&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+dag.node(&quot;Y&quot;, label=&quot;Y\n(answer)&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+dag.node(
+    &quot;I&quot;, label=&quot;I = 1\n(responded)&quot;, shape=&quot;box&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;
+)
+
+dag.edge(&quot;X&quot;, &quot;I&quot;)
+dag.edge(&quot;X&quot;, &quot;Y&quot;)
+dag.edge(&quot;Y&quot;, &quot;I&quot;, color=&quot;red&quot;)
+
+dag</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_8_0.svg" style="width: 450px;"/>
+</center>
+<p>In the simulation below, we will see how we can break the MRP model when this failure mode is present.</p>
+</div>
+<div id="failure-mode-2-an-unmeasured-common-cause" class="section level3">
+<h3>Failure mode 2: an unmeasured common cause</h3>
+<p>A variable <span class="math inline">\(U\)</span> that we did not measure, such as political interest, drives both the response and the answer. Inside a cell defined by <span class="math inline">\(X\)</span>, the path <span class="math inline">\(I \leftarrow U \to Y\)</span> is open, so <span class="math inline">\(Y \not\perp I \mid X\)</span>. The fix is to measure <span class="math inline">\(U\)</span> and to add it to the model <em>and</em> to the frame. This promotes <span class="math inline">\(U\)</span> into <span class="math inline">\(X\)</span> and brings us back to the first graph.</p>
+<p>The last sentence has a practical consequence. We can only poststratify over variables that appear in both the model and the census. A predictor that is not in the frame gives cells we cannot count. A frame variable that is not in the model is pooled implicitly, and its selection bias survives. The frame therefore constrains the regression before we write a single prior. In a real project, the frame comes first.</p>
+<pre class="python"><code>dag = gr.Digraph()
+
+dag.node(&quot;X&quot;, label=&quot;X\n(age, ethnicity, state)&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+dag.node(&quot;Y&quot;, label=&quot;Y\n(answer)&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+dag.node(
+    &quot;I&quot;, label=&quot;I = 1\n(responded)&quot;, shape=&quot;box&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;
+)
+dag.node(
+    &quot;U&quot;,
+    label=&quot;U\n(unobserved, e.g. political interest)&quot;,
+    color=&quot;lightgray&quot;,
+    style=&quot;filled&quot;,
+)
+
+dag.edge(&quot;X&quot;, &quot;I&quot;)
+dag.edge(&quot;X&quot;, &quot;Y&quot;)
+dag.edge(&quot;U&quot;, &quot;I&quot;, color=&quot;red&quot;)
+dag.edge(&quot;U&quot;, &quot;Y&quot;, color=&quot;red&quot;)
+
+dag</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_11_0.svg" style="width: 900px;"/>
+</center>
+</div>
+</div>
+<div id="the-math" class="section level2">
+<h2>The Math</h2>
+<p>Now that the problem statement is clear, we can go into the mathematical details of the model.</p>
+<div id="step-1-multilevel-regression" class="section level3">
+<h3>Step 1: Multilevel Regression</h3>
+<p>We model the “yes” counts at the cell level. Cell <span class="math inline">\(j\)</span> has <span class="math inline">\(n_j\)</span> respondents and <span class="math inline">\(y_j\)</span> of them answer “yes”, so</p>
+<p><span class="math display">\[y_j \sim \text{Binomial}(n_j, \theta_j).\]</span></p>
+<p>Cells without respondents have <span class="math inline">\(n_j = 0\)</span> and do not contribute to the likelihood. Let <span class="math inline">\(a[j]\)</span>, <span class="math inline">\(e[j]\)</span> and <span class="math inline">\(s[j]\)</span> denote the age group, the ethnicity and the state of cell <span class="math inline">\(j\)</span>. We give every level of every factor its own effect and add the effects on the logit scale, where <span class="math inline">\(\text{logit}(\theta) = \log(\theta / (1 - \theta))\)</span>:</p>
+<p><span class="math display">\[\text{logit}(\theta_j) = \alpha_0 + \alpha^{\text{age}}_{a[j]} + \alpha^{\text{eth}}_{e[j]} + \alpha^{\text{state}}_{s[j]}.\]</span></p>
+<p>Here <span class="math inline">\(\alpha_0\)</span> is a global intercept, and <span class="math inline">\(\alpha^{\text{age}}\)</span>, <span class="math inline">\(\alpha^{\text{eth}}\)</span> and <span class="math inline">\(\alpha^{\text{state}}\)</span> are vectors with one entry per level. The entries of a factor share a prior with a common scale, and this is what makes the model <em>multilevel</em>:</p>
+<p><span class="math display">\[\alpha^{\text{age}} \sim \text{ZeroSumNormal}(\sigma_{\text{age}}), \qquad \alpha^{\text{eth}} \sim \text{ZeroSumNormal}(\sigma_{\text{eth}}).\]</span></p>
+<p>A <span class="math inline">\(\text{ZeroSumNormal}(\sigma)\)</span> vector has normal entries with scale <span class="math inline">\(\sigma\)</span> that are constrained to sum to zero. The constraint fixes the location of each factor, so the intercept <span class="math inline">\(\alpha_0\)</span> does not trade off with the level means. For the states we have a group-level predictor <span class="math inline">\(v_s\)</span>, the vote share of the candidate in state <span class="math inline">\(s\)</span> in the previous election, with a slope <span class="math inline">\(\gamma_1\)</span>:</p>
+<p><span class="math display">\[\alpha^{\text{state}}_s \sim \text{Normal}(\gamma_1 v_s, \sigma_{\text{state}}).\]</span></p>
+<p>The scales <span class="math inline">\(\sigma_{\text{age}}\)</span>, <span class="math inline">\(\sigma_{\text{eth}}\)</span> and <span class="math inline">\(\sigma_{\text{state}}\)</span> get <span class="math inline">\(\text{HalfNormal}(1)\)</span> priors and are learned from the data.</p>
+<p>The scales control the partial pooling. A level with many respondents keeps its own estimate. A level with few respondents shrinks toward the pattern implied by the other levels and by <span class="math inline">\(v_s\)</span>. This is what produces a sensible <span class="math inline">\(\theta_j\)</span> for a cell with <span class="math inline">\(n_j = 0\)</span>: the model interpolates between the cell mean, which does not exist, and the additive structure, which does.</p>
+</div>
+<div id="step-2-poststratification" class="section level3">
+<h3>Step 2: Poststratification</h3>
+<p>Once we have the cell probabilities we average them with the census counts:</p>
+<p><span class="math display">\[\theta^{\text{PS}} = \frac{\sum_{j=1}^{J} N_j \, \theta_j}{\sum_{j=1}^{J} N_j}.\]</span></p>
+<p>The same formula gives estimates for subpopulations. Let <span class="math inline">\(J_s\)</span> be the set of cells that belong to state <span class="math inline">\(s\)</span>. The state-level estimate is</p>
+<p><span class="math display">\[\theta^{\text{PS}}_s = \frac{\sum_{j \in J_s} N_j \, \theta_j}{\sum_{j \in J_s} N_j}.\]</span></p>
+<p>In the Bayesian version we compute these sums for every posterior draw of <span class="math inline">\(\{\theta_j\}\)</span>. The result is a posterior distribution over the population quantity that carries the uncertainty of both steps.</p>
+</div>
+<div id="remark-what-changes-if-y-is-continuous" class="section level3">
+<h3>Remark: What Changes if <span class="math inline">\(y\)</span> Is Continuous?</h3>
+<p>Very little. Suppose the outcome is a continuous quantity such as monthly spend, and let <span class="math inline">\(y_i\)</span> be the value for respondent <span class="math inline">\(i\)</span>, who belongs to cell <span class="math inline">\(j[i]\)</span>. We replace the Binomial likelihood with</p>
+<p><span class="math display">\[y_i \sim \text{Normal}(\mu_{j[i]}, \sigma), \qquad \mu_j = \alpha_0 + \alpha^{\text{age}}_{a[j]} + \alpha^{\text{eth}}_{e[j]} + \alpha^{\text{state}}_{s[j]},\]</span></p>
+<p>where <span class="math inline">\(\mu_j\)</span> is the cell mean and <span class="math inline">\(\sigma\)</span> is the residual scale. The priors on the effects stay the same, and the poststratification step averages <span class="math inline">\(\mu_j\)</span> instead of <span class="math inline">\(\theta_j\)</span>. One detail becomes simpler. With the identity link the cell mean is linear in the parameters, so averaging on the outcome scale and on the linear-predictor scale is the same thing. With the logit link above, and with a log link for counts or revenue, the two averages differ, and we must average on the outcome scale.</p>
+</div>
+<div id="mrp-as-regularized-weighting" class="section level3">
+<h3>MRP as Regularized Weighting</h3>
+<p>Classical poststratification weights every respondent in cell <span class="math inline">\(j\)</span> by</p>
+<p><span class="math display">\[w_j = \frac{N_j / N}{n_j / n},\]</span></p>
+<p>the ratio of the population share to the sample share. The weighted mean <span class="math inline">\(\sum_j w_j y_j / n\)</span> is unbiased under the same assumption, but the weights explode for sparse cells and are undefined for empty ones. MRP replaces the observed cell mean <span class="math inline">\(y_j / n_j\)</span> with the model prediction <span class="math inline">\(\theta_j\)</span>. It trades a small amount of bias from the model structure for a large reduction in variance.</p>
+</div>
+</div>
+<div id="poststratification-is-the-g-formula" class="section level2">
+<h2>Poststratification Is the g-Formula</h2>
+<p>The second step of MRP is not a survey trick. It is the same computation as standardization, or the g-formula (<a href="https://miguelhernan.org/whatifbook">Hernán and Robins, 2020</a>, Chapter 13), in causal inference. We make the comparison explicit.</p>
+<p><strong>The causal side.</strong> Let <span class="math inline">\(A \in \{0, 1\}\)</span> be a treatment and let <span class="math inline">\(Y^a\)</span> be the potential outcome, the value of <span class="math inline">\(Y\)</span> a person would have if we set <span class="math inline">\(A = a\)</span>. Let <span class="math inline">\(X\)</span> be the covariates that affect both the treatment and the outcome. The target is <span class="math inline">\(\text{E}[Y^a]\)</span>, the mean outcome if everyone received treatment <span class="math inline">\(a\)</span>. We cannot read it off the data, because in observational data the treated and the untreated differ in <span class="math inline">\(X\)</span>. Three assumptions identify the target: conditional exchangeability <span class="math inline">\(Y^a \perp A \mid X\)</span>, positivity <span class="math inline">\(0 &lt; \text{P}(A = a \mid X = x) &lt; 1\)</span>, and consistency, which says that the observed outcome equals <span class="math inline">\(Y^a\)</span> for the treatment actually received. Then</p>
+<p><span class="math display">\[\text{E}[Y^a] = \sum_x \text{E}[Y \mid A = a, X = x] \, \text{P}(X = x).\]</span></p>
+<p>We fit the conditional mean among the people who had <span class="math inline">\(A = a\)</span> and <span class="math inline">\(X = x\)</span>, and we average it over the distribution of <span class="math inline">\(X\)</span> in the population of interest.</p>
+<p><strong>The survey side.</strong> Now let <span class="math inline">\(I\)</span> be the response indicator. We only see respondents, so the quantity we can estimate is <span class="math inline">\(\text{E}[Y \mid X = x, I = 1]\)</span>. The target is <span class="math inline">\(\text{E}[Y]\)</span> in the whole population. Under <span class="math inline">\(Y \perp I \mid X\)</span> and positivity <span class="math inline">\(\text{P}(I = 1 \mid X = x) &gt; 0\)</span> we get</p>
+<p><span class="math display">\[\text{E}[Y] = \sum_x \text{E}[Y \mid X = x, I = 1] \, \text{P}(X = x), \qquad \text{P}(X = x_j) = \frac{N_j}{N}.\]</span></p>
+<p>This is <span class="math inline">\(\theta^{\text{PS}}\)</span> from Step 2, with <span class="math inline">\(\theta_j\)</span> as the conditional mean and the census shares as <span class="math inline">\(\text{P}(X)\)</span>. It is also the recoverability formula of <a href="https://ftp.cs.ucla.edu/pub/stat_ser/r425.pdf">Bareinboim, Tian and Pearl (2014)</a> for selection bias with external information on <span class="math inline">\(\text{P}(X)\)</span>: the same expression, derived from the graph. The two DAGs below have the same shape.</p>
+<pre class="python"><code>dag = gr.Digraph()
+
+with dag.subgraph(name=&quot;cluster_causal&quot;) as c:
+    c.attr(label=&quot;causal effect&quot;, style=&quot;dashed&quot;, color=&quot;gray&quot;)
+    c.node(&quot;X_c&quot;, label=&quot;X&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+    c.node(&quot;A&quot;, label=&quot;A\n(treatment)&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;)
+    c.node(&quot;Y_c&quot;, label=&quot;Y&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+    c.edge(&quot;X_c&quot;, &quot;A&quot;)
+    c.edge(&quot;X_c&quot;, &quot;Y_c&quot;)
+    c.edge(&quot;A&quot;, &quot;Y_c&quot;)
+
+with dag.subgraph(name=&quot;cluster_survey&quot;) as c:
+    c.attr(label=&quot;survey selection&quot;, style=&quot;dashed&quot;, color=&quot;gray&quot;)
+    c.node(&quot;X_s&quot;, label=&quot;X&quot;, color=&quot;#2a2eec80&quot;, style=&quot;filled&quot;)
+    c.node(
+        &quot;I&quot;, label=&quot;I = 1\n(responded)&quot;, shape=&quot;box&quot;, color=&quot;#fa7c1780&quot;, style=&quot;filled&quot;
+    )
+    c.node(&quot;Y_s&quot;, label=&quot;Y&quot;, color=&quot;#328c0680&quot;, style=&quot;filled&quot;)
+    c.edge(&quot;X_s&quot;, &quot;I&quot;)
+    c.edge(&quot;X_s&quot;, &quot;Y_s&quot;)
+
+dag</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_14_0.svg" style="width: 700px;"/>
+</center>
+<p>In both graphs <span class="math inline">\(X\)</span> is the common cause we adjust for. The differences are the node we act on and one arrow. In the causal case we intervene on <span class="math inline">\(A\)</span> and ask for the outcome under <span class="math inline">\(A = a\)</span>. In the survey case we “intervene” on <span class="math inline">\(I\)</span> and ask for the outcome if everyone had responded. And <span class="math inline">\(I\)</span> has no arrow into <span class="math inline">\(Y\)</span>: responding does not change the answer, so the target is simply <span class="math inline">\(\text{E}[Y]\)</span>.</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>g-formula (causal effect)</th>
+<th>poststratification (MRP)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>target</td>
+<td><span class="math inline">\(\text{E}[Y^a]\)</span></td>
+<td><span class="math inline">\(\text{E}[Y]\)</span> in the population</td>
+</tr>
+<tr class="even">
+<td>what the data can estimate</td>
+<td><span class="math inline">\(\text{E}[Y \mid A = a, X = x]\)</span></td>
+<td><span class="math inline">\(\text{E}[Y \mid X = x, I = 1]\)</span></td>
+</tr>
+<tr class="odd">
+<td>distribution we average over</td>
+<td><span class="math inline">\(\text{P}(X = x)\)</span>, from the sample or from a target population</td>
+<td><span class="math inline">\(N_j / N\)</span>, from the census</td>
+</tr>
+<tr class="even">
+<td>what the adjustment removes</td>
+<td>confounding</td>
+<td>selection bias</td>
+</tr>
+<tr class="odd">
+<td>identifying independence</td>
+<td><span class="math inline">\(Y^a \perp A \mid X\)</span></td>
+<td><span class="math inline">\(Y \perp I \mid X\)</span></td>
+</tr>
+<tr class="even">
+<td>positivity</td>
+<td><span class="math inline">\(0 &lt; \text{P}(A = a \mid X = x) &lt; 1\)</span></td>
+<td><span class="math inline">\(\text{P}(I = 1 \mid X = x_j) &gt; 0\)</span> for all cells with <span class="math inline">\(N_j &gt; 0\)</span></td>
+</tr>
+<tr class="odd">
+<td>typical failure</td>
+<td>an unmeasured confounder <span class="math inline">\(U\)</span></td>
+<td>an unmeasured <span class="math inline">\(U\)</span> with <span class="math inline">\(U \to I\)</span> and <span class="math inline">\(U \to Y\)</span>, or <span class="math inline">\(Y \to I\)</span></td>
+</tr>
+<tr class="even">
+<td>Bayesian computation</td>
+<td>for each draw, predict under <span class="math inline">\(A = a\)</span> for every <span class="math inline">\(x\)</span> and average</td>
+<td>for each draw, predict <span class="math inline">\(\theta_j\)</span> for every cell and average with <span class="math inline">\(N_j\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>Three consequences follow.</p>
+<ol style="list-style-type: decimal">
+<li>The estimand is a nonlinear function of the parameters. We average on the probability scale, not on the logit scale. Priors that look harmless on the <span class="math inline">\(\theta_j\)</span> can matter after the average, exactly as in causal standardization. This is why we compute <span class="math inline">\(\theta^{\text{PS}}\)</span> inside the model, as part of the estimand, and not as post-processing.</li>
+<li>In PyMC both computations are one line. For MRP it is <code>(N * theta).sum() / N.sum()</code> over the cells. For a causal effect it is the mean of the predictions under <code>pm.do</code> over the covariate rows, as in the earlier post <a href="https://juanitorduz.github.io/intro_causal_inference_ppl_pymc/">Introduction to Causal Inference with PPLs</a>.</li>
+<li>We can change the population. If we replace <span class="math inline">\(\text{P}(X)\)</span> by the covariate distribution <span class="math inline">\(\text{P}^*(X)\)</span> of a different target population, we get the transport formula <span class="math inline">\(\sum_x \text{E}[Y \mid X = x, I = 1] \, \text{P}^*(X = x)\)</span>. Poststratifying with a new set of counts <span class="math inline">\(N^*_j\)</span> is the same thing, and we do it below without refitting. An experiment run on a non-representative group of participants needs both adjustments at once: <span class="math inline">\(\sum_x \text{E}[Y \mid A = a, X = x, I = 1] \, \text{P}^*(X = x)\)</span>.</li>
+</ol>
+</div>
+<div id="data-generating-process" class="section level2">
+<h2>Data Generating Process</h2>
+<p>We simulate the population and the survey with PyMC itself, following the pattern of the <a href="https://www.pymc-marketing.io/en/latest/notebooks/mmm/mmm_data_generator.html">PyMC-Marketing data generator</a>. We write the world as a generative model, we fix the true parameters with the <code>do</code> operator, and we take one draw. The truth is a deterministic node of this model, so the true cell probabilities and the true poststratified quantities come out of the same draw as the data.</p>
+<p>We use the <a href="https://www.pymc.io/projects/docs/en/stable/learn/core_notebooks/dims_module.html"><code>pymc.dims</code> module</a> for the model. Every variable carries named dimensions, arithmetic aligns by name, and reductions are by name. The frame is a three-dimensional array with dimensions <code>age</code>, <code>eth</code> and <code>state</code>, and we never write an index array.</p>
+<p>The generative model has four parts.</p>
+<ol style="list-style-type: decimal">
+<li>The census. The population counts <span class="math inline">\(N_j\)</span> are drawn once from a log-normal distribution and then treated as known. The state-level predictor <span class="math inline">\(v_s\)</span> is drawn once too.</li>
+<li>The answers. The true cell probabilities <span class="math inline">\(\theta_j\)</span> follow the additive logit model of Step 1.</li>
+<li>The response mechanism. The probability that a person responds, <span class="math inline">\(\pi_j\)</span>, is a logistic function of an age score and an ethnicity score, with a coefficient for the state that we fix at zero. The response therefore depends on age and ethnicity only, which is the first DAG by construction. The probability that a given respondent comes from cell <span class="math inline">\(j\)</span> is <span class="math inline">\(p_j \propto \pi_j N_j\)</span>, and with <span class="math inline">\(n\)</span> respondents in total the expected number in cell <span class="math inline">\(j\)</span> is <span class="math inline">\(n \, p_j\)</span>.</li>
+<li>The counts. We draw the “yes” and the “no” counts of cell <span class="math inline">\(j\)</span> as independent Poisson variables with means <span class="math inline">\(n \, p_j \, \theta_j\)</span> and <span class="math inline">\(n \, p_j \, (1 - \theta_j)\)</span>. The total <span class="math inline">\(n_j\)</span> is then Poisson with mean <span class="math inline">\(n \, p_j\)</span>, and given <span class="math inline">\(n_j\)</span> the “yes” count is <span class="math inline">\(\text{Binomial}(n_j, \theta_j)\)</span>, which is the likelihood of Step 1.</li>
+</ol>
+<p>The argument <code>response_ratio</code> multiplies the mean of the “yes” count. With <code>response_ratio=1.0</code> the response does not depend on the answer. We use a value above one later to break the assumption on purpose.</p>
+<pre class="python"><code>ages = [&quot;18-29&quot;, &quot;30-44&quot;, &quot;45-64&quot;, &quot;65+&quot;]
+eths = [&quot;white&quot;, &quot;black&quot;, &quot;hispanic&quot;, &quot;other&quot;]
+states = [f&quot;S{i:02d}&quot; for i in range(12)]
+
+coords = {&quot;age&quot;: ages, &quot;eth&quot;: eths, &quot;state&quot;: states}
+frame_dims = (&quot;age&quot;, &quot;eth&quot;, &quot;state&quot;)
+
+n_respondents = 1_500
+
+
+def make_generative_model(response_ratio: float = 1.0) -&gt; pm.Model:
+    with pm.Model(coords=coords) as model:
+        # census: population counts per cell and a state-level predictor
+        N = pmd.LogNormal(&quot;N&quot;, mu=np.log(50_000), sigma=0.7, dims=frame_dims)  # noqa: N806
+        v = pmd.Normal(&quot;v&quot;, mu=0, sigma=1, dims=&quot;state&quot;)
+
+        # parameters of the answer model, fixed below with the do operator
+        a0 = pmd.Normal(&quot;a0&quot;, mu=0, sigma=1)
+        b_age = pmd.Normal(&quot;b_age&quot;, mu=0, sigma=1, dims=&quot;age&quot;)
+        b_eth = pmd.Normal(&quot;b_eth&quot;, mu=0, sigma=1, dims=&quot;eth&quot;)
+        g1 = pmd.Normal(&quot;g1&quot;, mu=0, sigma=1)
+        s_state = pmd.HalfNormal(&quot;s_state&quot;, sigma=1)
+        b_state = pmd.Normal(&quot;b_state&quot;, mu=g1 * v, sigma=s_state, dims=&quot;state&quot;)
+
+        # true cell probabilities and true poststratified quantities
+        theta = pmd.Deterministic(
+            &quot;theta&quot;, pmd.math.sigmoid(a0 + b_age + b_eth + b_state)
+        )
+        pmd.Deterministic(&quot;theta_ps&quot;, (N * theta).sum(frame_dims) / N.sum(frame_dims))
+        pmd.Deterministic(
+            &quot;theta_ps_state&quot;, (N * theta).sum((&quot;age&quot;, &quot;eth&quot;)) / N.sum((&quot;age&quot;, &quot;eth&quot;))
+        )
+
+        # response mechanism: c_state = 0, so it depends on age and ethnicity only
+        c0 = pmd.Normal(&quot;c0&quot;, mu=0, sigma=1)
+        c_age = pmd.Normal(&quot;c_age&quot;, mu=0, sigma=1)
+        c_eth = pmd.Normal(&quot;c_eth&quot;, mu=0, sigma=1)
+        c_state = pmd.Normal(&quot;c_state&quot;, mu=0, sigma=1)
+
+        age_score = pmd.as_xtensor(np.arange(len(ages), dtype=float), dims=(&quot;age&quot;,))
+        eth_score = pmd.as_xtensor(np.arange(len(eths), dtype=float), dims=(&quot;eth&quot;,))
+        state_score = pmd.as_xtensor(
+            np.arange(len(states), dtype=float), dims=(&quot;state&quot;,)
+        )
+        propensity = pmd.math.sigmoid(
+            c0 + c_age * age_score + c_eth * eth_score + c_state * state_score
+        )
+        p_sel = pmd.Deterministic(
+            &quot;p_sel&quot;, (propensity * N) / (propensity * N).sum(frame_dims)
+        )
+
+        # &quot;yes&quot; and &quot;no&quot; counts per cell
+        n_yes = pmd.Poisson(&quot;n_yes&quot;, mu=n_respondents * p_sel * theta * response_ratio)
+        n_no = pmd.Poisson(&quot;n_no&quot;, mu=n_respondents * p_sel * (1 - theta))
+        pmd.Deterministic(&quot;n&quot;, n_yes + n_no)
+
+    return model
+
+
+generative_model = make_generative_model()
+
+pm.model_to_graphviz(generative_model)</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_17_0.svg" style="width: 1000px;"/>
+</center>
+<p>We fix the parameters of the answer model and of the response mechanism at their true values with <code>pm.do</code>. The census, the state effects and the counts remain random, and we draw them once.</p>
+<pre class="python"><code>true_values = {
+    &quot;a0&quot;: -0.2,
+    &quot;b_age&quot;: np.array([-0.8, -0.2, 0.3, 0.9]),
+    &quot;b_eth&quot;: np.array([0.5, -1.2, -0.4, 0.1]),
+    &quot;g1&quot;: 0.7,
+    &quot;s_state&quot;: 0.3,
+    &quot;c0&quot;: 2.0,
+    &quot;c_age&quot;: -1.0,
+    &quot;c_eth&quot;: -0.6,
+    &quot;c_state&quot;: 0.0,
+}
+
+generative_model_true = pm.do(generative_model, true_values)
+
+pm.model_to_graphviz(generative_model_true)</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_19_0.svg" style="width: 1000px;"/>
+</center>
+<pre class="python"><code>with generative_model_true:
+    simulation = pm.sample_prior_predictive(draws=1, random_seed=rng)
+
+world = simulation[&quot;prior&quot;].to_dataset().sel(chain=0, draw=0)
+
+N_cell = np.round(world[&quot;N&quot;].to_numpy()).astype(int)
+v_state = world[&quot;v&quot;].to_numpy()
+n_cell = world[&quot;n&quot;].to_numpy().astype(int)
+y_cell = world[&quot;n_yes&quot;].to_numpy().astype(int)
+
+theta_true = world[&quot;theta&quot;].to_numpy()
+theta_ps_true = world[&quot;theta_ps&quot;].item()
+theta_ps_state_true = world[&quot;theta_ps_state&quot;].to_numpy()
+
+print(
+    f&quot;cells: {N_cell.size}, population: {N_cell.sum():,}, respondents: {n_cell.sum():,}&quot;
+)
+print(f&quot;cells without respondents: {(n_cell == 0).sum()}&quot;)
+print(f&quot;true population share: {theta_ps_true:.4f}&quot;)</code></pre>
+<pre><code>Sampling: [N, b_state, n_no, n_yes, v]
+
+
+cells: 192, population: 12,823,179, respondents: 1,510
+cells without respondents: 11
+true population share: 0.4172</code></pre>
+<p>The poststratification frame is the long table of cells with their population counts. In a real project this table comes first, and its counts come from a census or a large reference survey. Here we add the survey counts and the true probabilities to the same table.</p>
+<pre class="python"><code>frame = pl.DataFrame(
+    data=list(itertools.product(ages, eths, states)),
+    schema=[&quot;age&quot;, &quot;eth&quot;, &quot;state&quot;],
+    orient=&quot;row&quot;,
+).with_columns(
+    N=N_cell.ravel(),
+    n=n_cell.ravel(),
+    y=y_cell.ravel(),
+    theta_true=theta_true.ravel(),
+)
+
+frame.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<p><small>shape: (5, 7)</small></p>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+age
+</th>
+<th>
+eth
+</th>
+<th>
+state
+</th>
+<th>
+N
+</th>
+<th>
+n
+</th>
+<th>
+y
+</th>
+<th>
+theta_true
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S00"
+</td>
+<td>
+26698
+</td>
+<td>
+9
+</td>
+<td>
+7
+</td>
+<td>
+0.622136
+</td>
+</tr>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S01"
+</td>
+<td>
+68307
+</td>
+<td>
+12
+</td>
+<td>
+3
+</td>
+<td>
+0.416046
+</td>
+</tr>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S02"
+</td>
+<td>
+30479
+</td>
+<td>
+10
+</td>
+<td>
+1
+</td>
+<td>
+0.216148
+</td>
+</tr>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S03"
+</td>
+<td>
+20549
+</td>
+<td>
+10
+</td>
+<td>
+2
+</td>
+<td>
+0.260268
+</td>
+</tr>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S04"
+</td>
+<td>
+14116
+</td>
+<td>
+2
+</td>
+<td>
+0
+</td>
+<td>
+0.496976
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>The sample is heavily skewed by construction. We compare the population shares with the sample shares by age group.</p>
+<pre class="python"><code>composition = (
+    frame.group_by(&quot;age&quot;, maintain_order=True)
+    .agg(pl.col(&quot;N&quot;).sum(), pl.col(&quot;n&quot;).sum())
+    .with_columns(
+        population_share=pl.col(&quot;N&quot;) / pl.col(&quot;N&quot;).sum(),
+        sample_share=pl.col(&quot;n&quot;) / pl.col(&quot;n&quot;).sum(),
+    )
+)
+
+composition</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (4, 5)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+age
+</th>
+<th>
+N
+</th>
+<th>
+n
+</th>
+<th>
+population_share
+</th>
+<th>
+sample_share
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+2502182
+</td>
+<td>
+544
+</td>
+<td>
+0.19513
+</td>
+<td>
+0.360265
+</td>
+</tr>
+<tr>
+<td>
+"30-44"
+</td>
+<td>
+3973761
+</td>
+<td>
+562
+</td>
+<td>
+0.309889
+</td>
+<td>
+0.372185
+</td>
+</tr>
+<tr>
+<td>
+"45-64"
+</td>
+<td>
+3241041
+</td>
+<td>
+277
+</td>
+<td>
+0.252749
+</td>
+<td>
+0.183444
+</td>
+</tr>
+<tr>
+<td>
+"65+"
+</td>
+<td>
+3106195
+</td>
+<td>
+127
+</td>
+<td>
+0.242233
+</td>
+<td>
+0.084106
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>fig, axes = plt.subplots(
+    nrows=1, ncols=2, figsize=(10, 6), sharey=True, layout=&quot;constrained&quot;
+)
+
+for ax, factor in zip(axes, [&quot;age&quot;, &quot;eth&quot;], strict=True):
+    shares = (
+        frame.group_by(factor, maintain_order=True)
+        .agg(pl.col(&quot;N&quot;).sum(), pl.col(&quot;n&quot;).sum())
+        .with_columns(
+            population=pl.col(&quot;N&quot;) / pl.col(&quot;N&quot;).sum(),
+            sample=pl.col(&quot;n&quot;) / pl.col(&quot;n&quot;).sum(),
+        )
+    )
+    x = np.arange(shares.height)
+    ax.bar(x - 0.2, shares[&quot;population&quot;], width=0.4, color=&quot;C0&quot;, label=&quot;population&quot;)
+    ax.bar(x + 0.2, shares[&quot;sample&quot;], width=0.4, color=&quot;C1&quot;, label=&quot;sample&quot;)
+    ax.set_xticks(x, shares[factor].to_list())
+    ax.set(xlabel=factor)
+    ax.legend()
+
+axes[0].set(ylabel=&quot;share&quot;)
+axes[0].yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
+
+
+fig.suptitle(
+    &quot;The sample does not look like the population&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_25_0.png" style="width: 900px;"/>
+</center>
+<p>Because the young respond more and, in this world, the young lean “no”, the raw sample mean is biased downward.</p>
+<pre class="python"><code>raw_mean = y_cell.sum() / n_cell.sum()
+
+print(f&quot;raw sample mean : {raw_mean:.4f}&quot;)
+print(f&quot;true value      : {theta_ps_true:.4f}&quot;)
+print(f&quot;bias            : {raw_mean - theta_ps_true:+.4f}&quot;)</code></pre>
+<pre><code>raw sample mean : 0.3656
+true value      : 0.4172
+bias            : -0.0516</code></pre>
+</div>
+<div id="the-mrp-model" class="section level2">
+<h2>The MRP Model</h2>
+<p>The model follows Step 1 and Step 2, with three implementation choices.</p>
+<ul>
+<li><code>ZeroSumNormal</code> priors on the age and ethnicity effects. Without the constraint the intercept and the level means trade off freely, and the sampler wanders along that ridge.</li>
+<li>Non-centered state effects: <code>a_state = g1 * v + s_state * z_state</code> with <code>z_state</code> standard normal. This keeps the funnel geometry away from NUTS when the state-level scale is small.</li>
+<li>Poststratification inside the model. The linear predictor is computed for <em>all</em> cells on the <code>age x eth x state</code> grid, so the same tensor serves the likelihood and the poststratification. The two estimands are <code>Deterministic</code> nodes. Cells without respondents enter the likelihood with <span class="math inline">\(n_j = 0\)</span> and contribute nothing, but they still receive a <span class="math inline">\(\theta_j\)</span> and a weight <span class="math inline">\(N_j\)</span>.</li>
+</ul>
+<p>With <code>pymc.dims</code>, the sum <code>a0 + a_age + a_eth + a_state</code> broadcasts by dimension name to the full grid, and <code>.sum(("age", "eth"))</code> collapses the grid to one value per state. The population counts are <code>pmd.Data</code>, so we can replace them later without refitting. The dims module does not include a Binomial distribution yet, so for the likelihood we convert to regular tensors with <code>.values</code> and use <code>pm.Binomial</code>.</p>
+<pre class="python"><code>def make_mrp_model(
+    N: np.ndarray,  # noqa: N803
+    v: np.ndarray,
+    n: np.ndarray,
+    y: np.ndarray,
+) -&gt; pm.Model:
+    with pm.Model(coords=coords) as model:
+        # data: census counts, state-level predictor and respondents per cell
+        N_data = pmd.Data(&quot;N&quot;, N.astype(float), dims=frame_dims)  # noqa: N806
+        v_data = pmd.Data(&quot;v&quot;, v, dims=&quot;state&quot;)
+        n_data = pmd.Data(&quot;n&quot;, n, dims=frame_dims)
+
+        # priors
+        a0 = pmd.Normal(&quot;a0&quot;, mu=0, sigma=1.5)
+        s_age = pmd.HalfNormal(&quot;s_age&quot;, sigma=1)
+        s_eth = pmd.HalfNormal(&quot;s_eth&quot;, sigma=1)
+        s_state = pmd.HalfNormal(&quot;s_state&quot;, sigma=1)
+        a_age = pmd.ZeroSumNormal(&quot;a_age&quot;, sigma=s_age, core_dims=&quot;age&quot;, dims=&quot;age&quot;)
+        a_eth = pmd.ZeroSumNormal(&quot;a_eth&quot;, sigma=s_eth, core_dims=&quot;eth&quot;, dims=&quot;eth&quot;)
+        g1 = pmd.Normal(&quot;g1&quot;, mu=0, sigma=1)
+        z_state = pmd.Normal(&quot;z_state&quot;, mu=0, sigma=1, dims=&quot;state&quot;)
+        a_state = pmd.Deterministic(&quot;a_state&quot;, g1 * v_data + s_state * z_state)
+
+        # step 1: the conditional surface over all cells
+        eta = (a0 + a_age + a_eth + a_state).transpose(*frame_dims)
+        theta = pmd.Deterministic(&quot;theta&quot;, pmd.math.sigmoid(eta), dims=frame_dims)
+
+        # step 2: poststratification inside the model
+        pmd.Deterministic(
+            &quot;theta_ps&quot;, (N_data * theta).sum(frame_dims) / N_data.sum(frame_dims)
+        )
+        pmd.Deterministic(
+            &quot;theta_ps_state&quot;,
+            (N_data * theta).sum((&quot;age&quot;, &quot;eth&quot;)) / N_data.sum((&quot;age&quot;, &quot;eth&quot;)),
+        )
+
+        # likelihood: the dims module has no Binomial yet, so we use regular tensors
+        pm.Binomial(
+            &quot;y&quot;, n=n_data.values, logit_p=eta.values, observed=y, dims=frame_dims
+        )
+
+    return model
+
+
+mrp_model = make_mrp_model(N=N_cell, v=v_state, n=n_cell, y=y_cell)
+
+pm.model_to_graphviz(mrp_model)</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_29_0.svg" style="width: 1000px;"/>
+</center>
+<div id="prior-predictive-check" class="section level3">
+<h3>Prior Predictive Check</h3>
+<p>Before we look at the data we check what the priors say about the estimand.</p>
+<pre class="python"><code>with mrp_model:
+    prior_predictive = pm.sample_prior_predictive(draws=1_000, random_seed=rng)
+
+pc = az.plot_dist(
+    prior_predictive,
+    group=&quot;prior&quot;,
+    var_names=[&quot;theta_ps&quot;],
+    figure_kwargs={&quot;figsize&quot;: (10, 6)},
+)
+pc.viz[&quot;figure&quot;].item().suptitle(
+    &quot;Prior distribution of the poststratified share&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<pre><code>Sampling: [a0, a_age, a_eth, g1, s_age, s_eth, s_state, y, z_state]</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_31_1.png" style="width: 900px;"/>
+</center>
+<p>Overall, the induced prior on <span class="math inline">\(\theta^{\text{PS}}\)</span> is wide, which is what we want from weakly informative priors on the logit scale.</p>
+</div>
+</div>
+<div id="model-fit-and-diagnostics" class="section level2">
+<h2>Model Fit and Diagnostics</h2>
+<p>We now fit the model to the data.</p>
+<pre class="python"><code>with mrp_model:
+    idata = pm.sample(
+        draws=1_000,
+        tune=1_000,
+        chains=4,
+        random_seed=rng,
+        progressbar=False,
+    )
+
+idata[&quot;prior&quot;] = prior_predictive[&quot;prior&quot;]</code></pre>
+<pre><code>NUTS[nutpie]: [a0, s_age, s_eth, s_state, a_age, a_eth, g1, z_state]</code></pre>
+<p>Let’s see some diagnostics.</p>
+<pre class="python"><code>az.diagnose(idata);</code></pre>
+<pre><code>Divergences
+No divergent transitions found.
+
+E-BFMI
+E-BFMI satisfactory for all chains.
+
+ESS
+Effective sample size satisfactory for all parameters.
+
+R-hat
+R-hat values satisfactory for all parameters.
+
+Processing complete, no problems detected.</code></pre>
+<pre class="python"><code>var_names = [&quot;a0&quot;, &quot;g1&quot;, &quot;s_age&quot;, &quot;s_eth&quot;, &quot;s_state&quot;, &quot;theta_ps&quot;]
+
+az.summary(idata, var_names=var_names, ci_prob=HDI_PROB, ci_kind=&quot;hdi&quot;)</code></pre>
+<center>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th>
+</th>
+<th>
+mean
+</th>
+<th>
+sd
+</th>
+<th>
+hdi94_lb
+</th>
+<th>
+hdi94_ub
+</th>
+<th>
+ess_bulk
+</th>
+<th>
+ess_tail
+</th>
+<th>
+r_hat
+</th>
+<th>
+mcse_mean
+</th>
+<th>
+mcse_sd
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>
+a0
+</th>
+<td>
+-0.262
+</td>
+<td>
+0.103
+</td>
+<td>
+-0.46
+</td>
+<td>
+-0.068
+</td>
+<td>
+1496
+</td>
+<td>
+1660
+</td>
+<td>
+1.00
+</td>
+<td>
+0.0027
+</td>
+<td>
+0.0022
+</td>
+</tr>
+<tr>
+<th>
+g1
+</th>
+<td>
+0.943
+</td>
+<td>
+0.106
+</td>
+<td>
+0.74
+</td>
+<td>
+1.1
+</td>
+<td>
+1391
+</td>
+<td>
+1672
+</td>
+<td>
+1.00
+</td>
+<td>
+0.0029
+</td>
+<td>
+0.0024
+</td>
+</tr>
+<tr>
+<th>
+s_age
+</th>
+<td>
+0.98
+</td>
+<td>
+0.37
+</td>
+<td>
+0.47
+</td>
+<td>
+1.8
+</td>
+<td>
+4298
+</td>
+<td>
+3035
+</td>
+<td>
+1.00
+</td>
+<td>
+0.0058
+</td>
+<td>
+0.0057
+</td>
+</tr>
+<tr>
+<th>
+s_eth
+</th>
+<td>
+0.91
+</td>
+<td>
+0.36
+</td>
+<td>
+0.43
+</td>
+<td>
+1.8
+</td>
+<td>
+4410
+</td>
+<td>
+3060
+</td>
+<td>
+1.00
+</td>
+<td>
+0.0058
+</td>
+<td>
+0.0058
+</td>
+</tr>
+<tr>
+<th>
+s_state
+</th>
+<td>
+0.199
+</td>
+<td>
+0.107
+</td>
+<td>
+0.019
+</td>
+<td>
+0.42
+</td>
+<td>
+775
+</td>
+<td>
+700
+</td>
+<td>
+1.00
+</td>
+<td>
+0.0037
+</td>
+<td>
+0.0028
+</td>
+</tr>
+<tr>
+<th>
+theta_ps
+</th>
+<td>
+0.4301
+</td>
+<td>
+0.0142
+</td>
+<td>
+0.4
+</td>
+<td>
+0.46
+</td>
+<td>
+2545
+</td>
+<td>
+2989
+</td>
+<td>
+1.00
+</td>
+<td>
+0.00028
+</td>
+<td>
+0.0002
+</td>
+</tr>
+</tbody>
+</table>
+</center>
+<pre class="python"><code>pc = az.plot_trace_dist(idata, var_names=var_names, figure_kwargs={&quot;figsize&quot;: (12, 10)})
+pc.viz[&quot;figure&quot;].item().suptitle(&quot;Trace&quot;, fontsize=18, fontweight=&quot;bold&quot;, y=1.05);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_38_0.png" style="width: 900px;"/>
+</center>
+<p>Overall, the model diagnostics look good.</p>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<div id="population-share" class="section level3">
+<h3>Population Share</h3>
+<p>We compare the posterior of <span class="math inline">\(\theta^{\text{PS}}\)</span> with the truth and with the raw sample mean.</p>
+<pre class="python"><code>pc = az.plot_dist(idata, var_names=[&quot;theta_ps&quot;], figure_kwargs={&quot;figsize&quot;: (10, 6)})
+az.add_lines(
+    pc,
+    values={&quot;theta_ps&quot;: theta_ps_true},
+    visuals={&quot;ref_line&quot;: {&quot;color&quot;: &quot;C2&quot;, &quot;label&quot;: &quot;truth&quot;}},
+)
+az.add_lines(
+    pc,
+    values={&quot;theta_ps&quot;: raw_mean},
+    visuals={
+        &quot;ref_line&quot;: {&quot;color&quot;: &quot;C3&quot;, &quot;linestyle&quot;: &quot;--&quot;, &quot;label&quot;: &quot;raw sample mean&quot;}
+    },
+)
+pc.viz[&quot;dist&quot;][&quot;theta_ps&quot;].item().set_label(&quot;MRP posterior&quot;)
+ax = pc.get_target(&quot;theta_ps&quot;, {})
+ax.legend(loc=&quot;upper right&quot;)
+pc.viz[&quot;figure&quot;].item().suptitle(
+    &quot;MRP recovers the population share, the raw mean does not&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_41_0.png" style="width: 900px;"/>
+</center>
+<p>We see that the MRP estimate is close to the true value.</p>
+</div>
+<div id="state-level-estimates" class="section level3">
+<h3>State-Level Estimates</h3>
+<p>This is where MRP earns its reputation. Some states have fewer than one hundred respondents spread over sixteen cells, but their estimates borrow strength from the national pattern and from the state-level predictor <span class="math inline">\(v_s\)</span>. We compare the posterior of <span class="math inline">\(\theta^{\text{PS}}_s\)</span> with the truth and with the raw mean of the respondents of each state. The labels show the number of respondents per state.</p>
+<pre class="python"><code>n_state = n_cell.sum(axis=(0, 1))
+y_state = y_cell.sum(axis=(0, 1))
+raw_mean_state = np.divide(
+    y_state, n_state, out=np.full(n_state.shape, np.nan), where=n_state &gt; 0
+)
+
+state_labels = [f&quot;{state} (n={n})&quot; for state, n in zip(states, n_state, strict=True)]
+
+
+posterior_shape = (
+    idata[&quot;posterior&quot;].sizes[&quot;chain&quot;],
+    idata[&quot;posterior&quot;].sizes[&quot;draw&quot;],
+    len(states),
+)
+
+
+def as_state_datatree(
+    values: np.ndarray, var_name: str = &quot;theta_ps_state&quot;
+) -&gt; xr.DataTree:
+    &quot;&quot;&quot;Wrap state-level values as a posterior group with dimensions (chain, draw, state).&quot;&quot;&quot;  # noqa: E501
+    return az.from_dict(
+        {&quot;posterior&quot;: {var_name: np.broadcast_to(values, posterior_shape)}},
+        dims={var_name: [&quot;state&quot;]},
+        coords={&quot;state&quot;: state_labels},
+    )
+
+
+comparison = {
+    &quot;MRP&quot;: as_state_datatree(idata[&quot;posterior&quot;][&quot;theta_ps_state&quot;].to_numpy()),
+    &quot;truth&quot;: as_state_datatree(theta_ps_state_true),
+    &quot;raw mean&quot;: as_state_datatree(raw_mean_state),
+}
+
+pc = az.plot_forest(
+    comparison,
+    var_names=[&quot;theta_ps_state&quot;],
+    combined=True,
+    figure_kwargs={&quot;figsize&quot;: (12, 7)},
+)
+pc.add_legend(&quot;model&quot;, title_fontsize=16, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+pc.viz[&quot;figure&quot;].item().suptitle(
+    &quot;State-level estimates&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_44_0.png" style="width: 1000px;"/>
+</center>
+</div>
+</div>
+<div id="retargeting-fit-once-poststratify-many-times" class="section level2">
+<h2>Retargeting: Fit Once, Poststratify Many Times</h2>
+<p>The conditional surface <span class="math inline">\(\theta_j\)</span> is a property of the world. The weights <span class="math inline">\(N_j\)</span> describe which population we care about. Because the counts are <code>pmd.Data</code>, we can swap them and recompute the deterministic nodes for every posterior draw without sampling again. This is the transport formula of the g-formula section, with the new counts in the role of <span class="math inline">\(\text{P}^*(X)\)</span>.</p>
+<p>As an example we take a hypothetical population with a much older age structure.</p>
+<pre class="python"><code>age_multiplier = np.array([0.5, 0.8, 1.3, 2.0])
+N_target = N_cell * age_multiplier[:, None, None]
+theta_ps_target_true = np.average(theta_true, weights=N_target)
+
+with mrp_model:
+    pm.set_data({&quot;N&quot;: N_target.astype(float)})
+    posterior_target = pm.compute_deterministics(
+        idata[&quot;posterior&quot;].to_dataset(),
+        var_names=[&quot;theta_ps&quot;, &quot;theta_ps_state&quot;],
+        merge_dataset=False,
+        progressbar=False,
+    )
+    pm.set_data({&quot;N&quot;: N_cell.astype(float)})</code></pre>
+<p>We summarize the posterior of <span class="math inline">\(\theta^{\text{PS}}\)</span> under both sets of counts and compare it with the true value of each population.</p>
+<pre class="python"><code>posteriors = {
+    &quot;original population&quot;: idata[&quot;posterior&quot;].to_dataset(),
+    &quot;older population&quot;: posterior_target,
+}
+truths = {
+    &quot;original population&quot;: theta_ps_true,
+    &quot;older population&quot;: theta_ps_target_true,
+}
+
+rows = []
+for name, posterior in posteriors.items():
+    hdi = az.hdi(posterior, var_names=[&quot;theta_ps&quot;], prob=HDI_PROB)[&quot;theta_ps&quot;]
+    rows.append(
+        {
+            &quot;population&quot;: name,
+            &quot;mrp_mean&quot;: posterior[&quot;theta_ps&quot;].mean().item(),
+            &quot;hdi_lower&quot;: hdi.sel(ci_bound=&quot;lower&quot;).item(),
+            &quot;hdi_upper&quot;: hdi.sel(ci_bound=&quot;upper&quot;).item(),
+            &quot;truth&quot;: truths[name],
+        }
+    )
+
+retargeting = pl.DataFrame(rows)
+
+retargeting</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (2, 5)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+population
+</th>
+<th>
+mrp_mean
+</th>
+<th>
+hdi_lower
+</th>
+<th>
+hdi_upper
+</th>
+<th>
+truth
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"original population"
+</td>
+<td>
+0.430068
+</td>
+<td>
+0.401549
+</td>
+<td>
+0.454983
+</td>
+<td>
+0.417201
+</td>
+</tr>
+<tr>
+<td>
+"older population"
+</td>
+<td>
+0.492859
+</td>
+<td>
+0.455493
+</td>
+<td>
+0.528725
+</td>
+<td>
+0.474067
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>population_labels = list(posteriors)
+theta_ps_populations = np.stack(
+    [posterior[&quot;theta_ps&quot;].to_numpy() for posterior in posteriors.values()], axis=-1
+)
+population_shape = (*theta_ps_populations.shape[:2], len(population_labels))
+
+
+def as_population_datatree(values: np.ndarray) -&gt; xr.DataTree:
+    &quot;&quot;&quot;Wrap population-level values as a posterior group with dimensions (chain, draw, population).&quot;&quot;&quot;  # noqa: E501
+    return az.from_dict(
+        {&quot;posterior&quot;: {&quot;theta_ps&quot;: np.broadcast_to(values, population_shape)}},
+        dims={&quot;theta_ps&quot;: [&quot;population&quot;]},
+        coords={&quot;population&quot;: population_labels},
+    )
+
+
+comparison_populations = {
+    &quot;MRP&quot;: as_population_datatree(theta_ps_populations),
+    &quot;truth&quot;: as_population_datatree(np.array(list(truths.values()))),
+}
+
+pc = az.plot_forest(
+    comparison_populations,
+    var_names=[&quot;theta_ps&quot;],
+    combined=True,
+    figure_kwargs={&quot;figsize&quot;: (10, 4)},
+)
+pc.add_legend(&quot;model&quot;, title_fontsize=16, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+pc.viz[&quot;figure&quot;].item().suptitle(
+    &quot;Fit once, poststratify twice&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_49_0.png" style="width: 900px;"/>
+</center>
+<p>The older population leans more toward “yes”, because the older age groups have the larger effects. In both cases the HDI covers the true value. The counts changed, the posterior draws did not.</p>
+</div>
+<div id="mrp-in-the-language-of-marginal-effects" class="section level2">
+<h2>MRP in the Language of Marginal Effects</h2>
+<p>The <a href="https://marginaleffects.com/">marginaleffects</a> package of <a href="https://marginaleffects.com/">Arel-Bundock (2026)</a> organizes the interpretation of a fitted model around three quantities. A <em>prediction</em> is the expected outcome at one point of the covariate space. A <em>comparison</em> is the difference between two predictions that differ in one covariate. A <em>slope</em> is the derivative version of a comparison for a continuous covariate. The book <a href="https://marginaleffects.com/">Model to Meaning</a> has a <a href="https://marginaleffects.com/chapters/mrp.html">chapter on MRP</a> that reduces the method to one call: <code>avg_predictions(model, newdata=frame, wts="N", by="state")</code>. It predicts the outcome for every cell of the frame, averages the predictions with the census counts as weights, and groups the average by state. Step 2 of MRP is a weighted average of predictions, and the <code>by</code> argument gives the subpopulation estimates.</p>
+<p>We can use the <code>datagrid</code> function to build the grids and we evaluate the posterior of <span class="math inline">\(\theta_j\)</span> on them ourselves, as we did for a Bambi model in <a href="https://juanitorduz.github.io/ads_roas_interpret/">Ads, ROAS and Budgets</a>. The posterior holds <span class="math inline">\(\theta_j\)</span> for every cell in the array <code>theta</code> with dimensions <code>age</code>, <code>eth</code> and <code>state</code>, so a prediction for a row of a grid is a lookup by label. We name the helpers after the marginaleffects functions they mimic.</p>
+<div id="predictions-on-a-grid" class="section level3">
+<h3>Predictions on a Grid</h3>
+<p><code>datagrid</code> takes the frame and the values we want to vary. The covariates we do not name are held at their mode. We ask for the youngest and the oldest age group, two ethnicities, and the state with the fewest respondents.</p>
+<pre class="python"><code>def predict(theta: xr.DataArray, grid: pl.DataFrame) -&gt; xr.DataArray:
+    &quot;&quot;&quot;Draws of theta for each row of the grid, stacked along a new dimension `row`.&quot;&quot;&quot;
+    indexers = {
+        dim: xr.DataArray(grid[dim].to_numpy(), dims=&quot;row&quot;) for dim in frame_dims
+    }
+    return theta.sel(indexers)
+
+
+state_small = states[int(np.argmin(n_state))]
+
+profiles = datagrid(
+    newdata=frame.select(frame_dims),
+    age=[&quot;18-29&quot;, &quot;65+&quot;],
+    eth=[&quot;white&quot;, &quot;black&quot;],
+    state=state_small,
+)
+
+profiles</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (4, 3)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+age
+</th>
+<th>
+eth
+</th>
+<th>
+state
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S03"
+</td>
+</tr>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"black"
+</td>
+<td>
+"S03"
+</td>
+</tr>
+<tr>
+<td>
+"65+"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S03"
+</td>
+</tr>
+<tr>
+<td>
+"65+"
+</td>
+<td>
+"black"
+</td>
+<td>
+"S03"
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<p>For each row we get the posterior draws of <span class="math inline">\(\theta_j\)</span>. The table shows the posterior mean, the HDI and the true value of each profile.</p>
+<pre class="python"><code>theta_profiles = predict(idata[&quot;posterior&quot;][&quot;theta&quot;], profiles)
+
+hdi_profiles = az.hdi(
+    xr.Dataset({&quot;theta&quot;: theta_profiles}), var_names=[&quot;theta&quot;], prob=HDI_PROB
+)[&quot;theta&quot;]
+
+profiles.with_columns(
+    mrp_mean=theta_profiles.mean((&quot;chain&quot;, &quot;draw&quot;)).to_numpy(),
+    hdi_lower=hdi_profiles.sel(ci_bound=&quot;lower&quot;).to_numpy(),
+    hdi_upper=hdi_profiles.sel(ci_bound=&quot;upper&quot;).to_numpy(),
+    theta_true=predict(world[&quot;theta&quot;], profiles).to_numpy(),
+)</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (4, 7)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+age
+</th>
+<th>
+eth
+</th>
+<th>
+state
+</th>
+<th>
+mrp_mean
+</th>
+<th>
+hdi_lower
+</th>
+<th>
+hdi_upper
+</th>
+<th>
+theta_true
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+<td>
+f64
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S03"
+</td>
+<td>
+0.24663
+</td>
+<td>
+0.172888
+</td>
+<td>
+0.322998
+</td>
+<td>
+0.260268
+</td>
+</tr>
+<tr>
+<td>
+"18-29"
+</td>
+<td>
+"black"
+</td>
+<td>
+"S03"
+</td>
+<td>
+0.058057
+</td>
+<td>
+0.033733
+</td>
+<td>
+0.083578
+</td>
+<td>
+0.060394
+</td>
+</tr>
+<tr>
+<td>
+"65+"
+</td>
+<td>
+"white"
+</td>
+<td>
+"S03"
+</td>
+<td>
+0.67261
+</td>
+<td>
+0.563906
+</td>
+<td>
+0.786543
+</td>
+<td>
+0.658231
+</td>
+</tr>
+<tr>
+<td>
+"65+"
+</td>
+<td>
+"black"
+</td>
+<td>
+"S03"
+</td>
+<td>
+0.282139
+</td>
+<td>
+0.178468
+</td>
+<td>
+0.390323
+</td>
+<td>
+0.260268
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+</div>
+<div id="poststratification-is-an-average-prediction" class="section level3">
+<h3>Poststratification Is an Average Prediction</h3>
+<p>The <code>wts</code> argument weights the rows of the grid and the <code>by</code> argument groups the average. With the frame as the grid and the census counts as weights we recover both deterministic nodes of the model. With the counts of the older population we recover the retargeted estimate. The checks below compare the draws one by one.</p>
+<pre class="python"><code>def avg_predictions(
+    theta: xr.DataArray, grid: pl.DataFrame, wts: str, by: str | None = None
+) -&gt; xr.DataArray:
+    &quot;&quot;&quot;Weighted average of the predictions over the rows of the grid, optionally by group.&quot;&quot;&quot;  # noqa: E501
+    pred = predict(theta, grid)
+    w = xr.DataArray(grid[wts].to_numpy(), dims=&quot;row&quot;)
+    if by is None:
+        return (pred * w).sum(&quot;row&quot;) / w.sum(&quot;row&quot;)
+    groups = xr.DataArray(grid[by].to_numpy(), dims=&quot;row&quot;, name=by)
+    return (pred * w).groupby(groups).sum(&quot;row&quot;) / w.groupby(groups).sum(&quot;row&quot;)
+
+
+theta_draws = idata[&quot;posterior&quot;][&quot;theta&quot;]
+frame_target = frame.with_columns(N_target=N_target.ravel())
+
+checks = {
+    &quot;theta_ps&quot;: (
+        avg_predictions(theta_draws, frame, wts=&quot;N&quot;),
+        idata[&quot;posterior&quot;][&quot;theta_ps&quot;],
+    ),
+    &quot;theta_ps_state&quot;: (
+        avg_predictions(theta_draws, frame, wts=&quot;N&quot;, by=&quot;state&quot;),
+        idata[&quot;posterior&quot;][&quot;theta_ps_state&quot;],
+    ),
+    &quot;theta_ps, older population&quot;: (
+        avg_predictions(theta_draws, frame_target, wts=&quot;N_target&quot;),
+        posterior_target[&quot;theta_ps&quot;],
+    ),
+}
+
+for from_grid, from_model in checks.values():
+    np.testing.assert_allclose(
+        from_grid.transpose(*from_model.dims).to_numpy(), from_model.to_numpy()
+    )</code></pre>
+<p>Hence, the results are the same.</p>
+</div>
+<div id="comparisons-on-the-probability-scale" class="section level3">
+<h3>Comparisons on the Probability Scale</h3>
+<p>The model has an age effect <span class="math inline">\(\alpha^{\text{age}}\)</span> on the logit scale. But the question “how much larger is the share of yes among people aged 65+ than among people aged 18-29?” lives on the probability scale, and its answer depends on the other covariates through the inverse logit. With <code>grid_type="counterfactual"</code>, <code>datagrid</code> duplicates the frame once per age group and keeps the other columns, including the counts, at their values. We predict both copies, take the difference cell by cell, and average with the census counts, overall and by state. This is the arithmetic of the g-formula with two interventions on <span class="math inline">\(X\)</span>. For age it is a descriptive contrast between two types of people, not a causal effect. All covariates are discrete, so there are no slopes to compute.</p>
+<pre class="python"><code>age_grid = datagrid(
+    newdata=frame.select([*frame_dims, &quot;N&quot;]),
+    age=[&quot;18-29&quot;, &quot;65+&quot;],
+    grid_type=&quot;counterfactual&quot;,
+)
+
+age_grid.head()</code></pre>
+<center>
+<div>
+<style>
+.dataframe > thead > tr,
+.dataframe > tbody > tr {
+  text-align: right;
+  white-space: pre-wrap;
+}
+</style>
+<small>shape: (5, 5)</small>
+<table border="1" class="dataframe">
+<thead>
+<tr>
+<th>
+eth
+</th>
+<th>
+state
+</th>
+<th>
+N
+</th>
+<th>
+rowidcf
+</th>
+<th>
+age
+</th>
+</tr>
+<tr>
+<td>
+str
+</td>
+<td>
+str
+</td>
+<td>
+i64
+</td>
+<td>
+i64
+</td>
+<td>
+str
+</td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+"white"
+</td>
+<td>
+"S00"
+</td>
+<td>
+26698
+</td>
+<td>
+0
+</td>
+<td>
+"18-29"
+</td>
+</tr>
+<tr>
+<td>
+"white"
+</td>
+<td>
+"S00"
+</td>
+<td>
+26698
+</td>
+<td>
+0
+</td>
+<td>
+"65+"
+</td>
+</tr>
+<tr>
+<td>
+"white"
+</td>
+<td>
+"S01"
+</td>
+<td>
+68307
+</td>
+<td>
+1
+</td>
+<td>
+"18-29"
+</td>
+</tr>
+<tr>
+<td>
+"white"
+</td>
+<td>
+"S01"
+</td>
+<td>
+68307
+</td>
+<td>
+1
+</td>
+<td>
+"65+"
+</td>
+</tr>
+<tr>
+<td>
+"white"
+</td>
+<td>
+"S02"
+</td>
+<td>
+30479
+</td>
+<td>
+2
+</td>
+<td>
+"18-29"
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</center>
+<pre class="python"><code>def avg_comparisons(
+    theta: xr.DataArray,
+    grid: pl.DataFrame,
+    variable: str,
+    values: tuple[str, str],
+    wts: str,
+    by: str | None = None,
+) -&gt; xr.DataArray:
+    &quot;&quot;&quot;Weighted average of the difference in predictions between two values of one variable.&quot;&quot;&quot;  # noqa: E501
+    lo, hi = values
+    grid_lo = grid.filter(pl.col(variable).eq(lo)).sort(&quot;rowidcf&quot;)
+    grid_hi = grid.filter(pl.col(variable).eq(hi)).sort(&quot;rowidcf&quot;)
+    diff = predict(theta, grid_hi) - predict(theta, grid_lo)
+    w = xr.DataArray(grid_lo[wts].to_numpy(), dims=&quot;row&quot;)
+    if by is None:
+        return (diff * w).sum(&quot;row&quot;) / w.sum(&quot;row&quot;)
+    groups = xr.DataArray(grid_lo[by].to_numpy(), dims=&quot;row&quot;, name=by)
+    return (diff * w).groupby(groups).sum(&quot;row&quot;) / w.groupby(groups).sum(&quot;row&quot;)
+
+
+age_values = (&quot;18-29&quot;, &quot;65+&quot;)
+
+age_effect = avg_comparisons(theta_draws, age_grid, &quot;age&quot;, age_values, wts=&quot;N&quot;)
+age_effect_true = avg_comparisons(
+    world[&quot;theta&quot;], age_grid, &quot;age&quot;, age_values, wts=&quot;N&quot;
+).item()
+
+pc = az.plot_dist(
+    xr.Dataset({&quot;age_effect&quot;: age_effect}),
+    var_names=[&quot;age_effect&quot;],
+    figure_kwargs={&quot;figsize&quot;: (10, 6)},
+)
+az.add_lines(
+    pc,
+    values={&quot;age_effect&quot;: age_effect_true},
+    visuals={&quot;ref_line&quot;: {&quot;color&quot;: &quot;C2&quot;, &quot;label&quot;: &quot;truth&quot;}},
+)
+pc.viz[&quot;dist&quot;][&quot;age_effect&quot;].item().set_label(&quot;MRP posterior&quot;)
+pc.get_target(&quot;age_effect&quot;, {}).legend(loc=&quot;upper right&quot;)
+pc.viz[&quot;figure&quot;].item().suptitle(
+    &quot;Share of yes, 65+ minus 18-29, averaged over the population&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_60_0.png" style="width: 900px;"/>
+</center>
+<p>The state-level version of the same contrast uses <code>by="state"</code>. We compare it with the true contrast of each state.</p>
+<pre class="python"><code>age_effect_state = avg_comparisons(
+    theta_draws, age_grid, &quot;age&quot;, age_values, wts=&quot;N&quot;, by=&quot;state&quot;
+)
+age_effect_state_true = avg_comparisons(
+    world[&quot;theta&quot;], age_grid, &quot;age&quot;, age_values, wts=&quot;N&quot;, by=&quot;state&quot;
+)
+
+comparison_age = {
+    &quot;MRP&quot;: as_state_datatree(
+        age_effect_state.transpose(&quot;chain&quot;, &quot;draw&quot;, &quot;state&quot;).to_numpy(),
+        var_name=&quot;age_effect&quot;,
+    ),
+    &quot;truth&quot;: as_state_datatree(age_effect_state_true.to_numpy(), var_name=&quot;age_effect&quot;),
+}
+
+pc = az.plot_forest(
+    comparison_age,
+    var_names=[&quot;age_effect&quot;],
+    combined=True,
+    figure_kwargs={&quot;figsize&quot;: (10, 6)},
+)
+pc.add_legend(&quot;model&quot;, title_fontsize=16, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+pc.viz[&quot;figure&quot;].item().suptitle(
+    &quot;State-level age contrast&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_62_0.png" style="width: 1000px;"/>
+</center>
+<p>The posterior of the population-averaged contrast covers the true value. The state-level contrasts differ although the age effect on the logit scale is the same in every state: a state with a low share of “yes”, such as S06, has a small contrast on the probability scale, and a state with a share near one half has a large one. This is the reason to report comparisons on the outcome scale and not coefficients. The intervals cover the true contrast of every state.</p>
+</div>
+</div>
+<div id="breaking-the-assumption-on-purpose" class="section level2">
+<h2>Breaking the Assumption on Purpose</h2>
+<p>We now add the arrow <span class="math inline">\(Y \to I\)</span> of the first failure mode. We keep the world fixed, the same census, the same state effects and the same true probabilities, and we change only the response mechanism: with <code>response_ratio=3.0</code> a person who would answer “yes” is three times more likely to respond than a person who would answer “no”, inside every cell. The MRP model is unchanged.</p>
+<pre class="python"><code>generative_model_bad = pm.do(
+    make_generative_model(response_ratio=3.0),
+    {
+        **true_values,
+        &quot;N&quot;: N_cell.astype(float),
+        &quot;v&quot;: v_state,
+        &quot;b_state&quot;: world[&quot;b_state&quot;].to_numpy(),
+    },
+)
+
+with generative_model_bad:
+    simulation_bad = pm.sample_prior_predictive(draws=1, random_seed=rng)
+
+world_bad = simulation_bad[&quot;prior&quot;].to_dataset().sel(chain=0, draw=0)
+
+mrp_model_bad = make_mrp_model(
+    N=N_cell,
+    v=v_state,
+    n=world_bad[&quot;n&quot;].to_numpy().astype(int),
+    y=world_bad[&quot;n_yes&quot;].to_numpy().astype(int),
+)
+
+with mrp_model_bad:
+    idata_bad = pm.sample(
+        draws=1_000,
+        tune=1_000,
+        chains=4,
+        random_seed=rng,
+        progressbar=False,
+    )</code></pre>
+<pre><code>Sampling: [n_no, n_yes]
+
+
+NUTS[nutpie]: [a0, s_age, s_eth, s_state, a_age, a_eth, g1, z_state]</code></pre>
+<pre class="python"><code>az.diagnose(idata_bad);</code></pre>
+<pre><code>Divergences
+No divergent transitions found.
+
+E-BFMI
+E-BFMI satisfactory for all chains.
+
+ESS
+Effective sample size satisfactory for all parameters.
+
+R-hat
+R-hat values satisfactory for all parameters.
+
+Processing complete, no problems detected.</code></pre>
+<pre class="python"><code>print(f&quot;MRP under Y ⊥ I | X : {idata[&#39;posterior&#39;][&#39;theta_ps&#39;].mean().item():.4f}&quot;)
+print(f&quot;MRP with Y → I      : {idata_bad[&#39;posterior&#39;][&#39;theta_ps&#39;].mean().item():.4f}&quot;)
+print(f&quot;true value          : {theta_ps_true:.4f}&quot;)</code></pre>
+<pre><code>MRP under Y ⊥ I | X : 0.4301
+MRP with Y → I      : 0.6329
+true value          : 0.4172</code></pre>
+<pre class="python"><code>pc = az.plot_dist(
+    {&quot;Y ⊥ I | X&quot;: idata, &quot;Y → I&quot;: idata_bad},
+    var_names=[&quot;theta_ps&quot;],
+    figure_kwargs={&quot;figsize&quot;: (8, 5)},
+)
+az.add_lines(
+    pc,
+    values={&quot;theta_ps&quot;: theta_ps_true},
+    visuals={&quot;ref_line&quot;: {&quot;color&quot;: &quot;C2&quot;, &quot;label&quot;: &quot;truth&quot;}},
+)
+pc.add_legend(&quot;model&quot;, title_fontsize=16, loc=&quot;center left&quot;, bbox_to_anchor=(1, 0.5))
+pc.viz[&quot;figure&quot;].item().suptitle(
+    &quot;Same model, clean diagnostics, wrong answer&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/mrp_pymc_files/mrp_pymc_68_0.png" style="width: 900px;"/>
+</center>
+<p>The diagnostics are clean and the intervals are tight. The answer is wrong. Identification is an assumption about the world, not something the sampler can check for us.</p>
+</div>
+<div id="applications-in-marketing-and-experimentation" class="section level2">
+<h2>Applications in Marketing and Experimentation</h2>
+<p>MRP is usually presented as a polling method, but the two-step structure appears whenever the measured group differs from the group we care about. Marketing and experimentation are full of such cases. The table maps a few of them to the ingredients above: the cells of the frame, the outcome, and the main threat to <span class="math inline">\(Y \perp I \mid X\)</span>.</p>
+<table>
+<colgroup>
+<col width="25%" />
+<col width="25%" />
+<col width="25%" />
+<col width="25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>application</th>
+<th>cells of the frame</th>
+<th>outcome <span class="math inline">\(Y\)</span></th>
+<th>main threat</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>brand awareness or NPS survey sent to customers</td>
+<td>segment x region x tenure, counted from the CRM</td>
+<td>awareness, promoter status</td>
+<td>unhappy customers answer more often (<span class="math inline">\(Y \to I\)</span>)</td>
+</tr>
+<tr class="even">
+<td>online panel used as a market study</td>
+<td>age x gender x region, counted from the census</td>
+<td>purchase intent, category usage</td>
+<td>panel members differ in unmeasured ways (<span class="math inline">\(U\)</span>)</td>
+</tr>
+<tr class="odd">
+<td>demand or market share by region with sparse data</td>
+<td>product x region, with a regional predictor such as last year’s sales</td>
+<td>share of category buyers</td>
+<td>regions with few respondents</td>
+</tr>
+<tr class="even">
+<td>A/B test on a non-representative group of users</td>
+<td>platform x country x tenure, counted from the user base</td>
+<td>conversion under each arm</td>
+<td>opt-in or single-platform participants (<span class="math inline">\(U\)</span>)</td>
+</tr>
+<tr class="odd">
+<td>heterogeneous treatment effects across many segments</td>
+<td>treatment x segment</td>
+<td>conversion, revenue</td>
+<td>too few units per segment</td>
+</tr>
+<tr class="even">
+<td>geo experiment with a brand-lift survey</td>
+<td>region x age x gender</td>
+<td>ad recall</td>
+<td>survey respondents differ from the region population</td>
+</tr>
+</tbody>
+</table>
+<p>A few remarks.</p>
+<ul>
+<li>In the customer survey the frame is not a census but the customer base, and it is known exactly. The regional predictor of the market-share case plays the role of <span class="math inline">\(v_s\)</span>: it gives small regions something to shrink toward.</li>
+<li>In the A/B test the experiment estimates <span class="math inline">\(\text{E}[Y \mid A = a, X = x, I = 1]\)</span> for the participants. To report the effect for the whole user base we poststratify both arms with the counts of the user base and take the difference. This is the combined formula of the g-formula section, and the retargeting code above is the recipe: fit once, then swap the counts.</li>
+<li>For heterogeneous effects, a multilevel model with treatment-by-segment effects is the “MR” of MRP. It gives a regularized effect for every segment, including the small ones, and the poststratified aggregates give the effect for any mix of segments.</li>
+<li>In every case the identifying assumption has to be argued, not tested. If the reason to respond, to opt in, or to be exposed is related to the outcome within the cells, MRP returns a precise and wrong number, as in the previous section.</li>
+</ul>
+</div>
+<div id="extensions" class="section level2">
+<h2>Extensions</h2>
+<ul>
+<li><strong>Interactions.</strong> Age by ethnicity is often where the signal is. With <code>pymc.dims</code> we add <code>pmd.ZeroSumNormal("a_age_eth", sigma=s_age_eth, core_dims=("age", "eth"), dims=("age", "eth"))</code> to the linear predictor and broadcasting does the rest. Deep interactions are where structured priors help (<a href="https://doi.org/10.1214/20-BA1223">Gao, Kennedy, Simpson and Gelman, 2021</a>): a plain hierarchical prior shrinks an interaction toward zero, a structured prior shrinks it toward the additive model.</li>
+<li><strong>Nonparametric surfaces.</strong> Replace the linear predictor with BART (<a href="https://www.pymc.io/projects/bart/"><code>pymc-bart</code></a>) or a Gaussian process over the cells and keep the poststratification step unchanged.</li>
+<li><strong>Uncertain counts.</strong> The frame is usually estimated too. A Dirichlet-multinomial prior on the cell shares propagates that uncertainty into <span class="math inline">\(\theta^{\text{PS}}\)</span>.</li>
+<li><strong>Continuous outcomes.</strong> Swap the Binomial for a Normal likelihood as in the remark above. The rest of the notebook does not change.</li>
+</ul>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>MRP splits a hard question into two easier ones. A multilevel regression estimates how each type of person answers, and a census-weighted average turns those estimates into a population quantity. The identifying assumption is that, within the cells of the frame, responding carries no information about the answer. We drew it as a DAG, and we showed that the averaging step is the g-formula with the response indicator in the role of the treatment.</p>
+<p>On the implementation side, <code>pymc.dims</code> made the model read like the math. The effects broadcast to the grid by name, the poststratified quantities are one-line reductions, and the census counts are data we can swap without refitting. In the language of marginal effects, poststratification is an average prediction over the frame with the census counts as weights, and the same grid machinery gives contrasts on the probability scale. The failure case is the part to remember. When the response depends on the answer, the model looks healthy and the estimate is wrong. Identification is an assumption about the world, and the sampler cannot check it for us.</p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<ul>
+<li>Wang, W., Rothschild, D., Goel, S. and Gelman, A. (2015). <a href="https://sites.stat.columbia.edu/gelman/research/published/forecasting-with-nonrepresentative-polls.pdf">Forecasting elections with non-representative polls</a>. <em>International Journal of Forecasting</em>, 31(3), 980-991.</li>
+<li>Gao, Y., Kennedy, L., Simpson, D. and Gelman, A. (2021). <a href="https://doi.org/10.1214/20-BA1223">Improving multilevel regression and poststratification with structured priors</a>. <em>Bayesian Analysis</em>, 16(3), 719-744.</li>
+<li>Bareinboim, E., Tian, J. and Pearl, J. (2014). <a href="https://ftp.cs.ucla.edu/pub/stat_ser/r425.pdf">Recovering from selection bias in causal and statistical inference</a>. <em>Proceedings of the AAAI Conference on Artificial Intelligence</em>, 28(1), 2410-2416.</li>
+<li>Hernán, M. A. and Robins, J. M. (2020). <a href="https://miguelhernan.org/whatifbook">Causal Inference: What If</a>. Chapman &amp; Hall/CRC. Chapter 13 covers standardization and the parametric g-formula.</li>
+<li>Gelman, A., Vehtari, A., McElreath, R. et al. (2026). <a href="https://avehtari.github.io/Bayesian-Workflow/">Bayesian Workflow</a>. Chapman &amp; Hall/CRC.</li>
+<li>Arel-Bundock, V. (2026). <a href="https://marginaleffects.com/">Model to Meaning: How to interpret statistical models in R and Python</a>. CRC Press. Chapter 12 covers <a href="https://marginaleffects.com/chapters/mrp.html">MRP</a>.</li>
+<li><a href="https://juanitorduz.github.io/ads_roas_interpret/">Ads, ROAS and Budgets: Interpreting and Communicating Statistical Models</a>, the earlier post where <code>datagrid</code> is used with a Bambi model.</li>
+<li><a href="https://bambinos.github.io/bambi/notebooks/mister_p.html">Multilevel Regression and Post-stratification in Bambi</a>, Bambi documentation.</li>
+<li><a href="https://juanitorduz.github.io/intro_causal_inference_ppl_pymc/">Introduction to Causal Inference with PPLs</a>, the earlier post where the g-formula is computed with <code>pm.do</code>.</li>
+<li><a href="https://www.pymc.io/projects/docs/en/stable/learn/core_notebooks/dims_module.html">The <code>dims</code> module</a>, PyMC documentation.</li>
+<li><a href="https://www.pymc-marketing.io/en/latest/notebooks/mmm/mmm_data_generator.html">MMM data generator</a>, PyMC-Marketing documentation.</li>
+</ul>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
