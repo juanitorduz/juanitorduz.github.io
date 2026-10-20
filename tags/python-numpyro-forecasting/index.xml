@@ -6,8 +6,15 @@
     <description>Recent content in Python, Numpyro, Forecasting on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 12 Jul 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Wed, 21 Oct 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/tags/python-numpyro-forecasting/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Haar and DCT Time Reparameterization in NumPyro</title>
+      <link>/time_reparam_numpyro/</link>
+      <pubDate>Wed, 21 Oct 2026 00:00:00 +0000</pubDate>
+      <guid>/time_reparam_numpyro/</guid>
+      <description>&lt;p&gt;This is another research iteration with Opus 5.5, see PR &lt;a href=&#34;https://github.com/juanitorduz/website_projects/pull/215&#34;&gt;#215&lt;/a&gt;. I verified every step and concept and wrote most of the prose myself (where I didn’t, I guided the LLMs carefully, as I am not a native English speaker and help is always useful), so any remaining mistakes are my own. Feedback is welcome 🙂!&lt;/p&gt;&#xA;&lt;hr /&gt;&#xA;&lt;p&gt;Many time series models have one latent variable per time step. A local level model, for example, has one random-walk increment per week. These variables are independent under the prior, but the data couple them, because every observation depends on all the increments before it.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Forecasting Retail Demand Under Stockouts</title>
       <link>/fresh_retail_stockout/</link>

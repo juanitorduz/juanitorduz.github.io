@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>Haar and DCT Time Reparameterization in NumPyro - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="Haar and DCT Time Reparameterization in NumPyro - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">55 min read</span>
+    
+
+    <h1 class="article-title">Haar and DCT Time Reparameterization in NumPyro</h1>
+
+    
+    <span class="article-date">2026-10-21</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>This is another research iteration with Opus 5.5, see PR <a href="https://github.com/juanitorduz/website_projects/pull/215">#215</a>. I verified every step and concept and wrote most of the prose myself (where I didn’t, I guided the LLMs carefully, as I am not a native English speaker and help is always useful), so any remaining mistakes are my own. Feedback is welcome 🙂!</p>
+<hr />
+<p>Many time series models have one latent variable per time step. A local level model, for example, has one random-walk increment per week. These variables are independent under the prior, but the data couple them, because every observation depends on all the increments before it.</p>
+<p>This coupling is a problem for mean-field variational inference. A mean-field guide, such as <code>AutoNormal</code>, has one independent Normal per coordinate and cannot represent the correlation between increments. The coupling also slows down NUTS when its mass matrix is diagonal. In this notebook we study a reparameterization that addresses this issue for variational inference. We say in the conclusion what we expect for NUTS.</p>
+<p>The reparameterization comes from Pyro’s forecasting module, <a href="https://docs.pyro.ai/en/stable/contrib.forecast.html"><code>pyro.contrib.forecast</code></a>. It is a pair of transforms, the Haar and the DCT transform, which rewrite every time-indexed latent variable in a <a href="https://en.wikipedia.org/wiki/Haar_wavelet">Haar wavelet</a> basis or in a discrete cosine basis. Both bases are orthonormal, so the change of variables is a rotation. The model does not change, only the coordinates that the guide works with, and in the new coordinates the coupling is much weaker.</p>
+<p>The transforms <code>HaarTransform</code> and <code>DiscreteCosineTransform</code>, and the reparameterizers <code>HaarReparam</code> and <code>DiscreteCosineReparam</code>, are part of NumPyro since version <code>0.22</code> (see <a href="https://github.com/pyro-ppl/numpyro/pull/2208">numpyro#2208</a>). The function <code>time_reparam</code> of <a href="https://github.com/juanitorduz/numpyro_forecast"><code>numpyro_forecast</code></a> applies them to the latent variables under the <code>time</code> plate of a forecasting model (see <a href="https://github.com/juanitorduz/numpyro_forecast/pull/135">numpyro_forecast#135</a>).</p>
+<p>We consider three questions: <em>what</em> the reparameterization is, <em>why</em> it helps a mean-field guide, and <em>how</em> to apply it in NumPyro. We first work with a model where we can compute everything exactly, and then we move to a real forecasting model.</p>
+<p>We assume that you have used SVI and NUTS in NumPyro before. For an introduction to SVI see <a href="https://juanitorduz.github.io/intro_svi/">PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</a>. The forecasting example is the model from <a href="https://juanitorduz.github.io/numpyro_forecasting-univariate/">From Pyro to NumPyro: Forecasting a univariate, heavy tailed time series</a>.</p>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<p>We need NumPyro <code>0.22</code> or later and <code>numpyro_forecast</code> <code>0.4</code> or later.</p>
+<pre class="python"><code>from collections.abc import Callable
+from enum import StrEnum
+from time import perf_counter
+from typing import NamedTuple
+
+import arviz as az
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import numpyro.distributions as dist
+import polars as pl
+import seaborn as sns
+from jax import random
+from jax.example_libraries.optimizers import exponential_decay
+from jaxtyping import Array, Float, ScalarLike, UInt
+from numpyro import handlers
+from numpyro.distributions.transforms import (
+    DiscreteCosineTransform,
+    HaarTransform,
+    Transform,
+)
+from numpyro.infer import (
+    MCMC,
+    NUTS,
+    SVI,
+    Predictive,
+    Trace_ELBO,
+    init_to_uniform,
+    init_to_value,
+)
+from numpyro.infer.autoguide import AutoNormal
+from numpyro.infer.reparam import DiscreteCosineReparam, HaarReparam, LocScaleReparam
+from numpyro.infer.util import log_density
+from numpyro.optim import Adam
+from numpyro_forecast import (
+    Horizon,
+    draw_posterior,
+    eval_crps,
+    forecast,
+    innovations,
+    predict,
+    predict_in_sample,
+    time_reparam,
+    to_datatree,
+)
+from numpyro_forecast.datasets import load_bart_weekly
+from numpyro_forecast.features import fourier_features
+from scipy.optimize import minimize
+
+numpyro.set_host_device_count(n=4)
+numpyro.enable_x64()
+
+
+HDI_PROB = 0.94
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+az.rcParams[&quot;stats.ci_kind&quot;] = &quot;hdi&quot;
+az.rcParams[&quot;stats.ci_prob&quot;] = HDI_PROB
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<p>We fix the random key of the notebook. Every sampling call below splits a new key from it.</p>
+<pre class="python"><code>seed: int = 42
+rng_key = random.PRNGKey(seed=seed)</code></pre>
+</div>
+<div id="local-level-model" class="section level2">
+<h2>Local Level Model</h2>
+<p>We start with the simplest model that has the problem. Let <span class="math inline">\(T\)</span> be the number of time steps and <span class="math inline">\(y_t\)</span> the observation at time <span class="math inline">\(t = 1, \ldots, T\)</span>. We use the notation of the local level model in the <a href="https://www.statsmodels.org/stable/generated/statsmodels.tsa.statespace.structural.UnobservedComponents.html"><code>UnobservedComponents</code></a> class of statsmodels. The observation <span class="math inline">\(y_t\)</span> is a noisy measurement of a latent level <span class="math inline">\(\mu_t\)</span>, and the level is a random walk with increments <span class="math inline">\(\eta_t\)</span>.</p>
+<p>Our target is the posterior of the increments given the observations. We want to know how well a mean-field guide can approximate it.</p>
+<p>Let <span class="math inline">\(\sigma_\varepsilon\)</span> be the scale of the observation noise <span class="math inline">\(\varepsilon_t\)</span> and <span class="math inline">\(\sigma_\eta\)</span> the scale of the increments <span class="math inline">\(\eta_t\)</span>. The model is</p>
+<p><span class="math display">\[\begin{align*}
+y_t &amp; = \mu_t + \varepsilon_t, &amp; \varepsilon_t &amp; \sim \text{Normal}(0, \sigma_\varepsilon), \\
+\mu_t &amp; = \mu_{t-1} + \eta_t, &amp; \eta_t &amp; \sim \text{Normal}(0, \sigma_\eta),
+\end{align*}\]</span></p>
+<p>with <span class="math inline">\(\mu_0 = 0\)</span>. Here the second argument of <span class="math inline">\(\text{Normal}\)</span> is the standard deviation. The statsmodels documentation writes the variances <span class="math inline">\(\sigma_\varepsilon^2\)</span> and <span class="math inline">\(\sigma_\eta^2\)</span> instead.</p>
+<p>The latent variables are the increments <span class="math inline">\(\eta = (\eta_1, \ldots, \eta_T)\)</span>, not the levels. This is how the Pyro forecasting tutorial and the <code>innovations</code> building block of <code>numpyro_forecast</code> write a random walk: sample white noise and take a cumulative sum, <span class="math inline">\(\mu_t = \sum_{s \le t} \eta_s\)</span>. In vector form the level is <span class="math inline">\(\mu = L \eta\)</span>, where <span class="math inline">\(L\)</span> is the <span class="math inline">\(T \times T\)</span> lower-triangular matrix of ones.</p>
+<p>In this first part we keep the two scales <span class="math inline">\(\sigma_\eta\)</span> and <span class="math inline">\(\sigma_\varepsilon\)</span> fixed. Then the model is linear and Gaussian and we can compute everything analytically. We come back to unknown scales and to a non-Gaussian likelihood in the ridership example below.</p>
+<p>First, let’s write the model in NumPyro. We use the names of the Pyro tutorial: the increments are the site <code>drift</code>, <span class="math inline">\(\sigma_\eta\)</span> is <code>drift_scale</code> and <span class="math inline">\(\sigma_\varepsilon\)</span> is <code>sigma</code>. The time axis is an event dimension of the <code>drift</code> site. We write a generative model without observations, and we condition it on data later.</p>
+<pre class="python"><code>T_TOY = 256
+DRIFT_SCALE = 0.2
+SIGMA = 1.0
+
+
+def local_level_model(t_obs: int, drift_scale: float, sigma: float) -&gt; None:
+    &quot;Generative local level model with the increments as latent variables.&quot;
+    drift = numpyro.sample(
+        &quot;drift&quot;, dist.Normal(0.0, drift_scale).expand([t_obs]).to_event(1)
+    )
+    level = numpyro.deterministic(&quot;level&quot;, jnp.cumsum(drift))
+    numpyro.sample(&quot;y&quot;, dist.Normal(level, sigma).to_event(1))
+
+
+toy_args = (T_TOY, DRIFT_SCALE, SIGMA)</code></pre>
+<p>Next, we simulate one data set from the model itself. We use <span class="math inline">\(T = 256\)</span> time steps, <span class="math inline">\(\sigma_\eta = 0.2\)</span> and <span class="math inline">\(\sigma_\varepsilon = 1\)</span>.</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+prior_draw = Predictive(local_level_model, num_samples=1)(rng_subkey, *toy_args)
+toy_drift = prior_draw[&quot;drift&quot;][0]
+toy_level = prior_draw[&quot;level&quot;][0]
+toy_y = prior_draw[&quot;y&quot;][0]</code></pre>
+<p>Let’s plot the simulated observations together with the level that generated them.</p>
+<pre class="python"><code>toy_time = jnp.arange(1, T_TOY + 1)
+
+fig, ax = plt.subplots()
+ax.plot(
+    toy_time,
+    toy_y,
+    color=&quot;black&quot;,
+    alpha=0.7,
+    label=&quot;observations $y_t$&quot;,
+)
+ax.plot(toy_time, toy_level, color=&quot;C3&quot;, linewidth=2, label=&quot;true level $\\mu_t$&quot;)
+ax.set(xlabel=&quot;time step $t$&quot;, ylabel=&quot;$y_t$&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=2)
+fig.suptitle(&quot;Simulated Local Level Data&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_10_0.png" style="width: 900px;"/>
+</center>
+<p>The level moves slowly relative to the noise, because one increment has a scale of <span class="math inline">\(0.2\)</span> and the noise a scale of <span class="math inline">\(1\)</span>. Over <span class="math inline">\(256\)</span> time steps the increments add up, and the level moves over a range of several units. The observations therefore carry a clear signal about the path of the level, but not about any single increment.</p>
+<p>Finally, we condition the generative model on the simulated observations with the effect handler <code>handlers.condition</code>. The resulting <code>toy_model</code> is the model that we study in the first part of the notebook.</p>
+<pre class="python"><code>toy_model = handlers.condition(local_level_model, data={&quot;y&quot;: toy_y})
+
+numpyro.render_model(
+    toy_model,
+    model_args=toy_args,
+    render_params=True,
+    render_distributions=True,
+)</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_12_0.svg" style="width: 400px;"/>
+</center>
+<div id="exact-posterior" class="section level3">
+<h3>Exact Posterior</h3>
+<p>The prior of <span class="math inline">\(\eta\)</span> is Gaussian and the likelihood is Gaussian in <span class="math inline">\(L \eta\)</span>. Therefore the posterior <span class="math inline">\(\text{P}(\eta \mid y)\)</span> is a multivariate Gaussian.</p>
+<p>How do we find its parameters? Up to a constant, the log posterior is the sum of the log prior and the log likelihood:</p>
+<p><span class="math display">\[\log \text{P}(\eta \mid y) = -\frac{1}{2 \sigma_\eta^2}\, \eta^\top \eta - \frac{1}{2 \sigma_\varepsilon^2}\, (y - L \eta)^\top (y - L \eta) + \text{const} .\]</span></p>
+<p>This is a quadratic function of <span class="math inline">\(\eta\)</span>. Let <span class="math inline">\(\bar{\eta}\)</span> be the posterior mean and <span class="math inline">\(\Lambda\)</span> the precision matrix (the inverse of the covariance). The precision is minus the matrix of second derivatives (the Hessian) of the log posterior, and the mean is the point where the gradient is zero. Expanding the square gives</p>
+<p><span class="math display">\[\Lambda = \frac{1}{\sigma_\eta^2} I + \frac{1}{\sigma_\varepsilon^2} L^\top L, \qquad \bar{\eta} = \frac{1}{\sigma_\varepsilon^2} \Lambda^{-1} L^\top y .\]</span></p>
+<p>In other words, this is the posterior of a Bayesian linear regression with design matrix <span class="math inline">\(L\)</span>, weights <span class="math inline">\(\eta\)</span> and an isotropic Gaussian prior on the weights. See equation (2.8) of <a href="http://gaussianprocess.org/gpml/chapters/RW2.pdf">Rasmussen and Williams (2006)</a> or equations (3.53) and (3.54) of <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2006/01/Bishop-Pattern-Recognition-and-Machine-Learning-2006.pdf">Bishop (2006)</a>.</p>
+<p>We make two remarks:</p>
+<ul>
+<li><p><strong>The precision does not depend on the data.</strong> It only depends on <span class="math inline">\(T\)</span> and on the two scales. The geometry we study below is a property of the model, not of one data set.</p></li>
+<li><p><strong>The coupling comes from the cumulative sum.</strong> The entry <span class="math inline">\((L^\top L)_{ij} = T + 1 - \max(i, j)\)</span> counts the observations that depend on both <span class="math inline">\(\eta_i\)</span> and <span class="math inline">\(\eta_j\)</span>. Two increments are coupled through every observation at or after the later of the two.</p></li>
+</ul>
+<p>Let’s compute the exact posterior of the increments and of the level <span class="math inline">\(\mu = L \eta\)</span>, which has mean <span class="math inline">\(L \bar{\eta}\)</span> and covariance <span class="math inline">\(L \Lambda^{-1} L^\top\)</span>. We also check the two formulas with automatic differentiation of the log density of <code>toy_model</code>: its gradient must be zero at <span class="math inline">\(\bar{\eta}\)</span>, and its Hessian must be <span class="math inline">\(-\Lambda\)</span>.</p>
+<pre class="python"><code>def posterior_precision(
+    t_obs: int, drift_scale: ScalarLike, sigma: ScalarLike
+) -&gt; Float[Array, &quot;t t&quot;]:
+    &quot;Posterior precision of the increments of the local level model.&quot;
+    cumsum = jnp.tril(jnp.ones((t_obs, t_obs)))
+    return jnp.eye(t_obs) / drift_scale**2 + cumsum.T @ cumsum / sigma**2
+
+
+def toy_log_joint(drift: Float[Array, &quot; t&quot;]) -&gt; Float[Array, &quot;&quot;]:
+    &quot;Log joint density of the conditioned local level model at the increments.&quot;
+    log_joint, _ = log_density(toy_model, toy_args, {}, {&quot;drift&quot;: drift})
+    return log_joint
+
+
+cumsum_matrix = jnp.tril(jnp.ones((T_TOY, T_TOY)))
+
+precision = posterior_precision(*toy_args)
+covariance = jnp.linalg.inv(precision)
+
+drift_mean = covariance @ cumsum_matrix.T @ toy_y / SIGMA**2
+level_mean = cumsum_matrix @ drift_mean
+level_covariance = cumsum_matrix @ covariance @ cumsum_matrix.T
+level_sd = jnp.sqrt(jnp.diag(level_covariance))
+
+# The gradient is zero at the mean.
+np.testing.assert_allclose(jax.grad(toy_log_joint)(drift_mean), 0, atol=1e-8)
+# The Hessian is minus the precision.
+np.testing.assert_allclose(
+    jax.hessian(toy_log_joint)(drift_mean), -precision, atol=1e-8
+)</code></pre>
+<p>Let’s plot the exact posterior of the level and its <span class="math inline">\(94\%\)</span> highest density interval (HDI).</p>
+<pre class="python"><code>rng_key, rng_subkey = random.split(rng_key)
+exact_level_draws = random.multivariate_normal(
+    rng_subkey, level_mean, level_covariance, shape=(1, 4_000)
+)
+
+exact_tree = az.from_dict(
+    {
+        &quot;posterior&quot;: {&quot;level&quot;: np.asarray(exact_level_draws)},
+        &quot;observed_data&quot;: {&quot;y&quot;: np.asarray(toy_y)},
+        &quot;constant_data&quot;: {&quot;t&quot;: np.asarray(toy_time, dtype=float)},
+    },
+    coords={&quot;time&quot;: np.asarray(toy_time)},
+    dims={&quot;level&quot;: [&quot;time&quot;], &quot;y&quot;: [&quot;time&quot;], &quot;t&quot;: [&quot;time&quot;]},
+)
+
+pc = az.plot_lm(
+    exact_tree,
+    x=&quot;t&quot;,
+    y=&quot;level&quot;,
+    y_obs=&quot;y&quot;,
+    group=&quot;posterior&quot;,
+    smooth=False,
+    visuals={
+        &quot;pe_line&quot;: {&quot;color&quot;: &quot;C0&quot;, &quot;label&quot;: &quot;posterior mean of the level&quot;},
+        &quot;ci_band&quot;: {
+            &quot;color&quot;: &quot;C0&quot;,
+            &quot;alpha&quot;: 0.3,
+            &quot;label&quot;: r&quot;level posterior $94\%$ HDI&quot;,
+        },
+        &quot;observed_scatter&quot;: False,
+    },
+    figure_kwargs={&quot;figsize&quot;: (10, 6)},
+)
+fig = pc.viz[&quot;figure&quot;].item()
+ax = fig.axes[0]
+ax.plot(
+    toy_time, toy_y, color=&quot;black&quot;, alpha=0.7, linewidth=1, label=&quot;observations $y_t$&quot;
+)
+ax.plot(toy_time, toy_level, color=&quot;C3&quot;, linewidth=2, label=&quot;true level $\\mu_t$&quot;)
+ax.set(xlabel=&quot;time step $t$&quot;, ylabel=&quot;$y_t$&quot;, title=&quot;&quot;)
+ax.legend()
+fig.suptitle(&quot;Exact Posterior of the Level&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_16_0.png" style="width: 900px;"/>
+</center>
+<p>The figure shows the data, the level that we want to recover, and its exact posterior.</p>
+<p>The posterior mean follows the true level, and the true level stays inside the HDI most of the time. Away from the two ends, the HDI has a constant width: the data constrain the level with the same precision at every time step. We will see below that a mean-field guide on the increments cannot reproduce this property.</p>
+</div>
+</div>
+<div id="posterior-geometry" class="section level2">
+<h2>Posterior Geometry</h2>
+<p>What does the posterior of the increments look like? The contours of a Gaussian density are ellipsoids, and the eigenvectors of <span class="math inline">\(\Lambda\)</span> are their axes.</p>
+<p>A large eigenvalue is a <em>stiff</em> direction, where the data leave little freedom. A small eigenvalue is a <em>loose</em> direction.</p>
+<p>Let’s compute the eigendecomposition of <span class="math inline">\(\Lambda\)</span> numerically. We sort the eigenvalues from the largest to the smallest, so that direction <span class="math inline">\(k = 0\)</span> is the stiffest one, and we fix the sign of each eigenvector so that its first entry is positive. We also check that direction <span class="math inline">\(k\)</span> changes sign <span class="math inline">\(k\)</span> times, which confirms that the directions are sorted from the smoothest to the most oscillating.</p>
+<pre class="python"><code>eigenvalues, eigenvectors = jnp.linalg.eigh(precision)
+order = jnp.argsort(eigenvalues)[::-1]
+eigenvalues = eigenvalues[order]
+eigenvectors = eigenvectors[:, order]
+eigenvectors = eigenvectors * jnp.sign(eigenvectors[0])
+
+sign_changes = (jnp.diff(jnp.sign(eigenvectors), axis=0) != 0).sum(axis=0)
+np.testing.assert_array_equal(sign_changes, jnp.arange(T_TOY))</code></pre>
+<p>The check passes. Now we plot the four stiffest directions (left) and, for every direction, the posterior variance relative to the prior variance (right).</p>
+<p>Along direction <span class="math inline">\(k\)</span> the posterior variance is <span class="math inline">\(1 / \text{eig}_k(\Lambda)\)</span> and the prior variance is <span class="math inline">\(\sigma_\eta^2\)</span>. We call this ratio the shrinkage of direction <span class="math inline">\(k\)</span>. A ratio close to <span class="math inline">\(1\)</span> means that the data say nothing about that direction, and a ratio close to <span class="math inline">\(0\)</span> means that the data determine it.</p>
+<pre class="python"><code>shrinkage = 1 / (DRIFT_SCALE**2 * eigenvalues)
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 5))
+
+for i in range(4):
+    axes[0].plot(toy_time, eigenvectors[:, i], color=f&quot;C{i}&quot;, label=f&quot;$v_{i}$&quot;)
+
+axes[0].set(
+    xlabel=&quot;time step $t$&quot;,
+    ylabel=&quot;weight on the increment $\\eta_t$&quot;,
+    title=&quot;The four stiffest directions&quot;,
+)
+axes[0].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=4)
+axes[1].plot(toy_time, shrinkage, &quot;o-&quot;, color=&quot;black&quot;, markersize=3)
+axes[1].axhline(0.5, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;half of the prior variance&quot;)
+axes[1].set(
+    xscale=&quot;log&quot;,
+    xlabel=&quot;direction $k + 1$ (log scale)&quot;,
+    ylabel=&quot;posterior variance / prior variance&quot;,
+    title=&quot;Shrinkage by direction&quot;,
+    ylim=(0, 1.05),
+)
+axes[1].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15))
+fig.suptitle(
+    &quot;Principal Directions of the Posterior of the Increments&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_21_0.png" style="width: 1000px;"/>
+</center>
+<p>The left panel shows the weights of the four stiffest directions on the increments. The right panel shows how much of the prior variance is left along each direction.</p>
+<p>The stiffest direction <span class="math inline">\(v_0\)</span> moves all the increments in the same direction. This shifts the level at every later time step, and every observation constrains it. The next directions look like cosines of increasing frequency. The oscillating directions barely move the level, because consecutive increments cancel out, and the data do not constrain them. Only <span class="math inline">\(16\)</span> of the <span class="math inline">\(256\)</span> directions lose more than half of their prior variance.</p>
+<p>The ellipsoid is therefore very elongated. The ratio between the largest and the smallest eigenvalue of <span class="math inline">\(\Lambda\)</span>, its condition number, is about <span class="math inline">\(1057\)</span>:</p>
+<pre class="python"><code>eigenvalues.max() / eigenvalues.min()</code></pre>
+<pre><code>Array(1057.01655449, dtype=float64)</code></pre>
+<p>Here is why this matters for the reparameterization. In the basis of the eigenvectors the posterior precision is diagonal, so a mean-field guide is exact there.</p>
+<p>The right panel of the figure above adds that the data only constrain the few smoothest directions. The other directions stay close to the prior, which is isotropic, so any orthonormal basis of those directions is as good as the eigenvectors, as long as it does not mix them with the stiff ones. A fixed basis therefore only has to separate the smooth directions from the oscillating ones, and this is what the two transforms of the next section do.</p>
+<p>We cannot draw the ellipsoid in <span class="math inline">\(256\)</span> dimensions, but we can draw two-dimensional slices through its center. A slice fixes all the other coordinates at their posterior mean. The conditional posterior of the two remaining coordinates is Gaussian, and its precision is the corresponding <span class="math inline">\(2 \times 2\)</span> block of <span class="math inline">\(\Lambda\)</span>.</p>
+<p>We draw the contour at one standard deviation, that is the points <span class="math inline">\(x\)</span> with <span class="math inline">\(x^\top \Lambda_{\text{block}}\, x = 1\)</span>, for two kinds of slices:</p>
+<ul>
+<li><p><strong>Stiffest and loosest directions.</strong> The plane of <span class="math inline">\(v_{T-1}\)</span> and <span class="math inline">\(v_0\)</span>, where the block is diagonal.</p></li>
+<li><p><strong>Adjacent increments.</strong> The plane of two increments <span class="math inline">\(\eta_t\)</span> and <span class="math inline">\(\eta_{t+1}\)</span>, for <span class="math inline">\(t = 1\)</span>, <span class="math inline">\(128\)</span> and <span class="math inline">\(255\)</span>.</p></li>
+</ul>
+<p>The dashed circle is the same contour for the prior, with radius <span class="math inline">\(\sigma_\eta = 0.2\)</span>.</p>
+<pre class="python"><code>def contour_2d(
+    block: Float[Array, &quot;2 2&quot;], num_points: int = 200
+) -&gt; Float[Array, &quot;2 n&quot;]:
+    &quot;Points x with x^T block x = 1, the one-sigma contour of a 2D Gaussian.&quot;
+    angles = jnp.linspace(0, 2 * jnp.pi, num_points)
+    circle = jnp.stack([jnp.cos(angles), jnp.sin(angles)])
+    # If block = C C^T (Cholesky), then x = C^{-T} u satisfies x^T block x = u^T u = 1.
+    cholesky = jnp.linalg.cholesky(block)
+    return jnp.linalg.solve(cholesky.T, circle)
+
+
+principal_block = jnp.diag(eigenvalues[jnp.array([-1, 0])])
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 7), sharex=True, sharey=True)
+axes[0].plot(*contour_2d(principal_block), color=&quot;black&quot;, label=&quot;posterior&quot;)
+
+for i, t in enumerate([1, 128, 255]):
+    pair = jnp.array([t - 1, t])  # zero-based positions of eta_t and eta_{t+1}
+    block = precision[jnp.ix_(pair, pair)]
+    axes[1].plot(*contour_2d(block), color=f&quot;C{i}&quot;, label=f&quot;$t = {t}$&quot;)
+
+for ax in axes:
+    ax.plot(
+        *contour_2d(jnp.eye(2) / DRIFT_SCALE**2),
+        color=&quot;gray&quot;,
+        linestyle=&quot;--&quot;,
+        label=&quot;prior&quot;,
+    )
+    ax.set_aspect(&quot;equal&quot;)
+
+axes[0].set(
+    xlabel=&quot;coordinate along $v_{T-1}$ (loosest)&quot;,
+    ylabel=&quot;coordinate along $v_0$ (stiffest)&quot;,
+    title=&quot;Stiffest and loosest directions&quot;,
+)
+axes[1].set(
+    xlabel=&quot;$\\eta_t - \\bar{\\eta}_t$&quot;,
+    ylabel=&quot;$\\eta_{t+1} - \\bar{\\eta}_{t+1}$&quot;,
+    title=&quot;Pairs of adjacent increments&quot;,
+)
+axes[0].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=2)
+axes[1].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=4)
+fig.suptitle(&quot;Slices of the Posterior Ellipsoid&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_26_0.png" style="width: 1000px;"/>
+</center>
+<p>The two panels show slices of the same posterior through different planes.</p>
+<p>Along the principal directions the ellipse is a thin sliver. Along adjacent increments it is tilted, and the tilt fades toward the end of the series.</p>
+<p>Observe that the axes of the tilted ellipses are diagonals and not coordinate axes. In the full posterior each stiff direction mixes all the increments, not only two of them. This is the cause of the problem: a mean-field guide works coordinate by coordinate.</p>
+</div>
+<div id="orthonormal-time-transforms" class="section level2">
+<h2>Orthonormal Time Transforms</h2>
+<p>The idea of the reparameterization is to rotate the coordinates such that the axes of the ellipsoid become coordinate axes, at least approximately.</p>
+<p>Let <span class="math inline">\(U\)</span> be a <span class="math inline">\(T \times T\)</span> orthonormal matrix, that is <span class="math inline">\(U U^\top = I\)</span>, and define the new latent variable <span class="math inline">\(z = U \eta\)</span>. We sample <span class="math inline">\(z\)</span> and we recover the increments as <span class="math inline">\(\eta = U^\top z\)</span>. Three properties make this change of variables convenient:</p>
+<ul>
+<li><p><strong>The density does not change.</strong> The density of <span class="math inline">\(z\)</span> is the density of <span class="math inline">\(\eta\)</span> evaluated at <span class="math inline">\(U^\top z\)</span>, times <span class="math inline">\(|\det U^\top| = 1\)</span>. There is no Jacobian term, and the model is unchanged.</p></li>
+<li><p><strong>White noise stays white noise.</strong> If the increments <span class="math inline">\(\eta_t\)</span> are independent <span class="math inline">\(\text{Normal}(0, \sigma_\eta)\)</span> variables, then the coefficients <span class="math inline">\(z_k\)</span> are independent <span class="math inline">\(\text{Normal}(0, \sigma_\eta)\)</span> variables too. The prior keeps its simple form.</p></li>
+<li><p><strong>The precision is rotated.</strong> The posterior precision of <span class="math inline">\(z\)</span> is <span class="math inline">\(\Lambda_U = U \Lambda U^\top\)</span>.</p></li>
+</ul>
+<p>A rotation does not change methods that treat all directions alike. For example, a full-rank Gaussian guide reaches the same ELBO in every orthonormal basis. The rotation matters for methods that work coordinate by coordinate, such as a mean-field guide.</p>
+<p>The best choice of <span class="math inline">\(U\)</span> is the matrix of eigenvectors of <span class="math inline">\(\Lambda\)</span>, which makes <span class="math inline">\(\Lambda_U\)</span> diagonal. For the local level model these eigenvectors do not depend on the scales, because <span class="math inline">\(\Lambda = \sigma_\eta^{-2} I + \sigma_\varepsilon^{-2} L^\top L\)</span> and a multiple of the identity does not change the eigenvectors. In a real model we do not know the eigenvectors: the likelihood is not Gaussian, and other parameters, such as an intercept or a regression, couple with the path.</p>
+<p>For a random walk we do know that the stiff directions are smooth and that the loose ones oscillate. Therefore we use a fixed basis that sorts the coordinates from coarse to fine. Pyro offers two, and the first one resembles the stiffest directions of the previous section.</p>
+<div id="discrete-cosine-transform" class="section level3">
+<h3>Discrete Cosine Transform</h3>
+<p>The rows of the orthonormal DCT are cosines of increasing frequency. For <span class="math inline">\(k = 0, \ldots, T - 1\)</span> and <span class="math inline">\(t = 1, \ldots, T\)</span>,</p>
+<p><span class="math display">\[C_{k t} = c_k \cos\left(\frac{\pi k (2t - 1)}{2T}\right), \qquad c_0 = \sqrt{1 / T}, \qquad c_k = \sqrt{2 / T} \ \text{ for } k \ge 1 .\]</span></p>
+<p>The first coefficient <span class="math inline">\(z_0\)</span> is the average increment times <span class="math inline">\(\sqrt{T}\)</span>. The next ones are slow trends, and the last ones are step-to-step oscillations. The transform costs <span class="math inline">\(O(T \log T)\)</span> operations with a fast Fourier transform.</p>
+</div>
+<div id="haar-transform" class="section level3">
+<h3>Haar Transform</h3>
+<p>The Haar transform compares the averages of neighboring blocks at different scales. For <span class="math inline">\(T = 2^n\)</span> the first row is constant, <span class="math inline">\(H_{0 t} = \sqrt{1 / T}\)</span>.</p>
+<p>For each scale <span class="math inline">\(j = 0, \ldots, n - 1\)</span> we split the time axis into <span class="math inline">\(2^j\)</span> blocks of length <span class="math inline">\(T / 2^j\)</span>, and each block gives one row. That row is <span class="math inline">\(\sqrt{2^j / T}\)</span> on the first half of the block, <span class="math inline">\(-\sqrt{2^j / T}\)</span> on the second half, and <span class="math inline">\(0\)</span> outside the block.</p>
+<p>In other words, a Haar coefficient is proportional to the difference between the averages of the two halves of a block. The rows are localized in time, which the cosines are not. The transform costs <span class="math inline">\(O(T)\)</span> operations.</p>
+<p><strong>Remark (other lengths and constrained sites):</strong> When <span class="math inline">\(T\)</span> is not a power of two, NumPyro uses a block-structured version of the same idea, and the first row is no longer a global average. For <span class="math inline">\(T = 417\)</span>, for example, it is proportional to the average of the first <span class="math inline">\(256\)</span> values. For a constrained latent variable, NumPyro applies the rotation in the unconstrained space.</p>
+<p>From now on we label the three coordinate systems <code>none</code> (the original increments), <code>haar</code> and <code>dct</code>. The figures use these labels and one color per coordinate system.</p>
+<p>Let’s build the two matrices from the NumPyro transforms. We apply each transform to the columns of the identity matrix, and we check that the result is orthonormal and that the DCT matches the formula.</p>
+<pre class="python"><code>def transform_matrix(transform: Transform, t_obs: int) -&gt; Float[Array, &quot;t t&quot;]:
+    &quot;Matrix `u` of a linear transform, such that `u @ x == transform(x)`.&quot;
+    return jax.vmap(transform)(jnp.eye(t_obs)).T
+
+
+class Coordinates(StrEnum):
+    &quot;The three coordinate systems of the latent path.&quot;
+
+    NONE = &quot;none&quot;
+    HAAR = &quot;haar&quot;
+    DCT = &quot;dct&quot;
+
+
+# One color per coordinate system, used in every figure.
+COLORS = {Coordinates.NONE: &quot;C0&quot;, Coordinates.HAAR: &quot;C1&quot;, Coordinates.DCT: &quot;C2&quot;}
+
+rotations = {
+    Coordinates.NONE: jnp.eye(T_TOY),
+    Coordinates.HAAR: transform_matrix(HaarTransform(dim=-1), T_TOY),
+    Coordinates.DCT: transform_matrix(DiscreteCosineTransform(dim=-1), T_TOY),
+}
+
+for rotation in rotations.values():
+    np.testing.assert_allclose(rotation @ rotation.T, jnp.eye(T_TOY), atol=1e-10)
+
+frequency = jnp.arange(T_TOY)
+dct_scale = jnp.where(frequency == 0, jnp.sqrt(1 / T_TOY), jnp.sqrt(2 / T_TOY))
+dct_formula = dct_scale[:, None] * jnp.cos(
+    jnp.pi * jnp.outer(frequency, 2 * toy_time - 1) / (2 * T_TOY)
+)
+np.testing.assert_allclose(rotations[Coordinates.DCT], dct_formula, atol=1e-10)</code></pre>
+<p>Both matrices are orthonormal. We plot the first four rows of each basis next to the four stiffest directions of the posterior. Each vector has its own horizontal strip, and each strip is scaled to the same height.</p>
+<pre class="python"><code>panels = {
+    &quot;Stiffest directions of the posterior&quot;: (eigenvectors.T, &quot;black&quot;),
+    &quot;Discrete cosine transform&quot;: (rotations[Coordinates.DCT], COLORS[Coordinates.DCT]),
+    &quot;Haar transform&quot;: (rotations[Coordinates.HAAR], COLORS[Coordinates.HAAR]),
+}
+
+fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(16, 5), sharey=True)
+
+for ax, (title, (rows, color)) in zip(axes, panels.items(), strict=True):
+    for i in range(4):
+        strip = 0.4 * rows[i] / jnp.abs(rows[i]).max() - i
+        ax.axhline(-i, color=&quot;gray&quot;, linewidth=0.5)
+        ax.plot(toy_time, strip, color=color, drawstyle=&quot;steps-mid&quot;)
+
+    ax.set(xlabel=&quot;time step&quot;, title=title, yticks=[0, -1, -2, -3])
+    ax.set_yticklabels([f&quot;vector {i}&quot; for i in range(4)])
+
+axes[0].set(ylabel=&quot;basis vector (rescaled)&quot;)
+fig.suptitle(&quot;The First Four Vectors of Each Basis&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_31_0.png" style="width: 1000px;"/>
+</center>
+<p>Each strip is one basis vector as a function of time, and the thin gray line is zero. The left panel is the target, and the other two are the fixed bases.</p>
+<p>The DCT rows resemble the stiffest directions of the posterior. They are cosines of increasing frequency, which is what the eigenvectors <span class="math inline">\(v_k\)</span> look like, but the two are not identical: the eigenvectors go to zero at the right end and the DCT rows do not. The next section measures how much this difference costs.</p>
+<p>The Haar rows are a blocky version of the same idea. Vector <span class="math inline">\(0\)</span> is the average, vector <span class="math inline">\(1\)</span> compares the two halves, and vectors <span class="math inline">\(2\)</span> and <span class="math inline">\(3\)</span> compare the quarters inside each half. Both bases sort the coordinates from coarse to fine: the first coordinates are the smooth, stiff directions and the last ones are the oscillating, loose directions.</p>
+</div>
+</div>
+<div id="mean-field-gap" class="section level2">
+<h2>Mean-Field Gap</h2>
+<p>Now we quantify what a mean-field guide loses in each basis. First, let’s recall what SVI optimizes. For a detailed introduction see <a href="https://juanitorduz.github.io/intro_svi/">PyData Berlin 2025: Introduction to Stochastic Variational Inference with NumPyro</a>.</p>
+<p>Variational inference replaces the posterior <span class="math inline">\(\text{P}(z \mid y)\)</span> with the closest member <span class="math inline">\(q\)</span> of a simpler family of distributions, the guide. The discrepancy is the Kullback-Leibler (KL) divergence</p>
+<p><span class="math display">\[\text{KL}\left(q \,\|\, \text{P}(z \mid y)\right) = \text{E}_{q}\left[\log q(z) - \log \text{P}(z \mid y)\right] ,\]</span></p>
+<p>which is never negative and is zero only when <span class="math inline">\(q\)</span> equals the posterior. With the natural logarithm we measure it in <em>nats</em>. The expectation is under <span class="math inline">\(q\)</span>, so the guide pays a large penalty where it puts mass and the posterior does not. A guide that cannot match the shape of the posterior therefore stays inside its high-probability region, and it underestimates the uncertainty of each coordinate. A sum of coordinates, such as the level, can still come out too wide, because the guide also drops the negative correlations. We see both effects below.</p>
+<p>We cannot compute the KL divergence directly, because the posterior contains the unknown evidence <span class="math inline">\(\text{P}(y)\)</span>. SVI maximizes the evidence lower bound (ELBO) instead, which only needs the joint density <span class="math inline">\(\text{P}(y, z)\)</span> of the model:</p>
+<p><span class="math display">\[\text{ELBO}(q) = \text{E}_{q}\left[\log \text{P}(y, z) - \log q(z)\right] = \log \text{P}(y) - \text{KL}\left(q \,\|\, \text{P}(z \mid y)\right) .\]</span></p>
+<p>The log evidence does not depend on <span class="math inline">\(q\)</span>, so maximizing the ELBO is the same as minimizing the KL divergence.</p>
+<p>A mean-field Gaussian guide for <span class="math inline">\(z\)</span> is a product of independent Normal distributions,</p>
+<p><span class="math display">\[q(z) = \prod_{i = 1}^{T} \text{Normal}(z_i \mid m_i, s_i),\]</span></p>
+<p>with one location <span class="math inline">\(m_i\)</span> and one scale <span class="math inline">\(s_i\)</span> per coordinate. This is the family that <code>AutoNormal</code> fits.</p>
+<p>The log evidence does not depend on the basis either. Therefore the smallest KL divergence that a mean-field guide can reach in a basis sets its best possible ELBO there. We call that divergence the mean-field gap.</p>
+<p>For a Gaussian posterior with precision <span class="math inline">\(\Lambda_U\)</span> we can minimize in closed form. The optimal locations are the entries of the posterior mean and the optimal scales are <span class="math inline">\(s_i^2 = 1 / (\Lambda_U)_{ii}\)</span>. In other words, each factor of the guide gets the <em>conditional</em> variance of its coordinate, which is never larger than the marginal variance (see equation (10.12) in Section 10.1.2 of <a href="https://www.microsoft.com/en-us/research/wp-content/uploads/2006/01/Bishop-Pattern-Recognition-and-Machine-Learning-2006.pdf">Bishop (2006)</a>).</p>
+<p>Let <span class="math inline">\(\tilde{\Lambda}_U\)</span> be the precision <span class="math inline">\(\Lambda_U\)</span> rescaled to have ones on the diagonal, which we call the normalized precision. The gap is</p>
+<p><span class="math display">\[\text{gap}(U) = \frac{1}{2} \left( \sum_{i = 1}^{T} \log (\Lambda_U)_{ii} - \log \det \Lambda \right) = - \frac{1}{2} \log \det \tilde{\Lambda}_U .\]</span></p>
+<p>Here is where the formula comes from. The guide and the posterior are both Gaussian, so their KL divergence has a closed form (see the <a href="https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Kullback%E2%80%93Leibler_divergence">Wikipedia article on the multivariate normal distribution</a>), which we write out in the Mean-Field Check section below. In that expression the locations only appear in a quadratic term, which is zero at the posterior mean, and the variances separate into one term <span class="math inline">\((\Lambda_U)_{ii}\, s_i^2 - \log s_i^2\)</span> per coordinate.</p>
+<p>Each of these terms is smallest at <span class="math inline">\(s_i^2 = 1 / (\Lambda_U)_{ii}\)</span>, where it equals <span class="math inline">\(1 + \log (\Lambda_U)_{ii}\)</span>. Summing over the coordinates and putting the sum back into the KL formula gives <span class="math inline">\(\text{gap}(U)\)</span>.</p>
+<p>We make two remarks:</p>
+<ul>
+<li><p><strong>The gap is zero only for a diagonal precision.</strong> This is <a href="https://en.wikipedia.org/wiki/Hadamard%27s_inequality">Hadamard’s inequality</a>: the determinant of a positive definite matrix is at most the product of its diagonal entries, with equality only for a diagonal matrix.</p></li>
+<li><p><strong>Only the first term depends on the basis.</strong> The determinant of <span class="math inline">\(\Lambda\)</span> is invariant under rotations. A good basis is one where the product of the diagonal entries of <span class="math inline">\(\Lambda_U\)</span> is small, that is, where the off-diagonal entries of the normalized precision are close to zero.</p></li>
+</ul>
+<p>Let’s compute the gap for the three coordinate systems. We plot the normalized precision matrices (top row) and a zoom on their first <span class="math inline">\(16\)</span> coordinates (bottom row). White is zero, which means no coupling, and the diagonal is <span class="math inline">\(1\)</span> by construction.</p>
+<pre class="python"><code>def normalize(matrix: Float[Array, &quot;t t&quot;]) -&gt; Float[Array, &quot;t t&quot;]:
+    &quot;Rescale a positive definite matrix to have ones on the diagonal.&quot;
+    scale = jnp.sqrt(jnp.diag(matrix))
+    return matrix / jnp.outer(scale, scale)
+
+
+def mean_field_gap(
+    precision: Float[Array, &quot;t t&quot;], rotation: Float[Array, &quot;t t&quot;]
+) -&gt; Float[Array, &quot;&quot;]:
+    &quot;KL divergence of the best mean-field Gaussian relative to the posterior, in nats.&quot;
+
+    rotated = rotation @ precision @ rotation.T
+    return 0.5 * (jnp.log(jnp.diag(rotated)).sum() - jnp.linalg.slogdet(precision)[1])
+
+
+gaps = {name: mean_field_gap(precision, u) for name, u in rotations.items()}
+
+# In the eigenbasis the precision is diagonal and the gap is zero.
+np.testing.assert_allclose(mean_field_gap(precision, eigenvectors.T), 0, atol=1e-8)
+
+fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(16, 10.5))
+
+for column, (name, u) in enumerate(rotations.items()):
+    normalized = normalize(u @ precision @ u.T)
+
+    for row, size in enumerate([T_TOY, 16]):
+        ax = axes[row, column]
+        image = ax.imshow(normalized[:size, :size], cmap=&quot;RdBu_r&quot;, vmin=-1, vmax=1)
+        ax.grid(visible=False)
+        ax.set(xlabel=&quot;coordinate&quot;, ylabel=&quot;coordinate&quot;)
+
+    axes[0, column].set(title=f&quot;{name}: gap = {float(gaps[name]):.1f} nats&quot;)
+    axes[1, column].set(title=f&quot;{name}: first 16 coordinates&quot;)
+
+fig.colorbar(image, ax=axes, shrink=0.6, label=&quot;normalized precision&quot;)
+fig.suptitle(
+    &quot;Normalized Posterior Precision in the Three Coordinate Systems&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_34_0.png" style="width: 1000px;"/>
+</center>
+<p>Each column is the same posterior in one coordinate system, and the title gives the mean-field gap.</p>
+<p>In the original coordinates every pair is coupled. The matrix is dense, and the gap is <span class="math inline">\(187.3\)</span> nats, so a mean-field guide is very far from this posterior. The Haar basis leaves few entries, and the gap drops to <span class="math inline">\(7.4\)</span> nats.</p>
+<p>The DCT leaves even fewer, with a gap of <span class="math inline">\(1.4\)</span> nats, which is less than <span class="math inline">\(1\%\)</span> of the original gap. The eigenbasis has zero gap, and the DCT is <span class="math inline">\(1.4\)</span> nats away from it without any knowledge of the scales.</p>
+<p>The entries that remain are large. The zoom shows entries up to about <span class="math inline">\(0.8\)</span> among the coarsest coefficients. For the DCT they are all in the first row: the coefficient <span class="math inline">\(z_0\)</span>, the average increment, is still coupled to the others. A small gap does not mean that every coordinate is well approximated. We see the consequence for the level below.</p>
+<p>Next, we check that this result is not specific to the scale ratio <span class="math inline">\(\rho = \sigma_\eta / \sigma_\varepsilon = 0.2\)</span> of our example. We compute the gap on a grid of scale ratios.</p>
+<pre class="python"><code>ratio_grid = jnp.logspace(-2, jnp.log10(3.0), 26)
+
+
+def gap_by_ratio(rotation: Float[Array, &quot;t t&quot;]) -&gt; Float[Array, &quot; r&quot;]:
+    &quot;Mean-field gap in a coordinate system, on the grid of scale ratios.&quot;
+    return jax.vmap(
+        lambda rho: mean_field_gap(posterior_precision(T_TOY, rho, 1.0), rotation)
+    )(ratio_grid)
+
+
+gap_grid = {name: gap_by_ratio(u) for name, u in rotations.items()}
+
+fig, ax = plt.subplots()
+
+for name, values in gap_grid.items():
+    ax.plot(ratio_grid, values, color=COLORS[name], label=name)
+
+ax.axvline(
+    DRIFT_SCALE / SIGMA,
+    color=&quot;black&quot;,
+    linestyle=&quot;:&quot;,
+    label=&quot;$\\rho = 0.2$ (our example)&quot;,
+)
+ax.set(
+    xscale=&quot;log&quot;,
+    yscale=&quot;log&quot;,
+    xlabel=&quot;scale ratio $\\rho = \\sigma_\\eta / \\sigma_\\varepsilon$ (log scale)&quot;,
+    ylabel=&quot;mean-field gap (nats, log scale)&quot;,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=4)
+fig.suptitle(&quot;Mean-Field Gap by Coordinate System&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_36_0.png" style="width: 900px;"/>
+</center>
+<p>The figure shows the gap of the best mean-field guide as a function of the scale ratio, on logarithmic axes.</p>
+<p>The ranking is the same for every <span class="math inline">\(\rho\)</span>: the original coordinates are the worst, and both rotations help. The gain grows with the scale ratio. For a very small <span class="math inline">\(\rho\)</span> the posterior is close to the prior and every coordinate system is fine, while for <span class="math inline">\(\rho \ge 0.1\)</span> the original gap is in the tens or hundreds of nats and the DCT gap stays below <span class="math inline">\(3\)</span> nats.</p>
+<p>The DCT has a smaller gap than Haar for this model, because its rows are closer to the stiffest directions of the posterior.</p>
+<div id="uncertainty-of-the-level" class="section level3">
+<h3>Uncertainty of the Level</h3>
+<p>Next, we look at what the gap means for the level, the quantity we forecast from. The best mean-field guide has covariance <span class="math inline">\(U^\top \text{diag}(1 / (\Lambda_U)_{ii})\, U\)</span> for the increments. We push it through the cumulative sum and compare the standard deviation of the level with the exact one.</p>
+<pre class="python"><code>def mean_field_covariance(
+    precision: Float[Array, &quot;t t&quot;], rotation: Float[Array, &quot;t t&quot;]
+) -&gt; Float[Array, &quot;t t&quot;]:
+    &quot;Covariance of the increments under the best mean-field Gaussian.&quot;
+    rotated = rotation @ precision @ rotation.T
+    return rotation.T @ jnp.diag(1 / jnp.diag(rotated)) @ rotation
+
+
+mean_field_level_sd = {
+    name: jnp.sqrt(
+        jnp.diag(cumsum_matrix @ mean_field_covariance(precision, u) @ cumsum_matrix.T)
+    )
+    for name, u in rotations.items()
+}
+
+fig, ax = plt.subplots()
+
+for name, values in mean_field_level_sd.items():
+    ax.plot(toy_time, values, color=COLORS[name], label=f&quot;mean-field: {name}&quot;)
+
+ax.plot(toy_time, level_sd, color=&quot;black&quot;, linestyle=&quot;--&quot;, linewidth=2, label=&quot;exact&quot;)
+ax.set(
+    yscale=&quot;log&quot;,
+    xlabel=&quot;time step&quot;,
+    ylabel=&quot;posterior standard deviation of the level (log scale)&quot;,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=4)
+fig.suptitle(
+    &quot;Uncertainty of the Level under a Mean-Field Guide&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_38_0.png" style="width: 900px;"/>
+</center>
+<p>The dashed black line is the exact posterior standard deviation of the level. The colored lines are the standard deviations under the best mean-field guide in each coordinate system.</p>
+<p>In the original coordinates the shape is wrong. The guide treats the increments as independent, so their variances add up along the series: the level is too narrow at the start and too wide after that, up to <span class="math inline">\(4.5\)</span> times near the end. The exact posterior is flat away from the ends.</p>
+<p>The DCT guide is within <span class="math inline">\(5\%\)</span> of the exact value, except in the last <span class="math inline">\(6\)</span> time steps, where it is too narrow, at the last one by a factor of <span class="math inline">\(3.9\)</span>. The Haar guide is about <span class="math inline">\(13\%\)</span> too wide on average, with dips at the ends of the Haar blocks, the deepest at <span class="math inline">\(t = 128\)</span>, <span class="math inline">\(64\)</span> and <span class="math inline">\(192\)</span>. The deepest dip of all is at the last time step, with the same value as the DCT.</p>
+<p>The collapse at the end and the Haar dips have the same cause. In both bases every row except the first sums to zero, so the last level, the sum of all the increments, is <span class="math inline">\(\sqrt{T}\)</span> times the first coefficient <span class="math inline">\(z_0\)</span>.</p>
+<p>The guide gives <span class="math inline">\(z_0\)</span> its conditional variance, which is too small because <span class="math inline">\(z_0\)</span> is strongly coupled to the other coarse coefficients. The same happens at the end of every Haar block, where only the coarse coefficients enter the level.</p>
+<p>Between the block ends the finer Haar coefficients enter as well, and the guide drops their negative correlations with the coarse ones, so the level comes out too wide. These dips are a property of the Haar basis under a mean-field guide. They do not depend on the data, because the precision does not depend on the data.</p>
+<p>The last time step matters, because a forecast starts from the last level, the forecast origin. There the rotated guides are as wrong as the original one, in the opposite direction. The rotation improves the fit as a whole, but it does not fix the uncertainty at the forecast origin.</p>
+</div>
+<div id="unknown-scales" class="section level3">
+<h3>Unknown Scales</h3>
+<p>With fixed scales, a bad coordinate system gives a wrong uncertainty. When the scales are parameters, the optimizer has a second option: it can change the scales to make the bound tighter. <a href="https://www.semanticscholar.org/paper/Two-problems-with-variational-expectation-for-Turner-Sahani/aaca093827e826a1118a4d2a93b0e42a09308be7">Turner and Sahani (2011)</a> study this bias of variational methods in time series models.</p>
+<p>We can compute this effect exactly for point estimates of the scales. The best ELBO as a function of the scales is the log marginal likelihood minus the gap,</p>
+<p><span class="math display">\[\log \text{P}(y \mid \sigma_\eta, \sigma_\varepsilon) - \text{gap}_U(\sigma_\eta, \sigma_\varepsilon) ,\]</span></p>
+<p>and the gap grows with <span class="math inline">\(\rho\)</span>. The gap therefore acts as a penalty on <span class="math inline">\(\sigma_\eta / \sigma_\varepsilon\)</span>. Let’s maximize this function in each coordinate system and compare the result with the maximum of the marginal likelihood alone.</p>
+<p>The marginal likelihood has a closed form because the model is linear and Gaussian. With the increments integrated out, <span class="math inline">\(y = L \eta + \varepsilon\)</span> is a multivariate Gaussian with mean zero and covariance <span class="math inline">\(\sigma_\eta^2 L L^\top + \sigma_\varepsilon^2 I\)</span> (see equation (2.30) of <a href="http://gaussianprocess.org/gpml/chapters/RW2.pdf">Rasmussen and Williams (2006)</a>). The function <code>log_marginal_likelihood</code> evaluates its log density at <code>toy_y</code>, and <code>best_scales</code> maximizes the objective above over the two scales with <code>scipy.optimize.minimize</code>.</p>
+<pre class="python"><code>def log_marginal_likelihood(
+    drift_scale: ScalarLike, sigma: ScalarLike
+) -&gt; Float[Array, &quot;&quot;]:
+    &quot;&quot;&quot;Log marginal likelihood of the simulated observations given the two scales.
+
+    With the increments integrated out, `y = L eta + eps` is Gaussian with mean zero
+    and covariance `drift_scale**2 * L @ L.T + sigma**2 * I`, where `L` is the
+    cumulative-sum matrix. We return the log density of that Gaussian at `toy_y`
+    (Rasmussen and Williams, 2006, equation 2.30): minus one half of the quadratic
+    form, the log determinant and the `T log(2 pi)` constant.
+    &quot;&quot;&quot;
+    y_covariance = drift_scale**2 * cumsum_matrix @ cumsum_matrix.T
+    y_covariance += sigma**2 * jnp.eye(T_TOY)
+    quadratic = toy_y @ jnp.linalg.solve(y_covariance, toy_y)
+    log_det = jnp.linalg.slogdet(y_covariance)[1]
+    return -0.5 * (T_TOY * jnp.log(2 * jnp.pi) + log_det + quadratic)
+
+
+def best_scales(rotation: Float[Array, &quot;t t&quot;] | None) -&gt; Float[Array, &quot; 2&quot;]:
+    &quot;&quot;&quot;Point estimates of `(drift_scale, sigma)` that maximize an objective.
+
+    With `rotation=None` the objective is the log marginal likelihood, which is the
+    answer without any approximation of the posterior. With a rotation `U` it is the
+    best ELBO that a mean-field guide can reach in that basis: the log marginal
+    likelihood minus the mean-field gap of the posterior precision `Lambda_U`, which
+    depends on the scales through `posterior_precision`. We optimize over the log
+    scales with Nelder-Mead, starting at the values used to simulate the data.
+    &quot;&quot;&quot;
+
+    def objective(log_scales: Float[np.ndarray, &quot; 2&quot;]) -&gt; float:
+        &quot;Negative objective at the log scales, for `scipy.optimize.minimize`.&quot;
+        drift_scale, sigma = jnp.exp(jnp.asarray(log_scales))
+        value = log_marginal_likelihood(drift_scale, sigma)
+        if rotation is not None:
+            value -= mean_field_gap(
+                posterior_precision(T_TOY, drift_scale, sigma), rotation
+            )
+        return -float(value)
+
+    result = minimize(objective, np.log([DRIFT_SCALE, SIGMA]), method=&quot;Nelder-Mead&quot;)
+    return jnp.exp(result.x)
+
+
+scale_estimates = {&quot;marginal likelihood&quot;: best_scales(None)} | {
+    name: best_scales(u) for name, u in rotations.items()
+}
+
+objective_labels = [&quot;marginal\nlikelihood&quot;] + [
+    f&quot;best ELBO\n{name}&quot; for name in Coordinates
+]
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 5.5))
+
+for i, (ax, symbol, truth) in enumerate(
+    zip(
+        axes,
+        [&quot;\\sigma_\\eta&quot;, &quot;\\sigma_\\varepsilon&quot;],
+        [DRIFT_SCALE, SIGMA],
+        strict=True,
+    )
+):
+    estimates = [float(estimate[i]) for estimate in scale_estimates.values()]
+    ax.bar(
+        range(len(scale_estimates)),
+        estimates,
+        color=[&quot;black&quot;, *COLORS.values()],
+        alpha=0.8,
+    )
+    ax.axhline(truth, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;value used to simulate&quot;)
+    ax.set_xticks(range(len(scale_estimates)), labels=objective_labels)
+    ax.set(
+        xlabel=&quot;objective&quot;,
+        ylabel=f&quot;estimate of ${symbol}$&quot;,
+        title=f&quot;Estimate of ${symbol}$&quot;,
+        ylim=(0, 1.15 * max(estimates)),
+    )
+    ax.legend(loc=&quot;upper left&quot;)
+
+fig.suptitle(
+    &quot;Scale Estimates under a Mean-Field Guide&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_40_0.png" style="width: 1000px;"/>
+</center>
+<p>The black bar maximizes the marginal likelihood, which is the answer without any approximation of the posterior. The colored bars maximize the best ELBO of a mean-field guide in each coordinate system. The dashed line is the value we used to simulate the data.</p>
+<p>In the original coordinates the level is shrunk. Compared with the maximum of the marginal likelihood, the estimate of <span class="math inline">\(\sigma_\eta\)</span> is about four times too small, and the estimate of <span class="math inline">\(\sigma_\varepsilon\)</span> is about <span class="math inline">\(30\%\)</span> too large. The guide prefers a level that moves less, and it explains the rest as noise.</p>
+<p>The rotations remove most of this bias. With the Haar basis <span class="math inline">\(\sigma_\eta\)</span> is about <span class="math inline">\(20\%\)</span> too small, and with the DCT both estimates are within <span class="math inline">\(2\%\)</span> of the marginal likelihood. We will see the same pattern in the ridership example.</p>
+<p><strong>Remark (other guides):</strong> A full-rank Gaussian guide removes the dependence on the basis, at the price of <span class="math inline">\(O(T^2)\)</span> parameters. Low-rank guides are in between. The rotation has no parameters and costs <span class="math inline">\(O(T \log T)\)</span> operations or less.</p>
+</div>
+</div>
+<div id="local-level-experiments" class="section level2">
+<h2>Local Level Experiments</h2>
+<p>We now check the derivation of the mean-field gap on the local level model with a fitted guide.</p>
+<p>First, we need the model in the three coordinate systems. NumPyro implements the two rotations as the reparameterizers <code>HaarReparam</code> and <code>DiscreteCosineReparam</code> (see the <a href="https://num.pyro.ai/en/stable/reparam.html">NumPyro documentation</a>). The effect handler <code>handlers.reparam</code> applies a reparameterizer to the sites we name, without changes to the model code.</p>
+<p>The reparameterizer replaces the latent site <code>drift</code> with a new latent site, <code>drift_haar</code> or <code>drift_dct</code>, which holds the coefficients <span class="math inline">\(z = U \eta\)</span>. The site <code>drift</code> becomes a deterministic function of the new site. Let’s create the three versions of the conditioned model.</p>
+<pre class="python"><code>Model = Callable[..., None]
+
+toy_models: dict[Coordinates, Model] = {
+    Coordinates.NONE: toy_model,
+    Coordinates.HAAR: handlers.reparam(
+        toy_model, config={&quot;drift&quot;: HaarReparam(dim=-1)}
+    ),
+    Coordinates.DCT: handlers.reparam(
+        toy_model, config={&quot;drift&quot;: DiscreteCosineReparam(dim=-1)}
+    ),
+}</code></pre>
+<p>Let’s check that the three versions define the same model: we evaluate the log joint density of the three models at the same point, written in each coordinate system.</p>
+<pre class="python"><code>log_joint, _ = log_density(toy_model, toy_args, {}, {&quot;drift&quot;: toy_drift})
+
+for name, transform in {
+    Coordinates.HAAR: HaarTransform(dim=-1),
+    Coordinates.DCT: DiscreteCosineTransform(dim=-1),
+}.items():
+    log_joint_rotated, _ = log_density(
+        toy_models[name],
+        toy_args,
+        {},
+        {f&quot;drift_{name}&quot;: transform(toy_drift)},
+    )
+    np.testing.assert_allclose(log_joint_rotated, log_joint, rtol=1e-5)</code></pre>
+<p>The three log densities agree. We have three coordinate systems for one model.</p>
+<div id="mean-field-check" class="section level3">
+<h3>Mean-Field Check</h3>
+<p>We fit an <code>AutoNormal</code> guide to each version of the model. The guide is a product of Normal distributions with locations <span class="math inline">\(m\)</span> and scales <span class="math inline">\(s\)</span>, and the posterior of <span class="math inline">\(z\)</span> is a Gaussian with mean <span class="math inline">\(U \bar{\eta}\)</span> and precision <span class="math inline">\(\Lambda_U\)</span>. The KL divergence between two Gaussians has a closed form (see the <a href="https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Kullback%E2%80%93Leibler_divergence">Wikipedia article on the multivariate normal distribution</a>), and for this pair it is</p>
+<p><span class="math display">\[\text{KL} = \frac{1}{2} \left( \sum_{i} (\Lambda_U)_{ii}\, s_i^2 + (m - U \bar{\eta})^\top \Lambda_U\, (m - U \bar{\eta}) - T - \log \det \Lambda - \sum_{i} \log s_i^2 \right) .\]</span></p>
+<p>This number cannot be smaller than the gap of the previous section, and it is equal to it only if the optimizer finds the optimum. We use a step size that decays from <span class="math inline">\(0.02\)</span> to <span class="math inline">\(10^{-4}\)</span>, so that the optimizer noise does not hide gaps of a few nats.</p>
+<pre class="python"><code>def fit_toy_guide(
+    rng_key: UInt[Array, &quot;2&quot;], model: Model, num_steps: int = 20_000
+) -&gt; dict[str, Array]:
+    &quot;Fit a mean-field guide to the local level model and return its parameters.&quot;
+    guide = AutoNormal(model)
+    optimizer = Adam(exponential_decay(0.02, num_steps, 0.005))
+    svi = SVI(model, guide, optimizer, Trace_ELBO(num_particles=4))
+    result = svi.run(rng_key, num_steps, *toy_args, progress_bar=False)
+    return result.params
+
+
+def fitted_gap(
+    params: dict[str, Array], site: str, rotation: Float[Array, &quot;t t&quot;]
+) -&gt; Float[Array, &quot;&quot;]:
+    &quot;KL divergence of a fitted mean-field guide relative to the exact posterior.&quot;
+    loc = params[f&quot;{site}_auto_loc&quot;]
+    scale = params[f&quot;{site}_auto_scale&quot;]
+    rotated = rotation @ precision @ rotation.T
+    shift = loc - rotation @ drift_mean
+    return 0.5 * (
+        (jnp.diag(rotated) * scale**2).sum()
+        + shift @ rotated @ shift
+        - T_TOY
+        - jnp.linalg.slogdet(precision)[1]
+        - 2 * jnp.log(scale).sum()
+    )
+
+
+toy_sites = {
+    Coordinates.NONE: &quot;drift&quot;,
+    Coordinates.HAAR: &quot;drift_haar&quot;,
+    Coordinates.DCT: &quot;drift_dct&quot;,
+}
+
+rng_key, rng_subkey = random.split(rng_key)
+fitted_gaps = {
+    name: fitted_gap(fit_toy_guide(rng_subkey, model), toy_sites[name], rotations[name])
+    for name, model in toy_models.items()
+}</code></pre>
+<p>We compare the gap of the fitted guides with the gap from the formula.</p>
+<pre class="python"><code>positions = jnp.arange(len(Coordinates))
+formula_gaps = [float(gaps[name]) for name in Coordinates]
+fitted = [float(fitted_gaps[name]) for name in Coordinates]
+
+fig, ax = plt.subplots()
+
+for position, name in enumerate(Coordinates):
+    ax.plot(
+        position - 0.1, formula_gaps[position], &quot;o&quot;, color=COLORS[name], markersize=12
+    )
+    ax.plot(position + 0.1, fitted[position], &quot;X&quot;, color=COLORS[name], markersize=12)
+
+ax.plot([], [], &quot;o&quot;, color=&quot;gray&quot;, markersize=12, label=&quot;formula&quot;)
+ax.plot([], [], &quot;X&quot;, color=&quot;gray&quot;, markersize=12, label=&quot;fitted guide&quot;)
+
+for position, formula_gap, fitted_value in zip(
+    positions, formula_gaps, fitted, strict=True
+):
+    ax.annotate(
+        f&quot;{formula_gap:.2f}&quot;,
+        (position - 0.1, formula_gap),
+        xytext=(-45, 0),
+        textcoords=&quot;offset points&quot;,
+        va=&quot;center&quot;,
+    )
+    ax.annotate(
+        f&quot;{fitted_value:.2f}&quot;,
+        (position + 0.1, fitted_value),
+        xytext=(12, 0),
+        textcoords=&quot;offset points&quot;,
+        va=&quot;center&quot;,
+    )
+
+ax.set(
+    yscale=&quot;log&quot;,
+    xticks=positions,
+    xticklabels=list(Coordinates),
+    xlim=(-0.6, 2.6),
+    xlabel=&quot;coordinate system&quot;,
+    ylabel=&quot;mean-field gap (nats, log scale)&quot;,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=2)
+fig.suptitle(
+    &quot;Mean-Field Gap: Formula and Fitted Guide&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_49_0.png" style="width: 900px;"/>
+</center>
+<p>For each coordinate system, the circle is the gap from the formula and the cross is the divergence of the fitted guide.</p>
+<p>The two values agree in the three coordinate systems, and the fitted value is never below the formula. The rotation improves the ELBO by <span class="math inline">\(180\)</span> nats with the Haar basis and by <span class="math inline">\(186\)</span> nats with the DCT, with the same model, guide family and optimizer in the three fits.</p>
+</div>
+</div>
+<div id="ridership-forecasting-model" class="section level2">
+<h2>Ridership Forecasting Model</h2>
+<p>Now we move to real data and to a model without a closed-form posterior. We use the example of the Pyro tutorial <a href="https://pyro.ai/examples/forecasting_i.html">Forecasting I: univariate, heavy tailed</a>, in the <code>numpyro_forecast</code> version of the <a href="https://juanitorduz.github.io/numpyro_forecast/docs/examples/forecasting_univariate.html">univariate forecasting example</a>.</p>
+<div id="data" class="section level3">
+<h3>Data</h3>
+<p>The data are the total weekly ridership of the BART train system, on the log scale. We hold out the last <span class="math inline">\(52\)</span> weeks as a test set. The seasonal features are a Fourier basis with <span class="math inline">\(26\)</span> harmonics of the yearly period.</p>
+<p>We load the data, split it, and plot it.</p>
+<pre class="python"><code>data = load_bart_weekly()
+duration = data.shape[0]
+t_train = duration - 52
+
+y_train = data[:t_train]
+y_test = data[t_train:]
+
+covariates = fourier_features(duration, period=365.25 / 7, num_terms=26)
+covariates_train = covariates[:t_train]
+
+weeks = jnp.arange(duration)
+weeks_train = weeks[:t_train]
+weeks_test = weeks[t_train:]
+
+fig, ax = plt.subplots()
+ax.plot(weeks_train, y_train[:, 0], color=&quot;black&quot;, label=&quot;train&quot;)
+ax.plot(weeks_test, y_test[:, 0], color=&quot;C3&quot;, label=&quot;test&quot;)
+ax.axvline(t_train, color=&quot;gray&quot;, linestyle=&quot;--&quot;, label=&quot;train-test split&quot;)
+ax.set(xlabel=&quot;week&quot;, ylabel=&quot;log(rides)&quot;)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=3)
+fig.suptitle(&quot;Weekly BART Ridership&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_52_0.png" style="width: 900px;"/>
+</center>
+<p>The series has <span class="math inline">\(417\)</span> training weeks and <span class="math inline">\(52\)</span> test weeks.</p>
+<p>The level moves slowly: there is a trend that changes over the years, which is what the random-walk level has to capture. There is also a yearly pattern with sharp drops in the holiday weeks, which is the reason for a heavy-tailed likelihood.</p>
+</div>
+<div id="model-specification" class="section level3">
+<h3>Model Specification</h3>
+<p>The model is a local level with a seasonal regression and Student-T noise. We keep the notation of the first part. Let <span class="math inline">\(x_t\)</span> be the vector of Fourier features of week <span class="math inline">\(t\)</span>, <span class="math inline">\(w\)</span> the regression weights, <span class="math inline">\(b\)</span> a global intercept, and <span class="math inline">\(\nu\)</span> the degrees of freedom. The model is</p>
+<p><span class="math display">\[\begin{align*}
+y_t &amp; = b + \mu_t + w^\top x_t + \varepsilon_t, &amp; \varepsilon_t &amp; \sim \text{StudentT}(\nu, 0, \sigma_\varepsilon), \\
+\mu_t &amp; = \mu_{t-1} + \eta_t, &amp; \eta_t &amp; \sim \text{Normal}(0, \sigma_\eta),
+\end{align*}\]</span></p>
+<p>with <span class="math inline">\(\mu_0 = 0\)</span>. This is the local level model of the first part with three complications: the scales <span class="math inline">\(\sigma_\eta\)</span> and <span class="math inline">\(\sigma_\varepsilon\)</span> are unknown, the likelihood is not Gaussian, and there are an intercept and a regression.</p>
+<p>We keep the priors and the site names of the Pyro tutorial: <code>bias</code> is <span class="math inline">\(b\)</span>, <code>weight</code> is <span class="math inline">\(w\)</span>, <code>drift_scale</code> is <span class="math inline">\(\sigma_\eta\)</span>, <code>sigma</code> is <span class="math inline">\(\sigma_\varepsilon\)</span> and <code>nu</code> is <span class="math inline">\(\nu\)</span>. The model follows the <code>numpyro_forecast</code> convention: it takes <code>(covariates, data)</code>, derives the forecast horizon with <code>Horizon.from_data</code>, samples the increments with <code>innovations</code>, and hands the prediction to <code>predict</code>. We also register the level <span class="math inline">\(\mu_t\)</span> as the deterministic site <code>level</code>, to compare it across fits.</p>
+<p>We sample the increments in the non-centered parameterization, <span class="math inline">\(\eta_t = \sigma_\eta\, \tilde{\eta}_t\)</span> with <span class="math inline">\(\tilde{\eta}_t \sim \text{Normal}(0, 1)\)</span>, through <code>LocScaleReparam(centered=0.0)</code>. This reduces the strong dependence between a scale and the variables it scales, which is known as the funnel (<a href="https://arxiv.org/abs/1906.03028">Gorinova, Moore and Hoffman, 2020</a>). It is a different problem from the one we study here.</p>
+<p><strong>Remark (the <code>centered</code> site):</strong> The documentation example samples the amount of centering as an extra site <code>centered</code>. That site does not change the model, and NUTS does not mix on it (see the <a href="https://juanitorduz.github.io/numpyro_forecast/docs/examples/inference_methods_comparison.html">comparison of inference methods</a>). We fix it, so that the NUTS reference below converges.</p>
+<p>Here is the model.</p>
+<pre class="python"><code>def ridership_model(
+    covariates: Float[Array, &quot;duration features&quot;],
+    data: Float[Array, &quot;t_obs 1&quot;] | None = None,
+) -&gt; None:
+    &quot;Local level with a Fourier regression and Student-T observations.&quot;
+    h = Horizon.from_data(covariates, data)
+    num_features = covariates.shape[-1]
+
+    bias = numpyro.sample(&quot;bias&quot;, dist.Normal(0.0, 10.0))
+    weight = numpyro.sample(
+        &quot;weight&quot;, dist.Normal(0.0, 0.1).expand([num_features]).to_event(1)
+    )
+    drift_scale = numpyro.sample(&quot;drift_scale&quot;, dist.LogNormal(-20.0, 5.0))
+    nu = numpyro.sample(&quot;nu&quot;, dist.Gamma(10.0, 2.0))
+    sigma = numpyro.sample(&quot;sigma&quot;, dist.LogNormal(-5.0, 5.0))
+
+    drift = innovations(
+        h,
+        &quot;drift&quot;,
+        dist.Normal(0.0, drift_scale),
+        reparam=LocScaleReparam(centered=0.0),
+    )
+    level = numpyro.deterministic(&quot;level&quot;, jnp.cumsum(drift, axis=-2))
+    regression = (weight * covariates).sum(axis=-1, keepdims=True)
+
+    predict(h, dist.StudentT(df=nu, loc=0.0, scale=sigma), bias + level + regression)
+
+
+graph = numpyro.render_model(
+    ridership_model,
+    model_args=(covariates_train, y_train),
+    render_distributions=True,
+)
+
+graph.attr(label=&quot;Original Ridership Model&quot;, labelloc=&quot;t&quot;, fontsize=&quot;20&quot;)
+
+graph</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_55_0.svg" style="width: 900px;"/>
+</center>
+<p>The function <code>time_reparam</code> of <code>numpyro_forecast</code> applies the same reparameterizers to a forecasting model. It selects every latent sample site inside the <code>time</code> plate, which are the sites that <code>innovations</code> samples, and it rotates them along the time axis. The global parameters and the likelihood stay as they are.</p>
+<p>Each rotated version of the model is one call to <code>time_reparam</code>. We create each wrapped model once and reuse it for fitting and forecasting.</p>
+<p><strong>Remark (Pyro’s names):</strong> In Pyro <code>1.9.2</code> the two names are swapped in <a href="https://github.com/pyro-ppl/pyro/blob/1.9.2/pyro/contrib/forecast/util.py"><code>pyro.contrib.forecast.util</code></a>: <code>time_reparam="haar"</code> applies the DCT and <code>time_reparam="dct"</code> applies the Haar transform. In <code>numpyro_forecast</code> each name does what it says. Take this into account when comparing results across the two libraries.</p>
+<pre class="python"><code>models: dict[Coordinates, Model] = {
+    Coordinates.NONE: ridership_model,
+    Coordinates.HAAR: time_reparam(ridership_model, Coordinates.HAAR),
+    Coordinates.DCT: time_reparam(ridership_model, Coordinates.DCT),
+}</code></pre>
+<p>Let’s render the DCT version to see which sites it has.</p>
+<pre class="python"><code>graph = numpyro.render_model(
+    models[Coordinates.DCT],
+    model_args=(covariates_train, y_train),
+    render_distributions=True,
+)
+
+graph.attr(label=&quot;DCT Version of the Ridership Model&quot;, labelloc=&quot;t&quot;, fontsize=&quot;20&quot;)
+
+graph</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_59_0.svg" style="width: 900px;"/>
+</center>
+<p>The graph shows the sites of the reparameterized model. Solid ellipses are latent sites, dashed ellipses are deterministic sites, the gray ellipse is the observed site, and the box is the <code>time</code> plate.</p>
+<p>The new latent site is <code>drift_decentered_dct</code>. It is outside the <code>time</code> plate, because its <span class="math inline">\(417\)</span> coordinates are DCT coefficients and not time steps. The sites inside the plate are now deterministic: the model computes both <code>drift_decentered</code> (the standardized increments <span class="math inline">\(\tilde{\eta}_t\)</span>) and <code>drift</code> from the new site. The global parameters, the level and the likelihood do not change.</p>
+</div>
+</div>
+<div id="variational-inference" class="section level2">
+<h2>Variational Inference</h2>
+<p>We fit an <code>AutoNormal</code> guide to each version of the model. We take <code>Adam</code> and the <span class="math inline">\(50000\)</span> steps from the documentation example. The example uses a constant step size of <span class="math inline">\(0.005\)</span>. We let the step size decay from <span class="math inline">\(0.005\)</span> to <span class="math inline">\(0.0005\)</span>, so that the parameters settle at the end of the run and do not jitter around the optimum. We collect these settings in the <code>SVIConfig</code> tuple below.</p>
+<p>The result of one fit depends on the random key, which initializes the guide and draws the ELBO samples. <strong>We therefore fit every version of the model <span class="math inline">\(5\)</span> times, once per random key, which gives <span class="math inline">\(15\)</span> fits in total.</strong> The three coordinate systems share the same five keys, so that we can compare fits that only differ in the rotation.</p>
+<p>We also initialize the location of <code>bias</code> at the mean of the training data. The data are close to <span class="math inline">\(14.6\)</span> on the log scale, and the default initialization draws every location uniformly in <span class="math inline">\((-2, 2)\)</span>. We study the default initialization in the next subsection.</p>
+<pre class="python"><code>%%time
+
+NUM_FITS = 5
+NUM_STEPS = 50_000
+
+# The step size decays from 0.005 to 0.0005 over the run.
+step_schedule = exponential_decay(0.005, NUM_STEPS, 0.1)
+
+
+class SVIConfig(NamedTuple):
+    &quot;Settings of one SVI run of the ridership model.&quot;
+
+    init_loc_fn: Callable = init_to_uniform
+    step_size: float | Callable = step_schedule
+    num_steps: int = NUM_STEPS
+
+
+class Fit(NamedTuple):
+    &quot;Result of one SVI fit.&quot;
+
+    guide: AutoNormal
+    params: dict[str, Array]
+    losses: Float[Array, &quot; steps&quot;]
+    seconds: float
+
+
+def fit_guide(
+    rng_key: UInt[Array, &quot;2&quot;],
+    model: Model,
+    config: SVIConfig,
+    covariates: Float[Array, &quot;t_obs features&quot;],
+    data: Float[Array, &quot;t_obs 1&quot;],
+) -&gt; Fit:
+    &quot;Fit a mean-field guide to a version of the ridership model.&quot;
+    guide = AutoNormal(model, init_loc_fn=config.init_loc_fn)
+    svi = SVI(model, guide, Adam(step_size=config.step_size), Trace_ELBO())
+    start = perf_counter()
+    result = svi.run(rng_key, config.num_steps, covariates, data, progress_bar=False)
+    result.losses.block_until_ready()
+    return Fit(guide, result.params, result.losses, perf_counter() - start)
+
+
+def fit_all(config: SVIConfig) -&gt; dict[Coordinates, list[Fit]]:
+    &quot;Fit every version of the model on the training data, once per random key.&quot;
+    return {
+        name: [
+            fit_guide(key, model, config, covariates_train, y_train) for key in svi_keys
+        ]
+        for name, model in models.items()
+    }
+
+
+def final_loss(fit: Fit) -&gt; float:
+    &quot;Average ELBO loss over the last 1000 steps.&quot;
+    return float(fit.losses[-1_000:].mean())
+
+
+init_bias = init_to_value(values={&quot;bias&quot;: y_train.mean()})
+svi_config = SVIConfig(init_loc_fn=init_bias)
+
+rng_key, *svi_keys = random.split(rng_key, NUM_FITS + 1)
+svi_fits = fit_all(svi_config)</code></pre>
+<pre><code>CPU times: user 2min 46s, sys: 59.6 s, total: 3min 46s
+Wall time: 1min 27s</code></pre>
+<p>We plot the ELBO loss (the negative ELBO, in nats, so lower is better) of the first fit in each coordinate system. The loss starts above <span class="math inline">\(10000\)</span> nats and drops fast in the first <span class="math inline">\(1000\)</span> steps, so the left panel starts at step <span class="math inline">\(1000\)</span>. The right panel shows the last <span class="math inline">\(20000\)</span> steps. The legend gives the average loss over the last <span class="math inline">\(1000\)</span> steps, which we call the final loss.</p>
+<pre class="python"><code>steps = jnp.arange(NUM_STEPS)
+early = (steps &gt;= 1_000) &amp; (steps &lt; 10_000)
+late = steps &gt;= NUM_STEPS - 20_000
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 5))
+
+for name, fits in svi_fits.items():
+    losses = fits[0].losses
+    axes[0].plot(
+        steps[early],
+        losses[early],
+        color=COLORS[name],
+        linewidth=0.5,
+        alpha=0.7,
+        label=f&quot;{name} (final loss: {final_loss(fits[0]):.0f})&quot;,
+    )
+    axes[1].plot(
+        steps[late], losses[late], color=COLORS[name], linewidth=0.5, alpha=0.7
+    )
+
+axes[0].set(xlabel=&quot;SVI step&quot;, ylabel=&quot;ELBO loss (nats)&quot;, title=&quot;Steps 1000 to 10000&quot;)
+axes[0].legend(loc=&quot;upper right&quot;)
+axes[1].set(xlabel=&quot;SVI step&quot;, ylabel=&quot;ELBO loss (nats)&quot;, title=&quot;Last 20000 steps&quot;)
+fig.suptitle(&quot;ELBO Loss by Coordinate System&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_64_0.png" style="width: 1000px;"/>
+</center>
+<p>The three curves are the same guide family fitted to the same model, in three coordinate systems.</p>
+<p>The rotated fits reach a much better ELBO. The final loss is about <span class="math inline">\(-452\)</span> in the original coordinates, <span class="math inline">\(-530\)</span> with the Haar transform and <span class="math inline">\(-535\)</span> with the DCT, so the gain is about <span class="math inline">\(78\)</span> nats with Haar and <span class="math inline">\(83\)</span> nats with the DCT. The rotated fits are also ahead from step <span class="math inline">\(1000\)</span> on.</p>
+<p>The log evidence is the same for the three models, so a better ELBO means a guide that is closer to the posterior 🚀. We look at what this means for the parameters and for the forecasts in the next section.</p>
+<p>Observe that the band of the original fit stays wide in the last <span class="math inline">\(20000\)</span> steps, although the step size decays from <span class="math inline">\(0.0013\)</span> to <span class="math inline">\(0.0005\)</span> over these steps. Each point is a single-sample Monte Carlo estimate of the ELBO, and the variance of that estimate is zero when the guide equals the posterior and large when the guide is far from it. The wide band is therefore one more symptom of the problem that the rotation addresses, and a smaller step size does not remove it.</p>
+<p>Each step costs more in the rotated coordinates. Let’s time the fits. The first fit of each model includes the compilation, so we show the other four of each coordinate system. The bar is their mean and each black point is one fit.</p>
+<pre class="python"><code>fit_seconds = pl.DataFrame(
+    [
+        {&quot;coordinates&quot;: name, &quot;seconds&quot;: fit.seconds}
+        for name, fits in svi_fits.items()
+        for fit in fits[1:]
+    ]
+)
+
+fig, ax = plt.subplots()
+sns.barplot(
+    data=fit_seconds,
+    x=&quot;coordinates&quot;,
+    y=&quot;seconds&quot;,
+    hue=&quot;coordinates&quot;,
+    palette=COLORS,
+    alpha=0.7,
+    errorbar=None,
+    legend=False,
+    ax=ax,
+)
+sns.stripplot(
+    data=fit_seconds, x=&quot;coordinates&quot;, y=&quot;seconds&quot;, color=&quot;black&quot;, jitter=False, ax=ax
+)
+ax.plot([], [], &quot;s&quot;, color=&quot;gray&quot;, alpha=0.7, markersize=12, label=&quot;mean over the fits&quot;)
+ax.plot([], [], &quot;o&quot;, color=&quot;black&quot;, label=&quot;one fit&quot;)
+ax.legend(loc=&quot;upper left&quot;)
+ax.set(xlabel=&quot;coordinate system&quot;, ylabel=&quot;seconds per fit (after compilation)&quot;)
+fig.suptitle(&quot;Time of a Fit by Coordinate System&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_66_0.png" style="width: 900px;"/>
+</center>
+<p>The spread of the points shows how much the time varies between runs.</p>
+<p>A fit takes about <span class="math inline">\(4.4\)</span> seconds in the original coordinates, <span class="math inline">\(5.9\)</span> with the Haar transform and <span class="math inline">\(6.3\)</span> with the DCT. A fit in the rotated coordinates takes about two seconds longer and ends about <span class="math inline">\(80\)</span> nats lower.</p>
+<div id="initialization" class="section level3">
+<h3>Initialization</h3>
+<p>What happens with the default initialization? We repeat all the fits with <code>init_to_uniform</code>, the default of <code>AutoNormal</code> and of <code>SVIConfig</code>, and the same random keys.</p>
+<pre class="python"><code>%%time
+
+default_fits = fit_all(SVIConfig())</code></pre>
+<pre><code>CPU times: user 2min 43s, sys: 1min, total: 3min 44s
+Wall time: 1min 22s</code></pre>
+<p>We plot the loss curves of the first fit from step <span class="math inline">\(1000\)</span> on (left), and the final loss of all the fits for the two initializations (right).</p>
+<pre class="python"><code>after_start = steps &gt;= 1_000
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 5.5))
+
+for position, name in enumerate(Coordinates):
+    axes[0].plot(
+        steps[after_start],
+        default_fits[name][0].losses[after_start],
+        color=COLORS[name],
+        linewidth=0.5,
+        alpha=0.7,
+        label=name,
+    )
+    axes[1].plot(
+        [position - 0.12] * len(svi_keys),
+        [final_loss(fit) for fit in svi_fits[name]],
+        &quot;o&quot;,
+        color=COLORS[name],
+        markersize=7,
+    )
+    axes[1].plot(
+        [position + 0.12] * len(svi_keys),
+        [final_loss(fit) for fit in default_fits[name]],
+        &quot;X&quot;,
+        color=COLORS[name],
+        markersize=8,
+    )
+
+axes[0].set(
+    xlabel=&quot;SVI step&quot;,
+    ylabel=&quot;ELBO loss (nats)&quot;,
+    title=&quot;Default initialization, first fit&quot;,
+)
+axes[0].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=3)
+axes[1].set(
+    xticks=list(range(len(Coordinates))),
+    xticklabels=list(Coordinates),
+    xlim=(-0.6, 2.6),
+    xlabel=&quot;coordinate system&quot;,
+    ylabel=&quot;final ELBO loss (nats)&quot;,
+    title=&quot;Final loss of the five fits&quot;,
+)
+axes[1].plot([], [], &quot;o&quot;, color=&quot;gray&quot;, markersize=7, label=&quot;bias initialized&quot;)
+axes[1].plot([], [], &quot;X&quot;, color=&quot;gray&quot;, markersize=8, label=&quot;default&quot;)
+axes[1].legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.15), ncol=2)
+fig.suptitle(
+    &quot;ELBO Loss with the Default Initialization&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_70_0.png" style="width: 1000px;"/>
+</center>
+<p>The left panel shows the three loss curves of the first fit with the default initialization. In the right panel each marker is the final loss of one fit: circles for the fits with <code>bias</code> initialized and crosses for the default initialization.</p>
+<p>With <code>bias</code> initialized the result does not depend on the random key: the five circles of each coordinate system are within about <span class="math inline">\(3\)</span> nats of each other. With the default initialization none of the <span class="math inline">\(15\)</span> fits finishes. The losses are still falling at step <span class="math inline">\(50000\)</span>, and the crosses end far above the circles: between <span class="math inline">\(50\)</span> and <span class="math inline">\(1070\)</span> nats above in the original coordinates, between <span class="math inline">\(670\)</span> and <span class="math inline">\(780\)</span> nats with Haar, and between <span class="math inline">\(590\)</span> and <span class="math inline">\(680\)</span> nats with the DCT.</p>
+<p>The slow phase comes from the intercept. The two setups differ in the starting value of <code>bias</code>, which the default initialization draws in <span class="math inline">\((-2, 2)\)</span> like every other location, while the data are at <span class="math inline">\(14.6\)</span>. Let’s look at where the unfinished fits are. For the first fit of each coordinate system we compare the default initialization with the initialized <code>bias</code>: the difference in the final loss, the difference in the guide median of <code>bias</code>, and the ratio of the guide medians of <code>drift_scale</code>.</p>
+<pre class="python"><code>def guide_median(fit: Fit, site: str) -&gt; float:
+    &quot;Guide median of a scalar site of one fit.&quot;
+    return float(fit.guide.median(fit.params)[site])
+
+
+first_fit_differences = pl.DataFrame(
+    [
+        {&quot;coordinates&quot;: name, &quot;quantity&quot;: quantity, &quot;value&quot;: value}
+        for name in Coordinates
+        for quantity, value in [
+            (
+                &quot;final loss difference (nats)&quot;,
+                final_loss(default_fits[name][0]) - final_loss(svi_fits[name][0]),
+            ),
+            (
+                &quot;difference in the median of bias&quot;,
+                guide_median(default_fits[name][0], &quot;bias&quot;)
+                - guide_median(svi_fits[name][0], &quot;bias&quot;),
+            ),
+            (
+                &quot;ratio of the medians of drift_scale&quot;,
+                guide_median(default_fits[name][0], &quot;drift_scale&quot;)
+                / guide_median(svi_fits[name][0], &quot;drift_scale&quot;),
+            ),
+        ]
+    ]
+)
+
+fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(16, 5))
+
+for ax, quantity in zip(
+    axes, first_fit_differences[&quot;quantity&quot;].unique(maintain_order=True), strict=True
+):
+    sns.barplot(
+        data=first_fit_differences.filter(pl.col(&quot;quantity&quot;) == quantity),
+        x=&quot;coordinates&quot;,
+        y=&quot;value&quot;,
+        hue=&quot;coordinates&quot;,
+        palette=COLORS,
+        alpha=0.8,
+        legend=False,
+        ax=ax,
+    )
+    ax.set(xlabel=&quot;coordinate system&quot;, ylabel=&quot;&quot;, title=quantity)
+
+axes[2].axhline(1, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+fig.suptitle(
+    &quot;Default Initialization Relative to the Initialized Bias (First Fit)&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_72_0.png" style="width: 1000px;"/>
+</center>
+<p>The unfinished fits hold the intercept in the level. In every coordinate system the median of <code>bias</code> is below the median of the fit with <code>bias</code> initialized, by about <span class="math inline">\(1.7\)</span> in the original coordinates, <span class="math inline">\(8\)</span> with Haar and <span class="math inline">\(7\)</span> with the DCT. The median of <code>drift_scale</code> is <span class="math inline">\(18\)</span> to <span class="math inline">\(57\)</span> times larger, because the level has to carry the offset.</p>
+<p>The final loss is about <span class="math inline">\(770\)</span> nats above the fit with <code>bias</code> initialized in the original and the Haar coordinates, and about <span class="math inline">\(670\)</span> nats above with the DCT.</p>
+<p>The step size starts at the <span class="math inline">\(0.005\)</span> of the documentation example. Let’s repeat the fits with the default initialization and a step size that decays from <span class="math inline">\(0.02\)</span> to <span class="math inline">\(0.0005\)</span>, so that the step size at the start is four times larger and the end of the run is as before.</p>
+<pre class="python"><code>%%time
+
+schedule = exponential_decay(0.02, NUM_STEPS, 0.025)
+
+schedule_fits = fit_all(SVIConfig(step_size=schedule))</code></pre>
+<pre><code>CPU times: user 2min 43s, sys: 59.5 s, total: 3min 43s
+Wall time: 1min 22s</code></pre>
+<p>For the two setups with the default initialization we plot, per coordinate system, the largest difference over the five keys between the final loss of the fit and the final loss of the fit with <code>bias</code> initialized. The vertical axis is on a log scale, because the two setups differ by orders of magnitude.</p>
+<pre class="python"><code>setups = {
+    &quot;default, step $0.005 \\to 0.0005$&quot;: default_fits,
+    &quot;default, step $0.02 \\to 0.0005$&quot;: schedule_fits,
+}
+
+loss_differences = pl.DataFrame(
+    [
+        {
+            &quot;coordinates&quot;: name,
+            &quot;setup&quot;: setup,
+            &quot;largest difference (nats)&quot;: max(
+                abs(final_loss(fit) - final_loss(reference))
+                for fit, reference in zip(fits[name], svi_fits[name], strict=True)
+            ),
+        }
+        for name in Coordinates
+        for setup, fits in setups.items()
+    ]
+)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.barplot(
+    data=loss_differences,
+    x=&quot;coordinates&quot;,
+    y=&quot;largest difference (nats)&quot;,
+    hue=&quot;setup&quot;,
+    palette=[&quot;C3&quot;, &quot;C4&quot;],
+    alpha=0.8,
+    ax=ax,
+)
+ax.set(
+    yscale=&quot;log&quot;,
+    ylim=(1e-2, None),
+    xlabel=&quot;coordinate system&quot;,
+    ylabel=&quot;largest difference to the bias-initialized fit (nats, log scale)&quot;,
+)
+ax.legend(loc=&quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=2, title=&quot;&quot;)
+fig.suptitle(
+    &quot;Distance to the Bias-Initialized Loss by Step Size&quot;,
+    fontsize=18,
+    fontweight=&quot;bold&quot;,
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_76_0.png" style="width: 900px;"/>
+</center>
+<p>With the step size of the base fits, the largest difference is between <span class="math inline">\(680\)</span> and <span class="math inline">\(1070\)</span> nats. With the larger initial step size it is below <span class="math inline">\(3\)</span> nats in every coordinate system: about <span class="math inline">\(0.1\)</span> nats in the original coordinates, <span class="math inline">\(0.7\)</span> with the DCT and <span class="math inline">\(2.5\)</span> with Haar.</p>
+<p>The larger initial step size removes the slow phase in the three coordinate systems, without an initial value for <code>bias</code>.</p>
+<p>Here is what we take from these experiments. Initialize the global location parameters (here <code>bias</code> at the mean of the training data), or start with a larger step size. The same settings converge in the three coordinate systems. For general advice on SVI see <a href="https://pyro.ai/examples/svi_part_iv.html">SVI Part IV: Tips and Tricks</a>.</p>
+</div>
+</div>
+<div id="posterior-and-forecast-comparison" class="section level2">
+<h2>Posterior and Forecast Comparison</h2>
+<p>We now judge the variational fits against a reference. For this model we do not have the exact posterior, so we use NUTS in the original coordinates.</p>
+<p>We run <span class="math inline">\(4\)</span> chains with <span class="math inline">\(1000\)</span> draws each. The model is harder than the local level model, so we use <span class="math inline">\(2000\)</span> warmup steps, as the <a href="https://juanitorduz.github.io/numpyro_forecast/docs/examples/inference_methods_comparison.html">comparison of inference methods</a> does. We use the same initialization of <code>bias</code> as for the guides.</p>
+<p>We convert the run to a <code>DataTree</code> with <code>az.from_numpyro</code>, which keeps the sampler statistics, and we check it with <code>az.diagnose</code>. It reports divergences, parameters with fewer than <span class="math inline">\(100\)</span> effective draws per chain, and parameters with an <span class="math inline">\(\hat{R}\)</span> above <span class="math inline">\(1.01\)</span>.</p>
+<pre class="python"><code>%%time
+
+rng_key, rng_subkey = random.split(rng_key)
+mcmc = MCMC(
+    NUTS(ridership_model, init_strategy=init_bias),
+    num_warmup=2_000,
+    num_samples=1_000,
+    num_chains=4,
+    progress_bar=False,
+)
+mcmc.run(rng_subkey, covariates_train, y_train)
+nuts_reference = mcmc.get_samples()
+nuts_tree = az.from_numpyro(mcmc)
+
+az.diagnose(nuts_tree);</code></pre>
+<pre><code>Divergences
+No divergent transitions found.
+
+ESS
+Effective sample size satisfactory for all parameters.
+
+R-hat
+R-hat values satisfactory for all parameters.
+
+Processing complete, no problems detected.
+CPU times: user 3min 27s, sys: 6min 15s, total: 9min 43s
+Wall time: 1min 12s</code></pre>
+<p>The reference run converges, which is good! There are no divergences, and no parameter is flagged for its effective sample size or its <span class="math inline">\(\hat{R}\)</span>.</p>
+<p>Next, we draw <span class="math inline">\(4000\)</span> samples from each fitted guide with <code>draw_posterior</code>. We pack the draws of the first fit of each coordinate system, and the draws of the reference, as ArviZ <code>DataTree</code> objects with <code>to_datatree</code> from <code>numpyro_forecast</code>.</p>
+<pre class="python"><code>%%time
+
+# The same key for every fit, so that the draws are paired across coordinate systems.
+rng_key, rng_subkey = random.split(rng_key)
+svi_posteriors = {
+    name: [draw_posterior(rng_subkey, fit.guide, fit.params, 4_000) for fit in fits]
+    for name, fits in svi_fits.items()
+}
+
+FIT_COLORS = {&quot;NUTS&quot;: &quot;black&quot;} | {
+    f&quot;SVI: {name}&quot;: color for name, color in COLORS.items()
+}
+
+# We keep one chain for every tree, so that the four trees share the same `chain` and
+# `draw` coordinates.
+fit_trees = {
+    &quot;NUTS&quot;: to_datatree(
+        rng_subkey, ridership_model, nuts_reference, y_train, covariates_train
+    )
+} | {
+    f&quot;SVI: {name}&quot;: to_datatree(
+        rng_subkey, models[name], posteriors[0], y_train, covariates_train
+    )
+    for name, posteriors in svi_posteriors.items()
+}</code></pre>
+<pre><code>CPU times: user 30.3 s, sys: 2.05 s, total: 32.3 s
+Wall time: 6.83 s</code></pre>
+<p>First, we compare the marginal posteriors of the scalar parameters for the first fit. The variational posteriors of <code>drift_scale</code> are very narrow, so we plot cumulative distributions, which stay readable when the widths differ.</p>
+<pre class="python"><code>scalar_names = [&quot;drift_scale&quot;, &quot;sigma&quot;, &quot;nu&quot;]
+
+pc = az.plot_dist(
+    fit_trees,
+    var_names=scalar_names,
+    kind=&quot;ecdf&quot;,
+    visuals={&quot;point_estimate_text&quot;: False},
+    color=list(FIT_COLORS.values()),
+    figure_kwargs={&quot;figsize&quot;: (15, 4.5)},
+)
+pc.add_legend(&quot;model&quot;, title=&quot;&quot;, loc=&quot;outside lower center&quot;, ncols=4)
+fig = pc.viz[&quot;figure&quot;].item()
+fig.axes[0].set(ylabel=&quot;cumulative probability&quot;)
+fig.suptitle(
+    &quot;Posterior of the Scalar Parameters: NUTS and SVI&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_83_0.png" style="width: 1000px;"/>
+</center>
+<p>Each curve is the empirical cumulative distribution of the draws of one fit. The point is its mean and the horizontal line is its <span class="math inline">\(94\%\)</span> HDI. A steep curve is a narrow posterior. The black curve is the NUTS reference.</p>
+<p>The NUTS reference puts the degrees of freedom <code>nu</code> around <span class="math inline">\(1.6\)</span>, far from a Gaussian likelihood. In the original coordinates the fit shrinks the level: the scale of the increments <code>drift_scale</code> is three times smaller than the NUTS mean, and the noise scale <code>sigma</code> is about twice as large. This is the pattern of the local level model with unknown scales.</p>
+<p>The rotated fits are much closer to NUTS. Their estimates of <code>drift_scale</code> are inside the NUTS interval, and <code>sigma</code> and <code>nu</code> move about two thirds of the way toward the reference.</p>
+<p>A difference remains: <code>sigma</code> and <code>nu</code> are still above the reference, and the variational posterior of <code>drift_scale</code> is about <span class="math inline">\(20\)</span> times narrower than the NUTS one. A mean-field guide also ignores the dependence between the global parameters and the latent path, and the rotation cannot help there, because it only changes the coordinates of the path.</p>
+<p>Next, we compare the posterior mean of the level, which is the quantity that the forecast extends.</p>
+<pre class="python"><code>level_draws = {&quot;NUTS&quot;: jnp.asarray(nuts_reference[&quot;level&quot;])[..., 0]} | {
+    f&quot;SVI: {name}&quot;: jnp.asarray(posteriors[0][&quot;level&quot;])[..., 0]
+    for name, posteriors in svi_posteriors.items()
+}
+
+level_means = pl.DataFrame(
+    [
+        {&quot;week&quot;: int(week), &quot;fit&quot;: name, &quot;mean&quot;: float(value)}
+        for name, draws in level_draws.items()
+        for week, value in zip(weeks_train, draws.mean(axis=0), strict=True)
+    ]
+)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+sns.lineplot(data=level_means, x=&quot;week&quot;, y=&quot;mean&quot;, hue=&quot;fit&quot;, palette=FIT_COLORS, ax=ax)
+sns.move_legend(ax, &quot;upper center&quot;, bbox_to_anchor=(0.5, -0.12), ncol=4, title=&quot;&quot;)
+ax.set(xlabel=&quot;week&quot;, ylabel=&quot;level&quot;)
+fig.suptitle(
+    &quot;Posterior Mean of the Level: NUTS and SVI&quot;, fontsize=18, fontweight=&quot;bold&quot;
+);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_85_0.png" style="width: 900px;"/>
+</center>
+<p>Each line is the posterior mean of the level for one fit. The rotated fits recover the path of the level: their posterior means follow the NUTS reference, while the fit in the original coordinates gives a smoother path with a smaller amplitude that misses the turns. This is the shrinkage of the level that we saw in the scale estimates.</p>
+<p>Finally, we look at the forecasts. We generate the in-sample predictions and the <span class="math inline">\(52\)</span>-week forecast of every fit and of the NUTS reference.</p>
+<p>We score them with the continuous ranked probability score (CRPS), where lower is better. For an introduction to this score see <a href="https://juanitorduz.github.io/crps/">Intuition behind CRPS</a>.</p>
+<p>We compute the scores of every fit. Then we plot the mean over the fits (bars) and the score of every fit (points), in sample and out of sample. Thin gray lines connect the three SVI fits that share a random key.</p>
+<pre class="python"><code>def score(
+    rng_key: UInt[Array, &quot;2&quot;], model: Model, posterior: dict[str, Array]
+) -&gt; tuple[float, float, Float[Array, &quot;samples horizon 1&quot;]]:
+    &quot;In-sample CRPS, out-of-sample CRPS and forecast draws of a posterior.&quot;
+    key_train, key_test = random.split(rng_key)
+    in_sample = predict_in_sample(key_train, model, posterior, covariates_train)
+    forecast_draws = forecast(key_test, model, posterior, y_train, covariates)
+    return (
+        float(eval_crps(in_sample, y_train)),
+        float(eval_crps(forecast_draws, y_test)),
+        forecast_draws,
+    )
+
+
+rng_key, rng_subkey = random.split(rng_key)
+scores = {&quot;NUTS&quot;: [score(rng_subkey, models[Coordinates.NONE], nuts_reference)]} | {
+    f&quot;SVI: {name}&quot;: [
+        score(rng_subkey, models[name], posterior) for posterior in posteriors
+    ]
+    for name, posteriors in svi_posteriors.items()
+}
+
+sample_labels = [
+    f&quot;in-sample (train, {t_train} weeks)&quot;,
+    f&quot;out-of-sample (test, {duration - t_train} weeks)&quot;,
+]
+crps_scores = pl.DataFrame(
+    [
+        {&quot;fit&quot;: name, &quot;key&quot;: key_index, &quot;sample&quot;: sample_label, &quot;CRPS&quot;: value}
+        for name, runs in scores.items()
+        for key_index, run in enumerate(runs)
+        for sample_label, value in zip(sample_labels, run[:2], strict=True)
+    ]
+)
+svi_fit_names = [name for name in scores if name != &quot;NUTS&quot;]
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 5.5), sharey=True)
+
+for ax, sample_label in zip(axes, sample_labels, strict=True):
+    sample_scores = crps_scores.filter(pl.col(&quot;sample&quot;) == sample_label)
+    sns.barplot(
+        data=sample_scores,
+        x=&quot;fit&quot;,
+        y=&quot;CRPS&quot;,
+        hue=&quot;fit&quot;,
+        palette=FIT_COLORS,
+        alpha=0.7,
+        errorbar=None,
+        legend=False,
+        ax=ax,
+    )
+    sns.stripplot(
+        data=sample_scores, x=&quot;fit&quot;, y=&quot;CRPS&quot;, color=&quot;black&quot;, jitter=False, ax=ax
+    )
+
+    for key_index in range(len(svi_keys)):
+        ax.plot(
+            svi_fit_names,
+            sample_scores.filter(
+                pl.col(&quot;key&quot;) == key_index, pl.col(&quot;fit&quot;).is_in(svi_fit_names)
+            )[&quot;CRPS&quot;],
+            color=&quot;gray&quot;,
+            linewidth=0.8,
+            alpha=0.7,
+            label=&quot;SVI fits with the same random key&quot; if key_index == 0 else None,
+        )
+
+    ax.plot(
+        [], [], &quot;s&quot;, color=&quot;gray&quot;, alpha=0.7, markersize=12, label=&quot;mean over the fits&quot;
+    )
+    ax.plot([], [], &quot;o&quot;, color=&quot;black&quot;, label=&quot;one fit&quot;)
+    ax.set(xlabel=&quot;fit&quot;, ylabel=&quot;CRPS (lower is better)&quot;, title=sample_label)
+
+fig.legend(*axes[0].get_legend_handles_labels(), loc=&quot;outside lower center&quot;, ncol=3)
+fig.suptitle(&quot;CRPS by Fit&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_87_0.png" style="width: 1000px;"/>
+</center>
+<p>The left panel is the in-sample score, on the <span class="math inline">\(417\)</span> training weeks, and the right panel is the out-of-sample score, on the held-out year. Each bar is the mean over the fits (five for SVI and one for NUTS), and each black point is one fit. Each thin gray line connects the three SVI fits (<code>none</code>, <code>haar</code> and <code>dct</code>) that use the same random key, so its slope shows the effect of the rotation for that key.</p>
+<p>The rotated fits have a better in-sample score. Their in-sample CRPS is about <span class="math inline">\(0.025\)</span>, between the <span class="math inline">\(0.026\)</span> of the original coordinates and the <span class="math inline">\(0.024\)</span> of NUTS.</p>
+<p>They also forecast better on the held-out year. The mean out-of-sample CRPS goes from about <span class="math inline">\(0.035\)</span> in the original coordinates to about <span class="math inline">\(0.030\)</span> with both rotations, which is the score of the NUTS reference. Every gray line ends lower at both rotated fits, so the gain holds for each of the five random keys.</p>
+<p>Haar and DCT are close: the difference between their means is smaller than the spread over the random keys, which is itself below <span class="math inline">\(0.002\)</span>.</p>
+<p>We end with the forecasts themselves. We use <code>az.plot_lm</code> to plot the forecast of the NUTS reference, of the first fit in the original coordinates, and of the first DCT fit.</p>
+<pre class="python"><code>forecast_fits = [&quot;NUTS&quot;, &quot;SVI: none&quot;, &quot;SVI: dct&quot;]
+
+# `az.plot_lm` draws one panel per variable, and each variable needs its own x variable.
+# The three fits have the same number of draws.
+forecast_tree = az.from_dict(
+    {
+        &quot;posterior_predictive&quot;: {
+            name: np.asarray(scores[name][0][2][..., 0])[None] for name in forecast_fits
+        },
+        &quot;observed_data&quot;: {name: np.asarray(y_test[:, 0]) for name in forecast_fits},
+        &quot;constant_data&quot;: {
+            f&quot;week ({name})&quot;: np.asarray(weeks_test, dtype=float)
+            for name in forecast_fits
+        },
+    },
+    coords={&quot;time&quot;: np.asarray(weeks_test)},
+    dims={name: [&quot;time&quot;] for name in forecast_fits}
+    | {f&quot;week ({name})&quot;: [&quot;time&quot;] for name in forecast_fits},
+)
+
+pc = az.plot_lm(
+    forecast_tree,
+    y=forecast_fits,
+    x=[f&quot;week ({name})&quot; for name in forecast_fits],
+    smooth=False,
+    color=[FIT_COLORS[name] for name in forecast_fits],
+    aes_by_visuals={&quot;pe_line&quot;: [&quot;color&quot;]},
+    visuals={
+        &quot;pe_line&quot;: {&quot;label&quot;: &quot;posterior mean&quot;},
+        &quot;ci_band&quot;: {&quot;alpha&quot;: 0.3, &quot;label&quot;: &quot;$94\\%$ HDI&quot;},
+        &quot;observed_scatter&quot;: False,
+    },
+    col_wrap=1,
+    figure_kwargs={&quot;figsize&quot;: (12, 11), &quot;sharex&quot;: True, &quot;sharey&quot;: True},
+)
+fig = pc.viz[&quot;figure&quot;].item()
+
+for ax, name in zip(fig.axes, forecast_fits, strict=True):
+    ax.plot(weeks_test, y_test[:, 0], color=&quot;C3&quot;, alpha=0.9, label=&quot;observed (test)&quot;)
+    ax.set(xlabel=&quot;&quot;, ylabel=&quot;log(rides)&quot;, title=name)
+    ax.legend(loc=&quot;lower left&quot;)
+
+fig.axes[-1].set(xlabel=&quot;week&quot;)
+fig.suptitle(&quot;Forecasts of the Held-Out Year&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/time_reparam_numpyro_files/time_reparam_numpyro_89_0.png" style="width: 900px;"/>
+</center>
+<p>Each panel is the forecast of one fit for the <span class="math inline">\(52\)</span> held-out weeks. The solid line is the posterior mean and the band is the <span class="math inline">\(94\%\)</span> HDI, both in the color of the fit. The magenta line is the observed series.</p>
+<p>The three forecasts follow the seasonal pattern, which the regression on the Fourier features captures in every fit. The DCT forecast is closer to the NUTS forecast, and the band of the fit in the original coordinates is wider, consistent with its larger noise scale <code>sigma</code>. The largest holiday drops are outside every band. The heavy-tailed likelihood treats them as outliers and keeps the band narrow instead of widening it to cover them.</p>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p>We studied the Haar and DCT reparameterizations of time-indexed latent variables in NumPyro. We cnsidered two examples: a local level model with an exact posterior and on a ridership forecasting model. In both of them we saw how the rotation trick can help the mdoel fir better with SVI and <code>AutoNormal</code> guides (mean field approximation).</p>
+<div id="key-findings" class="section level3">
+<h3>Key Findings</h3>
+<ul>
+<li><p><strong>The reparameterization is a rotation.</strong> It samples the latent path in an orthonormal basis. The model is unchanged and the guide sees different coordinates.</p></li>
+<li><p><strong>The posterior of a random walk is coupled along time.</strong> The data constrain the smooth combinations of the increments and leave the oscillating ones at the prior. A mean-field guide cannot represent this coupling in the original coordinates.</p></li>
+<li><p><strong>A basis sorted from coarse to fine removes most of the coupling.</strong> Both bases bring the mean-field guide much closer to the posterior. The DCT was better in both models, by a few nats.</p></li>
+<li><p><strong>The scale estimates and the forecasts improve.</strong> In the original coordinates the mean-field guide shrinks the level and inflates the noise. In the rotated coordinates the scale estimates move toward the NUTS reference, and out of sample the rotated fits match the NUTS CRPS.</p></li>
+<li><p><strong>The coarse coefficients stay coupled.</strong> In the local level model the rotated guides make the level too certain at the end of the series, which is the forecast origin.</p></li>
+</ul>
+</div>
+<div id="recommendations" class="section level3">
+<h3>Recommendations</h3>
+<ol style="list-style-type: decimal">
+<li><p><strong>Try <code>time_reparam</code> with mean-field guides.</strong> <code>time_reparam(model, "dct")</code> is one line and leaves the model code as it is.</p></li>
+<li><p><strong>Initialize the global parameters, or start with a larger step size.</strong> Then compare the final loss across random keys to check convergence, and across coordinate systems to pick the basis.</p></li>
+<li><p><strong>Check the uncertainty of the level at the forecast origin.</strong> In the local level model the rotated mean-field guides make it too small there.</p></li>
+<li><p><strong>Keep a NUTS reference (whenever possible).</strong> The ELBO alone does not say how much bias is left.</p></li>
+</ol>
+</div>
+<div id="expectations-for-nuts" class="section level3">
+<h3>Expectations for NUTS</h3>
+<p>We did not run NUTS in the rotated coordinates in this notebook. The coupling along time does not bias NUTS, but with a diagonal mass matrix it slows it down. The rotation may help, at the price of one transform per leapfrog step.</p>
+<p>The <a href="https://juanitorduz.github.io/numpyro_forecast/docs/examples/inference_methods_comparison.html">comparison of inference methods</a> of <code>numpyro_forecast</code> measures this on the ridership model of the documentation example, with the <code>centered</code> site sampled. With the DCT, the effective sample size per second is about <span class="math inline">\(9\)</span> times higher.</p>
+<p>Dense or low-rank mass matrix adaptation, as in <a href="https://pymc-devs.github.io/nutpie/sampling-options.html">nutpie</a> and <a href="https://github.com/blackjax-devs/blackjax/pull/847">BlackJAX</a>, addresses the same coupling without a change of coordinates. We have not compared the two.</p>
+</div>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
