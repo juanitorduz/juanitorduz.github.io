@@ -1,0 +1,117 @@
+/* ------------------------------------------------------------------
+   Mobile layout fixes (hugo-lithium).
+   Loaded after css/main.css via params.customCSS in config.toml.
+   ------------------------------------------------------------------ */
+
+/* 1. Stop clipping the page. `.wrapper { overflow: hidden }` in main.css
+      hides anything wider than the viewport AND prevents scrolling to it.
+      It only existed as a clearfix for the floated nav logo; do that
+      properly instead. */
+.wrapper {
+  overflow: visible;
+}
+
+.nav::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+/* 2. Images: notebook exports carry inline `style="width: 900px"` and
+      knitr figures carry `width="672"`. max-width wins over both. */
+.article-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 3. Code blocks: scroll inside the block instead of pushing the page.
+      Do not rely on highlight.js's theme CSS for this (CDN, async). */
+.article-content pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+/* 4. Tables (pandas/polars DataFrames, ArviZ summaries): scroll
+      horizontally. `display: block` is the CSS-only way to do this
+      without wrapping every table in a <div>. */
+.article-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 4b. Compact DataFrame tables. polars' repr sets `white-space: pre-wrap`
+       and pandoc puts each cell value on its own line, which renders as
+       tall empty cells (on desktop too). Also collapses the doubled
+       `border="1"` lines. */
+.article-content .dataframe {
+  border-collapse: collapse;
+  border: none;
+}
+
+.article-content .dataframe td,
+.article-content .dataframe th {
+  white-space: nowrap;
+  padding: 2px 8px;
+  line-height: 1.5;
+  border: 1px solid #ddd;
+}
+
+/* 5. Display math: long equations scroll instead of overflowing. */
+.article-content .math.display,
+.MJXc-display,
+mjx-container[display="true"] {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 6. Embeds (YouTube, saved HTML widgets). */
+.article-content iframe,
+.article-content video,
+.article-content svg {
+  max-width: 100%;
+}
+
+/* YouTube embeds carry width="800" height="500"; keep 16:9 when shrunk. */
+.article-content iframe[src*="youtube"] {
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+
+/* 7. Long URLs / identifiers in prose should wrap, not overflow. */
+.article-content p,
+.article-content li {
+  overflow-wrap: break-word;
+}
+
+/* 8. Phone-sized screens: tighter code so more characters fit per line,
+      and a slightly smaller title. The 600px breakpoint matches main.css. */
+@media (max-width: 599px) {
+  .article-content pre {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* highlight.js's theme sets padding: 1em on the dark code box;
+     reclaim some of that width on phones. */
+  .article-content pre code.hljs {
+    padding: 0.75em;
+  }
+
+  .article-content p code {
+    font-size: 0.9em;
+  }
+
+  .article-title {
+    font-size: 28px;
+  }
+
+  .article-content table {
+    font-size: 14px;
+  }
+}
