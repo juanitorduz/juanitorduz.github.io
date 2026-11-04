@@ -6,8 +6,15 @@
     <description>Recent content in Posts on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 21 Oct 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Wed, 04 Nov 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/post/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>From Forecasts to Decisions: Inventory Planning with Probabilistic Programming</title>
+      <link>/forecast_to_decision/</link>
+      <pubDate>Wed, 04 Nov 2026 00:00:00 +0000</pubDate>
+      <guid>/forecast_to_decision/</guid>
+      <description>&lt;p&gt;Suppose that we sell one product and that we have to decide today how many units to order for each of the next &lt;span class=&#34;math inline&#34;&gt;\(15\)&lt;/span&gt; days. This problem has two layers of uncertainty. The first one is the future demand, which we do not know. The second one follows from the first: since we do not know the demand, we do not know the best order quantities either.&lt;/p&gt;&#xA;&lt;p&gt;The number of units to order is the decision that we have to make under this uncertainty. If we order too much, the extra units sit on the shelf and cost money, and if we order too little, we run out and customers buy elsewhere (and even worse, we lose customers’ trust).&lt;/p&gt;</description>
+    </item>
     <item>
       <title>Haar and DCT Time Reparameterization in NumPyro</title>
       <link>/time_reparam_numpyro/</link>
