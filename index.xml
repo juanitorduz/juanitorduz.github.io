@@ -6,8 +6,15 @@
     <description>Recent content on Dr. Juan Camilo Orduz</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 04 Nov 2026 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Mon, 16 Nov 2026 00:00:00 +0000</lastBuildDate>
     <atom:link href="/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>From Forecasts to Decisions: Cannibalization and Shared Capacity</title>
+      <link>/forecast_to_decision_cannibalization/</link>
+      <pubDate>Mon, 16 Nov 2026 00:00:00 +0000</pubDate>
+      <guid>/forecast_to_decision_cannibalization/</guid>
+      <description>&lt;p&gt;This notebook is a continuation of the first post &lt;a href=&#34;https://juanitorduz.github.io/forecast_to_decision/&#34;&gt;“From Forecasts to Decisions: Inventory Planning with Probabilistic Programming”&lt;/a&gt;. In that first post we worked out a simple inventory planning problem with a single product in a single store, that is, just one independent time series. We treated this problem beyond a simple forecasting problem. We worked out the decision problem and the loss function to effectively optimize for profit by weighting the holding cost of leftover units and the lost margin of unmet demand.&lt;/p&gt;</description>
+    </item>
     <item>
       <title>From Forecasts to Decisions: Inventory Planning with Probabilistic Programming</title>
       <link>/forecast_to_decision/</link>

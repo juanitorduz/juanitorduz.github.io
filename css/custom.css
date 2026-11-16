@@ -34,16 +34,44 @@
 }
 
 /* 4. Tables (pandas/polars DataFrames, ArviZ summaries): scroll
-      horizontally. `display: block` is the CSS-only way to do this
-      without wrapping every table in a <div>. */
+      horizontally instead of pushing the page wider. `display: block` is
+      the CSS-only way to do that for a bare <table>; `width: fit-content`
+      then keeps the block from stretching to the full column width (a
+      stretched block looks left-aligned and makes <center> a no-op). */
 .article-content table {
   display: block;
+  width: -moz-fit-content;
+  width: -webkit-fit-content;
+  width: fit-content;
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* 4b. Compact DataFrame tables. polars' repr sets `white-space: pre-wrap`
+/* 4a. `display: block` makes a table ignore the inherited
+       `text-align: center` of a <center> wrapper, so center it the block
+       way: auto side margins. */
+.article-content center table,
+.article-content [align="center"] table {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 4b. DataFrame reprs ship as <center><div>…<table></div></center>. That
+       <div> can be the scroll box, so the table stays a real table and
+       centers with auto margins in every engine (no intrinsic sizing). */
+.article-content center > div {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.article-content center > div > table {
+  display: table;
+  width: auto;
+  max-width: none;
+}
+
+/* 4c. Compact DataFrame tables. polars' repr sets `white-space: pre-wrap`
        and pandoc puts each cell value on its own line, which renders as
        tall empty cells (on desktop too). Also collapses the doubled
        `border="1"` lines. */
