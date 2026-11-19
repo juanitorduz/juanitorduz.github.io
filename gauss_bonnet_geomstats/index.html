@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <script defer src="https://use.fontawesome.com/releases/v6.5.1/js/all.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5NM5EDH834');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Hugo 0.152.2">
+
+
+<title>The Gauss-Bonnet Theorem with geomstats - Dr. Juan Camilo Orduz</title>
+<meta property="og:title" content="The Gauss-Bonnet Theorem with geomstats - Dr. Juan Camilo Orduz">
+
+
+  <link href='../images/favicon.ico' rel='icon' type='image/x-icon'/>
+
+
+
+  
+
+
+
+
+
+
+
+
+<link href='//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css' rel='stylesheet' type='text/css' />
+
+
+
+<link rel="stylesheet" href="../css/fonts.css" media="all">
+<link rel="stylesheet" href="../css/main.css" media="all">
+
+<link rel="stylesheet" href="../css/custom.css">
+
+
+
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="header">
+        <nav class="nav">
+  <a href="../" class="nav-logo">
+    <img src="../images/tattoo_logo.jpg"
+         width="50"
+         height="50"
+         alt="Logo">
+  </a>
+
+  <ul class="nav-links">
+    
+    <li><a href="../about/"> About</a></li>
+    
+    <li><a href="../talks/"> Talks</a></li>
+    
+    <li><a href="https://github.com/juanitorduz"><i class='fab fa-github fa-2x'></i>  </a></li>
+    
+    <li><a href="https://www.linkedin.com/in/juanitorduz/"><i class='fab fa-linkedin fa-2x' style='color:#0a66c2;'></i>  </a></li>
+    
+    <li><a href="https://ko-fi.com/juanitorduz"><i class='fa-solid fa-mug-hot fa-2x' style='color:#FF5E5B;'></i>  </a></li>
+    
+  </ul>
+</nav>
+
+      </header>
+
+
+<main class="content" role="main">
+
+  <article class="article">
+    
+    <span class="article-duration">44 min read</span>
+    
+
+    <h1 class="article-title">The Gauss-Bonnet Theorem with geomstats</h1>
+
+    
+    <span class="article-date">2026-11-19</span>
+    
+
+    <div class="article-content">
+      
+
+
+<p>The <a href="https://en.wikipedia.org/wiki/Atiyah%E2%80%93Singer_index_theorem"><strong>Atiyah-Singer Index Theorem</strong></a> is my favorite theorem in mathematics. It is a deep result that relates the topology of a manifold to the geometry of its curvature, through the index of a differential operator. This theorem is the reason I decided to do a PhD in this area (see <a href="https://link.springer.com/article/10.1007/s12220-018-0088-1">The <span class="math inline">\(S^q\)</span>-Equivariant Signature for Semi-free Actions as an Index Formula</a>).</p>
+<p>The first version of this theorem that I learned is the <a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Bonnet_theorem"><strong>Gauss-Bonnet theorem</strong></a>. This version of the index theorem relates the integral of the Gaussian curvature over a closed surface to the Euler characteristic of the surface. The first proof of this result that I studied required a careful triangulation of the surface, some detailed algebra, and differential geometry of surfaces. It seemed a bit cumbersome, in my opinion. However, in the context of the index theorem, it is just a natural consequence. It is objectively beautiful.</p>
+<p>In this notebook, I will describe how to understand the Gauss-Bonnet theorem by simply computing both sides of the equation numerically for a sphere, a torus, and an ellipsoid. We do not do this by hand, but rely on the amazing machinery developed by the <a href="https://github.com/geomstats/geomstats">geomstats</a> library.</p>
+<blockquote>
+<p><em>Geomstats is a Python package for computations, statistics, machine learning and deep learning on manifolds.</em></p>
+</blockquote>
+<p>This library has great abstractions of differential geometry concepts, and we can compute quantities that require derivatives, like curvatures (and higher-order tensors), with automatic differentiation.</p>
+<p>Many of its <a href="https://geomstats.github.io/tutorials/index.html">examples</a> cover the basic concepts of differential geometry and concrete real applications. Nevertheless, I think there is an opportunity to explore deeper results and examples in the context of differential geometry and pure mathematics with this library.</p>
+<div id="the-gauss-bonnet-theorem-in-a-nutshell" class="section level2">
+<h2>The Gauss-Bonnet Theorem in a Nutshell</h2>
+<ul>
+<li><p><strong>The Geometry.</strong> Take the unit sphere. Its Gaussian curvature is constant and equal to <span class="math inline">\(1\)</span> at every point. Since the surface area of the sphere is <span class="math inline">\(4\pi\)</span>, this means that the integral of the curvature over the sphere is <span class="math inline">\(4\pi\)</span>.</p></li>
+<li><p><strong>The Topology.</strong> On the other hand, we can cut the sphere into polygons by projecting the edges of a cube onto the sphere from its center: the sphere splits into <span class="math inline">\(6\)</span> faces with <span class="math inline">\(12\)</span> edges and <span class="math inline">\(8\)</span> vertices. For this decomposition, we can compute the (somewhat mysterious) quantity <span class="math inline">\(8 - 12 + 6 = 2\)</span>.</p></li>
+</ul>
+<p>The Gauss-Bonnet theorem says that these two numbers are linked on every closed surface: the integral of the Gaussian curvature equals <span class="math inline">\(2\pi\)</span> times the number of vertices minus edges plus faces. For the sphere this is <span class="math inline">\(4\pi = 2\pi \cdot 2\)</span>. The count, called the <a href="https://en.wikipedia.org/wiki/Euler_characteristic">Euler characteristic</a>, does not depend on how we cut the surface into polygons.</p>
+<p>On other surfaces the integral of the curvature is harder to compute. The curvature changes from point to point, and computing it from the metric alone, that is, from lengths measured on the surface, needs derivatives of a parametrization up to the third order. By hand this is long and error-prone, and a numerical integral needs care where the parametrization degenerates, such as at the poles of a sphere.</p>
+<p>Here is how we compute the two sides. For the left side, we describe each surface by a parametrization, and geomstats derives the metric and the curvature from it with the automatic differentiation of PyTorch. For the right side, we take a grid on the parameter rectangle, glue its edges the way the surface closes up, and count its vertices, edges, and faces.</p>
+<p>We keep the setting simple on purpose:</p>
+<ul>
+<li><p><strong>Closed surfaces:</strong> Our surfaces have no boundary, so the boundary term of the general theorem does not appear.</p></li>
+<li><p><strong>One chart per surface:</strong> We parametrize each surface over one rectangle whose edges are either glued or collapsed to points.</p></li>
+<li><p><strong>Surfaces in <span class="math inline">\(\mathbb{R}^3\)</span>:</strong> The metric of each surface is the one induced by the Euclidean space around it.</p></li>
+</ul>
+<p>We assume you know the basic objects of the differential geometry of surfaces (first fundamental form, Gaussian curvature) at the level of <a href="https://store.doverpublications.com/products/9780486806990">do Carmo</a>, and that you have used automatic differentiation in PyTorch.</p>
+<p>The main references used in this notebook are:</p>
+<ul>
+<li><p><strong>Theory:</strong> <a href="https://store.doverpublications.com/products/9780486806990">do Carmo</a> for the differential geometry of surfaces and the <a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Bonnet_theorem">Gauss-Bonnet theorem</a>.</p></li>
+<li><p><strong>Software:</strong> <a href="https://github.com/geomstats/geomstats">geomstats</a> (<a href="https://jmlr.org/papers/v21/19-027.html">Miolane et al.</a>), which computes the curvature of a parametrized surface with automatic differentiation.</p></li>
+<li><p><strong>Quadrature:</strong> <a href="https://doi.org/10.1137/130932132">Trefethen and Weideman</a> on the trapezoidal rule for periodic integrands.</p></li>
+</ul>
+</div>
+<div id="prepare-notebook" class="section level2">
+<h2>Prepare Notebook</h2>
+<p>We select the backend of geomstats with the <code>GEOMSTATS_BACKEND</code> environment variable before the first import, because geomstats reads it only then. We also load the jaxtyping extension, so that beartype checks the shapes in our type annotations at run time (see <em>Base Class</em>).</p>
+<pre class="python"><code>%env GEOMSTATS_BACKEND=pytorch</code></pre>
+<pre><code>env: GEOMSTATS_BACKEND=pytorch</code></pre>
+<pre class="python"><code>from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import NamedTuple
+
+import arviz as az
+import geomstats.backend as gs
+import matplotlib.pyplot as plt
+import torch
+from geomstats.geometry.base import ImmersedSet
+from geomstats.geometry.euclidean import Euclidean
+from jaxtyping import Float, Int
+from matplotlib.colors import CenteredNorm
+from numpy.polynomial.legendre import leggauss
+from torch import Tensor
+
+seed: int = 42
+rng: torch.Generator = torch.Generator().manual_seed(seed)
+
+HDI_PROB = 0.94
+
+az.style.use(&quot;arviz-darkgrid&quot;)
+az.rcParams[&quot;stats.ci_kind&quot;] = &quot;hdi&quot;
+az.rcParams[&quot;stats.ci_prob&quot;] = HDI_PROB
+plt.rcParams[&quot;figure.figsize&quot;] = [10, 6]
+plt.rcParams[&quot;figure.dpi&quot;] = 100
+plt.rcParams[&quot;figure.facecolor&quot;] = &quot;white&quot;
+
+%load_ext autoreload
+%autoreload 2
+%load_ext jaxtyping
+%jaxtyping.typechecker beartype.beartype
+%config InlineBackend.figure_format = &quot;retina&quot;</code></pre>
+<p>We check that geomstats uses the PyTorch backend and that PyTorch creates tensors in double precision, the default that geomstats sets on import. We need double precision because the checks below compare curvatures at round-off level, below <span class="math inline">\(10^{-12}\)</span>, far below the round-off of single precision.</p>
+<pre class="python"><code>assert gs.__name__ == &quot;geomstats.pytorch&quot;
+assert torch.get_default_dtype() == torch.float64</code></pre>
+<p>Now that we compute in double precision, we can state the theorem.</p>
+</div>
+<div id="the-gauss-bonnet-theorem" class="section level2">
+<h2>The Gauss-Bonnet Theorem</h2>
+<p>Let <span class="math inline">\(M\)</span> be a compact, oriented, two-dimensional Riemannian manifold with a smooth (possibly empty) boundary <span class="math inline">\(\partial M\)</span>. We use the following notation:</p>
+<ul>
+<li><p><span class="math inline">\(K\)</span> is the <strong>Gaussian curvature</strong> of <span class="math inline">\(M\)</span> and <span class="math inline">\(dA\)</span> is its <strong>area element</strong>.</p></li>
+<li><p><span class="math inline">\(k_g\)</span> is the <strong>geodesic curvature</strong> of the boundary and <span class="math inline">\(ds\)</span> is the arc length along it.</p></li>
+<li><p><span class="math inline">\(\chi(M) = V - E + F\)</span> is the <strong>Euler characteristic</strong> of <span class="math inline">\(M\)</span>, where <span class="math inline">\(V\)</span>, <span class="math inline">\(E\)</span>, and <span class="math inline">\(F\)</span> are the numbers of vertices, edges, and faces of any polygonal decomposition of <span class="math inline">\(M\)</span> (see <a href="https://en.wikipedia.org/wiki/Euler_characteristic">Euler characteristic</a>).</p></li>
+</ul>
+<p>With this notation, the <a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Bonnet_theorem">Gauss-Bonnet theorem</a> states that</p>
+<p><span class="math display">\[\int_M K \, dA + \int_{\partial M} k_g \, ds = 2 \pi \chi(M).\]</span></p>
+<p>When <span class="math inline">\(M\)</span> is closed, that is, compact and without boundary, the boundary term is absent:</p>
+<p><span class="math display">\[\int_M K \, dA = 2 \pi \chi(M).\]</span></p>
+<p>This is the case we treat here. The left side depends only on the metric of the surface, which measures lengths inside it. The right side depends only on its topology.</p>
+<p>Why does the right side not depend on the polygonal decomposition? The Euler characteristic equals the alternating sum of the <a href="https://en.wikipedia.org/wiki/Betti_number">Betti numbers</a> <span class="math inline">\(b_k\)</span> of <span class="math inline">\(M\)</span>, the ranks of its singular homology groups (see the section “Betti number alternative” of <a href="https://en.wikipedia.org/wiki/Euler_characteristic">Euler characteristic</a>). On a surface, <span class="math inline">\(b_k = 0\)</span> for <span class="math inline">\(k &gt; 2\)</span>, so</p>
+<p><span class="math display">\[\chi(M) = b_0 - b_1 + b_2.\]</span></p>
+<p>Homology is a topological invariant (see the section “Homotopy invariance” of the same article). Hence <span class="math inline">\(\chi\)</span> is a topological invariant too, and every polygonal decomposition of <span class="math inline">\(M\)</span> gives the same value of <span class="math inline">\(V - E + F\)</span>.</p>
+<p>Here is an important observation about the implications of the Gauss-Bonnet theorem: when we deform a surface smoothly, the values of <span class="math inline">\(K\)</span> and <span class="math inline">\(dA\)</span> at each point change, but the integral of <span class="math inline">\(K \, dA\)</span> stays the same.</p>
+<p><strong>Examples.</strong></p>
+<ul>
+<li><p>For a closed orientable surface, the Euler characteristic is <span class="math inline">\(\chi = 2 - 2 \, \text{genus}\)</span>, where the genus is the number of holes (see the section “Relations to other invariants” of <a href="https://en.wikipedia.org/wiki/Euler_characteristic">Euler characteristic</a>). The sphere has the Betti numbers <span class="math inline">\(1, 0, 1\)</span> and genus <span class="math inline">\(0\)</span>, so <span class="math inline">\(\chi = 2\)</span>. The torus has the Betti numbers <span class="math inline">\(1, 2, 1\)</span> and genus <span class="math inline">\(1\)</span>, so <span class="math inline">\(\chi = 0\)</span>.</p></li>
+<li><p>A sphere of radius <span class="math inline">\(\rho\)</span> has constant curvature <span class="math inline">\(K = 1 / \rho^2\)</span> and area <span class="math inline">\(4 \pi \rho^2\)</span>, so its total curvature, the integral of <span class="math inline">\(K \, dA\)</span>, is <span class="math inline">\(4 \pi = 2 \pi \cdot 2\)</span> for every radius. The curvature of a torus is positive on the outer half and negative on the inner half, and the two parts cancel.</p></li>
+</ul>
+<p>To compute the left side on other surfaces, we need <span class="math inline">\(K\)</span> in the coordinates of a parametrization.</p>
+</div>
+<div id="curvature-in-coordinates" class="section level2">
+<h2>Curvature in Coordinates</h2>
+<p>We describe a surface by an <strong>immersion</strong> <span class="math inline">\(f: U \to \mathbb{R}^3\)</span> of a parameter domain <span class="math inline">\(U \subset \mathbb{R}^2\)</span>, written <span class="math inline">\((u, v) \mapsto f(u, v)\)</span>. We write <span class="math inline">\(\partial_i\)</span> for the partial derivative with respect to the coordinate <span class="math inline">\(i \in \{u, v\}\)</span>, and we sum over repeated indices.</p>
+<div id="induced-metric" class="section level3">
+<h3>Induced Metric</h3>
+<p>The <strong>induced metric</strong>, also called the pullback metric or the first fundamental form, is the matrix of inner products of the first derivatives of <span class="math inline">\(f\)</span>,</p>
+<p><span class="math display">\[g_{ij} = \langle \partial_i f, \partial_j f \rangle.\]</span></p>
+<p>It measures lengths inside the surface: a small step <span class="math inline">\((du, dv)\)</span> in the parameters moves the point <span class="math inline">\(f(u, v)\)</span> by a distance <span class="math inline">\(ds\)</span> with</p>
+<p><span class="math display">\[ds^2 = g_{uu} \, du^2 + 2 g_{uv} \, du \, dv + g_{vv} \, dv^2.\]</span></p>
+<p>The area element is <span class="math inline">\(dA = \sqrt{\det g} \, du \, dv\)</span>, with <span class="math inline">\(\det g = g_{uu} g_{vv} - g_{uv}^2\)</span>. We write <span class="math inline">\(g^{ij}\)</span> for the entries of the inverse matrix <span class="math inline">\(g^{-1}\)</span>.</p>
+<p>Let’s work a simple example. The sphere of radius <span class="math inline">\(\rho\)</span> uses as its coordinates <span class="math inline">\((u, v) = (\theta, \varphi)\)</span> the polar angle and the azimuth:</p>
+<p><span class="math display">\[f(\theta, \varphi) = \rho \left( \sin\theta \cos\varphi, \; \sin\theta \sin\varphi, \; \cos\theta \right).\]</span></p>
+<p>Its first derivatives are orthogonal, so</p>
+<p><span class="math display">\[g = \begin{pmatrix} \rho^2 &amp; 0 \\ 0 &amp; \rho^2 \sin^2\theta \end{pmatrix}, \qquad dA = \rho^2 \sin\theta \, d\theta \, d\varphi.\]</span></p>
+<p>A step in <span class="math inline">\(\varphi\)</span> is short near the poles, and at a pole <span class="math inline">\(\det g = 0\)</span>. Keep this in mind for <em>Total Curvature</em>.</p>
+</div>
+<div id="gaussian-curvature" class="section level3">
+<h3>Gaussian Curvature</h3>
+<p>The metric tells us how far apart points are. The curvature tells us how the surface bends. At each point, the surface has a tangent plane and a unit normal</p>
+<p><span class="math display">\[N = \frac{\partial_u f \times \partial_v f}{\| \partial_u f \times \partial_v f \|}.\]</span></p>
+<p>Cut the surface with a plane that contains <span class="math inline">\(N\)</span>. The cut is a curve, called a <strong>normal section</strong>. Its curvature is one over the radius of the circle that fits it best, with a positive sign if the curve turns toward <span class="math inline">\(N\)</span>.</p>
+<p>As the plane rotates around <span class="math inline">\(N\)</span>, this curvature changes. Its largest and smallest values are the <strong>principal curvatures</strong> <span class="math inline">\(\kappa_1\)</span> and <span class="math inline">\(\kappa_2\)</span> (see <a href="https://en.wikipedia.org/wiki/Principal_curvature">Principal curvature</a>), and the <strong>Gaussian curvature</strong> is their product (see <a href="https://en.wikipedia.org/wiki/Gaussian_curvature">Gaussian curvature</a>):</p>
+<p><span class="math display">\[K = \kappa_1 \kappa_2.\]</span></p>
+<p>The sign of <span class="math inline">\(K\)</span> tells us the shape of the surface near the point:</p>
+<ul>
+<li><p><strong>Sphere of radius <span class="math inline">\(\rho\)</span>:</strong> Every normal section is a great circle of radius <span class="math inline">\(\rho\)</span>, so both principal curvatures have size <span class="math inline">\(1 / \rho\)</span>, with the sign set by the choice of <span class="math inline">\(N\)</span>, and <span class="math inline">\(K = 1 / \rho^2 &gt; 0\)</span>.</p></li>
+<li><p><strong>Cylinder:</strong> The section around the cylinder is a circle, and the section along it is a straight line, so one principal curvature is <span class="math inline">\(0\)</span> and <span class="math inline">\(K = 0\)</span>.</p></li>
+<li><p><strong>Saddle:</strong> The surface bends toward <span class="math inline">\(N\)</span> in one direction and away from it in the other, so <span class="math inline">\(K &lt; 0\)</span>. The inner half of a torus looks like this.</p></li>
+</ul>
+<p>If we flip <span class="math inline">\(N\)</span>, both principal curvatures change sign, so <span class="math inline">\(K\)</span> does not depend on the choice of the normal.</p>
+<p>To compute <span class="math inline">\(K\)</span> in coordinates, we look at the second derivatives of <span class="math inline">\(f\)</span>. Their component along <span class="math inline">\(N\)</span> measures how fast the surface leaves its tangent plane. This is the <strong>second fundamental form</strong></p>
+<p><span class="math display">\[h_{ij} = \langle \partial_i \partial_j f, N \rangle.\]</span></p>
+<p>For a tangent direction with coordinates <span class="math inline">\(w = (w^u, w^v)\)</span>, write <span class="math inline">\(g(w, w) = g_{ij} w^i w^j\)</span> and <span class="math inline">\(h(w, w) = h_{ij} w^i w^j\)</span>. The normal curvature in this direction is the following ratio (see Chapter <span class="math inline">\(3\)</span> of <a href="https://store.doverpublications.com/products/9780486806990">do Carmo</a>):</p>
+<p><span class="math display">\[\frac{h(w, w)}{g(w, w)}.\]</span></p>
+<p>The ratio does not change when we scale <span class="math inline">\(w\)</span>, so it is enough to look at the directions of unit length on the surface, that is, with <span class="math inline">\(g(w, w) = 1\)</span>. The principal curvatures are then the largest and the smallest values of <span class="math inline">\(h(w, w)\)</span> over these directions.</p>
+<p>To find them, we use a <a href="https://en.wikipedia.org/wiki/Lagrange_multiplier">Lagrange multiplier</a> <span class="math inline">\(\kappa\)</span> for the constraint <span class="math inline">\(g(w, w) = 1\)</span>. The derivative of <span class="math inline">\(h(w, w) - \kappa \left( g(w, w) - 1 \right)\)</span> with respect to <span class="math inline">\(w^i\)</span> is <span class="math inline">\(2 h_{ij} w^j - 2 \kappa \, g_{ij} w^j\)</span>. It vanishes at the largest and at the smallest value, so there</p>
+<p><span class="math display">\[h_{ij} w^j = \kappa \, g_{ij} w^j, \quad \text{or, as matrices,} \quad h w = \kappa \, g w.\]</span></p>
+<p>If we multiply both sides by <span class="math inline">\(g^{-1}\)</span>, we get <span class="math inline">\(g^{-1} h \, w = \kappa \, w\)</span>. So each of the two extreme directions <span class="math inline">\(w\)</span> is an eigenvector of the <span class="math inline">\(2 \times 2\)</span> matrix <span class="math inline">\(g^{-1} h\)</span>, and the multiplier <span class="math inline">\(\kappa\)</span> is its eigenvalue.</p>
+<p>The eigenvalue is also the normal curvature in that direction. If we multiply <span class="math inline">\(h_{ij} w^j = \kappa \, g_{ij} w^j\)</span> by <span class="math inline">\(w^i\)</span> and sum over <span class="math inline">\(i\)</span>, we get <span class="math inline">\(h(w, w) = \kappa \, g(w, w) = \kappa\)</span>. Hence the two eigenvalues of <span class="math inline">\(g^{-1} h\)</span> are the principal curvatures <span class="math inline">\(\kappa_1\)</span> and <span class="math inline">\(\kappa_2\)</span>.</p>
+<p>Note that when the tangent vectors <span class="math inline">\(\partial_u f\)</span> and <span class="math inline">\(\partial_v f\)</span> are orthonormal, <span class="math inline">\(g\)</span> is the identity and the principal curvatures are the eigenvalues of <span class="math inline">\(h\)</span> itself (see <a href="https://en.wikipedia.org/wiki/Principal_curvature">Principal curvature</a>). The factor <span class="math inline">\(g^{-1}\)</span> accounts for coordinates whose tangent vectors are not orthonormal, such as the polar angle and the azimuth of the sphere.</p>
+<p>The determinant of a matrix is the product of its eigenvalues, so</p>
+<p><span class="math display">\[K = \kappa_1 \kappa_2 = \det(g^{-1} h) = \frac{\det h}{\det g}.\]</span></p>
+<p><strong>Example.</strong></p>
+<p>Let’s go back to the sphere. There <span class="math inline">\(N = f / \rho\)</span> points outward, and the second derivatives of <span class="math inline">\(f\)</span> give</p>
+<p><span class="math display">\[h_{\theta\theta} = \langle -f, N \rangle = -\rho, \qquad h_{\theta\varphi} = 0, \qquad h_{\varphi\varphi} = -\rho \sin^2\theta,\]</span></p>
+<p>so <span class="math inline">\(h = -g / \rho\)</span>. Then <span class="math inline">\(g^{-1} h\)</span> is <span class="math inline">\(-1 / \rho\)</span> times the identity, <span class="math inline">\(\kappa_1 = \kappa_2 = -1 / \rho\)</span>, and <span class="math inline">\(K = 1 / \rho^2\)</span>. The minus sign says that the sphere bends away from its outward normal, and it cancels in the product.</p>
+<p>We call this the <strong>extrinsic</strong> route to <span class="math inline">\(K\)</span>, because it uses the normal <span class="math inline">\(N\)</span>, which points out of the surface into <span class="math inline">\(\mathbb{R}^3\)</span>. It needs the first and the second derivatives of <span class="math inline">\(f\)</span>.</p>
+</div>
+<div id="theorema-egregium" class="section level3">
+<h3>Theorema Egregium</h3>
+<p>The definition of <span class="math inline">\(K\)</span> uses the space around the surface. Yet Gauss’s <a href="https://en.wikipedia.org/wiki/Theorema_Egregium">Theorema Egregium</a> says that <span class="math inline">\(K\)</span> depends only on <span class="math inline">\(g\)</span> and its derivatives. Its Wikipedia article states the theorem and its consequence for bending as follows:</p>
+<blockquote>
+<p>The theorem says that Gaussian curvature can be determined entirely by measuring angles, distances and their rates of change on a surface, without reference to the particular manner in which the surface is embedded in the ambient 3-dimensional Euclidean space. In other words, the Gaussian curvature of a surface does not change if one bends the surface without stretching it. Thus the Gaussian curvature is an intrinsic invariant of a surface.</p>
+</blockquote>
+<p>Recall the cylinder from above. We can roll it out of a flat sheet of paper without stretching, and indeed both have <span class="math inline">\(K = 0\)</span>. A sphere has <span class="math inline">\(K &gt; 0\)</span>, so no piece of it can be flattened without stretching, and no flat map of the Earth keeps all distances (see <a href="https://en.wikipedia.org/wiki/Gaussian_curvature">Gaussian curvature</a>).</p>
+<p>How can a quantity that we defined with <span class="math inline">\(N\)</span> depend on <span class="math inline">\(g\)</span> alone? We now work backwards from <span class="math inline">\(h\)</span> to <span class="math inline">\(g\)</span>.</p>
+</div>
+<div id="intrinsic-route" class="section level3">
+<h3>Intrinsic Route</h3>
+<p>We connect <span class="math inline">\(K\)</span> to the metric in three steps.</p>
+<p>First, we split the second derivatives of <span class="math inline">\(f\)</span> into a part in the tangent plane and a part along <span class="math inline">\(N\)</span>. This is the Gauss formula (see <a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Codazzi_equations">Gauss-Codazzi equations</a>):</p>
+<p><span class="math display">\[\partial_i \partial_j f = \Gamma^k_{ij} \, \partial_k f + h_{ij} \, N.\]</span></p>
+<p>The normal part is <span class="math inline">\(h\)</span>. The tangent part defines the <strong>Christoffel symbols</strong> <span class="math inline">\(\Gamma^k_{ij}\)</span>, which say how the tangent vectors <span class="math inline">\(\partial_u f\)</span> and <span class="math inline">\(\partial_v f\)</span> turn as we move, as seen from inside the surface. Unlike <span class="math inline">\(h\)</span>, they depend only on <span class="math inline">\(g\)</span>. To see this, we differentiate <span class="math inline">\(g_{jl} = \langle \partial_j f, \partial_l f \rangle\)</span>:</p>
+<p><span class="math display">\[\partial_i g_{jl} = \langle \partial_i \partial_j f, \partial_l f \rangle + \langle \partial_j f, \partial_i \partial_l f \rangle.\]</span></p>
+<p>If we add <span class="math inline">\(\partial_i g_{jl}\)</span> and <span class="math inline">\(\partial_j g_{il}\)</span> and subtract <span class="math inline">\(\partial_l g_{ij}\)</span>, the terms cancel in pairs because second derivatives commute. What is left is <span class="math inline">\(2 \langle \partial_i \partial_j f, \partial_l f \rangle\)</span>. The Gauss formula turns this into <span class="math inline">\(2 \Gamma^k_{ij} g_{kl}\)</span>, because <span class="math inline">\(N\)</span> is orthogonal to <span class="math inline">\(\partial_l f\)</span>, so</p>
+<p><span class="math display">\[\Gamma^k_{ij} = \frac{1}{2} g^{kl} \left( \partial_i g_{jl} + \partial_j g_{il} - \partial_l g_{ij} \right).\]</span></p>
+<p>Next, the Christoffel symbols tell us how to differentiate a tangent vector field inside the surface. This is the covariant derivative <span class="math inline">\(\nabla\)</span> of the Levi-Civita connection, with <span class="math inline">\(\nabla_{\partial_i} \partial_j = \Gamma^k_{ij} \partial_k\)</span>. In a plane, the order of two such derivatives does not matter. On a curved surface it does, and the <strong>Riemann curvature tensor</strong> measures the difference (see <a href="https://en.wikipedia.org/wiki/Riemann_curvature_tensor">Riemann curvature tensor</a>):</p>
+<p><span class="math display">\[R(\partial_j, \partial_k) \partial_i = \nabla_{\partial_j} \nabla_{\partial_k} \partial_i - \nabla_{\partial_k} \nabla_{\partial_j} \partial_i = R^l_{ijk} \, \partial_l.\]</span></p>
+<p>If we apply the formula for <span class="math inline">\(\nabla\)</span> twice, we get the components from <span class="math inline">\(\Gamma\)</span> and its derivatives:</p>
+<p><span class="math display">\[R^l_{ijk} = \partial_j \Gamma^l_{ki} - \partial_k \Gamma^l_{ji} + \Gamma^l_{jm} \Gamma^m_{ki} - \Gamma^l_{km} \Gamma^m_{ji}.\]</span></p>
+<p>Textbooks differ in the sign and the index order of <span class="math inline">\(R\)</span>, so we use the convention of geomstats throughout.</p>
+<p>Finally, we go back to <span class="math inline">\(K\)</span>. In <span class="math inline">\(\mathbb{R}^3\)</span> the order of derivatives does not matter. If we write this out for the third derivatives of <span class="math inline">\(f\)</span> with the Gauss formula and keep the tangent part, we get the <strong>Gauss equation</strong> <span class="math inline">\(\langle R(\partial_u, \partial_v) \partial_v, \partial_u \rangle = \det h\)</span>, where the inner product is the one given by <span class="math inline">\(g\)</span> (see Chapter <span class="math inline">\(4\)</span> of <a href="https://store.doverpublications.com/products/9780486806990">do Carmo</a>). With the extrinsic formula for <span class="math inline">\(K\)</span>, this gives</p>
+<p><span class="math display">\[K = \frac{\det h}{\det g} = \frac{\langle R(\partial_u, \partial_v) \partial_v, \partial_u \rangle}{\det g} = \frac{g_{ul} R^l_{vuv}}{\det g}.\]</span></p>
+<p>The right side only uses <span class="math inline">\(g\)</span> and its derivatives, which is the content of the Theorema Egregium. For a surface, it is also the <strong>sectional curvature</strong> of the tangent plane.</p>
+<p>This is the <strong>intrinsic</strong> route to <span class="math inline">\(K\)</span>. It needs the third derivatives of <span class="math inline">\(f\)</span>, because <span class="math inline">\(R\)</span> differentiates <span class="math inline">\(\Gamma\)</span>, which differentiates <span class="math inline">\(g\)</span>, which differentiates <span class="math inline">\(f\)</span>. Both routes give the same <span class="math inline">\(K\)</span>, and we compare them in <em>Curvature Checks</em>, after we see how geomstats computes each of these objects.</p>
+</div>
+</div>
+<div id="surfaces-in-geomstats" class="section level2">
+<h2>Surfaces in geomstats</h2>
+<p>In geomstats, a parametrized manifold is an <code>ImmersedSet</code>. Its points are intrinsic coordinates <span class="math inline">\((u, v)\)</span>, and a subclass implements the method <code>immersion</code>, which is our <span class="math inline">\(f\)</span>. The default metric of an <code>ImmersedSet</code> is a <code>PullbackMetric</code>, whose methods compute the objects of <em>Curvature in Coordinates</em>.</p>
+<div id="derivative-chain" class="section level3">
+<h3>Derivative Chain</h3>
+<p>The metric computes these objects in four steps:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>Metric.</strong> <code>jacobian_immersion</code> differentiates <code>immersion</code> once, and <code>metric.metric_matrix</code> builds <span class="math inline">\(g\)</span> from the Jacobian.</p></li>
+<li><p><strong>Christoffel symbols.</strong> <code>hessian_immersion</code> differentiates <code>immersion</code> twice, <code>metric.inner_product_derivative_matrix</code> builds <span class="math inline">\(\partial_k g_{ij}\)</span> from the Jacobian and the Hessian, and <code>metric.christoffels</code> builds <span class="math inline">\(\Gamma\)</span>.</p></li>
+<li><p><strong>Riemann tensor.</strong> <code>metric.riemann_tensor</code> differentiates <code>metric.christoffels</code> once more and assembles <span class="math inline">\(R\)</span>.</p></li>
+<li><p><strong>Sectional curvature.</strong> <code>metric.sectional_curvature</code> contracts <span class="math inline">\(R\)</span> with two tangent vectors and divides by <span class="math inline">\(g_{uu} g_{vv} - g_{uv}^2\)</span>.</p></li>
+</ol>
+<p>The extrinsic route branches off after step <span class="math inline">\(2\)</span>. <code>metric.second_fundamental_form</code> subtracts the tangent part <span class="math inline">\(\Gamma^k_{ij} \partial_k f\)</span> from the Hessian. By the Gauss formula, what is left is the vector <span class="math inline">\(\mathrm{II}_{ij} = \partial_i \partial_j f - \Gamma^k_{ij} \partial_k f = h_{ij} N\)</span>. So geomstats returns the second fundamental form as vectors, and our <span class="math inline">\(h_{ij}\)</span> is their component along <span class="math inline">\(N\)</span>.</p>
+<p>Four conventions matter when we read these arrays:</p>
+<ul>
+<li><p><strong>Christoffel symbols:</strong> The contravariant index comes first, so <code>christoffels[..., k, i, j]</code> is <span class="math inline">\(\Gamma^k_{ij}\)</span>.</p></li>
+<li><p><strong>Riemann tensor:</strong> The contravariant index comes last, so <code>riemann_tensor[..., i, j, k, l]</code> is <span class="math inline">\(R^l_{ijk}\)</span>.</p></li>
+<li><p><strong>Hessian:</strong> The indices of differentiation come last, so <code>hessian_immersion[..., :, i, j]</code> is the vector <span class="math inline">\(\partial_i \partial_j f\)</span>.</p></li>
+<li><p><strong>Second fundamental form:</strong> The indices of differentiation come last as well, so <code>second_fundamental_form[..., :, i, j]</code> is the vector <span class="math inline">\(\mathrm{II}_{ij}\)</span>.</p></li>
+</ul>
+<p>In the PyTorch backend, <code>gs.autodiff.jacobian_vec</code> and <code>gs.autodiff.hessian_vec</code> loop over the points and call <code>torch.autograd.functional.jacobian</code> and <code>torch.autograd.functional.hessian</code> with <code>create_graph=point.requires_grad</code> (see <a href="https://github.com/geomstats/geomstats/blob/1b42ec9fa9879cdfedf79cadc5adaeca300bf51b/geomstats/_backend/pytorch/autodiff.py"><code>autodiff.py</code></a>). PyTorch sets <code>requires_grad</code> on the inputs it differentiates, so the Jacobian and the Hessian of step <span class="math inline">\(2\)</span> keep their computational graph exactly when the outer derivative of step <span class="math inline">\(3\)</span> needs it. The loops over points also set the cost, which grows linearly with the number of points at which we evaluate <span class="math inline">\(K\)</span>.</p>
+</div>
+<div id="base-class" class="section level3">
+<h3>Base Class</h3>
+<p>A parametrization covers the surface with the parameter rectangle <span class="math inline">\(U = [u_{\min}, u_{\max}] \times [v_{\min}, v_{\max}]\)</span>. The rectangle has four edges, but a closed surface has no boundary.</p>
+<p>In our parametrizations, each edge of <span class="math inline">\(U\)</span> either meets the opposite edge on the surface or shrinks to a single point. We call this rule for one parameter direction its <strong>closure</strong>:</p>
+<ul>
+<li><p><strong>Periodic:</strong> The parameter is an angle that comes back to its start after a full turn. The two opposite edges map to the same curve on the surface, and we say that they are glued. Both angles of the torus and the azimuth <span class="math inline">\(\varphi\)</span> of the sphere are periodic.</p></li>
+<li><p><strong>Pole:</strong> Each end of the parameter range maps to a single point, so each of the two edges collapses to its own point. The polar angle <span class="math inline">\(\theta\)</span> of the sphere is of this type: every point with <span class="math inline">\(\theta = 0\)</span> is the north pole, whatever the value of <span class="math inline">\(\varphi\)</span>.</p></li>
+</ul>
+<p>We need the closures twice. The quadrature rule of the left side depends on them (see <em>Total Curvature</em>), and so does the glued grid of the right side (see <em>Euler Characteristic</em>).</p>
+<p>In code, <code>Closure</code> is a base class with two subclasses, <code>Periodic</code> and <code>Pole</code>. Each one implements the method <code>glue</code>, which gives the glued vertices of a grid one label: in a periodic direction the last row of labels copies the first row, and at a pole each boundary row takes the label of one of its vertices. We use it in <em>Euler Characteristic</em>.</p>
+<p><code>Interval</code> holds the range of one parameter, and <code>Domain</code> holds the ranges of both parameters, that is, the rectangle <span class="math inline">\(U\)</span>:</p>
+<pre class="python"><code>class Closure(ABC):
+    &quot;&quot;&quot;How one parameter direction of the rectangle closes up.&quot;&quot;&quot;
+
+    name: str
+
+    @abstractmethod
+    def glue(self, rows: Int[Tensor, &quot;n_rows n_cols&quot;]) -&gt; Int[Tensor, &quot;n_rows n_cols&quot;]:
+        &quot;&quot;&quot;Vertex labels after gluing the first and the last row.&quot;&quot;&quot;
+
+
+class Periodic(Closure):
+    &quot;&quot;&quot;The two opposite edges are glued, as for an angle.&quot;&quot;&quot;
+
+    name = &quot;periodic&quot;
+
+    def glue(self, rows: Int[Tensor, &quot;n_rows n_cols&quot;]) -&gt; Int[Tensor, &quot;n_rows n_cols&quot;]:
+        &quot;&quot;&quot;The last row takes the labels of the first row.&quot;&quot;&quot;
+        glued = rows.clone()
+        glued[-1] = glued[0]
+        return glued
+
+
+class Pole(Closure):
+    &quot;&quot;&quot;Each of the two edges collapses to a single point.&quot;&quot;&quot;
+
+    name = &quot;pole&quot;
+
+    def glue(self, rows: Int[Tensor, &quot;n_rows n_cols&quot;]) -&gt; Int[Tensor, &quot;n_rows n_cols&quot;]:
+        &quot;&quot;&quot;Each boundary row takes the label of its first vertex.&quot;&quot;&quot;
+        glued = rows.clone()
+        glued[0] = glued[0, 0]
+        glued[-1] = glued[-1, 0]
+        return glued
+
+
+class Interval(NamedTuple):
+    &quot;&quot;&quot;Range [lower, upper] of one parameter.&quot;&quot;&quot;
+
+    lower: float
+    upper: float
+
+
+class Domain(NamedTuple):
+    &quot;&quot;&quot;Parameter rectangle U = [u_min, u_max] x [v_min, v_max].&quot;&quot;&quot;
+
+    u: Interval
+    v: Interval</code></pre>
+<p>Let’s draw the two combinations of closures that our surfaces use. In each panel, the edges of one color with arrows in the same direction are glued, and the dotted edges collapse to single points:</p>
+<pre class="python"><code>def edge_style(closure: Closure, glued_color: str, glued_label: str) -&gt; dict[str, str]:
+    &quot;&quot;&quot;Line style of two opposite edges: solid if glued, dotted if collapsed.&quot;&quot;&quot;
+
+    if isinstance(closure, Periodic):
+        return {&quot;color&quot;: glued_color, &quot;linestyle&quot;: &quot;-&quot;, &quot;label&quot;: glued_label}
+
+    return {&quot;color&quot;: &quot;C5&quot;, &quot;linestyle&quot;: &quot;:&quot;, &quot;label&quot;: &quot;edges that collapse to a point&quot;}
+
+
+ARROW_STYLE = {&quot;linestyle&quot;: &quot;none&quot;, &quot;markersize&quot;: 16}
+
+
+def plot_closures(ax: plt.Axes, closures: tuple[Closure, Closure]) -&gt; None:
+    &quot;&quot;&quot;Draw the parameter rectangle as a unit square, with edges styled by closure.&quot;&quot;&quot;
+    u_closure, v_closure = closures
+    u_style = edge_style(u_closure, &quot;C0&quot;, r&quot;glued edges $u = u_{\min}, u_{\max}$&quot;)
+    v_style = edge_style(v_closure, &quot;C4&quot;, r&quot;glued edges $v = v_{\min}, v_{\max}$&quot;)
+    ax.vlines([0, 1], 0, 1, linewidth=4, **u_style)
+    ax.hlines([0, 1], 0, 1, linewidth=4, **v_style)
+
+    # Arrows in the same direction show how two glued edges line up.
+    if isinstance(u_closure, Periodic):
+        ax.plot([0, 1], [0.5, 0.5], marker=&quot;^&quot;, color=&quot;C0&quot;, **ARROW_STYLE)
+
+    if isinstance(v_closure, Periodic):
+        ax.plot([0.5, 0.5], [0, 1], marker=&quot;&gt;&quot;, color=&quot;C4&quot;, **ARROW_STYLE)
+
+
+CLOSURE_PANELS = {
+    &quot;sphere, ellipsoid: $u$ pole, $v$ periodic&quot;: (Pole(), Periodic()),
+    &quot;torus: $u$ periodic, $v$ periodic&quot;: (Periodic(), Periodic()),
+}
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 5), layout=&quot;constrained&quot;)
+
+for ax, (title, closures) in zip(axes, CLOSURE_PANELS.items(), strict=True):
+    plot_closures(ax, closures)
+    ax.set(
+        title=title,
+        xticks=[0, 1],
+        xticklabels=[r&quot;$u_{\min}$&quot;, r&quot;$u_{\max}$&quot;],
+        yticks=[0, 1],
+        yticklabels=[r&quot;$v_{\min}$&quot;, r&quot;$v_{\max}$&quot;],
+        xlim=(-0.15, 1.15),
+        ylim=(-0.15, 1.15),
+        aspect=&quot;equal&quot;,
+    )
+
+legend_entries = {
+    label: handle
+    for ax in axes
+    for handle, label in zip(*ax.get_legend_handles_labels(), strict=True)
+}
+fig.legend(
+    legend_entries.values(), legend_entries.keys(), loc=&quot;outside lower center&quot;, ncol=2
+)
+fig.suptitle(&quot;Closures of the Parameter Rectangle&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/gauss_bonnet_geomstats_files/gauss_bonnet_geomstats_12_0.png" style="width: 900px;"/>
+</center>
+<p>The diagram shows how each rectangle closes up:</p>
+<ul>
+<li><p><strong>Sphere and ellipsoid.</strong> Each dotted edge shrinks to a pole, the left one to the north pole and the right one to the south pole. The two <span class="math inline">\(v\)</span> edges meet along a meridian, the seam of the azimuth.</p></li>
+<li><p><strong>Torus.</strong> Gluing the two <span class="math inline">\(u\)</span> edges rolls the rectangle into a tube. Gluing the two <span class="math inline">\(v\)</span> edges then bends the tube into a ring.</p></li>
+</ul>
+<p>The base class <code>ClosedSurface</code> stores the domain and the closures of a surface, and adds the area element and the two routes to <span class="math inline">\(K\)</span>:</p>
+<ul>
+<li><p><strong><code>gaussian_curvature_intrinsic</code>:</strong> The intrinsic route, the sectional curvature of the tangent plane as geomstats computes it (see <em>Derivative Chain</em>).</p></li>
+<li><p><strong><code>gaussian_curvature_extrinsic</code>:</strong> The extrinsic route, <span class="math inline">\(\det h / \det g\)</span>, from the second fundamental form of geomstats (see <em>Derivative Chain</em>).</p></li>
+</ul>
+<p>The extrinsic route does not need <span class="math inline">\(N\)</span> itself. Since <span class="math inline">\(\mathrm{II}_{ij} = h_{ij} N\)</span> and <span class="math inline">\(\|N\| = 1\)</span>, the inner products of these vectors in <span class="math inline">\(\mathbb{R}^3\)</span> give</p>
+<p><span class="math display">\[\det h = h_{uu} h_{vv} - h_{uv}^2 = \langle \mathrm{II}_{uu}, \mathrm{II}_{vv} \rangle - \langle \mathrm{II}_{uv}, \mathrm{II}_{uv} \rangle.\]</span></p>
+<pre class="python"><code>class ClosedSurface(ImmersedSet):
+    &quot;&quot;&quot;Closed surface in R^3 parametrized over a rectangle.
+
+    Subclasses set the class attributes below and implement `immersion`.
+
+    Attributes
+    ----------
+    domain : Domain
+        Parameter rectangle, one interval per parameter.
+    closures : tuple[Closure, Closure]
+        How each parameter direction closes up.
+    &quot;&quot;&quot;
+
+    domain: Domain
+    closures: tuple[Closure, Closure]
+
+    def __init__(self) -&gt; None:
+        super().__init__(dim=2)
+
+    def _define_embedding_space(self) -&gt; Euclidean:
+        return Euclidean(dim=3)
+
+    def area_element(
+        self, points: Float[Tensor, &quot;n_points 2&quot;]
+    ) -&gt; Float[Tensor, &quot; n_points&quot;]:
+        &quot;&quot;&quot;Area element sqrt(det g).&quot;&quot;&quot;
+        return torch.linalg.det(self.metric.metric_matrix(points)).sqrt()
+
+    def gaussian_curvature_intrinsic(
+        self, points: Float[Tensor, &quot;n_points 2&quot;]
+    ) -&gt; Float[Tensor, &quot; n_points&quot;]:
+        &quot;&quot;&quot;Intrinsic K from geomstats: the sectional curvature of the tangent plane.&quot;&quot;&quot;
+        d_u, d_v = torch.eye(2)
+        return self.metric.sectional_curvature(d_u, d_v, points)
+
+    def gaussian_curvature_extrinsic(
+        self, points: Float[Tensor, &quot;n_points 2&quot;]
+    ) -&gt; Float[Tensor, &quot; n_points&quot;]:
+        &quot;&quot;&quot;Extrinsic K = det(h) / det(g), from the geomstats second fundamental form.&quot;&quot;&quot;
+        # The vectors II_ij = h_ij N, with the index of the embedding space first.
+        second_form = self.metric.second_fundamental_form(points)
+        ii_uu = second_form[..., 0, 0]
+        ii_uv = second_form[..., 0, 1]
+        ii_vv = second_form[..., 1, 1]
+        inner_product = self.embedding_space.metric.inner_product
+        det_h = inner_product(ii_uu, ii_vv) - inner_product(ii_uv, ii_uv)
+        return det_h / torch.linalg.det(self.metric.metric_matrix(points))</code></pre>
+</div>
+<div id="surface-immersions" class="section level3">
+<h3>Surface Immersions</h3>
+<p>Each surface is a subclass of <code>ClosedSurface</code> that sets <code>domain</code> and <code>closures</code>, implements <code>immersion</code>, and gives the closed form of <span class="math inline">\(K\)</span>, which we use only as a check.</p>
+<div id="sphere" class="section level4">
+<h4>Sphere</h4>
+<p>Recall the sphere of radius <span class="math inline">\(\rho\)</span> from <em>Induced Metric</em>. Its polar angle <span class="math inline">\(\theta \in [0, \pi]\)</span> ends at two poles, and its azimuth <span class="math inline">\(\varphi \in [0, 2\pi]\)</span> is periodic. Its curvature is constant, <span class="math inline">\(K = 1 / \rho^2\)</span>.</p>
+<p>The class <code>Sphere</code> implements the immersion of <em>Induced Metric</em> and this closed form:</p>
+<pre class="python"><code>class Sphere(ClosedSurface):
+    &quot;&quot;&quot;Sphere with polar angle theta in [0, pi] and azimuth phi in [0, 2 pi].
+
+    Parameters
+    ----------
+    radius : float
+        Radius rho of the sphere.
+    &quot;&quot;&quot;
+
+    domain = Domain(u=Interval(0.0, torch.pi), v=Interval(0.0, 2 * torch.pi))
+    closures = (Pole(), Periodic())
+
+    def __init__(self, radius: float) -&gt; None:
+        self.radius = radius
+        super().__init__()
+
+    def immersion(self, point: Float[Tensor, &quot;*batch 2&quot;]) -&gt; Float[Tensor, &quot;*batch 3&quot;]:
+        theta, phi = point.unbind(dim=-1)
+        return self.radius * torch.stack(
+            [
+                torch.sin(theta) * torch.cos(phi),
+                torch.sin(theta) * torch.sin(phi),
+                torch.cos(theta),
+            ],
+            dim=-1,
+        )
+
+    def gaussian_curvature_closed_form(
+        self, points: Float[Tensor, &quot;n_points 2&quot;]
+    ) -&gt; Float[Tensor, &quot; n_points&quot;]:
+        &quot;&quot;&quot;Closed-form K = 1 / rho^2, used as a check.&quot;&quot;&quot;
+        return torch.full(points.shape[:-1], 1 / self.radius**2)</code></pre>
+</div>
+<div id="torus" class="section level4">
+<h4>Torus</h4>
+<p>The torus with major radius <span class="math inline">\(D\)</span> (the distance from the center of the tube to the axis) and minor radius <span class="math inline">\(r\)</span> uses the angle <span class="math inline">\(u\)</span> around the tube and the angle <span class="math inline">\(v\)</span> around the hole, and both are periodic:</p>
+<p><span class="math display">\[f(u, v) = \left( (D + r \cos u) \cos v, \; (D + r \cos u) \sin v, \; r \sin u \right).\]</span></p>
+<p>Its curvature is <span class="math inline">\(K = \cos u / \left( r (D + r \cos u) \right)\)</span>.</p>
+<p>The class <code>Torus</code> implements this immersion and this closed form:</p>
+<pre class="python"><code>class Torus(ClosedSurface):
+    &quot;&quot;&quot;Ring torus with angle u around the tube and angle v around the hole.
+
+    Parameters
+    ----------
+    major_radius : float
+        Distance D from the center of the tube to the axis of the torus.
+    minor_radius : float
+        Radius r of the tube.
+    &quot;&quot;&quot;
+
+    domain = Domain(u=Interval(0.0, 2 * torch.pi), v=Interval(0.0, 2 * torch.pi))
+    closures = (Periodic(), Periodic())
+
+    def __init__(self, major_radius: float, minor_radius: float) -&gt; None:
+        self.major_radius, self.minor_radius = major_radius, minor_radius
+        super().__init__()
+
+    def immersion(self, point: Float[Tensor, &quot;*batch 2&quot;]) -&gt; Float[Tensor, &quot;*batch 3&quot;]:
+        u, v = point.unbind(dim=-1)
+        distance_to_axis = self.major_radius + self.minor_radius * torch.cos(u)
+        return torch.stack(
+            [
+                distance_to_axis * torch.cos(v),
+                distance_to_axis * torch.sin(v),
+                self.minor_radius * torch.sin(u),
+            ],
+            dim=-1,
+        )
+
+    def gaussian_curvature_closed_form(
+        self, points: Float[Tensor, &quot;n_points 2&quot;]
+    ) -&gt; Float[Tensor, &quot; n_points&quot;]:
+        &quot;&quot;&quot;Closed-form K, used as a check.&quot;&quot;&quot;
+        u, _ = points.unbind(dim=-1)
+        distance_to_axis = self.major_radius + self.minor_radius * torch.cos(u)
+        return torch.cos(u) / (self.minor_radius * distance_to_axis)</code></pre>
+</div>
+<div id="ellipsoid" class="section level4">
+<h4>Ellipsoid</h4>
+<p>The ellipsoid stretches the sphere along its three axes. With semi-axes <span class="math inline">\(a\)</span>, <span class="math inline">\(b\)</span>, <span class="math inline">\(c\)</span>, it uses the same coordinates as the sphere:</p>
+<p><span class="math display">\[f(\theta, \varphi) = \left( a \sin\theta \cos\varphi, \; b \sin\theta \sin\varphi, \; c \cos\theta \right).\]</span></p>
+<p><a href="https://mathworld.wolfram.com/Ellipsoid.html">MathWorld</a> gives its curvature at the point <span class="math inline">\((x, y, z) = f(\theta, \varphi)\)</span>,</p>
+<p><span class="math display">\[K = \frac{1}{a^2 b^2 c^2 \left( x^2 / a^4 + y^2 / b^4 + z^2 / c^4 \right)^2}.\]</span></p>
+<p>The sphere of radius <span class="math inline">\(\rho\)</span> is the case <span class="math inline">\(a = b = c = \rho\)</span>, and the formula then gives <span class="math inline">\(K = 1 / \rho^2\)</span>.</p>
+<p>The class <code>Ellipsoid</code> implements this immersion and the closed form of MathWorld:</p>
+<pre class="python"><code>class Ellipsoid(ClosedSurface):
+    &quot;&quot;&quot;Ellipsoid with polar angle theta in [0, pi] and azimuth phi in [0, 2 pi].
+
+    Parameters
+    ----------
+    a, b, c : float
+        Semi-axes along x, y, and z.
+    &quot;&quot;&quot;
+
+    domain = Domain(u=Interval(0.0, torch.pi), v=Interval(0.0, 2 * torch.pi))
+    closures = (Pole(), Periodic())
+
+    def __init__(self, a: float, b: float, c: float) -&gt; None:
+        self.a, self.b, self.c = a, b, c
+        super().__init__()
+
+    def immersion(self, point: Float[Tensor, &quot;*batch 2&quot;]) -&gt; Float[Tensor, &quot;*batch 3&quot;]:
+        theta, phi = point.unbind(dim=-1)
+        return torch.stack(
+            [
+                self.a * torch.sin(theta) * torch.cos(phi),
+                self.b * torch.sin(theta) * torch.sin(phi),
+                self.c * torch.cos(theta),
+            ],
+            dim=-1,
+        )
+
+    def gaussian_curvature_closed_form(
+        self, points: Float[Tensor, &quot;n_points 2&quot;]
+    ) -&gt; Float[Tensor, &quot; n_points&quot;]:
+        &quot;&quot;&quot;Closed-form K, used as a check.&quot;&quot;&quot;
+        x, y, z = self.immersion(points).unbind(dim=-1)
+        a, b, c = self.a, self.b, self.c
+        return 1 / (a * b * c * (x**2 / a**4 + y**2 / b**4 + z**2 / c**4)) ** 2</code></pre>
+<p>Next, let’s check the curvature of the three surfaces.</p>
+</div>
+</div>
+</div>
+<div id="curvature-checks" class="section level2">
+<h2>Curvature Checks</h2>
+<p>Before we integrate anything, we check <span class="math inline">\(K\)</span> pointwise, because an error in an index convention or in a nested derivative would show up here. We take the unit sphere, the torus with <span class="math inline">\(D = 2\)</span> and <span class="math inline">\(r = 0.7\)</span>, and the ellipsoid with semi-axes <span class="math inline">\(a = 1\)</span>, <span class="math inline">\(b = 1.5\)</span>, and <span class="math inline">\(c = 0.6\)</span>. For each surface we draw <span class="math inline">\(20\)</span> random points in the parameter rectangle and compute <span class="math inline">\(K\)</span> in three ways: the intrinsic route, the extrinsic route, and the closed form. We compare each route with the closed form, and the two routes with each other.</p>
+<pre class="python"><code>surfaces: dict[str, Sphere | Torus | Ellipsoid] = {
+    &quot;sphere&quot;: Sphere(radius=1.0),
+    &quot;torus&quot;: Torus(major_radius=2.0, minor_radius=0.7),
+    &quot;ellipsoid&quot;: Ellipsoid(a=1.0, b=1.5, c=0.6),
+}
+
+
+def random_points(
+    surface: ClosedSurface, n_points: int, generator: torch.Generator
+) -&gt; Float[Tensor, &quot;n_points 2&quot;]:
+    &quot;&quot;&quot;Points drawn uniformly from the parameter rectangle of the surface.&quot;&quot;&quot;
+    lower = torch.tensor([interval.lower for interval in surface.domain])
+    upper = torch.tensor([interval.upper for interval in surface.domain])
+    return lower + (upper - lower) * torch.rand(n_points, 2, generator=generator)
+
+
+class CurvatureErrors(NamedTuple):
+    &quot;&quot;&quot;Largest absolute differences between the three ways to compute K.&quot;&quot;&quot;
+
+    intrinsic_vs_closed_form: float
+    extrinsic_vs_closed_form: float
+    intrinsic_vs_extrinsic: float
+
+
+def curvature_errors(
+    surface: Sphere | Torus | Ellipsoid, points: Float[Tensor, &quot;n_points 2&quot;]
+) -&gt; CurvatureErrors:
+    &quot;&quot;&quot;Compare the intrinsic route, the extrinsic route, and the closed form.&quot;&quot;&quot;
+    # 1. The intrinsic route: the sectional curvature of geomstats.
+    intrinsic = surface.gaussian_curvature_intrinsic(points)
+    # 2. The extrinsic route: the second fundamental form of geomstats.
+    extrinsic = surface.gaussian_curvature_extrinsic(points)
+    # 3. The closed form, a formula that is known to be correct.
+    closed_form = surface.gaussian_curvature_closed_form(points)
+    return CurvatureErrors(
+        intrinsic_vs_closed_form=(intrinsic - closed_form).abs().max().item(),
+        extrinsic_vs_closed_form=(extrinsic - closed_form).abs().max().item(),
+        intrinsic_vs_extrinsic=(intrinsic - extrinsic).abs().max().item(),
+    )
+
+
+CURVATURE_TOLERANCE = 1e-12
+N_POINTS = 20
+
+curvature_check = {
+    name: curvature_errors(
+        surface,
+        random_points(
+            surface,
+            n_points=N_POINTS,
+            generator=rng,
+        ),
+    )
+    for name, surface in surfaces.items()
+}
+
+assert all(max(errors) &lt; CURVATURE_TOLERANCE for errors in curvature_check.values())</code></pre>
+<p>We plot the largest absolute difference of each comparison on a log axis:</p>
+<pre class="python"><code>SURFACE_COLORS = {&quot;sphere&quot;: &quot;C1&quot;, &quot;torus&quot;: &quot;C2&quot;, &quot;ellipsoid&quot;: &quot;C3&quot;}
+COMPARISON_LABELS = {
+    &quot;intrinsic_vs_closed_form&quot;: &quot;intrinsic vs closed form&quot;,
+    &quot;extrinsic_vs_closed_form&quot;: &quot;extrinsic vs closed form&quot;,
+    &quot;intrinsic_vs_extrinsic&quot;: &quot;intrinsic vs extrinsic&quot;,
+}
+
+fig, ax = plt.subplots()
+positions = torch.arange(len(CurvatureErrors._fields))
+
+for offset, (name, color) in zip((-0.1, 0.0, 0.1), SURFACE_COLORS.items(), strict=True):
+    ax.scatter(positions + offset, curvature_check[name], color=color, label=name)
+
+ax.axhline(CURVATURE_TOLERANCE, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;assert threshold&quot;)
+fig.legend(loc=&quot;outside lower center&quot;, ncol=4)
+ax.set(
+    yscale=&quot;log&quot;,
+    xticks=positions,
+    xticklabels=[COMPARISON_LABELS[field] for field in CurvatureErrors._fields],
+    xlim=(-0.5, len(positions) - 0.5),
+    ylabel=&quot;largest absolute difference&quot;,
+)
+fig.suptitle(&quot;Curvature Checks&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/gauss_bonnet_geomstats_files/gauss_bonnet_geomstats_25_0.png" style="width: 900px;"/>
+</center>
+<p>All differences are at round-off level and below the threshold. Each comparison checks something different:</p>
+<ul>
+<li><p><strong>Intrinsic vs closed form:</strong> It checks the whole intrinsic route of geomstats, including the nested derivative of step <span class="math inline">\(3\)</span>.</p></li>
+<li><p><strong>Extrinsic vs closed form:</strong> It checks the second fundamental form of geomstats.</p></li>
+<li><p><strong>Intrinsic vs extrinsic:</strong> It checks the Theorema Egregium at these points: the second and the third derivatives of <span class="math inline">\(f\)</span> give the same curvature. The extrinsic route uses the Christoffel symbols of step <span class="math inline">\(2\)</span> but does not differentiate them, so this comparison adds the nested derivative of step <span class="math inline">\(3\)</span> to the steps that both routes share.</p></li>
+</ul>
+<p>The third column looks like the first one because the extrinsic route agrees with the closed form to round-off, so the difference between the two routes is the error of the intrinsic route.</p>
+<p>Now that we trust how geomstats computes <span class="math inline">\(K\)</span>, let’s look at how it varies over each surface.</p>
+</div>
+<div id="curvature-maps" class="section level2">
+<h2>Curvature Maps</h2>
+<p>We evaluate the intrinsic <span class="math inline">\(K\)</span> at the centers of a uniform <span class="math inline">\(24 \times 24\)</span> grid on the parameter rectangle of each surface. This takes a while, because each point needs its own Riemann tensor.</p>
+<pre class="python"><code>%%time
+
+N_CELLS = 24
+
+
+def tensor_grid(
+    u: Float[Tensor, &quot; n_u&quot;], v: Float[Tensor, &quot; n_v&quot;]
+) -&gt; Float[Tensor, &quot;n_u n_v 2&quot;]:
+    &quot;&quot;&quot;All pairs (u_p, v_q) of the two coordinates, on a grid indexed by (p, q).&quot;&quot;&quot;
+    return torch.stack(torch.meshgrid(u, v, indexing=&quot;ij&quot;), dim=-1)
+
+
+class CurvatureMap(NamedTuple):
+    &quot;&quot;&quot;Surface points on a grid of the parameter rectangle and K at the cell centers.&quot;&quot;&quot;
+
+    surface_points: Float[Tensor, &quot;n_vertices n_vertices 3&quot;]
+    curvature: Float[Tensor, &quot;n_cells n_cells&quot;]
+
+
+def curvature_map(surface: ClosedSurface, n_cells: int = N_CELLS) -&gt; CurvatureMap:
+    &quot;&quot;&quot;Evaluate the surface on a uniform grid and K at the cell centers.&quot;&quot;&quot;
+    u_vertices, v_vertices = (
+        torch.linspace(interval.lower, interval.upper, n_cells + 1)
+        for interval in surface.domain
+    )
+    vertices = tensor_grid(u_vertices, v_vertices)
+    centers = (vertices[:-1, :-1] + vertices[1:, 1:]) / 2
+    # The metric methods of geomstats expect a flat batch of points.
+    curvature = surface.gaussian_curvature_intrinsic(centers.reshape(-1, 2))
+    return CurvatureMap(
+        surface_points=surface.immersion(vertices),
+        curvature=curvature.reshape(n_cells, n_cells),
+    )
+
+
+curvature_maps = {name: curvature_map(surface) for name, surface in surfaces.items()}</code></pre>
+<pre><code>CPU times: user 26.3 s, sys: 79.9 ms, total: 26.4 s
+Wall time: 26.8 s</code></pre>
+<p>We color each cell of a surface by its value of <span class="math inline">\(K\)</span>. The colormap is centered at <span class="math inline">\(K = 0\)</span>, so red cells have positive and blue cells negative curvature.</p>
+<pre class="python"><code>cmap = plt.colormaps[&quot;RdBu_r&quot;]
+
+fig, axes = plt.subplots(
+    nrows=1,
+    ncols=3,
+    figsize=(15, 5),
+    subplot_kw={&quot;projection&quot;: &quot;3d&quot;},
+    layout=&quot;constrained&quot;,
+)
+
+for ax, (name, curvature_map_) in zip(axes, curvature_maps.items(), strict=True):
+    norm = CenteredNorm()
+    ax.plot_surface(
+        *curvature_map_.surface_points.unbind(dim=-1),
+        facecolors=cmap(norm(curvature_map_.curvature)),
+        edgecolor=&quot;black&quot;,
+        linewidth=0.3,
+        shade=False,
+    )
+    ax.set_aspect(&quot;equal&quot;)
+    ax.view_init(elev=25, azim=0)
+    ax.set_axis_off()
+    ax.set_facecolor(&quot;white&quot;)
+    ax.set_title(name)
+    fig.colorbar(
+        plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, shrink=0.6, label=&quot;$K$&quot;
+    )
+
+fig.suptitle(&quot;Gaussian Curvature&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/gauss_bonnet_geomstats_files/gauss_bonnet_geomstats_30_0.png" style="width: 1000px;"/>
+</center>
+<p>The colors show where each surface curves:</p>
+<ul>
+<li><p><strong>Sphere.</strong> It has a single color because its curvature is constant.</p></li>
+<li><p><strong>Torus.</strong> It is red on the outer half and blue on the inner half, the two parts that cancel in its total curvature. From the closed form, the inner half is more curved, down to <span class="math inline">\(-1 / \left( r (D - r) \right) \approx -1.10\)</span> against up to <span class="math inline">\(1 / \left( r (D + r) \right) \approx 0.53\)</span>, but it has less area.</p></li>
+<li><p><strong>Ellipsoid.</strong> It is red near the two ends of its longest axis and almost white elsewhere, so its curvature is concentrated near these ends. The closed form gives <span class="math inline">\(K = b^2 / (a^2 c^2) = 6.25\)</span> there, and the colorbar stops below that value because the cell centers miss the ends.</p></li>
+</ul>
+<p>Next, let’s integrate <span class="math inline">\(K\)</span> over each surface.</p>
+</div>
+<div id="total-curvature" class="section level2">
+<h2>Total Curvature</h2>
+<p>We now turn to the left side of the theorem. Over the parameter rectangle, the total curvature is</p>
+<p><span class="math display">\[\int_M K \, dA = \int_{u_{\min}}^{u_{\max}} \int_{v_{\min}}^{v_{\max}} K(u, v) \sqrt{\det g(u, v)} \, dv \, du.\]</span></p>
+<p>For the examples we have at hand, we can compute this integral in closed form. Nevertheless, we will approximate it by a weighted sum of values of the integrand, as we are exploring how to use Python to “avoid” any analytical calculation (this does not mean we should not do it!). Let’s see how this works in one dimension first.</p>
+<div id="quadrature-rules" class="section level3">
+<h3>Quadrature Rules</h3>
+<p>A <strong>quadrature rule</strong> on an interval <span class="math inline">\([t_{\min}, t_{\max}]\)</span> consists of <span class="math inline">\(n\)</span> <strong>nodes</strong> <span class="math inline">\(t_1, \ldots, t_n\)</span>, where we evaluate the integrand <span class="math inline">\(\psi\)</span>, and <span class="math inline">\(n\)</span> <strong>weights</strong> <span class="math inline">\(\omega_1, \ldots, \omega_n\)</span>, which say how much each value counts:</p>
+<p><span class="math display">\[\int_{t_{\min}}^{t_{\max}} \psi(t) \, dt \approx \sum_{p=1}^{n} \omega_p \, \psi(t_p).\]</span></p>
+<p>Think of the weight <span class="math inline">\(\omega_p\)</span> as the length of the piece of the interval that the node <span class="math inline">\(t_p\)</span> stands for. The weights add up to <span class="math inline">\(t_{\max} - t_{\min}\)</span>, so a rule integrates a constant exactly.</p>
+<p>We use two rules, and the closure of a direction decides which one (see <em>Base Class</em>):</p>
+<ul>
+<li><p><strong>Midpoint rule, for a periodic direction:</strong> It splits the interval into <span class="math inline">\(n\)</span> cells of width <span class="math inline">\(\delta = (t_{\max} - t_{\min}) / n\)</span>, puts a node at the center of each cell, and gives every node the weight <span class="math inline">\(\delta\)</span>. For a periodic integrand, its error shrinks geometrically, by a constant factor per added node.</p></li>
+<li><p><strong><a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Legendre_quadrature">Gauss-Legendre rule</a>, for a direction that ends at poles:</strong> Its nodes are the roots of the Legendre polynomial of degree <span class="math inline">\(n\)</span>, mapped to the interval, and they cluster near the two ends. Toward the poles, the error of the midpoint rule would shrink only like <span class="math inline">\(1 / n^2\)</span>, while the error of the Gauss-Legendre rule still shrinks geometrically.</p></li>
+</ul>
+<p>The <em>Appendix</em> shows the nodes and the weights of both rules and explains their errors.</p>
+<p>Both rules only use interior nodes. This matters because <span class="math inline">\(\det g = 0\)</span> at a pole, so the inverse metric <span class="math inline">\(g^{-1}\)</span> in the Christoffel symbols does not exist there.</p>
+<p>The functions below return the nodes and the weights of a rule on an interval, and <code>QUADRATURE_RULES</code> maps each type of closure to its rule:</p>
+<pre class="python"><code>class QuadratureRule(NamedTuple):
+    &quot;&quot;&quot;Nodes and weights of a one-dimensional quadrature rule.&quot;&quot;&quot;
+
+    nodes: Float[Tensor, &quot; n_nodes&quot;]
+    weights: Float[Tensor, &quot; n_nodes&quot;]
+
+
+def midpoint_rule(lower: float, upper: float, n_nodes: int) -&gt; QuadratureRule:
+    &quot;&quot;&quot;Composite midpoint rule on [lower, upper], for a periodic direction.&quot;&quot;&quot;
+    step = (upper - lower) / n_nodes
+    nodes = lower + step * (torch.arange(n_nodes) + 0.5)
+    return QuadratureRule(nodes=nodes, weights=torch.full_like(nodes, step))
+
+
+def gauss_legendre_rule(lower: float, upper: float, n_nodes: int) -&gt; QuadratureRule:
+    &quot;&quot;&quot;Gauss-Legendre rule on [lower, upper], for a direction that ends at poles.&quot;&quot;&quot;
+    nodes, weights = (torch.from_numpy(array) for array in leggauss(n_nodes))
+    half_width = (upper - lower) / 2
+    return QuadratureRule(
+        nodes=lower + half_width * (nodes + 1), weights=half_width * weights
+    )
+
+
+QUADRATURE_RULES: dict[type[Closure], Callable[[float, float, int], QuadratureRule]] = {
+    Periodic: midpoint_rule,
+    Pole: gauss_legendre_rule,
+}</code></pre>
+<p>Now that each direction has its rule, we combine the two rules on the rectangle.</p>
+</div>
+<div id="tensor-product" class="section level3">
+<h3>Tensor Product</h3>
+<p>On the rectangle we use one rule in each direction, the one that its closure picks. The first direction has nodes <span class="math inline">\(u_p\)</span> with weights <span class="math inline">\(\alpha_p\)</span>, and the second direction has nodes <span class="math inline">\(v_q\)</span> with weights <span class="math inline">\(\beta_q\)</span>, for <span class="math inline">\(p, q = 1, \ldots, n\)</span>.</p>
+<p>To integrate a function <span class="math inline">\(\Psi(u, v)\)</span> over the rectangle, we apply the rule for <span class="math inline">\(v\)</span> at each fixed <span class="math inline">\(u = u_p\)</span>, and then the rule for <span class="math inline">\(u\)</span> to the results:</p>
+<p><span class="math display">\[\int_{u_{\min}}^{u_{\max}} \int_{v_{\min}}^{v_{\max}} \Psi(u, v) \, dv \, du \approx \sum_{p=1}^{n} \alpha_p \left( \sum_{q=1}^{n} \beta_q \, \Psi(u_p, v_q) \right) = \sum_{p=1}^{n} \sum_{q=1}^{n} \alpha_p \beta_q \, \Psi(u_p, v_q).\]</span></p>
+<p>So the grid point <span class="math inline">\((u_p, v_q)\)</span> gets the weight <span class="math inline">\(\alpha_p \beta_q\)</span>, the area of the small rectangle with sides <span class="math inline">\(\alpha_p\)</span> and <span class="math inline">\(\beta_q\)</span> that it stands for. With <span class="math inline">\(\Psi = K \sqrt{\det g}\)</span>, the total curvature is</p>
+<p><span class="math display">\[\int_M K \, dA \approx \sum_{p=1}^{n} \sum_{q=1}^{n} \alpha_p \beta_q \, K(u_p, v_q) \sqrt{\det g(u_p, v_q)}.\]</span></p>
+<p>In code, <code>tensor_product_rule</code> pairs the nodes of the two rules with <code>tensor_grid</code> from <em>Curvature Maps</em> and multiplies their weights. Then <code>gb_curvature</code>, the left side of the Gauss-Bonnet theorem, sums <span class="math inline">\(K \sqrt{\det g}\)</span> times the weights:</p>
+<pre class="python"><code>class TensorProductRule(NamedTuple):
+    &quot;&quot;&quot;Points and weights of a quadrature rule on the parameter rectangle.&quot;&quot;&quot;
+
+    points: Float[Tensor, &quot;n_points 2&quot;]
+    weights: Float[Tensor, &quot; n_points&quot;]
+
+
+def tensor_product_rule(surface: ClosedSurface, n_nodes: int) -&gt; TensorProductRule:
+    &quot;&quot;&quot;Tensor product of the rules that the closures pick in each direction.&quot;&quot;&quot;
+    u_rule, v_rule = (
+        QUADRATURE_RULES[type(closure)](interval.lower, interval.upper, n_nodes)
+        for interval, closure in zip(surface.domain, surface.closures, strict=True)
+    )
+    return TensorProductRule(
+        points=tensor_grid(u_rule.nodes, v_rule.nodes).reshape(-1, 2),
+        weights=torch.outer(u_rule.weights, v_rule.weights).reshape(-1),
+    )
+
+
+def gb_curvature(surface: ClosedSurface, n_nodes: int) -&gt; float:
+    &quot;&quot;&quot;Left side of Gauss-Bonnet: the integral of K dA by tensor-product quadrature.&quot;&quot;&quot;
+    rule = tensor_product_rule(surface, n_nodes)
+    curvature = surface.gaussian_curvature_intrinsic(rule.points)
+    integrand = curvature * surface.area_element(rule.points)
+    return (rule.weights * integrand).sum().item()</code></pre>
+<p>For the torus, <span class="math inline">\(\sqrt{\det g} = r (D + r \cos u)\)</span>, so the integrand is <span class="math inline">\(K \sqrt{\det g} = \cos u\)</span>. The midpoint rule integrates <span class="math inline">\(\cos u\)</span> over a full period exactly for <span class="math inline">\(n \geq 2\)</span>.</p>
+<p>As a first test, we integrate over the torus with only <span class="math inline">\(n = 2\)</span> nodes per direction, where we expect an exact result:</p>
+<pre class="python"><code>torch.testing.assert_close(
+    gb_curvature(surfaces[&quot;torus&quot;], n_nodes=2),
+    0.0,
+    atol=CURVATURE_TOLERANCE,
+    rtol=0.0,
+)</code></pre>
+<p>The result is zero up to round-off, below the threshold <span class="math inline">\(10^{-12}\)</span> of <em>Curvature Checks</em>, as we expected.</p>
+<p>With the left side in place, we turn to the right side.</p>
+</div>
+</div>
+<div id="euler-characteristic" class="section level2">
+<h2>Euler Characteristic</h2>
+<p>For the right side we need <span class="math inline">\(\chi = V - E + F\)</span>. We build a polygonal decomposition from a grid of <span class="math inline">\(n_{\text{cells}} \times n_{\text{cells}}\)</span> quads on the parameter rectangle and glue it according to the closures. Each grid vertex gets an integer label, and glued vertices share a label.</p>
+<p>Recall from <em>Base Class</em> that each closure glues the first and the last row of a grid with its method <code>glue</code>. So <code>glued_labels</code> moves each direction to the front, glues it, and moves it back.</p>
+<p>Let’s work a small example. Here are the labels of the sphere grid with <span class="math inline">\(n_{\text{cells}} = 4\)</span>, where rows follow the polar angle <span class="math inline">\(\theta\)</span> and columns follow the azimuth <span class="math inline">\(\varphi\)</span>:</p>
+<pre class="python"><code>def glued_labels(
+    closures: tuple[Closure, Closure], n_cells: int
+) -&gt; Int[Tensor, &quot;n_vertices n_vertices&quot;]:
+    &quot;&quot;&quot;Labels of the grid vertices, of shape [n_cells + 1, n_cells + 1].
+
+    Glued vertices share a label.
+    &quot;&quot;&quot;
+    labels = torch.arange((n_cells + 1) ** 2).reshape(n_cells + 1, n_cells + 1)
+
+    for dim, closure in enumerate(closures):
+        labels = closure.glue(labels.movedim(dim, 0)).movedim(0, dim)
+
+    return labels
+
+
+glued_labels(surfaces[&quot;sphere&quot;].closures, n_cells=4)</code></pre>
+<pre><code>tensor([[ 0,  0,  0,  0,  0],
+        [ 5,  6,  7,  8,  5],
+        [10, 11, 12, 13, 10],
+        [15, 16, 17, 18, 15],
+        [20, 20, 20, 20, 20]])</code></pre>
+<p>The labels are the vertex numbers of the grid before gluing. The first row carries the single label <span class="math inline">\(0\)</span> and the last row the single label <span class="math inline">\(20\)</span>: these are the two poles. The last column repeats the first column, which glues the seam of the azimuth.</p>
+<p>We then count the cells of the glued grid:</p>
+<ul>
+<li><p><strong>Vertices:</strong> We count the distinct labels.</p></li>
+<li><p><strong>Edges:</strong> We list the two end labels of every edge between neighboring grid vertices. We drop an edge on a pole, whose two end labels are equal, and we keep one of two edges that are glued along a seam, which have the same end labels.</p></li>
+<li><p><strong>Faces:</strong> A quad that touches a pole loses one corner and becomes a triangle, so every quad stays a face and <span class="math inline">\(F = n_{\text{cells}}^2\)</span>.</p></li>
+</ul>
+<p>Identifying an edge by its two end labels needs at least three cells per direction: with two cells, two different edges of a periodic direction join the same two vertices.</p>
+<pre class="python"><code>def grid_edges(labels: Int[Tensor, &quot;n_rows n_cols&quot;]) -&gt; Int[Tensor, &quot;n_edges 2&quot;]:
+    &quot;&quot;&quot;End labels of the edges between neighboring vertices of the grid.&quot;&quot;&quot;
+    along_rows = torch.stack([labels[:-1], labels[1:]], dim=-1)
+    along_cols = torch.stack([labels[:, :-1], labels[:, 1:]], dim=-1)
+    return torch.cat([along_rows.reshape(-1, 2), along_cols.reshape(-1, 2)])
+
+
+def distinct_edges(labels: Int[Tensor, &quot;n_rows n_cols&quot;]) -&gt; Int[Tensor, &quot;n_distinct 2&quot;]:
+    &quot;&quot;&quot;Edges of the glued grid, each counted once.&quot;&quot;&quot;
+    edges = grid_edges(labels)
+    # An edge on a pole collapses to a point.
+    edges = edges[edges[:, 0] != edges[:, 1]]
+    # Glued edges have the same two end labels.
+    return edges.sort(dim=-1).values.unique(dim=0)
+
+
+class CellCount(NamedTuple):
+    &quot;&quot;&quot;Numbers of vertices, edges, and faces of a glued grid.&quot;&quot;&quot;
+
+    vertices: int
+    edges: int
+    faces: int
+
+    @property
+    def euler_characteristic(self) -&gt; int:
+        return self.vertices - self.edges + self.faces
+
+
+def count_cells(closures: tuple[Closure, Closure], n_cells: int) -&gt; CellCount:
+    &quot;&quot;&quot;Count the vertices, edges, and faces of the glued grid.
+
+    Needs n_cells &gt;= 3, so that no two edges join the same two vertices.
+    &quot;&quot;&quot;
+    labels = glued_labels(closures, n_cells)
+    return CellCount(
+        vertices=labels.unique().numel(),
+        edges=len(distinct_edges(labels)),
+        faces=n_cells**2,
+    )
+
+
+count_cells(surfaces[&quot;sphere&quot;].closures, n_cells=4)</code></pre>
+<pre><code>CellCount(vertices=14, edges=28, faces=16)</code></pre>
+<p>For the sphere grid we get <span class="math inline">\(\chi = 14 - 28 + 16 = 2\)</span>. We now write <span class="math inline">\(\chi\)</span> as a function <code>euler_characteristic</code> of the surface, and check with an <code>assert</code> that its value does not depend on the grid size:</p>
+<pre class="python"><code>def euler_characteristic(surface: ClosedSurface, n_cells: int = 12) -&gt; int:
+    &quot;&quot;&quot;Euler characteristic V - E + F of the glued grid on the surface.&quot;&quot;&quot;
+    return count_cells(surface.closures, n_cells).euler_characteristic
+
+
+N_CELLS = (4, 8, 16)
+
+assert all(
+    euler_characteristic(surface, n_cells) == euler_characteristic(surface)
+    for surface in surfaces.values()
+    for n_cells in N_CELLS
+)
+
+{name: euler_characteristic(surface) for name, surface in surfaces.items()}</code></pre>
+<pre><code>{&#39;sphere&#39;: 2, &#39;torus&#39;: 0, &#39;ellipsoid&#39;: 2}</code></pre>
+<p>The sphere and the ellipsoid have <span class="math inline">\(\chi = 2\)</span> and the torus has <span class="math inline">\(\chi = 0\)</span>, which matches <span class="math inline">\(\chi = 2 - 2 \, \text{genus}\)</span> with genus <span class="math inline">\(0\)</span> and <span class="math inline">\(1\)</span>.</p>
+<p>Now that we have both sides, we can compare them.</p>
+</div>
+<div id="gauss-bonnet-check" class="section level2">
+<h2>Gauss-Bonnet Check</h2>
+<p>Finally, we put both sides together as functions of a surface:</p>
+<ul>
+<li><p><strong>Left side:</strong> <code>gb_curvature</code> computes the integral of <span class="math inline">\(K \, dA\)</span> with <span class="math inline">\(n\)</span> quadrature nodes per direction.</p></li>
+<li><p><strong>Right side:</strong> <code>gb_euler_characteristic</code> computes <span class="math inline">\(2 \pi \chi\)</span> from <code>euler_characteristic</code>.</p></li>
+</ul>
+<p>First, let’s see how fast the left side converges. We compute the absolute difference between both sides for <span class="math inline">\(n = 4, 8, 16, 32\)</span> nodes per direction:</p>
+<pre class="python"><code>def gb_euler_characteristic(surface: ClosedSurface) -&gt; float:
+    &quot;&quot;&quot;Right side of Gauss-Bonnet: 2 pi chi.&quot;&quot;&quot;
+    return 2 * torch.pi * euler_characteristic(surface)
+
+
+N_NODES = (4, 8, 16, 32)
+
+gauss_bonnet_errors = {
+    name: [
+        abs(gb_curvature(surface, n_nodes) - gb_euler_characteristic(surface))
+        for n_nodes in N_NODES
+    ]
+    for name, surface in surfaces.items()
+}</code></pre>
+<p>We plot these differences against <span class="math inline">\(n\)</span> on a log axis, together with the tolerance <span class="math inline">\(10^{-5}\)</span> of the check below:</p>
+<pre class="python"><code>GB_TOLERANCE = 1e-5
+
+fig, ax = plt.subplots(layout=&quot;constrained&quot;)
+
+for name, color in SURFACE_COLORS.items():
+    ax.plot(N_NODES, gauss_bonnet_errors[name], marker=&quot;o&quot;, color=color, label=name)
+
+ax.axhline(GB_TOLERANCE, color=&quot;black&quot;, linestyle=&quot;--&quot;, label=&quot;assert threshold&quot;)
+ax.set(
+    yscale=&quot;log&quot;,
+    xticks=N_NODES,
+    xlabel=&quot;nodes per direction $n$&quot;,
+    ylabel=&quot;absolute error&quot;,
+)
+fig.legend(loc=&quot;outside lower center&quot;, ncol=4)
+fig.suptitle(&quot;Gauss-Bonnet Error&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/gauss_bonnet_geomstats_files/gauss_bonnet_geomstats_49_0.png" style="width: 900px;"/>
+</center>
+<p>The three surfaces converge at different rates:</p>
+<ul>
+<li><p><strong>Sphere.</strong> The error drops to round-off with <span class="math inline">\(n = 8\)</span> nodes per direction.</p></li>
+<li><p><strong>Torus.</strong> The error stays at round-off for every <span class="math inline">\(n\)</span>, as the midpoint rule predicts.</p></li>
+<li><p><strong>Ellipsoid.</strong> The error falls by a constant factor per added node, a straight line on the log axis, which is geometric convergence. It needs more nodes than the sphere, which is consistent with its curvature being concentrated near the ends of its longest axis.</p></li>
+</ul>
+<p>The ellipsoid crosses the threshold between <span class="math inline">\(n = 16\)</span> and <span class="math inline">\(n = 32\)</span>, so we check the theorem with <span class="math inline">\(n = 32\)</span> nodes per direction.</p>
+<p>The left side is a quadrature, so it differs from <span class="math inline">\(2 \pi \chi\)</span> by a truncation error that shrinks with <span class="math inline">\(n\)</span>. We check that both sides agree up to the absolute tolerance <span class="math inline">\(10^{-5}\)</span>, with <code>rtol=0.0</code>. The tolerance is absolute because the truncation error does not grow with the size of <span class="math inline">\(2 \pi \chi\)</span>, and because the right side is <span class="math inline">\(0\)</span> for the torus.</p>
+<p>With <span class="math inline">\(n = 32\)</span>, the check needs <span class="math inline">\(3072\)</span> points in total (<span class="math inline">\(3\)</span> surfaces times <span class="math inline">\(32^2 = 1024\)</span> points), each with its own Riemann tensor:</p>
+<pre class="python"><code>%%time
+
+for surface in surfaces.values():
+    torch.testing.assert_close(
+        gb_curvature(surface, n_nodes=32),
+        gb_euler_characteristic(surface),
+        atol=GB_TOLERANCE,
+        rtol=0.0,
+    )</code></pre>
+<pre><code>CPU times: user 55.9 s, sys: 268 ms, total: 56.2 s
+Wall time: 59.8 s</code></pre>
+<p>The two sides of the theorem agree for all three surfaces! The cell took about <span class="math inline">\(60\)</span> seconds for the <span class="math inline">\(3072\)</span> points, or about <span class="math inline">\(19\)</span> milliseconds per point.</p>
+<p>The details of the quadrature rules follow in the <em>Appendix</em>.</p>
+</div>
+<div id="appendix" class="section level2">
+<h2>Appendix</h2>
+<p>This appendix gives the details of the quadrature rules of <em>Total Curvature</em>.</p>
+<div id="nodes-and-weights" class="section level3">
+<h3>Nodes and Weights</h3>
+<p>Let’s compare the two rules on <span class="math inline">\([0, \pi]\)</span>, the range of the polar angle, with <span class="math inline">\(n = 8\)</span> nodes. Each stem marks a node, and its height is the weight of the node:</p>
+<pre class="python"><code>RULES = {&quot;midpoint&quot;: midpoint_rule, &quot;Gauss-Legendre&quot;: gauss_legendre_rule}
+RULE_COLORS = {&quot;midpoint&quot;: &quot;C8&quot;, &quot;Gauss-Legendre&quot;: &quot;C9&quot;}
+
+fig, axes = plt.subplots(
+    nrows=2, ncols=1, sharex=True, sharey=True, layout=&quot;constrained&quot;
+)
+
+for ax, (name, rule) in zip(axes, RULES.items(), strict=True):
+    nodes, weights = rule(0.0, torch.pi, 8)
+    assert torch.isclose(weights.sum(), torch.tensor(torch.pi))
+    color = RULE_COLORS[name]
+    ax.stem(
+        nodes, weights, linefmt=color, markerfmt=f&quot;{color}o&quot;, basefmt=&quot; &quot;, label=name
+    )
+    ax.set(ylabel=&quot;weight&quot;)
+
+axes[-1].set(xlabel=r&quot;$\theta$&quot;, xlim=(0, torch.pi))
+fig.legend(loc=&quot;outside lower center&quot;, ncol=2)
+fig.suptitle(&quot;Quadrature Nodes and Weights&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/gauss_bonnet_geomstats_files/gauss_bonnet_geomstats_54_0.png" style="width: 900px;"/>
+</center>
+<p>The figure shows how the two rules spend their weight, which adds up to <span class="math inline">\(\pi\)</span> in both:</p>
+<ul>
+<li><p><strong>Midpoint rule.</strong> It treats every part of the interval alike.</p></li>
+<li><p><strong>Gauss-Legendre rule.</strong> It puts more nodes near the two ends, but gives each of them a small weight.</p></li>
+</ul>
+</div>
+<div id="error-of-the-rules" class="section level3">
+<h3>Error of the Rules</h3>
+<p>To see why each closure gets its rule, we look at the <strong>error</strong> of a rule, the exact integral minus the weighted sum, and at how fast it shrinks when we add nodes.</p>
+<p>Let’s start with the midpoint rule on the cell of width <span class="math inline">\(\delta\)</span> around the node <span class="math inline">\(t_p\)</span>. A Taylor expansion of <span class="math inline">\(\psi\)</span> around <span class="math inline">\(t_p\)</span> gives</p>
+<p><span class="math display">\[\int_{t_p - \delta / 2}^{t_p + \delta / 2} \psi(t) \, dt = \delta \, \psi(t_p) + \frac{\delta^3}{24} \psi&#39;&#39;(t_p) + \ldots,\]</span></p>
+<p>because the odd powers of <span class="math inline">\(t - t_p\)</span> integrate to zero over the cell, which is symmetric around <span class="math inline">\(t_p\)</span>. The first term is what the midpoint rule computes, so this cell leaves an error of about <span class="math inline">\(\delta^3 \psi&#39;&#39;(t_p) / 24\)</span>.</p>
+<p>We add the errors of all cells and pull out <span class="math inline">\(\delta^2\)</span>. The remaining sum is the midpoint rule applied to <span class="math inline">\(\psi&#39;&#39;\)</span>, so it is close to the integral of <span class="math inline">\(\psi&#39;&#39;\)</span>:</p>
+<p><span class="math display">\[\sum_{p=1}^{n} \frac{\delta^3}{24} \psi&#39;&#39;(t_p) = \frac{\delta^2}{24} \sum_{p=1}^{n} \delta \, \psi&#39;&#39;(t_p) \approx \frac{\delta^2}{24} \int_{t_{\min}}^{t_{\max}} \psi&#39;&#39;(t) \, dt = \frac{\delta^2}{24} \left( \psi&#39;(t_{\max}) - \psi&#39;(t_{\min}) \right).\]</span></p>
+<p>In other words, the leading error of the midpoint rule depends only on the slopes of the integrand at the two ends of the interval. This explains the two cases:</p>
+<ul>
+<li><p><strong>Periodic direction:</strong> The two ends are the same point of the surface, so the slopes agree and the leading error vanishes.</p></li>
+<li><p><strong>Direction that ends at poles:</strong> The two ends are different points, the north and the south pole, and the slopes differ. So the leading error stays, and with <span class="math inline">\(\delta = \pi / n\)</span> it shrinks only like <span class="math inline">\(1 / n^2\)</span>: doubling the number of nodes divides the error by four.</p></li>
+</ul>
+<p>In the periodic case, the smaller error terms vanish as well. The <a href="https://en.wikipedia.org/wiki/Euler%E2%80%93Maclaurin_formula">Euler-Maclaurin formula</a> gives the next term as <span class="math inline">\(\delta^4\)</span> times a constant times <span class="math inline">\(\psi&#39;&#39;&#39;(t_{\max}) - \psi&#39;&#39;&#39;(t_{\min})\)</span>, then the same with <span class="math inline">\(\delta^6\)</span> and the fifth derivative, and so on. Every term is a difference of one derivative between the two ends, so every term vanishes.</p>
+<p>So in a periodic direction the error of the midpoint rule shrinks faster than any power of <span class="math inline">\(1 / n\)</span>. Our integrands are analytic, that is, a convergent power series describes them around every point. For such a periodic integrand, the error shrinks geometrically, by a constant factor per added node (see <a href="https://doi.org/10.1137/130932132">Trefethen and Weideman</a>).</p>
+<p>In a direction that ends at poles, the slopes do not cancel on our ellipsoids. Fix an azimuth, so that <span class="math inline">\(\psi(\theta) = K \sqrt{\det g}\)</span> for <span class="math inline">\(\theta \in [0, \pi]\)</span>. Our ellipsoids have <span class="math inline">\(K &gt; 0\)</span> everywhere, and <span class="math inline">\(\sqrt{\det g}\)</span> vanishes like <span class="math inline">\(\sin\theta\)</span> at each pole, so <span class="math inline">\(\psi&#39;(0) &gt; 0 &gt; \psi&#39;(\pi)\)</span>.</p>
+<p>The Gauss-Legendre rule does not rely on the two ends to cancel. Take any polynomial <span class="math inline">\(P\)</span> of degree up to <span class="math inline">\(2n - 1\)</span>. The rule integrates <span class="math inline">\(P\)</span> exactly, so its error only comes from <span class="math inline">\(\psi - P\)</span>, and it is at most <span class="math inline">\(2 (t_{\max} - t_{\min})\)</span> times the largest value of <span class="math inline">\(|\psi - P|\)</span> on the interval.</p>
+<p>We are free to pick the polynomial <span class="math inline">\(P\)</span> that makes this largest value smallest. For an analytic integrand, this smallest value shrinks geometrically in <span class="math inline">\(n\)</span>, and so does the error of the rule (Theorem <span class="math inline">\(4.5\)</span> in <a href="https://doi.org/10.1137/060659831">Trefethen</a>).</p>
+<p>Let’s check this on the unit sphere. There <span class="math inline">\(\psi(\theta) = \sin\theta\)</span> at every azimuth, and its integral over <span class="math inline">\([0, \pi]\)</span> is <span class="math inline">\(2\)</span>. From <span class="math inline">\(\psi&#39;(0) = 1\)</span> and <span class="math inline">\(\psi&#39;(\pi) = -1\)</span>, the leading error of the midpoint rule has the size <span class="math inline">\(\delta^2 / 12 = \pi^2 / (12 n^2)\)</span>. We compute the error of both rules for an increasing number of nodes:</p>
+<pre class="python"><code>def sine_integral_error(
+    rule: Callable[[float, float, int], QuadratureRule], n_nodes: int
+) -&gt; float:
+    &quot;&quot;&quot;Absolute error of a rule for the integral of sin over [0, pi], which is 2.&quot;&quot;&quot;
+    nodes, weights = rule(0.0, torch.pi, n_nodes)
+    return abs((weights * torch.sin(nodes)).sum().item() - 2)
+
+
+N_NODES_SINE = list(range(2, 33, 2))
+
+sine_errors = {
+    name: [sine_integral_error(rule, n_nodes) for n_nodes in N_NODES_SINE]
+    for name, rule in RULES.items()
+}</code></pre>
+<p>We plot the errors on a log axis, together with the leading term of the midpoint rule. An error that is exactly zero has no place on a log axis, so it does not appear:</p>
+<pre class="python"><code>fig, ax = plt.subplots(layout=&quot;constrained&quot;)
+
+for name, errors in sine_errors.items():
+    ax.plot(
+        N_NODES_SINE,
+        errors,
+        marker=&quot;o&quot;,
+        linestyle=&quot;none&quot;,
+        color=RULE_COLORS[name],
+        label=name,
+    )
+
+leading_term = [torch.pi**2 / (12 * n_nodes**2) for n_nodes in N_NODES_SINE]
+ax.plot(
+    N_NODES_SINE,
+    leading_term,
+    color=RULE_COLORS[&quot;midpoint&quot;],
+    linestyle=&quot;--&quot;,
+    label=r&quot;leading term $\pi^2 / (12 n^2)$&quot;,
+)
+ax.set_yscale(&quot;log&quot;, nonpositive=&quot;mask&quot;)
+ax.set(xlabel=&quot;nodes $n$&quot;, ylabel=&quot;absolute error&quot;)
+fig.legend(loc=&quot;outside lower center&quot;, ncol=3)
+fig.suptitle(r&quot;Quadrature Error for $\sin\theta$&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/gauss_bonnet_geomstats_files/gauss_bonnet_geomstats_58_0.png" style="width: 900px;"/>
+</center>
+<p>The two rules behave very differently near the poles:</p>
+<ul>
+<li><p><strong>Midpoint rule.</strong> The error follows the leading term, and with <span class="math inline">\(n = 32\)</span> nodes it is still about <span class="math inline">\(8.0 \times 10^{-4}\)</span>. Over the whole sphere the integral in <span class="math inline">\(\varphi\)</span> multiplies it by <span class="math inline">\(2\pi\)</span>, which gives about <span class="math inline">\(5.0 \times 10^{-3}\)</span>, far above the tolerance <span class="math inline">\(10^{-5}\)</span> of <em>Gauss-Bonnet Check</em>.</p></li>
+<li><p><strong>Gauss-Legendre rule.</strong> The error falls geometrically, and it reaches round-off level with <span class="math inline">\(n = 8\)</span> nodes.</p></li>
+</ul>
+</div>
+<div id="tensor-product-nodes" class="section level3">
+<h3>Tensor-Product Nodes</h3>
+<p>Let’s look at the tensor-product nodes of the sphere and the torus with <span class="math inline">\(n = 8\)</span> nodes per direction. The color and the area of a marker show its weight <span class="math inline">\(\alpha_p \beta_q\)</span>, on one scale for both surfaces:</p>
+<pre class="python"><code>node_grids = {
+    name: tensor_product_rule(surfaces[name], n_nodes=8) for name in (&quot;sphere&quot;, &quot;torus&quot;)
+}
+# One scale for both panels, so that equal weights get equal colors and sizes.
+weight_norm = plt.Normalize(
+    vmin=min(grid.weights.min().item() for grid in node_grids.values()),
+    vmax=max(grid.weights.max().item() for grid in node_grids.values()),
+)
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 5), layout=&quot;constrained&quot;)
+
+for ax, (name, grid) in zip(axes, node_grids.items(), strict=True):
+    surface = surfaces[name]
+    u, v = grid.points.unbind(dim=-1)
+    scatter = ax.scatter(
+        u,
+        v,
+        s=200 * grid.weights / weight_norm.vmax,
+        c=grid.weights,
+        cmap=&quot;viridis_r&quot;,
+        norm=weight_norm,
+    )
+    u_closure, v_closure = surface.closures
+    ax.set(
+        title=f&quot;{name}: $u$ {u_closure.name}, $v$ {v_closure.name}&quot;,
+        xlim=surface.domain.u,
+        ylim=surface.domain.v,
+        xlabel=&quot;$u$&quot;,
+        ylabel=&quot;$v$&quot;,
+    )
+
+fig.colorbar(scatter, ax=axes, shrink=0.8, label=r&quot;weight $\alpha_p \beta_q$&quot;)
+fig.suptitle(&quot;Tensor-Product Nodes&quot;, fontsize=18, fontweight=&quot;bold&quot;);</code></pre>
+<center>
+<img src="../images/gauss_bonnet_geomstats_files/gauss_bonnet_geomstats_60_0.png" style="width: 900px;"/>
+</center>
+<p>The weight of a grid point is the product of the weights of its two coordinates:</p>
+<ul>
+<li><p><strong>Sphere.</strong> All nodes in a column share the Gauss-Legendre weight <span class="math inline">\(\alpha_p\)</span> of <span class="math inline">\(u\)</span>, so the markers get smaller and lighter column by column toward the poles. Along <span class="math inline">\(v\)</span>, the midpoint weights <span class="math inline">\(\beta_q\)</span> are all equal. The ellipsoid has the same domain and closures, so it has the same nodes.</p></li>
+<li><p><strong>Torus.</strong> Both weights are constant, so every grid point has the same weight.</p></li>
+</ul>
+<p>The weights of a panel add up to the area of its rectangle, because</p>
+<p><span class="math display">\[\sum_p \sum_q \alpha_p \beta_q = \left( \sum_p \alpha_p \right) \left( \sum_q \beta_q \right).\]</span></p>
+<p>The rectangle of the torus is twice as large (<span class="math inline">\(2\pi \times 2\pi\)</span> against <span class="math inline">\(\pi \times 2\pi\)</span>), and so are its weights on average.</p>
+</div>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<ul>
+<li><p>Crane, K. <a href="https://www.cs.cmu.edu/~kmcrane/Projects/DDG/">Discrete Differential Geometry: An Applied Introduction</a>. Carnegie Mellon University.</p></li>
+<li><p>do Carmo, M. P. <a href="https://store.doverpublications.com/products/9780486806990">Differential Geometry of Curves and Surfaces</a>. Second edition, Dover.</p></li>
+<li><p>geomstats. <a href="https://github.com/geomstats/geomstats/pull/2142">Fix nested autodiff in pytorch backend (wrong riemann_tensor on ImmersedSet)</a>. Pull request #2142.</p></li>
+<li><p>Miolane, N., et al. <a href="https://jmlr.org/papers/v21/19-027.html">Geomstats: A Python Package for Riemannian Geometry in Machine Learning</a>. Journal of Machine Learning Research 21(223), 2020.</p></li>
+<li><p>Trefethen, L. N. <a href="https://doi.org/10.1137/060659831">Is Gauss Quadrature Better than Clenshaw-Curtis?</a>. SIAM Review 50(1), 2008.</p></li>
+<li><p>Trefethen, L. N., and Weideman, J. A. C. <a href="https://doi.org/10.1137/130932132">The Exponentially Convergent Trapezoidal Rule</a>. SIAM Review 56(3), 2014.</p></li>
+<li><p>Weisstein, E. W. <a href="https://mathworld.wolfram.com/Ellipsoid.html">Ellipsoid</a>. MathWorld.</p></li>
+<li><p>Wikipedia. <a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Bonnet_theorem">Gauss-Bonnet theorem</a>, <a href="https://en.wikipedia.org/wiki/Theorema_Egregium">Theorema Egregium</a>, <a href="https://en.wikipedia.org/wiki/Euler_characteristic">Euler characteristic</a>, <a href="https://en.wikipedia.org/wiki/Betti_number">Betti number</a>, <a href="https://en.wikipedia.org/wiki/Euler%E2%80%93Maclaurin_formula">Euler-Maclaurin formula</a>, <a href="https://en.wikipedia.org/wiki/Gauss%E2%80%93Legendre_quadrature">Gauss-Legendre quadrature</a>.</p></li>
+</ul>
+</div>
+
+    </div>
+  </article>
+
+  
+
+
+
+</main>
+
+      <footer class="footer">
+        <ul class="footer-links">
+          <li>
+            <a href="../index.xml" type="application/rss+xml" target="_blank">RSS feed</a>
+          </li>
+          <li>
+            <a href="https://gohugo.io/" class="footer-links-kudos">Made with <img src="../images/hugo-logo.png" alt="Img link to Hugo website" width="22" height="22"></a>
+          </li>
+        </ul>
+      </footer>
+
+    </div>
+    
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/r.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/yaml.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/python.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/dockerfile.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/bash.min.js"></script>
+<script>hljs.configure({languages: []}); hljs.initHighlightingOnLoad();</script>
+
+
+
+    
+<script src="../js/math-code.js"></script>
+<script async src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+
+    
+      <script async src="https://www.googletagmanager.com/gtag/js?id=G-5NM5EDH834"></script>
+      <script>
+        var doNotTrack = false;
+        if ( false ) {
+          var dnt = (navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack);
+          var doNotTrack = (dnt == "1" || dnt == "yes");
+        }
+        if (!doNotTrack) {
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-5NM5EDH834');
+        }
+      </script>
+  </body>
+</html>
+
